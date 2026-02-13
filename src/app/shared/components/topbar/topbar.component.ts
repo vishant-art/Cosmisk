@@ -77,14 +77,11 @@ import { RelativeTimePipe } from '../../pipes/relative-time.pipe';
                 @for (notif of notificationService.allNotifications(); track notif.id) {
                   <div
                     class="flex gap-3 px-4 py-3 border-b border-divider hover:bg-cream transition-colors cursor-pointer"
-                    [class.bg-cream/50]="!notif.read"
+                    [class.bg-cream]="!notif.read"
                     (click)="handleNotifClick(notif.actionRoute)">
-                    <span class="shrink-0 mt-0.5">
-                      @switch (notif.type) {
-                        @case ('alert') { <span class="text-red-500">&#128308;</span> }
-                        @case ('positive') { <span class="text-green-500">&#128994;</span> }
-                        @default { <span class="text-blue-500">&#128309;</span> }
-                      }
+                    <span class="shrink-0 mt-0.5"
+                      [ngClass]="notif.type === 'alert' ? 'text-red-500' : notif.type === 'positive' ? 'text-green-500' : 'text-blue-500'">
+                      {{ notif.type === 'alert' ? '🔴' : notif.type === 'positive' ? '🟢' : '🔵' }}
                     </span>
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-body font-medium text-navy m-0 truncate">{{ notif.title }}</p>
