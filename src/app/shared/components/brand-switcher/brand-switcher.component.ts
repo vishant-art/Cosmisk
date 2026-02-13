@@ -1,11 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { BrandService } from '../../../core/services/brand.service';
 
 @Component({
   selector: 'app-brand-switcher',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink],
   template: `
     <div class="relative">
       <button
@@ -19,7 +20,7 @@ import { BrandService } from '../../../core/services/brand.service';
       </button>
 
       @if (open()) {
-        <div class="absolute top-full left-0 right-0 mt-1 bg-navy rounded-lg shadow-dropdown z-50 overflow-hidden border border-white/10 max-h-80 overflow-y-auto">
+        <div class="absolute top-full left-0 right-0 mt-1 bg-navy rounded-lg shadow-dropdown z-50 overflow-hidden border border-white/10">
           <div class="p-2">
             <input
               type="text"
@@ -27,27 +28,38 @@ import { BrandService } from '../../../core/services/brand.service';
               class="w-full px-3 py-1.5 bg-white/10 border-0 rounded text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-accent"
               (input)="onSearch($event)">
           </div>
-          @for (brand of filteredBrands(); track brand.id) {
-            <button
-              (click)="selectBrand(brand.id)"
-              class="w-full flex items-center gap-2 px-3 py-2 text-gray-300 hover:bg-white/10 hover:text-white text-sm transition-colors border-0 bg-transparent cursor-pointer"
-              [class.text-white]="brand.id === brandService.currentBrand().id">
-              <span class="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-accent text-xs font-bold shrink-0">
-                {{ brand.name.charAt(0) }}
-              </span>
-              <span class="flex-1 text-left truncate">{{ brand.name }}</span>
-              <span
-                class="text-xs font-mono px-1.5 py-0.5 rounded"
-                [class]="getRoasClass(brand.roas)">
-                {{ brand.roas }}x
-              </span>
-              @if (brand.alertCount > 0) {
-                <span class="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
-                  {{ brand.alertCount }}
+          <div class="max-h-48 overflow-y-auto">
+            @for (brand of filteredBrands(); track brand.id) {
+              <button
+                (click)="selectBrand(brand.id)"
+                class="w-full flex items-center gap-2 px-3 py-2 text-gray-300 hover:bg-white/10 hover:text-white text-sm transition-colors border-0 bg-transparent cursor-pointer"
+                [class.text-white]="brand.id === brandService.currentBrand().id">
+                <span class="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-accent text-xs font-bold shrink-0">
+                  {{ brand.name.charAt(0) }}
                 </span>
-              }
-            </button>
-          }
+                <span class="flex-1 text-left truncate">{{ brand.name }}</span>
+                <span
+                  class="text-xs font-mono px-1.5 py-0.5 rounded"
+                  [class]="getRoasClass(brand.roas)">
+                  {{ brand.roas }}x
+                </span>
+                @if (brand.alertCount > 0) {
+                  <span class="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
+                    {{ brand.alertCount }}
+                  </span>
+                }
+              </button>
+            }
+          </div>
+          <!-- Agency View Link -->
+          <div class="border-t border-white/10 p-2">
+            <a routerLink="/app/agency"
+              (click)="open.set(false)"
+              class="flex items-center gap-2 px-3 py-2 text-accent hover:bg-white/10 rounded text-sm font-body font-semibold transition-colors no-underline">
+              <span>&#9664;</span>
+              <span>Back to Agency View</span>
+            </a>
+          </div>
         </div>
       }
     </div>

@@ -65,6 +65,7 @@ export const routes: Routes = [
       { path: 'audit', loadComponent: () => import('./features/audit/audit.component') },
       { path: 'automations', loadComponent: () => import('./features/automations/automations.component') },
       { path: 'settings', loadComponent: () => import('./features/settings/settings.component') },
+      { path: 'agency', loadComponent: () => import('./features/agency/agency-command-center.component') },
     ]
   },
 

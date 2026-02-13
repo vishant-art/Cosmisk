@@ -26,6 +26,13 @@ import { RelativeTimePipe } from '../../pipes/relative-time.pipe';
 
       <!-- Right: Actions -->
       <div class="flex items-center gap-3">
+        <!-- Search Hint -->
+        <button class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm text-gray-400 font-body hover:bg-gray-200 transition-colors border-0 cursor-pointer">
+          <span>&#128269;</span>
+          <span>Search...</span>
+          <kbd class="ml-2 px-1.5 py-0.5 bg-white rounded text-[10px] font-mono text-gray-400 border border-gray-200">&#8984;K</kbd>
+        </button>
+
         <!-- Date Range Picker -->
         <div class="relative">
           <button

@@ -189,12 +189,48 @@ h1, h2, h3, h4, h5, h6 {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
 
 .animate-slide-in {
   animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-page-enter {
+  animation: page-enter 0.25s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-toast-in {
+  animation: toast-in 0.3s ease-out;
 }
 
 .skeleton {
@@ -204,4 +240,11 @@ h1, h2, h3, h4, h5, h6 {
 
 .pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
+}
+
+// Responsive helpers
+@media (max-width: 768px) {
+  .ml-\[260px\] {
+    margin-left: 0 !important;
+  }
 }
