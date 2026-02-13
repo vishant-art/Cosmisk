@@ -1,0 +1,64 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./src/**/*.{html,ts}'],
+  theme: {
+    extend: {
+      colors: {
+        cream: '#FAF8F5',
+        navy: { DEFAULT: '#1A1A2E', hover: '#2A2A3E' },
+        accent: { DEFAULT: '#E74C3C', hover: '#C0392B' },
+        border: '#E5E2DD',
+        divider: '#F0EDE8',
+        'input-bg': '#F5F3F0',
+        'code-bg': '#F8F7F5',
+        dna: {
+          'hook-bg': '#FEF3C7', 'hook-text': '#92400E',
+          'visual-bg': '#DBEAFE', 'visual-text': '#1E40AF',
+          'audio-bg': '#D1FAE5', 'audio-text': '#065F46',
+        },
+        chart: {
+          1: '#E74C3C', 2: '#3B82F6', 3: '#10B981', 4: '#F59E0B',
+          5: '#8B5CF6', 6: '#EC4899', 7: '#14B8A6', 8: '#F97316',
+        },
+      },
+      fontFamily: {
+        display: ['Playfair Display', 'serif'],
+        body: ['DM Sans', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      borderRadius: {
+        card: '12px',
+        modal: '16px',
+        pill: '20px',
+      },
+      boxShadow: {
+        card: '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
+        'card-hover': '0 4px 12px rgba(0,0,0,0.08)',
+        modal: '0 25px 50px rgba(0,0,0,0.25)',
+        dropdown: '0 4px 16px rgba(0,0,0,0.12)',
+        button: '0 1px 2px rgba(0,0,0,0.05)',
+      },
+      fontSize: {
+        'hero': ['56px', { lineHeight: '64px', fontWeight: '700' }],
+        'page-title': ['32px', { lineHeight: '40px', fontWeight: '700' }],
+        'section-title': ['24px', { lineHeight: '32px', fontWeight: '600' }],
+        'card-title': ['18px', { lineHeight: '28px', fontWeight: '600' }],
+        'body': ['15px', { lineHeight: '24px', fontWeight: '400' }],
+        'small': ['13px', { lineHeight: '20px', fontWeight: '500' }],
+        'caption': ['11px', { lineHeight: '16px', fontWeight: '400' }],
+        'metric-lg': ['36px', { lineHeight: '44px', fontWeight: '700' }],
+        'metric-sm': ['24px', { lineHeight: '32px', fontWeight: '600' }],
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+        '3xl': '64px',
+      },
+    },
+  },
+  plugins: [],
+};

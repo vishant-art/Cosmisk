@@ -1,0 +1,35 @@
+import { HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { catchError, throwError } from 'rxjs';
+import { ToastService } from '../services/toast.service';
+
+export const errorInterceptor: HttpInterceptorFn = (req, next) => {
+  const toast = inject(ToastService);
+  const router = inject(Router);
+
+  return next(req).pipe(
+    catchError(error => {
+      switch (error.status) {
+        case 401:
+          toast.error('Session expired', 'Please log in again.');
+          router.navigate(['/login']);
+          break;
+        case 403:
+          toast.error('Access denied', "You don't have permission to do that.");
+          break;
+        case 404:
+          toast.error('Not found', 'The requested resource was not found.');
+          break;
+        case 429:
+          toast.warning('Rate limited', "Too many requests. We'll retry automatically.");
+          break;
+        case 500:
+        default:
+          toast.error('Something went wrong', "We've been notified. Please try again.");
+          break;
+      }
+      return throwError(() => error);
+    })
+  );
+};
