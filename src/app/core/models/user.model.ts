@@ -5,7 +5,7 @@ export interface User {
   avatarUrl?: string;
   role: 'owner' | 'admin' | 'media_buyer' | 'designer' | 'viewer';
   onboardingComplete: boolean;
-  plan: 'starter' | 'growth' | 'scale';
+  plan: 'trial' | 'starter' | 'growth' | 'scale';
   createdAt: string;
 }
 

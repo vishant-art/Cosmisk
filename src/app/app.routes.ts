@@ -27,6 +27,12 @@ export const routes: Routes = [
     ]
   },
 
+  // Forgot password (standalone layout, not split screen)
+  {
+    path: 'forgot-password',
+    loadComponent: () => import('./features/auth/forgot-password/forgot-password.component'),
+  },
+
   // Onboarding (auth required)
   {
     path: 'onboarding',
