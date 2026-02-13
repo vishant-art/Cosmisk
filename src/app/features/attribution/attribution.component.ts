@@ -1,3 +1,4 @@
+const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 

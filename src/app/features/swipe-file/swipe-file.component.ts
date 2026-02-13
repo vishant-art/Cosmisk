@@ -1,3 +1,4 @@
+const _BUILD_VER = '2026-02-13-v2';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
