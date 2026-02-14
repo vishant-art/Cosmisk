@@ -6,7 +6,9 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "mcp:start": "npx -y n8n-mcp",
+    "mcp:inspect": "npx -y @modelcontextprotocol/inspector npx -y n8n-mcp"
   },
   "private": true,
   "dependencies": {
