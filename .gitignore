@@ -42,6 +42,9 @@ testem.log
 .env.local
 .env.*.local
 
+# MCP config (contains API keys)
+.mcp.json
+
 # System files
 .DS_Store
 Thumbs.db
