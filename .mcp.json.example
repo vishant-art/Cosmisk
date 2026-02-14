@@ -7,7 +7,7 @@
         "MCP_MODE": "stdio",
         "LOG_LEVEL": "error",
         "DISABLE_CONSOLE_OUTPUT": "true",
-        "N8N_API_URL": "https://n8n.cosmisk.ai",
+        "N8N_API_URL": "http://n8n-jeet.duckdns.org:5678",
         "N8N_API_KEY": ""
       }
     }
