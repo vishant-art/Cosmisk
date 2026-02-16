@@ -8,7 +8,7 @@
         "LOG_LEVEL": "error",
         "DISABLE_CONSOLE_OUTPUT": "true",
         "N8N_API_URL": "http://n8n-jeet.duckdns.org:5678",
-        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlZDUwYTUwNy1kOTNkLTQ1YzMtOTQxMi1kODBiYWJiODFkZDAiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzcxMDU2MzQ3LCJleHAiOjE3NzM1OTk0MDB9.eNFlV_6iW7XJNdQcn3PdJyFGuAUwOaRkzKocKrwzIYk"
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlZDUwYTUwNy1kOTNkLTQ1YzMtOTQxMi1kODBiYWJiODFkZDAiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzcxMjIzOTM0fQ.OX7lYlEY7jTxoXTjPLrCED_v6l1T-02MxyqFexLik5s"
       }
     }
   }
