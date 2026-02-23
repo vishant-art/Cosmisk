@@ -1,6 +1,7 @@
 const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface ConversionPath {
   id: string;
@@ -24,7 +25,7 @@ interface AttributionRow {
 @Component({
   selector: 'app-attribution',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -89,7 +90,7 @@ interface AttributionRow {
                       {{ step.icon }} {{ step.channel }}
                     </span>
                     @if ($index < path.steps.length - 1) {
-                      <span class="text-gray-300 text-xs">→</span>
+                      <lucide-icon name="arrow-right" [size]="12" class="text-gray-300"></lucide-icon>
                     }
                   </div>
                 }

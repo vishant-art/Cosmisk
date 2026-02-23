@@ -2,11 +2,12 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-campaigns',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -31,7 +32,7 @@ import { FormsModule } from '@angular/forms';
                     'bg-green-500 text-white': activeStep() > s.num,
                     'bg-gray-200 text-gray-400': activeStep() < s.num
                   }">
-                  @if (activeStep() > s.num) { ✓ } @else { {{ s.num }} }
+                  @if (activeStep() > s.num) { <lucide-icon name="check" [size]="14"></lucide-icon> } @else { {{ s.num }} }
                 </span>
                 <span class="text-sm font-body whitespace-nowrap"
                   [ngClass]="activeStep() === s.num ? 'text-navy font-semibold' : activeStep() > s.num ? 'text-green-600' : 'text-gray-400'">
@@ -99,7 +100,7 @@ import { FormsModule } from '@angular/forms';
 
           <div class="mt-4 p-3 bg-accent/5 rounded-lg">
             <div class="flex items-start gap-2">
-              <span class="text-sm mt-0.5">💡</span>
+              <lucide-icon name="lightbulb" [size]="14" class="text-yellow-500 mt-0.5 shrink-0"></lucide-icon>
               <p class="text-xs font-body text-accent m-0">
                 <strong>AI Suggestion:</strong> Based on your top creatives, "Conversions" with CBO will deliver optimal results. Recommended budget: ₹45,000/day.
               </p>
@@ -111,7 +112,7 @@ import { FormsModule } from '@angular/forms';
               [disabled]="!campaignName || !objective"
               (click)="activeStep.set(2)"
               class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed">
-              Continue to Audience →
+              Continue to Audience <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon>
             </button>
           </div>
         </div>
@@ -122,7 +123,7 @@ import { FormsModule } from '@angular/forms';
         @for (s of [steps[1], steps[2], steps[3]]; track s.num) {
           <div class="bg-white rounded-card shadow-card p-6 opacity-50">
             <div class="flex items-center gap-3">
-              <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm text-gray-400">🔒</span>
+              <span class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm text-gray-400"><lucide-icon name="lock" [size]="16"></lucide-icon></span>
               <div>
                 <h3 class="text-sm font-body font-semibold text-gray-400 m-0">Step {{ s.num }}: {{ s.label }}</h3>
                 <p class="text-xs text-gray-400 font-body m-0 mt-0.5">Complete Step 1 first</p>
@@ -167,8 +168,8 @@ import { FormsModule } from '@angular/forms';
             </div>
           </div>
           <div class="flex justify-between mt-6">
-            <button (click)="activeStep.set(1)" class="px-4 py-2 text-gray-500 text-sm font-body">← Back</button>
-            <button (click)="activeStep.set(3)" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold">Continue to Creatives →</button>
+            <button (click)="activeStep.set(1)" class="px-4 py-2 text-gray-500 text-sm font-body"><lucide-icon name="arrow-left" [size]="14" class="inline-block"></lucide-icon> Back</button>
+            <button (click)="activeStep.set(3)" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold">Continue to Creatives <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon></button>
           </div>
         </div>
       }
@@ -181,15 +182,15 @@ import { FormsModule } from '@angular/forms';
             @for (i of [1,2,3,4,5,6]; track i) {
               <div class="border-2 rounded-lg p-3 cursor-pointer hover:border-accent transition-colors"
                 [ngClass]="i <= 3 ? 'border-accent bg-accent/5' : 'border-gray-200'">
-                <div class="aspect-square bg-gray-100 rounded mb-2 flex items-center justify-center text-2xl">🎬</div>
+                <div class="aspect-square bg-gray-100 rounded mb-2 flex items-center justify-center"><lucide-icon name="clapperboard" [size]="24"></lucide-icon></div>
                 <p class="text-xs font-body font-semibold text-navy m-0 truncate">Creative {{ i }}</p>
-                <p class="text-[10px] text-gray-400 font-body m-0">{{ i <= 3 ? '✓ Selected' : 'Click to select' }}</p>
+                <p class="text-[10px] text-gray-400 font-body m-0">@if (i <= 3) { <lucide-icon name="check" [size]="10" class="text-green-500 inline-block"></lucide-icon> Selected } @else { Click to select }</p>
               </div>
             }
           </div>
           <div class="flex justify-between mt-6">
-            <button (click)="activeStep.set(2)" class="px-4 py-2 text-gray-500 text-sm font-body">← Back</button>
-            <button (click)="activeStep.set(4)" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold">Review Campaign →</button>
+            <button (click)="activeStep.set(2)" class="px-4 py-2 text-gray-500 text-sm font-body"><lucide-icon name="arrow-left" [size]="14" class="inline-block"></lucide-icon> Back</button>
+            <button (click)="activeStep.set(4)" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold">Review Campaign <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon></button>
           </div>
         </div>
       }
@@ -216,7 +217,7 @@ import { FormsModule } from '@angular/forms';
             </div>
           </div>
           <div class="flex justify-between mt-6">
-            <button (click)="activeStep.set(3)" class="px-4 py-2 text-gray-500 text-sm font-body">← Back</button>
+            <button (click)="activeStep.set(3)" class="px-4 py-2 text-gray-500 text-sm font-body"><lucide-icon name="arrow-left" [size]="14" class="inline-block"></lucide-icon> Back</button>
             <button class="px-6 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90">
               Launch Campaign
             </button>

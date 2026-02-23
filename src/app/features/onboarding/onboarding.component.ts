@@ -5,11 +5,49 @@ import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 import { InsightCardComponent } from '../../shared/components/insight-card/insight-card.component';
 import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-onboarding',
   standalone: true,
-  imports: [CommonModule, FormsModule, InsightCardComponent],
+  imports: [CommonModule, FormsModule, InsightCardComponent, LucideAngularModule],
+  styles: [`
+    @keyframes confetti-fall {
+      0% { transform: translateY(-100%) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+    .confetti-piece {
+      position: fixed;
+      top: -10px;
+      width: 10px;
+      height: 10px;
+      animation: confetti-fall 3s ease-in forwards;
+      z-index: 50;
+    }
+    .confetti-piece:nth-child(1) { left: 10%; background: #E74C3C; animation-delay: 0s; animation-duration: 2.5s; }
+    .confetti-piece:nth-child(2) { left: 20%; background: #3498DB; animation-delay: 0.2s; animation-duration: 3s; border-radius: 50%; }
+    .confetti-piece:nth-child(3) { left: 30%; background: #F39C12; animation-delay: 0.4s; animation-duration: 2.8s; }
+    .confetti-piece:nth-child(4) { left: 40%; background: #2ECC71; animation-delay: 0.1s; animation-duration: 3.2s; border-radius: 50%; }
+    .confetti-piece:nth-child(5) { left: 50%; background: #9B59B6; animation-delay: 0.3s; animation-duration: 2.6s; }
+    .confetti-piece:nth-child(6) { left: 60%; background: #E74C3C; animation-delay: 0.5s; animation-duration: 3.1s; border-radius: 50%; }
+    .confetti-piece:nth-child(7) { left: 70%; background: #1ABC9C; animation-delay: 0.15s; animation-duration: 2.9s; }
+    .confetti-piece:nth-child(8) { left: 80%; background: #F39C12; animation-delay: 0.35s; animation-duration: 2.7s; border-radius: 50%; }
+    .confetti-piece:nth-child(9) { left: 90%; background: #3498DB; animation-delay: 0.25s; animation-duration: 3.3s; }
+    .confetti-piece:nth-child(10) { left: 15%; background: #2ECC71; animation-delay: 0.45s; animation-duration: 2.4s; border-radius: 50%; }
+    .confetti-piece:nth-child(11) { left: 35%; background: #9B59B6; animation-delay: 0.55s; animation-duration: 3s; }
+    .confetti-piece:nth-child(12) { left: 55%; background: #E74C3C; animation-delay: 0.6s; animation-duration: 2.8s; border-radius: 50%; }
+    .confetti-piece:nth-child(13) { left: 75%; background: #F39C12; animation-delay: 0.1s; animation-duration: 3.4s; }
+    .confetti-piece:nth-child(14) { left: 85%; background: #1ABC9C; animation-delay: 0.4s; animation-duration: 2.5s; border-radius: 50%; }
+    .confetti-piece:nth-child(15) { left: 45%; background: #3498DB; animation-delay: 0.7s; animation-duration: 3.2s; }
+
+    @keyframes scroll-text {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-50%); }
+    }
+    .animate-scroll-text {
+      animation: scroll-text 4s linear infinite;
+    }
+  `],
   template: `
     <div class="w-full max-w-2xl mx-auto">
       <!-- Progress Bar -->
@@ -29,7 +67,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
       @if (currentStep() === 1) {
         <div class="text-center animate-fade-in">
           <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-            <span class="text-4xl">🔌</span>
+            <lucide-icon name="zap" [size]="32" class="text-accent"></lucide-icon>
           </div>
           <h2 class="text-page-title font-display text-navy mb-3">Let's connect your Meta ad account</h2>
           <p class="text-gray-600 font-body mb-8 max-w-md mx-auto">
@@ -38,7 +76,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
 
           @if (!metaConnected()) {
             <button (click)="connectMeta()" class="btn-primary !py-3.5 !px-8 !text-base mb-4">
-              <span class="mr-2">📘</span> Connect with Meta
+              <lucide-icon name="globe" [size]="18" class="mr-2"></lucide-icon> Connect with Meta
             </button>
           } @else {
             <div class="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-lg font-body font-medium mb-4">
@@ -59,7 +97,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
       @if (currentStep() === 2) {
         <div class="text-center animate-fade-in">
           <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-            <span class="text-4xl pulse-dot">🧠</span>
+            <lucide-icon name="brain" [size]="32" class="text-accent pulse-dot"></lucide-icon>
           </div>
           <h2 class="text-page-title font-display text-navy mb-3">Our AI is reading your ad DNA...</h2>
           <p class="text-gray-600 font-body mb-8">Hang tight. This usually takes 30-60 seconds.</p>
@@ -77,8 +115,19 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
             </span>
           </div>
 
+          <!-- AI Processing Text -->
+          <div class="mt-4 bg-navy/5 rounded-lg p-3 font-mono text-[10px] text-gray-400 h-16 overflow-hidden relative">
+            <div class="animate-scroll-text space-y-1">
+              <p class="m-0">Analyzing hook patterns...</p>
+              <p class="m-0">Extracting visual DNA signatures...</p>
+              <p class="m-0">Processing audio fingerprints...</p>
+              <p class="m-0">Matching against 10,000+ creative patterns...</p>
+              <p class="m-0">Generating intelligence report...</p>
+            </div>
+          </div>
+
           <!-- Checklist -->
-          <div class="max-w-sm mx-auto space-y-3 text-left">
+          <div class="max-w-sm mx-auto space-y-3 text-left mt-6">
             @for (item of scanItems; track item.label; let i = $index) {
               <div class="flex items-center gap-3 text-sm font-body">
                 @if (scanProgress() > item.threshold) {
@@ -100,7 +149,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
       @if (currentStep() === 3) {
         <div class="text-center animate-fade-in">
           <div class="w-20 h-20 mx-auto mb-6 bg-yellow-50 rounded-full flex items-center justify-center">
-            <span class="text-4xl">✨</span>
+            <lucide-icon name="sparkles" [size]="32" class="text-accent"></lucide-icon>
           </div>
           <h2 class="text-page-title font-display text-navy mb-3">Your First Creative Intelligence Report</h2>
           <p class="text-gray-600 font-body mb-8">Here's what our AI discovered about your ads.</p>
@@ -120,7 +169,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
         <div class="animate-fade-in">
           <div class="text-center mb-8">
             <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <span class="text-4xl">🎯</span>
+              <lucide-icon name="target" [size]="32" class="text-accent"></lucide-icon>
             </div>
             <h2 class="text-page-title font-display text-navy mb-3">What are you optimizing for?</h2>
           </div>
@@ -131,7 +180,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
                 (click)="selectedGoal.set(goal.id)"
                 class="p-5 rounded-card border-2 text-left transition-all cursor-pointer bg-white"
                 [ngClass]="selectedGoal() === goal.id ? 'border-accent bg-red-50' : 'border-border hover:border-gray-300'">
-                <span class="text-2xl mb-2 block">{{ goal.icon }}</span>
+                <lucide-icon [name]="goal.icon" [size]="20" class="text-accent mb-2 block"></lucide-icon>
                 <h3 class="text-sm font-body font-semibold text-navy m-0 mb-1">{{ goal.label }}</h3>
                 <p class="text-xs text-gray-500 font-body m-0">{{ goal.description }}</p>
               </button>
@@ -166,7 +215,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
         <div class="animate-fade-in">
           <div class="text-center mb-8">
             <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <span class="text-4xl">👁️</span>
+              <lucide-icon name="eye" [size]="32" class="text-accent"></lucide-icon>
             </div>
             <h2 class="text-page-title font-display text-navy mb-3">Who are your competitors?</h2>
             <p class="text-gray-600 font-body">We'll track their ad strategies so you stay ahead.</p>
@@ -199,7 +248,7 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
 
           <div class="text-center">
             <button (click)="completeOnboarding()" class="btn-primary !py-4 !px-10 !text-base">
-              Launch Cosmisk 🚀
+              Launch Cosmisk
             </button>
             <br>
             <button (click)="completeOnboarding()" class="text-sm text-gray-500 hover:text-accent mt-3 font-body border-0 bg-transparent cursor-pointer">
@@ -211,8 +260,25 @@ import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
 
       <!-- Confetti Screen -->
       @if (currentStep() === 6) {
-        <div class="text-center animate-fade-in py-12">
-          <div class="text-6xl mb-6">🎉</div>
+        <div class="text-center animate-fade-in py-12 relative">
+          <!-- Confetti pieces -->
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+          <div class="confetti-piece"></div>
+
+          <div class="mb-6"><lucide-icon name="sparkles" [size]="48" class="text-accent"></lucide-icon></div>
           <h2 class="text-page-title font-display text-navy mb-3">You're all set!</h2>
           <p class="text-gray-600 font-body mb-8">Your Creative DNA analysis is ready.</p>
           <button (click)="goToDashboard()" class="btn-primary !py-3.5 !px-8 !text-base">Go to Dashboard</button>
@@ -242,10 +308,10 @@ export default class OnboardingComponent {
   ];
 
   goals = [
-    { id: 'roas', icon: '📈', label: 'Maximize ROAS', description: 'Highest return on every rupee spent' },
-    { id: 'cpa', icon: '📉', label: 'Lower CPA/CAC', description: 'Bring customer acquisition cost down' },
-    { id: 'scale', icon: '📊', label: 'Scale Spend', description: 'Spend more while maintaining efficiency' },
-    { id: 'velocity', icon: '⚡', label: 'Creative Velocity', description: 'Produce winning creatives faster' },
+    { id: 'roas', icon: 'trending-up', label: 'Maximize ROAS', description: 'Highest return on every rupee spent' },
+    { id: 'cpa', icon: 'trending-down', label: 'Lower CPA/CAC', description: 'Bring customer acquisition cost down' },
+    { id: 'scale', icon: 'bar-chart-3', label: 'Scale Spend', description: 'Spend more while maintaining efficiency' },
+    { id: 'velocity', icon: 'zap', label: 'Creative Velocity', description: 'Produce winning creatives faster' },
   ];
 
   competitors = [

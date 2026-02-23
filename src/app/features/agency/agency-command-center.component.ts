@@ -2,12 +2,13 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 import { BrandService } from '../../core/services/brand.service';
 
 @Component({
   selector: 'app-agency-command-center',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -134,7 +135,7 @@ import { BrandService } from '../../core/services/brand.service';
             <div class="flex items-center justify-between">
               <span class="text-xs text-gray-400 font-body">{{ brand.activeCreatives }} creatives</span>
               <span class="text-xs text-accent font-body font-semibold hover:underline">
-                Open Dashboard →
+                Open Dashboard <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon>
               </span>
             </div>
           </div>
@@ -145,7 +146,7 @@ import { BrandService } from '../../core/services/brand.service';
       <div class="bg-white rounded-card shadow-card p-5">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-sm font-display text-navy m-0">Team Overview</h3>
-          <a routerLink="/app/settings" class="text-xs text-accent font-body hover:underline no-underline">Manage Team →</a>
+          <a routerLink="/app/settings" class="text-xs text-accent font-body hover:underline no-underline">Manage Team <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon></a>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
           @for (member of teamMembers; track member.name) {

@@ -3,6 +3,7 @@ import { Component, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 import { Creative, CreativeStatus, CreativeFormat, HookDnaType, VisualDnaType } from '../../core/models/creative.model';
 import { CreativeCardComponent } from '../../shared/components/creative-card/creative-card.component';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
@@ -14,7 +15,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
 @Component({
   selector: 'app-creative-cockpit',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CreativeCardComponent, DnaBadgeComponent, StatusBadgeComponent, ModalComponent, LakhCrorePipe],
+  imports: [CommonModule, FormsModule, RouterLink, CreativeCardComponent, DnaBadgeComponent, StatusBadgeComponent, ModalComponent, LakhCrorePipe, LucideAngularModule],
   template: `
     <!-- Header -->
     <div class="flex items-center justify-between mb-6">
@@ -30,7 +31,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
             (click)="currentView.set(view.id)"
             class="p-2 rounded-lg transition-colors border-0 cursor-pointer"
             [ngClass]="currentView() === view.id ? 'bg-accent text-white' : 'bg-white text-gray-500 hover:bg-gray-50'">
-            {{ view.icon }}
+            <lucide-icon [name]="view.icon" [size]="16"></lucide-icon>
           </button>
         }
       </div>
@@ -76,25 +77,25 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
         @if (filterHook) {
           <span class="inline-flex items-center gap-1 px-3 py-1 bg-dna-hook-bg text-dna-hook-text text-xs rounded-pill font-medium">
             Hook: {{ filterHook }}
-            <button (click)="filterHook = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-dna-hook-text p-0">&#10005;</button>
+            <button (click)="filterHook = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-dna-hook-text p-0"><lucide-icon name="x" [size]="14"></lucide-icon></button>
           </span>
         }
         @if (filterVisual) {
           <span class="inline-flex items-center gap-1 px-3 py-1 bg-dna-visual-bg text-dna-visual-text text-xs rounded-pill font-medium">
             Visual: {{ filterVisual }}
-            <button (click)="filterVisual = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-dna-visual-text p-0">&#10005;</button>
+            <button (click)="filterVisual = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-dna-visual-text p-0"><lucide-icon name="x" [size]="14"></lucide-icon></button>
           </span>
         }
         @if (filterStatus) {
           <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded-pill font-medium">
             Status: {{ filterStatus }}
-            <button (click)="filterStatus = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-gray-600 p-0">&#10005;</button>
+            <button (click)="filterStatus = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-gray-600 p-0"><lucide-icon name="x" [size]="14"></lucide-icon></button>
           </span>
         }
         @if (filterFormat) {
           <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 text-xs rounded-pill font-medium">
             Format: {{ filterFormat }}
-            <button (click)="filterFormat = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-gray-600 p-0">&#10005;</button>
+            <button (click)="filterFormat = ''" class="ml-1 hover:opacity-70 border-0 bg-transparent cursor-pointer text-gray-600 p-0"><lucide-icon name="x" [size]="14"></lucide-icon></button>
           </span>
         }
         <button (click)="clearFilters()" class="text-xs text-accent hover:underline font-body border-0 bg-transparent cursor-pointer ml-auto">
@@ -181,7 +182,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
 
     @if (filteredCreatives().length === 0) {
       <div class="flex flex-col items-center justify-center py-20 text-center">
-        <span class="text-5xl mb-4">&#128269;</span>
+        <span class="text-5xl mb-4"><lucide-icon name="search" [size]="48"></lucide-icon></span>
         <h3 class="text-section-title font-display text-navy mb-2">No creatives match your filters</h3>
         <p class="text-sm text-gray-500 font-body mb-4">Try adjusting your filters to see results.</p>
         <button (click)="clearFilters()" class="btn-outline">Clear all filters</button>
@@ -201,7 +202,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
             @if (creative.format === 'video') {
               <div class="absolute inset-0 flex items-center justify-center">
                 <div class="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform">
-                  <span class="text-2xl ml-1">&#9654;</span>
+                  <span class="text-2xl ml-1"><lucide-icon name="play" [size]="24"></lucide-icon></span>
                 </div>
               </div>
             }
@@ -219,7 +220,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
                 <button
                   (click)="moreMenuOpen.set(!moreMenuOpen())"
                   class="w-8 h-8 rounded-lg border border-border flex items-center justify-center hover:bg-gray-50 transition-colors bg-white cursor-pointer text-gray-500">
-                  &#8943;
+                  <lucide-icon name="more-vertical" [size]="16"></lucide-icon>
                 </button>
                 @if (moreMenuOpen()) {
                   <div class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-dropdown border border-divider py-1 min-w-[160px] z-50">
@@ -313,10 +314,10 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
                       <div class="absolute -top-5 left-0 text-[8px] text-gray-400 font-mono whitespace-nowrap">Launch</div>
                     }
                     @if (i === 12) {
-                      <div class="absolute -top-5 left-1/2 -translate-x-1/2 text-[8px] text-green-600 font-mono whitespace-nowrap">&#8593; Scaled</div>
+                      <div class="absolute -top-5 left-1/2 -translate-x-1/2 text-[8px] text-green-600 font-mono whitespace-nowrap flex items-center gap-0.5"><lucide-icon name="trending-up" [size]="8"></lucide-icon> Scaled</div>
                     }
                     @if (i === 22) {
-                      <div class="absolute -top-5 left-1/2 -translate-x-1/2 text-[8px] text-red-500 font-mono whitespace-nowrap">&#8595; Fatigue</div>
+                      <div class="absolute -top-5 left-1/2 -translate-x-1/2 text-[8px] text-red-500 font-mono whitespace-nowrap flex items-center gap-0.5"><lucide-icon name="trending-down" [size]="8"></lucide-icon> Fatigue</div>
                     }
                     <!-- Tooltip -->
                     <div class="absolute -top-10 left-1/2 -translate-x-1/2 px-2 py-1 bg-navy text-white text-[9px] font-mono rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
@@ -390,7 +391,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
               </div>
               <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p class="text-xs text-yellow-800 font-body m-0">
-                  &#128161; <strong>Insight:</strong> Attention drops at 8s — consider shortening the proof section or adding a pattern interrupt.
+                  <lucide-icon name="lightbulb" [size]="14" class="text-yellow-500 inline-block"></lucide-icon> <strong>Insight:</strong> Attention drops at 8s — consider shortening the proof section or adding a pattern interrupt.
                 </p>
               </div>
             </div>
@@ -399,13 +400,13 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
           <!-- Section 7: AI Recommendations -->
           <div class="px-6 pb-6">
             <h4 class="text-sm font-body font-semibold text-navy mb-3 flex items-center gap-2">
-              <span>&#10024;</span> AI Recommendations
+              <lucide-icon name="sparkles" [size]="16"></lucide-icon> AI Recommendations
             </h4>
             <div class="bg-cream rounded-card p-5 space-y-3">
               @if (creative.metrics.roas >= 3) {
                 <div class="p-3 bg-white rounded-lg border border-green-200">
                   <p class="text-xs font-body m-0">
-                    <strong class="text-green-700">&#128200; Scale:</strong>
+                    <strong class="text-green-700"><lucide-icon name="trending-up" [size]="14" class="inline-block"></lucide-icon> Scale:</strong>
                     <span class="text-gray-600"> Increase budget by 30%. This creative has headroom — CPA hasn't risen despite {{ creative.daysActive }}-day run. Estimated incremental revenue: &#8377;2.4L/week.</span>
                   </p>
                 </div>
@@ -413,17 +414,17 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
               <div class="p-3 bg-white rounded-lg border border-blue-200">
                 <div class="flex items-start justify-between gap-3">
                   <p class="text-xs font-body m-0">
-                    <strong class="text-blue-700">&#128260; Iterate:</strong>
+                    <strong class="text-blue-700"><lucide-icon name="refresh-cw" [size]="14" class="inline-block"></lucide-icon> Iterate:</strong>
                     <span class="text-gray-600"> Create variation with Price Anchor hook — it generates 2.1x higher ROAS in your category. Keep the same visual DNA.</span>
                   </p>
                   <button routerLink="/app/director-lab" class="btn-primary !py-1.5 !px-3 !text-[11px] whitespace-nowrap shrink-0">
-                    Create Brief &#8594;
+                    Create Brief <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon>
                   </button>
                 </div>
               </div>
               <div class="p-3 bg-white rounded-lg border border-yellow-200">
                 <p class="text-xs font-body m-0">
-                  <strong class="text-yellow-700">&#128064; Watch:</strong>
+                  <strong class="text-yellow-700"><lucide-icon name="eye" [size]="14" class="inline-block"></lucide-icon> Watch:</strong>
                   <span class="text-gray-600"> Attention drops at 8s mark. Consider shortening the proof section or testing ASMR audio to maintain engagement through the CTA.</span>
                 </p>
               </div>
@@ -474,9 +475,9 @@ export default class CreativeCockpitComponent {
   sortBy = 'roas-desc';
 
   viewModes = [
-    { id: 'grid' as const, icon: '▦' },
-    { id: 'list' as const, icon: '☰' },
-    { id: 'table' as const, icon: '▤' },
+    { id: 'grid' as const, icon: 'layout-grid' },
+    { id: 'list' as const, icon: 'list' },
+    { id: 'table' as const, icon: 'layout-dashboard' },
   ];
 
   hookOptions: HookDnaType[] = ['Shock Statement', 'Price Anchor', 'Authority', 'Personal Story', 'Curiosity', 'Social Proof', 'Urgency', 'Education', 'Transformation', 'Direct Interrogation'];

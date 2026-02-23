@@ -2,11 +2,12 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-graphic-studio',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div>
@@ -21,7 +22,7 @@ import { FormsModule } from '@angular/forms';
           <div class="bg-white rounded-card shadow-card p-5">
             <h3 class="text-sm font-display text-navy mb-3 mt-0">Product Image</h3>
             <div class="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center hover:border-accent/50 transition-colors cursor-pointer">
-              <span class="text-3xl block mb-2">📸</span>
+              <span class="text-3xl block mb-2"><lucide-icon name="camera" [size]="28"></lucide-icon></span>
               <p class="text-xs text-gray-500 font-body mb-1">Drag & drop or click to upload</p>
               <p class="text-[10px] text-gray-400 font-body m-0">PNG, JPG, WebP up to 10MB</p>
             </div>
@@ -104,7 +105,7 @@ import { FormsModule } from '@angular/forms';
                         <p class="text-sm font-body text-white/80 m-0">{{ subheadline }}</p>
                       }
                       <div class="w-24 h-24 bg-white/20 rounded-lg mx-auto flex items-center justify-center">
-                        <span class="text-3xl">📦</span>
+                        <lucide-icon name="package" [size]="28" class="text-white/80"></lucide-icon>
                       </div>
                       @if (cta) {
                         <button class="px-6 py-2 bg-white text-navy rounded-pill text-sm font-body font-bold shadow-lg">
@@ -114,7 +115,7 @@ import { FormsModule } from '@angular/forms';
                     </div>
                   } @else {
                     <div class="text-center">
-                      <span class="text-4xl block mb-3 opacity-50">🖼️</span>
+                      <span class="block mb-3 opacity-50"><lucide-icon name="image" [size]="36"></lucide-icon></span>
                       <p class="text-sm text-white/60 font-body">Fill in the details to see preview</p>
                     </div>
                   }

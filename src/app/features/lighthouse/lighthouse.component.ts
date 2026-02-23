@@ -1,6 +1,7 @@
 const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface Campaign {
   name: string;
@@ -15,7 +16,7 @@ interface Campaign {
 @Component({
   selector: 'app-lighthouse',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -121,7 +122,7 @@ interface Campaign {
             'bg-red-50 border-red-500': overallStatus === 'CRITICAL'
           }">
           <div class="flex items-start gap-2">
-            <span class="text-sm mt-0.5">💡</span>
+            <lucide-icon name="lightbulb" [size]="14" class="text-yellow-500 mt-0.5 shrink-0"></lucide-icon>
             <div>
               <h4 class="text-xs font-body font-semibold m-0 mb-1"
                 [ngClass]="{

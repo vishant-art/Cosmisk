@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from '../../shared/components/sidebar/sidebar.component';
@@ -12,9 +12,10 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
   imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent],
   template: `
     <div class="min-h-screen bg-cream">
-      <app-sidebar />
+      <app-sidebar (collapsedChange)="sidebarCollapsed.set($event)" />
 
-      <div class="transition-all duration-300 ml-[260px]">
+      <div class="transition-all duration-300"
+        [style.margin-left.px]="sidebarCollapsed() ? 72 : 260">
         <app-topbar />
 
         <main class="p-8 animate-page-enter">
@@ -27,4 +28,6 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
     </div>
   `
 })
-export class AppLayoutComponent {}
+export class AppLayoutComponent {
+  sidebarCollapsed = signal(false);
+}

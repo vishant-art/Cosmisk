@@ -1,6 +1,7 @@
 const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface AssetFile {
   id: string;
@@ -15,7 +16,7 @@ interface AssetFile {
 @Component({
   selector: 'app-assets',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -40,7 +41,7 @@ interface AssetFile {
                     (click)="activeFolder.set(folder.name)"
                     class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-body transition-colors border-0 bg-transparent cursor-pointer text-left"
                     [ngClass]="activeFolder() === folder.name ? 'bg-accent/10 text-accent font-semibold' : 'text-gray-600 hover:bg-gray-50'">
-                    <span>{{ folder.icon }}</span>
+                    <lucide-icon [name]="folder.icon" [size]="16"></lucide-icon>
                     <span class="flex-1">{{ folder.name }}</span>
                     <span class="text-[10px] text-gray-400">{{ folder.count }}</span>
                   </button>
@@ -78,7 +79,7 @@ interface AssetFile {
                     'from-amber-50 to-amber-100': file.type === 'document',
                     'from-green-50 to-green-100': file.type === 'brief'
                   }">
-                  {{ file.type === 'video' ? '🎬' : file.type === 'image' ? '🖼️' : file.type === 'document' ? '📄' : '📋' }}
+                  @if (file.type === 'video') { <lucide-icon name="clapperboard" [size]="32"></lucide-icon> } @else if (file.type === 'image') { <lucide-icon name="image" [size]="32"></lucide-icon> } @else if (file.type === 'document') { <lucide-icon name="file-text" [size]="32"></lucide-icon> } @else { <lucide-icon name="clipboard-list" [size]="32"></lucide-icon> }
                 </div>
                 <div class="p-3">
                   <h4 class="text-xs font-body font-semibold text-navy m-0 truncate">{{ file.name }}</h4>
@@ -99,12 +100,12 @@ export default class AssetsComponent {
   activeFolder = signal('All Files');
 
   folders = [
-    { name: 'All Files', icon: '📁', count: 10 },
-    { name: 'Creatives', icon: '🎨', count: 4 },
-    { name: 'UGC Videos', icon: '📹', count: 2 },
-    { name: 'Briefs', icon: '📋', count: 2 },
-    { name: 'Reports', icon: '📄', count: 1 },
-    { name: 'Brand Kit', icon: '🏷️', count: 1 },
+    { name: 'All Files', icon: 'folder-open', count: 10 },
+    { name: 'Creatives', icon: 'palette', count: 4 },
+    { name: 'UGC Videos', icon: 'video', count: 2 },
+    { name: 'Briefs', icon: 'clipboard-list', count: 2 },
+    { name: 'Reports', icon: 'file-text', count: 1 },
+    { name: 'Brand Kit', icon: 'bookmark', count: 1 },
   ];
 
   files: AssetFile[] = [

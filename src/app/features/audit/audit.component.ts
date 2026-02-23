@@ -1,6 +1,7 @@
 const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
 
 interface AuditCategory {
@@ -16,7 +17,7 @@ interface AuditCategory {
 @Component({
   selector: 'app-audit',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -114,9 +115,9 @@ interface AuditCategory {
                   'bg-red-100': cat.status === 'fail'
                 }">
                 <span class="text-lg">
-                  @if (cat.status === 'pass') { ✅ }
-                  @else if (cat.status === 'warning') { ⚠️ }
-                  @else { ❌ }
+                  @if (cat.status === 'pass') { <lucide-icon name="check-circle-2" [size]="20" class="text-green-500"></lucide-icon> }
+                  @else if (cat.status === 'warning') { <lucide-icon name="alert-triangle" [size]="20" class="text-yellow-500"></lucide-icon> }
+                  @else { <lucide-icon name="x-circle" [size]="20" class="text-red-500"></lucide-icon> }
                 </span>
               </div>
               <div class="flex-1 min-w-0">

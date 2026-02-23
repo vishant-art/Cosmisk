@@ -1,20 +1,21 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
 
 @Component({
   selector: 'app-kpi-card',
   standalone: true,
-  imports: [CommonModule, LakhCrorePipe],
+  imports: [CommonModule, LakhCrorePipe, LucideAngularModule],
   template: `
     <div class="card cursor-pointer hover:-translate-y-0.5 group">
       <div class="flex items-start justify-between mb-3">
         <p class="text-sm text-gray-500 font-body font-medium m-0">{{ title }}</p>
         @if (change !== undefined) {
           <span
-            class="text-xs font-mono font-semibold px-2 py-0.5 rounded-pill"
+            class="text-xs font-mono font-semibold px-2 py-0.5 rounded-pill inline-flex items-center gap-0.5"
             [ngClass]="change >= 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'">
-            {{ change >= 0 ? '↑' : '↓' }} {{ change >= 0 ? '+' : '' }}{{ changeDisplay }}
+            @if (change >= 0) { <lucide-icon name="trending-up" [size]="12"></lucide-icon> } @else { <lucide-icon name="trending-down" [size]="12"></lucide-icon> } {{ change >= 0 ? '+' : '' }}{{ changeDisplay }}
           </span>
         }
       </div>

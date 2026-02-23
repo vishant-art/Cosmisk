@@ -2,11 +2,12 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { BrandService } from '../../../core/services/brand.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-brand-switcher',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, LucideAngularModule],
   template: `
     <div class="relative">
       <button
@@ -16,7 +17,7 @@ import { BrandService } from '../../../core/services/brand.service';
           {{ brandService.currentBrand().name.charAt(0) }}
         </span>
         <span class="truncate flex-1 text-left">{{ brandService.currentBrand().name }}</span>
-        <span class="text-gray-500 text-xs">&#9660;</span>
+        <lucide-icon name="chevron-down" [size]="12" class="text-gray-500"></lucide-icon>
       </button>
 
       @if (open()) {
@@ -56,7 +57,7 @@ import { BrandService } from '../../../core/services/brand.service';
             <a routerLink="/app/agency"
               (click)="open.set(false)"
               class="flex items-center gap-2 px-3 py-2 text-accent hover:bg-white/10 rounded text-sm font-body font-semibold transition-colors no-underline">
-              <span>&#9664;</span>
+              <lucide-icon name="arrow-left" [size]="14"></lucide-icon>
               <span>Back to Agency View</span>
             </a>
           </div>

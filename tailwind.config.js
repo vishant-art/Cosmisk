@@ -5,8 +5,8 @@ module.exports = {
     extend: {
       colors: {
         cream: '#FAF8F5',
-        navy: { DEFAULT: '#1A1A2E', hover: '#2A2A3E' },
-        accent: { DEFAULT: '#E74C3C', hover: '#C0392B' },
+        navy: { DEFAULT: '#1A1A2E', hover: '#2A2A3E', light: '#2A2A4E' },
+        accent: { DEFAULT: '#E74C3C', hover: '#C0392B', light: '#FEE2E2' },
         border: '#E5E2DD',
         divider: '#F0EDE8',
         'input-bg': '#F5F3F0',
@@ -37,6 +37,8 @@ module.exports = {
         modal: '0 25px 50px rgba(0,0,0,0.25)',
         dropdown: '0 4px 16px rgba(0,0,0,0.12)',
         button: '0 1px 2px rgba(0,0,0,0.05)',
+        glow: '0 0 20px rgba(231, 76, 60, 0.15)',
+        'glow-lg': '0 0 40px rgba(231, 76, 60, 0.2)',
       },
       fontSize: {
         'hero': ['56px', { lineHeight: '64px', fontWeight: '700' }],
@@ -57,6 +59,15 @@ module.exports = {
         'xl': '32px',
         '2xl': '48px',
         '3xl': '64px',
+      },
+      animation: {
+        'float': 'float 3s ease-in-out infinite',
+        'gradient-shift': 'gradient-shift 15s ease-in-out infinite',
+        'shimmer': 'shimmer 2s ease-in-out infinite',
+      },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #E74C3C, #C0392B)',
+        'gradient-sidebar': 'linear-gradient(180deg, #1E1E3F 0%, #141428 100%)',
       },
     },
   },

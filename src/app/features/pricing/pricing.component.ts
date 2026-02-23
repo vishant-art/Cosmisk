@@ -1,11 +1,12 @@
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-pricing',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, LucideAngularModule],
   template: `
     <section class="py-20 bg-cream">
       <div class="max-w-7xl mx-auto px-6 text-center mb-16">
@@ -52,7 +53,7 @@ import { RouterLink } from '@angular/router';
             <ul class="space-y-3 mb-8 list-none p-0">
               @for (f of plan.features; track f) {
                 <li class="flex items-start gap-2 text-sm font-body text-gray-600">
-                  <span class="text-green-500 mt-0.5 shrink-0">✓</span> {{ f }}
+                  <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5 shrink-0"></lucide-icon> {{ f }}
                 </li>
               }
             </ul>
@@ -75,7 +76,7 @@ import { RouterLink } from '@angular/router';
               (click)="toggleFaq(i)"
               class="w-full flex items-center justify-between py-5 text-left border-0 bg-transparent cursor-pointer">
               <span class="text-sm font-body font-semibold text-navy">{{ faq.q }}</span>
-              <span class="text-gray-400 text-lg shrink-0 ml-4 transition-transform" [class.rotate-180]="openFaq() === i">&#9660;</span>
+              <span class="text-gray-400 shrink-0 ml-4 transition-transform" [class.rotate-180]="openFaq() === i"><lucide-icon name="chevron-down" [size]="18"></lucide-icon></span>
             </button>
             @if (openFaq() === i) {
               <div class="pb-5 animate-fade-in">

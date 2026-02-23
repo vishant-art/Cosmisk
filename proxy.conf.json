@@ -1,0 +1,8 @@
+{
+  "/api": {
+    "target": "http://n8n-jeet.duckdns.org:5678",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": { "^/api": "/webhook" }
+  }
+}

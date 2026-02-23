@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
 
 interface Report {
@@ -17,7 +18,7 @@ interface Report {
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -131,7 +132,7 @@ interface Report {
         </div>
         @if (reports.length === 0) {
           <div class="p-12 text-center">
-            <span class="text-4xl block mb-3">📄</span>
+            <span class="text-4xl block mb-3"><lucide-icon name="file-text" [size]="32"></lucide-icon></span>
             <p class="text-sm text-gray-500 font-body mb-0">No reports generated yet</p>
           </div>
         } @else {

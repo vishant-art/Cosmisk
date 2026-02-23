@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface AutomationRule {
   id: string;
@@ -16,7 +17,7 @@ interface AutomationRule {
 @Component({
   selector: 'app-automations',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -148,7 +149,7 @@ interface AutomationRule {
                   <span class="px-2 py-1 bg-amber-50 text-amber-700 rounded text-xs font-body">
                     IF {{ rule.condition }}
                   </span>
-                  <span class="text-gray-300 text-xs self-center">→</span>
+                  <lucide-icon name="arrow-right" [size]="12" class="text-gray-300 self-center"></lucide-icon>
                   <span class="px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-body">
                     THEN {{ rule.action }}
                   </span>
@@ -179,7 +180,7 @@ interface AutomationRule {
             <div class="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg">
               <span class="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0"
                 [ngClass]="log.type === 'pause' ? 'bg-red-100' : log.type === 'budget' ? 'bg-amber-100' : 'bg-blue-100'">
-                {{ log.type === 'pause' ? '⏸️' : log.type === 'budget' ? '💰' : '🔔' }}
+                @if (log.type === 'pause') { <lucide-icon name="pause" [size]="16"></lucide-icon> } @else if (log.type === 'budget') { <lucide-icon name="dollar-sign" [size]="16"></lucide-icon> } @else { <lucide-icon name="bell" [size]="16"></lucide-icon> }
               </span>
               <div class="flex-1 min-w-0">
                 <p class="text-xs font-body text-navy m-0">{{ log.message }}</p>

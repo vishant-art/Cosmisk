@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
 
 interface DnaPattern {
@@ -28,7 +29,7 @@ interface Competitor {
 @Component({
   selector: 'app-brain',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <!-- Header -->

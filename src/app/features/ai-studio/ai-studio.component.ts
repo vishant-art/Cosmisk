@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal, inject, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface ChatMessage {
   id: string;
@@ -83,13 +84,13 @@ const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart
 @Component({
   selector: 'app-ai-studio',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="flex flex-col h-[calc(100vh-8rem)]">
       <!-- Header -->
       <div class="flex items-center gap-3 mb-4">
         <div class="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
-          <span class="text-lg">✨</span>
+          <lucide-icon name="sparkles" [size]="18"></lucide-icon>
         </div>
         <div>
           <h1 class="text-page-title font-display text-navy m-0">AI Studio</h1>
@@ -103,7 +104,7 @@ const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart
           <!-- Welcome screen -->
           <div class="text-center py-12">
             <div class="w-16 h-16 mx-auto mb-4 bg-accent/10 rounded-full flex items-center justify-center">
-              <span class="text-2xl">✨</span>
+              <lucide-icon name="sparkles" [size]="24"></lucide-icon>
             </div>
             <h2 class="text-lg font-display text-navy mb-2">Ask Cosmisk AI</h2>
             <p class="text-sm text-gray-500 font-body mb-6 max-w-md mx-auto">
@@ -125,7 +126,7 @@ const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart
             <div class="flex gap-3" [ngClass]="msg.role === 'user' ? 'justify-end' : 'justify-start'">
               @if (msg.role === 'ai') {
                 <div class="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center shrink-0 mt-1">
-                  <span class="text-sm">✨</span>
+                  <lucide-icon name="sparkles" [size]="14"></lucide-icon>
                 </div>
               }
               <div class="max-w-[75%] rounded-xl p-3"
@@ -189,7 +190,7 @@ const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart
           @if (typing()) {
             <div class="flex gap-3 justify-start">
               <div class="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center shrink-0">
-                <span class="text-sm">✨</span>
+                <lucide-icon name="sparkles" [size]="14"></lucide-icon>
               </div>
               <div class="bg-gray-50 rounded-xl p-3">
                 <div class="flex gap-1">

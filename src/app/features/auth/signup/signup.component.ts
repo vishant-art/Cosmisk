@@ -4,11 +4,12 @@ import { RouterLink, Router } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-signup',
   standalone: true,
-  imports: [CommonModule, RouterLink, ReactiveFormsModule],
+  imports: [CommonModule, RouterLink, ReactiveFormsModule, LucideAngularModule],
   template: `
     <div>
       <h1 class="text-page-title font-display text-navy mb-2">Start your free trial</h1>
@@ -47,7 +48,7 @@ import { ToastService } from '../../../core/services/toast.service';
                 [class.!border-green-400]="form.get('name')?.valid && form.get('name')?.touched"
                 placeholder="Your full name">
               @if (form.get('name')?.valid && form.get('name')?.touched) {
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 text-sm">&#10003;</span>
+                <lucide-icon name="check" [size]="14" class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"></lucide-icon>
               }
             </div>
             @if (form.get('name')?.invalid && form.get('name')?.touched) {
@@ -67,7 +68,7 @@ import { ToastService } from '../../../core/services/toast.service';
                 [class.!border-green-400]="form.get('email')?.valid && form.get('email')?.touched"
                 placeholder="you&#64;company.com">
               @if (form.get('email')?.valid && form.get('email')?.touched) {
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 text-sm">&#10003;</span>
+                <lucide-icon name="check" [size]="14" class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"></lucide-icon>
               }
             </div>
             @if (form.get('email')?.invalid && form.get('email')?.touched) {
@@ -96,8 +97,17 @@ import { ToastService } from '../../../core/services/toast.service';
             @if (form.get('password')?.invalid && form.get('password')?.touched) {
               <p class="text-xs text-red-500 mt-1 m-0">Password must be at least 8 characters</p>
             }
-            @if (form.get('password')?.valid && form.get('password')?.touched) {
-              <p class="text-xs text-green-600 mt-1 m-0">&#10003; Strong enough</p>
+            @if (form.get('password')?.value) {
+              <div class="mt-2 flex gap-1">
+                @for (i of [0,1,2,3]; track i) {
+                  <div class="flex-1 h-1 rounded-full transition-colors"
+                    [ngClass]="i < getPasswordStrength() ? (getPasswordStrength() <= 1 ? 'bg-red-400' : getPasswordStrength() <= 2 ? 'bg-yellow-400' : getPasswordStrength() <= 3 ? 'bg-blue-400' : 'bg-green-400') : 'bg-gray-200'">
+                  </div>
+                }
+              </div>
+              <p class="text-xs mt-1 m-0" [ngClass]="getPasswordStrength() <= 1 ? 'text-red-500' : getPasswordStrength() <= 2 ? 'text-yellow-600' : getPasswordStrength() <= 3 ? 'text-blue-600' : 'text-green-600'">
+                {{ ['', 'Weak', 'Fair', 'Good', 'Strong'][getPasswordStrength()] }}
+              </p>
             }
           </div>
 
@@ -145,6 +155,16 @@ export default class SignupComponent {
     password: ['', [Validators.required, Validators.minLength(8)]],
     terms: [false],
   });
+
+  getPasswordStrength(): number {
+    const pw = this.form.get('password')?.value || '';
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+    return score;
+  }
 
   onSubmit() {
     if (this.form.invalid || !this.form.get('terms')?.value) {

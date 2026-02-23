@@ -1,13 +1,14 @@
-import { Component, inject, signal, HostListener } from '@angular/core';
+import { Component, signal, HostListener, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { BrandService } from '../../../core/services/brand.service';
 import { BrandSwitcherComponent } from '../brand-switcher/brand-switcher.component';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface NavItem {
   label: string;
   icon: string;
   route: string;
+  pro?: boolean;
 }
 
 interface NavGroup {
@@ -18,17 +19,21 @@ interface NavGroup {
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, BrandSwitcherComponent],
+  imports: [
+    CommonModule, RouterLink, RouterLinkActive, BrandSwitcherComponent,
+    LucideAngularModule
+  ],
   template: `
     <aside
-      class="fixed left-0 top-0 h-full z-40 flex flex-col transition-all duration-300 overflow-hidden"
-      [class]="collapsed() ? 'w-[72px]' : 'w-[260px]'"
-      [style.background]="'var(--bg-sidebar)'">
+      class="fixed left-0 top-0 h-full z-40 flex flex-col transition-all duration-300 overflow-hidden sidebar-shell"
+      [class]="collapsed() ? 'w-[72px]' : 'w-[260px]'">
 
       <!-- Logo -->
       <div class="flex items-center h-16 px-4 shrink-0" [class.justify-center]="collapsed()">
-        <a routerLink="/app/dashboard" class="flex items-center gap-2 no-underline">
-          <span class="text-white font-display font-bold text-xl">C</span>
+        <a routerLink="/app/dashboard" class="flex items-center gap-2.5 no-underline">
+          <div class="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+            <lucide-icon name="sparkles" [size]="16" class="text-accent"></lucide-icon>
+          </div>
           @if (!collapsed()) {
             <span class="text-white font-display font-bold text-xl tracking-wide">COSMISK</span>
           }
@@ -43,28 +48,38 @@ interface NavGroup {
       }
 
       <!-- Navigation Groups -->
-      <nav class="flex-1 overflow-y-auto px-2 space-y-4">
-        @for (group of navGroups; track group.title) {
+      <nav class="flex-1 overflow-y-auto px-2 space-y-1 sidebar-nav">
+        @for (group of navGroups; track group.title; let gi = $index) {
           <div>
+            @if (gi > 0) {
+              <div class="mx-3 my-2 h-px bg-white/[0.06]"></div>
+            }
             @if (!collapsed()) {
-              <p class="px-3 mb-1 text-[11px] font-mono font-semibold text-gray-500 uppercase tracking-widest">
+              <p class="px-3 mb-1 text-[10px] font-mono font-semibold text-gray-500 uppercase tracking-[0.15em]">
                 {{ group.title }}
               </p>
             }
-            <ul class="space-y-0.5">
+            <ul class="space-y-0.5 list-none p-0 m-0">
               @for (item of group.items; track item.route) {
-                <li>
+                <li class="relative">
                   <a
                     [routerLink]="item.route"
                     routerLinkActive="sidebar-active"
-                    class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-[var(--bg-sidebar-hover)] transition-all duration-150 group no-underline"
+                    class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.06] transition-all duration-150 group no-underline relative"
                     [class.justify-center]="collapsed()"
-                    [title]="item.label">
-                    <span class="text-lg shrink-0" [innerHTML]="getIcon(item.icon)"></span>
+                    [attr.data-tooltip]="item.label">
+                    <lucide-icon [name]="item.icon" [size]="20" [strokeWidth]="1.75" class="shrink-0 sidebar-icon"></lucide-icon>
                     @if (!collapsed()) {
                       <span class="text-sm font-body font-medium truncate">{{ item.label }}</span>
+                      @if (item.pro) {
+                        <span class="ml-auto px-1.5 py-0.5 text-[9px] font-bold font-mono bg-accent/15 text-accent rounded">PRO</span>
+                      }
                     }
                   </a>
+                  <!-- Collapsed tooltip -->
+                  @if (collapsed()) {
+                    <div class="sidebar-tooltip">{{ item.label }}</div>
+                  }
                 </li>
               }
             </ul>
@@ -74,12 +89,14 @@ interface NavGroup {
 
       <!-- Bottom: Settings + Collapse -->
       <div class="px-2 pb-4 mt-auto space-y-1 shrink-0">
+        <div class="mx-3 mb-2 h-px bg-white/[0.06]"></div>
         <a
           routerLink="/app/settings"
           routerLinkActive="sidebar-active"
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-[var(--bg-sidebar-hover)] transition-all duration-150 no-underline"
-          [class.justify-center]="collapsed()">
-          <span class="text-lg">&#9881;</span>
+          class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.06] transition-all duration-150 no-underline relative"
+          [class.justify-center]="collapsed()"
+          data-tooltip="Settings">
+          <lucide-icon name="settings" [size]="20" [strokeWidth]="1.75" class="shrink-0 sidebar-icon"></lucide-icon>
           @if (!collapsed()) {
             <span class="text-sm font-body font-medium">Settings</span>
           }
@@ -87,9 +104,16 @@ interface NavGroup {
 
         <button
           (click)="toggleCollapse()"
-          class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:text-white hover:bg-[var(--bg-sidebar-hover)] transition-all duration-150 w-full border-0 bg-transparent cursor-pointer"
-          [class.justify-center]="collapsed()">
-          <span class="text-lg transition-transform duration-300" [class.rotate-180]="collapsed()">&#9664;</span>
+          class="flex items-center gap-3 px-3 py-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-all duration-150 w-full border-0 bg-transparent cursor-pointer relative"
+          [class.justify-center]="collapsed()"
+          data-tooltip="Collapse">
+          <lucide-icon
+            name="panel-left"
+            [size]="20"
+            [strokeWidth]="1.75"
+            class="shrink-0 transition-transform duration-300"
+            [class.rotate-180]="collapsed()">
+          </lucide-icon>
           @if (!collapsed()) {
             <span class="text-sm font-body font-medium">Collapse</span>
           }
@@ -99,21 +123,75 @@ interface NavGroup {
 
     <!-- Mobile overlay -->
     @if (mobileOpen()) {
-      <div class="fixed inset-0 bg-black/60 z-30 lg:hidden" (click)="mobileOpen.set(false)"></div>
+      <div class="fixed inset-0 bg-black/60 z-30 lg:hidden backdrop-blur-sm" (click)="closeMobile()"></div>
     }
   `,
   styles: [`
     :host { display: block; }
+
+    .sidebar-shell {
+      background: linear-gradient(180deg, #1E1E3F 0%, #141428 100%);
+    }
+
+    .sidebar-nav::-webkit-scrollbar {
+      width: 3px;
+    }
+    .sidebar-nav::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.1);
+      border-radius: 3px;
+    }
+
     .sidebar-active {
       color: white !important;
-      background: var(--bg-sidebar-hover);
+      background: rgba(231, 76, 60, 0.1) !important;
       border-left: 3px solid var(--accent);
+    }
+    .sidebar-active .sidebar-icon {
+      color: var(--accent);
+    }
+
+    .sidebar-link:not(.sidebar-active):hover .sidebar-icon {
+      color: white;
+    }
+
+    /* Collapsed tooltips */
+    .sidebar-tooltip {
+      position: absolute;
+      left: calc(100% + 12px);
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 6px 12px;
+      background: #1A1A2E;
+      color: white;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .sidebar-tooltip::before {
+      content: '';
+      position: absolute;
+      right: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 5px solid transparent;
+      border-right-color: #1A1A2E;
+    }
+    li:hover .sidebar-tooltip {
+      opacity: 1;
     }
   `]
 })
 export class SidebarComponent {
   collapsed = signal(false);
   mobileOpen = signal(false);
+  @Output() collapsedChange = new EventEmitter<boolean>();
 
   navGroups: NavGroup[] = [
     {
@@ -128,9 +206,9 @@ export class SidebarComponent {
     {
       title: 'Intelligence',
       items: [
-        { label: 'Brain', icon: 'brain', route: '/app/brain' },
-        { label: 'Analytics', icon: 'bar-chart', route: '/app/analytics' },
-        { label: 'AI Studio', icon: 'message-square', route: '/app/ai-studio' },
+        { label: 'Brain', icon: 'brain', route: '/app/brain', pro: true },
+        { label: 'Analytics', icon: 'bar-chart-3', route: '/app/analytics' },
+        { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio' },
         { label: 'Reports', icon: 'file-text', route: '/app/reports' },
       ]
     },
@@ -156,6 +234,15 @@ export class SidebarComponent {
 
   toggleCollapse() {
     this.collapsed.update(v => !v);
+    this.collapsedChange.emit(this.collapsed());
+  }
+
+  closeMobile() {
+    this.mobileOpen.set(false);
+  }
+
+  openMobile() {
+    this.mobileOpen.set(true);
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -164,27 +251,5 @@ export class SidebarComponent {
       event.preventDefault();
       this.toggleCollapse();
     }
-  }
-
-  getIcon(name: string): string {
-    const icons: Record<string, string> = {
-      'layout-dashboard': '&#9632;',
-      'palette': '&#127912;',
-      'clapperboard': '&#127916;',
-      'video': '&#9654;',
-      'brain': '&#129504;',
-      'bar-chart': '&#128202;',
-      'message-square': '&#128172;',
-      'file-text': '&#128196;',
-      'megaphone': '&#128227;',
-      'image': '&#128444;',
-      'folder-open': '&#128194;',
-      'bookmark': '&#128278;',
-      'gauge': '&#9201;',
-      'git-branch': '&#9095;',
-      'shield': '&#128737;',
-      'workflow': '&#9881;',
-    };
-    return icons[name] || '&#9679;';
   }
 }

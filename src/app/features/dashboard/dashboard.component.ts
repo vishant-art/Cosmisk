@@ -1,5 +1,5 @@
-const _BUILD_VER = '2026-02-13-v2';
-import { Component, signal } from '@angular/core';
+const _BUILD_VER = '2026-02-23-v1';
+import { Component, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { KpiCardComponent } from '../../shared/components/kpi-card/kpi-card.component';
@@ -9,17 +9,25 @@ import { StatusBadgeComponent } from '../../shared/components/status-badge/statu
 import { LakhCrorePipe } from '../../shared/pipes/lakh-crore.pipe';
 import { DEMO_DASHBOARD_KPI, DEMO_CREATIVES, DEMO_INSIGHTS, DEMO_CHART_DATA } from '../../shared/data/demo-data';
 import { Creative } from '../../core/models/creative.model';
+import { UgcService, DashboardKpis } from '../../core/services/ugc.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, LakhCrorePipe],
+  imports: [CommonModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, LakhCrorePipe, LucideAngularModule],
   template: `
+    <!-- Welcome Header -->
+    <div class="mb-6">
+      <h2 class="text-section-title font-display text-navy">Good morning</h2>
+      <p class="text-sm text-gray-500 font-body mt-1">Here's your creative intelligence summary</p>
+    </div>
+
     <!-- Alert Banner -->
     @if (!alertDismissed()) {
       <div class="bg-red-50 border border-red-200 rounded-card p-4 mb-6 flex items-center justify-between animate-fade-in">
         <div class="flex items-center gap-3">
-          <span class="text-lg">&#9888;&#65039;</span>
+          <lucide-icon name="alert-triangle" [size]="18" class="text-red-500"></lucide-icon>
           <p class="text-sm font-body text-red-800 m-0">
             <strong>3 creatives need attention.</strong> 1 rising star detected.
           </p>
@@ -27,18 +35,50 @@ import { Creative } from '../../core/models/creative.model';
         <div class="flex items-center gap-3">
           <a routerLink="/app/creative-cockpit" [queryParams]="{status: 'fatiguing'}"
             class="text-sm font-body font-semibold text-red-600 hover:underline no-underline whitespace-nowrap">
-            View Details &#8594;
+            View Details <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
           </a>
           <button
             (click)="dismissAlert()"
             class="text-gray-400 hover:text-gray-600 text-sm border-0 bg-transparent cursor-pointer p-1">
-            &#10005;
+            <lucide-icon name="x" [size]="14"></lucide-icon>
           </button>
         </div>
       </div>
     }
 
-    <!-- KPI Cards -->
+    <!-- UGC Pipeline KPIs (from real data) -->
+    @if (pipelineKpis()) {
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <a routerLink="/app/ugc-studio" class="no-underline">
+          <app-kpi-card
+            title="UGC Projects"
+            [value]="pipelineKpis()!.projects.total"
+            subtitle="Active pipeline projects" />
+        </a>
+        <a routerLink="/app/ugc-studio" class="no-underline">
+          <app-kpi-card
+            title="Concepts"
+            [value]="pipelineKpis()!.concepts.total"
+            [subtitle]="pipelineKpis()!.concepts.approved + ' approved · ' + pipelineKpis()!.concepts.pending + ' pending'"
+            color="green" />
+        </a>
+        <a routerLink="/app/ugc-studio" class="no-underline">
+          <app-kpi-card
+            title="Scripts"
+            [value]="pipelineKpis()!.scripts.total"
+            [subtitle]="pipelineKpis()!.scripts.delivered + ' delivered · ' + pipelineKpis()!.scripts.in_review + ' in review'" />
+        </a>
+        <a routerLink="/app/ugc-studio" class="no-underline">
+          <app-kpi-card
+            title="Delivery Rate"
+            [value]="deliveryRate()"
+            suffix="%"
+            [color]="deliveryRate() >= 80 ? 'green' : deliveryRate() >= 50 ? 'yellow' : 'red'" />
+        </a>
+      </div>
+    }
+
+    <!-- Ad Performance KPI Cards (demo data) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <a routerLink="/app/analytics" class="no-underline">
         <app-kpi-card
@@ -144,10 +184,10 @@ import { Creative } from '../../core/models/creative.model';
       <!-- AI Insights -->
       <div class="lg:col-span-2 card">
         <div class="flex items-center gap-2 mb-4">
-          <span class="text-lg">&#10024;</span>
+          <lucide-icon name="sparkles" [size]="18" class="text-accent"></lucide-icon>
           <h3 class="text-card-title font-display text-navy m-0">AI Insights</h3>
         </div>
-        <p class="text-xs text-gray-500 font-body mb-4 m-0">Today's Intelligence</p>
+        <p class="text-xs text-gray-500 font-body mb-4 m-0 flex items-center gap-2">Today's Intelligence <span class="live-dot"></span></p>
 
         <div class="space-y-3">
           @for (insight of insights; track insight.id) {
@@ -156,7 +196,7 @@ import { Creative } from '../../core/models/creative.model';
         </div>
 
         <a routerLink="/app/ai-studio" class="block text-center text-sm text-accent font-body font-semibold mt-4 hover:underline no-underline">
-          View All Insights &#8594;
+          View All Insights <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
     </div>
@@ -166,7 +206,7 @@ import { Creative } from '../../core/models/creative.model';
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-card-title font-display text-navy m-0">Top Performing Creatives</h3>
         <a routerLink="/app/creative-cockpit" class="text-sm text-accent font-body font-semibold hover:underline no-underline">
-          View All in Creative Cockpit &#8594;
+          View All in Creative Cockpit <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
 
@@ -238,18 +278,22 @@ import { Creative } from '../../core/models/creative.model';
     <div class="grid md:grid-cols-3 gap-6">
       @for (action of quickActions; track action.title) {
         <a [routerLink]="action.route" class="card !p-6 flex items-start gap-4 hover:-translate-y-0.5 transition-all no-underline group">
-          <span class="text-2xl">{{ action.icon }}</span>
+          <div class="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center shrink-0">
+            <lucide-icon [name]="action.icon" [size]="24" class="text-accent"></lucide-icon>
+          </div>
           <div class="flex-1">
             <h4 class="text-sm font-body font-semibold text-navy m-0 mb-1">{{ action.title }}</h4>
             <p class="text-xs text-gray-500 font-body m-0 mb-2">{{ action.description }}</p>
-            <span class="text-xs text-accent font-body font-semibold group-hover:underline">Go &#8594;</span>
+            <span class="text-xs text-accent font-body font-semibold group-hover:underline flex items-center gap-1">Go <lucide-icon name="arrow-right" [size]="14"></lucide-icon></span>
           </div>
         </a>
       }
     </div>
   `
 })
-export default class DashboardComponent {
+export default class DashboardComponent implements OnInit {
+  private ugcService = inject(UgcService);
+
   kpi = DEMO_DASHBOARD_KPI;
   insights = DEMO_INSIGHTS;
   chartData = DEMO_CHART_DATA;
@@ -257,6 +301,7 @@ export default class DashboardComponent {
   topCreatives = this.sortCreatives('ROAS');
 
   alertDismissed = signal(false);
+  pipelineKpis = signal<DashboardKpis | null>(null);
 
   activeChartMetric = 'ROAS';
   chartMetrics = ['ROAS', 'CTR', 'CPA', 'Spend'];
@@ -264,10 +309,25 @@ export default class DashboardComponent {
   tableTabs = ['ROAS', 'Spend', 'CTR'];
 
   quickActions = [
-    { icon: '🎬', title: 'Create New Brief', description: 'Based on your top performers', route: '/app/director-lab' },
-    { icon: '📹', title: 'Generate UGC', description: 'AI avatars ready to shoot', route: '/app/ugc-studio' },
-    { icon: '📄', title: 'View Report', description: 'Weekly performance summary', route: '/app/reports' },
+    { icon: 'clapperboard', title: 'Create New Brief', description: 'Based on your top performers', route: '/app/director-lab' },
+    { icon: 'video', title: 'Generate UGC', description: 'AI avatars ready to shoot', route: '/app/ugc-studio' },
+    { icon: 'file-text', title: 'View Report', description: 'Weekly performance summary', route: '/app/reports' },
   ];
+
+  deliveryRate = signal(0);
+
+  ngOnInit() {
+    this.ugcService.getDashboardKpis().subscribe({
+      next: (data) => {
+        this.pipelineKpis.set(data);
+        const total = data.scripts.total || 1;
+        this.deliveryRate.set(Math.round((data.scripts.delivered / total) * 100));
+      },
+      error: () => {
+        // API not available — dashboard still works with demo data below
+      },
+    });
+  }
 
   dismissAlert() {
     this.alertDismissed.set(true);
@@ -296,8 +356,8 @@ export default class DashboardComponent {
     const getValue = (p: typeof DEMO_CHART_DATA[0]) => {
       switch (this.activeChartMetric) {
         case 'ROAS': return p.roas;
-        case 'CTR': return p.roas * 0.65; // simulated CTR from ROAS ratio
-        case 'CPA': return 800 - (p.roas * 100); // inverse — higher ROAS = lower CPA
+        case 'CTR': return p.roas * 0.65;
+        case 'CPA': return 800 - (p.roas * 100);
         case 'Spend': return p.spend;
         default: return p.roas;
       }

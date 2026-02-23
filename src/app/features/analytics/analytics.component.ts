@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface KpiCard {
   label: string;
@@ -25,7 +26,7 @@ interface BreakdownRow {
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -54,9 +55,9 @@ interface BreakdownRow {
             <span class="text-xs text-gray-500 font-body">{{ kpi.label }}</span>
             <div class="text-xl font-display text-navy mt-1">{{ kpi.prefix ?? '' }}{{ kpi.value }}{{ kpi.suffix ?? '' }}</div>
             <div class="flex items-center gap-1 mt-1">
-              <span class="text-xs font-body font-semibold"
+              <span class="text-xs font-body font-semibold inline-flex items-center gap-0.5"
                 [ngClass]="kpi.change >= 0 ? 'text-green-600' : 'text-red-600'">
-                {{ kpi.change >= 0 ? '↑' : '↓' }} {{ kpi.change >= 0 ? kpi.change : -kpi.change }}%
+                @if (kpi.change >= 0) { <lucide-icon name="trending-up" [size]="12"></lucide-icon> } @else { <lucide-icon name="trending-down" [size]="12"></lucide-icon> } {{ kpi.change >= 0 ? kpi.change : -kpi.change }}%
               </span>
               <span class="text-[10px] text-gray-400 font-body">vs prev period</span>
             </div>
@@ -71,9 +72,9 @@ interface BreakdownRow {
             <span class="text-xs text-gray-500 font-body">{{ kpi.label }}</span>
             <div class="text-xl font-display text-navy mt-1">{{ kpi.prefix ?? '' }}{{ kpi.value }}{{ kpi.suffix ?? '' }}</div>
             <div class="flex items-center gap-1 mt-1">
-              <span class="text-xs font-body font-semibold"
+              <span class="text-xs font-body font-semibold inline-flex items-center gap-0.5"
                 [ngClass]="kpi.change >= 0 ? 'text-green-600' : 'text-red-600'">
-                {{ kpi.change >= 0 ? '↑' : '↓' }} {{ kpi.change >= 0 ? kpi.change : -kpi.change }}%
+                @if (kpi.change >= 0) { <lucide-icon name="trending-up" [size]="12"></lucide-icon> } @else { <lucide-icon name="trending-down" [size]="12"></lucide-icon> } {{ kpi.change >= 0 ? kpi.change : -kpi.change }}%
               </span>
               <span class="text-[10px] text-gray-400 font-body">vs prev period</span>
             </div>
@@ -166,7 +167,7 @@ interface BreakdownRow {
                   <td class="px-4 py-3 text-right">
                     <span class="text-xs font-semibold"
                       [ngClass]="row.trend === 'up' ? 'text-green-600' : row.trend === 'down' ? 'text-red-600' : 'text-gray-400'">
-                      {{ row.trend === 'up' ? '↑' : row.trend === 'down' ? '↓' : '→' }}
+                      @if (row.trend === 'up') { <lucide-icon name="trending-up" [size]="14"></lucide-icon> } @else if (row.trend === 'down') { <lucide-icon name="trending-down" [size]="14"></lucide-icon> } @else { <lucide-icon name="arrow-right" [size]="14"></lucide-icon> }
                     </span>
                   </td>
                 </tr>
@@ -213,9 +214,9 @@ interface BreakdownRow {
                   <span class="text-lg font-display text-navy">{{ metric.value }}</span>
                 </div>
                 <div class="text-right">
-                  <span class="text-xs font-body font-semibold block"
+                  <span class="text-xs font-body font-semibold flex items-center justify-end gap-0.5"
                     [ngClass]="metric.change >= 0 ? 'text-green-600' : 'text-red-600'">
-                    {{ metric.change >= 0 ? '↑' : '↓' }} {{ metric.change >= 0 ? metric.change : -metric.change }}%
+                    @if (metric.change >= 0) { <lucide-icon name="trending-up" [size]="12"></lucide-icon> } @else { <lucide-icon name="trending-down" [size]="12"></lucide-icon> } {{ metric.change >= 0 ? metric.change : -metric.change }}%
                   </span>
                   <span class="text-[10px] text-gray-400 font-body">{{ metric.benchmark }}</span>
                 </div>

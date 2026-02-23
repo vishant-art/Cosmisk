@@ -1,21 +1,30 @@
 import { Component, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-auth-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink],
+  imports: [CommonModule, RouterOutlet, RouterLink, LucideAngularModule],
+  styles: [`
+    @keyframes gradient-shift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+  `],
   template: `
     <div class="min-h-screen flex">
       <!-- Left Panel (desktop only) -->
-      <div class="hidden lg:flex lg:w-1/2 bg-navy relative overflow-hidden flex-col items-center justify-center p-12">
+      <div class="hidden lg:flex lg:w-1/2 bg-navy relative overflow-hidden flex-col items-center justify-center p-12"
+        style="background: linear-gradient(135deg, #1A1A2E 0%, #2A1A3E 50%, #1A1A2E 100%); background-size: 200% 200%; animation: gradient-shift 15s ease-in-out infinite;">
         <!-- Subtle pattern overlay -->
         <div class="absolute inset-0 opacity-[0.03]"
           style="background-image: radial-gradient(circle at 25% 25%, white 1px, transparent 1px), radial-gradient(circle at 75% 75%, white 1px, transparent 1px); background-size: 50px 50px;">
         </div>
 
         <div class="relative z-10 text-center max-w-md">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-accent/20 flex items-center justify-center"><lucide-icon name="sparkles" [size]="24" class="text-accent"></lucide-icon></div>
           <a routerLink="/" class="no-underline">
             <h1 class="text-white font-display font-bold text-4xl mb-3">COSMISK</h1>
           </a>

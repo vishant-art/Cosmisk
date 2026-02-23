@@ -1,6 +1,7 @@
 const _BUILD_VER = '2026-02-13-v2';
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 
 interface SwipeAd {
@@ -18,7 +19,7 @@ interface SwipeAd {
 @Component({
   selector: 'app-swipe-file',
   standalone: true,
-  imports: [CommonModule, DnaBadgeComponent],
+  imports: [CommonModule, DnaBadgeComponent, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between flex-wrap gap-3">
@@ -51,7 +52,7 @@ interface SwipeAd {
                 'bg-gradient-to-br from-pink-50 to-pink-100': ad.hookDna.includes('Personal Story'),
                 'bg-gradient-to-br from-red-50 to-red-100': ad.hookDna.includes('Urgency')
               }">
-              🎯
+              <lucide-icon name="target" [size]="32"></lucide-icon>
             </div>
             <div class="p-3">
               <div class="flex items-center justify-between mb-2">
@@ -74,7 +75,7 @@ interface SwipeAd {
                 }
               </div>
               <button class="w-full px-3 py-1.5 bg-accent/10 text-accent rounded-lg text-xs font-body font-semibold hover:bg-accent/20 transition-colors">
-                Create Brief from This →
+                Create Brief from This <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon>
               </button>
             </div>
           </div>

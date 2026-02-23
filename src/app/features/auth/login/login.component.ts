@@ -4,11 +4,12 @@ import { RouterLink, Router } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AuthService } from '../../../core/services/auth.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, RouterLink, ReactiveFormsModule],
+  imports: [CommonModule, RouterLink, ReactiveFormsModule, LucideAngularModule],
   template: `
     <div>
       <h1 class="text-page-title font-display text-navy mb-2">Welcome back</h1>
@@ -35,7 +36,7 @@ import { ToastService } from '../../../core/services/toast.service';
       <!-- Error Banner -->
       @if (errorMessage()) {
         <div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-          <span class="text-red-500 text-sm">&#9888;</span>
+          <lucide-icon name="alert-circle" [size]="16" class="text-red-500"></lucide-icon>
           <p class="text-sm text-red-600 font-body m-0">{{ errorMessage() }}</p>
         </div>
       }
@@ -55,7 +56,7 @@ import { ToastService } from '../../../core/services/toast.service';
                 [class.!border-green-400]="form.get('email')?.valid && form.get('email')?.touched"
                 placeholder="you&#64;company.com">
               @if (form.get('email')?.valid && form.get('email')?.touched) {
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 text-sm">&#10003;</span>
+                <lucide-icon name="check" [size]="14" class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"></lucide-icon>
               }
             </div>
             @if (form.get('email')?.invalid && form.get('email')?.touched) {
@@ -141,17 +142,23 @@ export default class LoginComponent {
     }
 
     this.loading.set(true);
-    // Demo login for development
-    setTimeout(() => {
-      this.auth.demoLogin();
-      this.toast.success('Welcome back!');
-      const user = this.auth.user();
-      if (user?.onboardingComplete) {
-        this.router.navigate(['/app/dashboard']);
-      } else {
-        this.router.navigate(['/onboarding']);
-      }
-      this.loading.set(false);
-    }, 800);
+    const { email, password } = this.form.value;
+    this.auth.login(email!, password!).subscribe({
+      next: (res) => {
+        this.auth.handleAuthResponse(res);
+        this.toast.success('Welcome back!');
+        const user = this.auth.user();
+        if (user?.onboardingComplete) {
+          this.router.navigate(['/app/dashboard']);
+        } else {
+          this.router.navigate(['/onboarding']);
+        }
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.loading.set(false);
+        this.errorMessage.set(err.error?.message || 'Invalid email or password');
+      },
+    });
   }
 }

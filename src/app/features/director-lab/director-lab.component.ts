@@ -1,6 +1,7 @@
 import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { ModalComponent } from '../../shared/components/modal/modal.component';
 import { ToastService } from '../../core/services/toast.service';
@@ -9,7 +10,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
 @Component({
   selector: 'app-director-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, DnaBadgeComponent, ModalComponent],
+  imports: [CommonModule, FormsModule, DnaBadgeComponent, ModalComponent, LucideAngularModule],
   template: `
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-page-title font-display text-navy m-0">Director Lab</h1>
@@ -112,7 +113,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
         @if (!briefGenerated() && !generating()) {
           <div class="card flex flex-col items-center justify-center py-20 text-center">
             <div class="w-24 h-24 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-              <span class="text-5xl">&#128221;</span>
+              <lucide-icon name="file-text" [size]="48"></lucide-icon>
             </div>
             <h3 class="text-section-title font-display text-navy mb-2">No brief generated yet</h3>
             <p class="text-sm text-gray-500 font-body max-w-sm">Configure your brief on the left and click "Generate" to create AI-powered creative briefs based on your winning DNA patterns.</p>
@@ -123,7 +124,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
         @if (generating()) {
           <div class="card flex flex-col items-center justify-center py-20 text-center">
             <div class="w-24 h-24 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <span class="text-5xl pulse-dot">&#129504;</span>
+              <lucide-icon name="sparkles" [size]="48" class="pulse-dot"></lucide-icon>
             </div>
             <h3 class="text-section-title font-display text-navy mb-2">Generating your brief...</h3>
             <p class="text-sm text-gray-500 font-body mb-4">Analyzing DNA patterns and creating optimized concepts.</p>
@@ -198,7 +199,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
                     <div class="aspect-square flex items-center justify-center"
                       [ngClass]="variation.format === 'video' ? 'bg-blue-50' : 'bg-amber-50'">
                       <div class="text-center">
-                        <span class="text-4xl block mb-2">{{ variation.format === 'video' ? '&#127916;' : '&#128444;' }}</span>
+                        <span class="text-4xl block mb-2">@if (variation.format === 'video') { <lucide-icon name="video" [size]="32"></lucide-icon> } @else { <lucide-icon name="image" [size]="32"></lucide-icon> }</span>
                         <span class="text-[10px] font-mono text-gray-400 uppercase">{{ variation.format }} {{ variation.format === 'video' ? '15s' : '1080x1080' }}</span>
                       </div>
                     </div>
@@ -229,7 +230,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
                 </button>
               </div>
               <button (click)="publishModalOpen.set(true)" class="btn-primary !py-2 !px-5 !text-sm">
-                Publish to Meta &#8594;
+                Publish to Meta <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon>
               </button>
             </div>
           </div>

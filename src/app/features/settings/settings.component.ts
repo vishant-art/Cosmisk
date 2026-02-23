@@ -2,11 +2,12 @@ const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
       <div>
@@ -36,7 +37,7 @@ import { FormsModule } from '@angular/forms';
           <!-- Avatar Card -->
           <div class="bg-white rounded-card shadow-card p-6 text-center">
             <div class="w-24 h-24 bg-accent/10 rounded-full mx-auto flex items-center justify-center mb-4">
-              <span class="text-4xl">👤</span>
+              <lucide-icon name="user" [size]="32"></lucide-icon>
             </div>
             <h3 class="text-sm font-body font-semibold text-navy m-0">{{ profileName }}</h3>
             <p class="text-xs text-gray-500 font-body mt-1 mb-3">{{ profileEmail }}</p>
@@ -242,7 +243,7 @@ import { FormsModule } from '@angular/forms';
           <div class="bg-white rounded-card shadow-card p-6">
             <h3 class="text-sm font-display text-navy mb-3 mt-0">Payment Method</h3>
             <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-              <span class="text-xl">💳</span>
+              <lucide-icon name="credit-card" [size]="20"></lucide-icon>
               <div>
                 <div class="text-sm font-body text-navy">Visa ending in 4242</div>
                 <div class="text-xs text-gray-500 font-body">Expires 12/2025</div>

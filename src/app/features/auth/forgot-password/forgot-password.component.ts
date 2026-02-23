@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ToastService } from '../../../core/services/toast.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-forgot-password',
   standalone: true,
-  imports: [CommonModule, RouterLink, ReactiveFormsModule],
+  imports: [CommonModule, RouterLink, ReactiveFormsModule, LucideAngularModule],
   template: `
     <div class="min-h-screen bg-cream flex items-center justify-center px-4">
       <div class="w-full max-w-md">
@@ -21,7 +22,7 @@ import { ToastService } from '../../../core/services/toast.service';
             <!-- Step 1: Enter Email -->
             <div class="text-center mb-6">
               <div class="w-16 h-16 mx-auto mb-4 bg-accent/10 rounded-full flex items-center justify-center">
-                <span class="text-3xl">🔑</span>
+                <lucide-icon name="key-round" [size]="32" class="text-accent"></lucide-icon>
               </div>
               <h1 class="text-page-title font-display text-navy mb-2">Reset your password</h1>
               <p class="text-sm text-gray-500 font-body">Enter your email and we'll send you a reset link.</p>
@@ -50,7 +51,7 @@ import { ToastService } from '../../../core/services/toast.service';
             </form>
 
             <p class="text-center text-sm text-gray-500 font-body m-0">
-              <a routerLink="/login" class="text-accent font-medium hover:underline no-underline">← Back to login</a>
+              <a routerLink="/login" class="text-accent font-medium hover:underline no-underline inline-flex items-center gap-1"><lucide-icon name="arrow-left" [size]="14"></lucide-icon> Back to login</a>
             </p>
           }
 
@@ -58,7 +59,7 @@ import { ToastService } from '../../../core/services/toast.service';
             <!-- Step 2: Confirmation -->
             <div class="text-center">
               <div class="w-16 h-16 mx-auto mb-4 bg-green-50 rounded-full flex items-center justify-center">
-                <span class="text-3xl">✉️</span>
+                <lucide-icon name="mail" [size]="32" class="text-accent"></lucide-icon>
               </div>
               <h1 class="text-page-title font-display text-navy mb-2">Check your email</h1>
               <p class="text-sm text-gray-500 font-body mb-6">
