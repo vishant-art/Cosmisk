@@ -14,15 +14,19 @@ import { LucideAngularModule } from 'lucide-angular';
         <p class="text-lg text-gray-600 font-body mb-8">Start free, scale as you grow. No hidden fees.</p>
 
         <!-- Toggle -->
-        <div class="inline-flex items-center gap-3 bg-white rounded-pill p-1 shadow-card">
+        <div class="inline-flex items-center gap-3 bg-white rounded-pill p-1 shadow-card" role="radiogroup" aria-label="Billing period">
           <button
             (click)="isAnnual.set(false)"
+            role="radio"
+            [attr.aria-checked]="!isAnnual()"
             class="px-5 py-2 rounded-pill text-sm font-body font-medium transition-all border-0 cursor-pointer"
             [ngClass]="!isAnnual() ? 'bg-accent text-white' : 'bg-transparent text-gray-600 hover:text-navy'">
             Monthly
           </button>
           <button
             (click)="isAnnual.set(true)"
+            role="radio"
+            [attr.aria-checked]="isAnnual()"
             class="px-5 py-2 rounded-pill text-sm font-body font-medium transition-all border-0 cursor-pointer"
             [ngClass]="isAnnual() ? 'bg-accent text-white' : 'bg-transparent text-gray-600 hover:text-navy'">
             Annual
@@ -74,12 +78,14 @@ import { LucideAngularModule } from 'lucide-angular';
           <div class="border-b border-divider">
             <button
               (click)="toggleFaq(i)"
+              [attr.aria-expanded]="openFaq() === i"
+              [attr.aria-controls]="'faq-panel-' + i"
               class="w-full flex items-center justify-between py-5 text-left border-0 bg-transparent cursor-pointer">
               <span class="text-sm font-body font-semibold text-navy">{{ faq.q }}</span>
               <span class="text-gray-400 shrink-0 ml-4 transition-transform" [class.rotate-180]="openFaq() === i"><lucide-icon name="chevron-down" [size]="18"></lucide-icon></span>
             </button>
             @if (openFaq() === i) {
-              <div class="pb-5 animate-fade-in">
+              <div [id]="'faq-panel-' + i" role="region" [attr.aria-label]="faq.q" class="pb-5 animate-fade-in">
                 <p class="text-sm text-gray-600 font-body leading-relaxed m-0">{{ faq.a }}</p>
               </div>
             }
