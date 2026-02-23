@@ -1,11 +1,12 @@
 import { Component, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-public-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink],
+  imports: [CommonModule, RouterOutlet, RouterLink, LucideAngularModule],
   template: `
     <!-- Fixed Header -->
     <header
@@ -27,12 +28,41 @@ import { RouterOutlet, RouterLink } from '@angular/router';
           </a>
         </nav>
 
-        <!-- Auth buttons -->
+        <!-- Auth buttons (desktop) + Hamburger (mobile) -->
         <div class="flex items-center gap-3">
           <a routerLink="/login" class="btn-ghost !text-sm !text-gray-400 hover:!text-white no-underline hidden sm:inline-flex">Log In</a>
-          <a routerLink="/signup" class="btn-primary !text-sm no-underline">Start Free Trial</a>
+          <a routerLink="/signup" class="btn-primary !text-sm no-underline hidden sm:inline-flex">Start Free Trial</a>
+          <button
+            (click)="mobileMenuOpen.set(!mobileMenuOpen())"
+            class="md:hidden p-2 text-white bg-transparent border-0 cursor-pointer"
+            [attr.aria-expanded]="mobileMenuOpen()"
+            aria-label="Toggle menu">
+            @if (mobileMenuOpen()) {
+              <lucide-icon name="x" [size]="24"></lucide-icon>
+            } @else {
+              <lucide-icon name="menu" [size]="24"></lucide-icon>
+            }
+          </button>
         </div>
       </div>
+
+      <!-- Mobile Menu Panel -->
+      @if (mobileMenuOpen()) {
+        <div class="md:hidden bg-[#0C0C14]/95 backdrop-blur-xl border-t border-white/[0.06] animate-slide-up">
+          <nav class="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4">
+            <a routerLink="/" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">Product</a>
+            <a routerLink="/pricing" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">Pricing</a>
+            <a (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2 cursor-pointer">
+              For Agencies
+              <span class="ml-1 px-1.5 py-0.5 bg-accent/20 text-accent text-[10px] font-bold rounded">NEW</span>
+            </a>
+            <div class="flex flex-col gap-3 pt-4 border-t border-white/[0.06]">
+              <a routerLink="/login" (click)="mobileMenuOpen.set(false)" class="text-center py-2.5 text-sm font-body font-medium text-gray-300 hover:text-white no-underline transition-colors">Log In</a>
+              <a routerLink="/signup" (click)="mobileMenuOpen.set(false)" class="btn-primary text-center no-underline">Start Free Trial</a>
+            </div>
+          </nav>
+        </div>
+      }
     </header>
 
     <!-- Page content -->
@@ -93,6 +123,7 @@ import { RouterOutlet, RouterLink } from '@angular/router';
 })
 export class PublicLayoutComponent {
   scrolled = signal(false);
+  mobileMenuOpen = signal(false);
 
   @HostListener('window:scroll')
   onScroll() {

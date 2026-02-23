@@ -1,13 +1,14 @@
 import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scroll.directive';
 
 @Component({
   selector: 'app-landing',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule, AnimateOnScrollDirective],
+  imports: [CommonModule, RouterLink, FormsModule, LucideAngularModule, AnimateOnScrollDirective],
   styles: [`
     :host h1, :host h2, :host h3 {
       font-family: 'Playfair Display', serif !important;
@@ -20,11 +21,89 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
     .marquee-track:hover {
       animation-play-state: paused;
     }
+    /* Aurora blobs */
+    .aurora-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.15;
+      pointer-events: none;
+    }
+    .aurora-1 {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, #818CF8, transparent 70%);
+      top: -10%; left: -5%;
+      animation: aurora-drift-1 12s ease-in-out infinite;
+    }
+    .aurora-2 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #A78BFA, transparent 70%);
+      bottom: -15%; right: -5%;
+      animation: aurora-drift-2 15s ease-in-out infinite;
+    }
+    .aurora-3 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #6366F1, transparent 70%);
+      top: 30%; right: 20%;
+      animation: aurora-drift-3 10s ease-in-out infinite;
+    }
+    @keyframes aurora-drift-1 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(40px, 30px); }
+    }
+    @keyframes aurora-drift-2 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(-30px, -40px); }
+    }
+    @keyframes aurora-drift-3 {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(20px, -20px); }
+    }
+    /* Pulse for analyzing indicator */
+    .pulse-ring {
+      animation: pulse-ring 2s ease-in-out infinite;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+      50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); }
+    }
+    /* Mini sparkline */
+    .sparkline {
+      display: flex; align-items: flex-end; gap: 1px; height: 16px;
+    }
+    .sparkline-bar {
+      width: 3px; border-radius: 1px; background: #6366F1; opacity: 0.6;
+    }
+    /* Typing dots for Oracle mockup */
+    .typing-dot { animation: typing-bounce 1.4s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing-bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-4px); }
+    }
+    /* Demo modal backdrop */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      animation: fade-in 0.2s ease-out;
+    }
+    .modal-panel {
+      background: #fff; border-radius: 16px; max-width: 560px; width: 90%;
+      padding: 32px; position: relative;
+      animation: scale-in 0.2s ease-out;
+    }
   `],
   template: `
-    <!-- Hero Section (Dark) -->
+    <!-- Hero Section (Dark) with Aurora -->
     <section class="relative overflow-hidden bg-dark-mesh py-24 lg:py-36 -mt-[72px] pt-[calc(6rem+72px)] lg:pt-[calc(9rem+72px)]">
-      <div class="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16 items-center">
+      <!-- Aurora Blobs -->
+      <div class="aurora-blob aurora-1"></div>
+      <div class="aurora-blob aurora-2"></div>
+      <div class="aurora-blob aurora-3"></div>
+
+      <div class="relative z-10 max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16 items-center">
         <div>
           <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/[0.06] border border-white/[0.1] rounded-pill text-indigo-300 text-sm font-body font-semibold mb-6">
             <lucide-icon name="zap" [size]="14"></lucide-icon> THE ANTI-DASHBOARD
@@ -37,42 +116,92 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
             Cosmisk decodes your Creative DNA, powers your entire UGC pipeline, and manages multiple brands from one cockpit
             -- so you stop guessing and start scaling what actually converts.
           </p>
-          <div class="flex flex-wrap gap-4 mb-8">
-            <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline hover:shadow-glow transition-shadow">Start Free Trial</a>
-            <button class="btn !py-3.5 !px-8 !text-base bg-white/[0.06] border border-white/[0.15] text-white hover:bg-white/[0.1] transition-all">Watch Demo</button>
+          <div class="flex flex-wrap gap-4 mb-6">
+            <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline hover:shadow-glow hover:scale-[1.02] transition-all duration-300">Start Free Trial</a>
+            <button (click)="showDemo.set(true)" class="btn !py-3.5 !px-8 !text-base bg-white/[0.06] border border-white/[0.15] text-white hover:bg-white/[0.1] hover:scale-[1.02] transition-all duration-300">
+              <lucide-icon name="play" [size]="16"></lucide-icon> Watch Demo
+            </button>
           </div>
+
+          <!-- Email Capture -->
+          @if (!heroSubmitted()) {
+            <div class="flex gap-2 max-w-md mb-4">
+              <input
+                type="email"
+                [(ngModel)]="heroEmail"
+                placeholder="Enter your work email"
+                class="flex-1 px-4 py-2.5 rounded-lg bg-white/[0.06] border border-white/[0.1] text-white text-sm font-body placeholder:text-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all" />
+              <button
+                (click)="submitHeroEmail()"
+                class="btn-primary !py-2.5 !px-5 !text-sm whitespace-nowrap hover:scale-[1.02] transition-all duration-300">
+                Get Early Access
+              </button>
+            </div>
+          } @else {
+            <div class="flex items-center gap-2 max-w-md mb-4 px-4 py-2.5 rounded-lg bg-green-500/10 border border-green-500/20">
+              <lucide-icon name="check-circle" [size]="16" class="text-green-400"></lucide-icon>
+              <span class="text-sm text-green-300 font-body">You're on the list! We'll be in touch soon.</span>
+            </div>
+          }
+
           <p class="text-sm text-gray-500 font-body">
             Trusted by <strong class="text-white">500+</strong> e-commerce brands &nbsp;&middot;&nbsp; &#8377;250Cr+ ad spend analyzed
           </p>
         </div>
 
-        <!-- Mockup (glass) -->
-        <div class="relative">
-          <div class="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 backdrop-blur-sm transform lg:rotate-1 lg:translate-x-4">
-            <div class="bg-white/[0.04] rounded-xl p-6 space-y-4">
-              <div class="flex gap-3">
-                <div class="flex-1 bg-white/[0.06] rounded-card p-4 border border-white/[0.08]">
-                  <p class="text-xs text-gray-500 font-body m-0">ROAS</p>
-                  <p class="text-2xl font-mono font-bold text-green-400 m-0">4.8x</p>
-                </div>
-                <div class="flex-1 bg-white/[0.06] rounded-card p-4 border border-white/[0.08]">
-                  <p class="text-xs text-gray-500 font-body m-0">Spend</p>
-                  <p class="text-2xl font-mono font-bold text-white m-0">&#8377;3.2L</p>
-                </div>
+        <!-- Realistic Hero Dashboard Mockup -->
+        <div class="relative hidden lg:block">
+          <div class="bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden backdrop-blur-sm transform lg:rotate-1 lg:translate-x-4">
+            <!-- Mini Topbar -->
+            <div class="flex items-center justify-between px-4 py-2.5 bg-white/[0.04] border-b border-white/[0.06]">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-display font-bold text-white/80">COSMISK</span>
+                <span class="text-[10px] text-gray-500 font-body">/ Creative Cockpit</span>
               </div>
-              <div class="bg-white/[0.06] rounded-card p-4 border border-white/[0.08]">
-                <p class="text-xs text-gray-500 font-body m-0 mb-2">Creative DNA</p>
-                <div class="flex flex-wrap gap-1.5">
-                  <span class="px-2.5 py-1 bg-amber-500/20 text-amber-300 text-xs rounded-pill font-medium">Shock Statement</span>
-                  <span class="px-2.5 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-pill font-medium">Macro Texture</span>
-                  <span class="px-2.5 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-pill font-medium">Warm Palette</span>
-                  <span class="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 text-xs rounded-pill font-medium">Hindi VO</span>
-                </div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-green-400 pulse-ring"></span>
+                <span class="text-[10px] text-green-400 font-mono">Analyzing...</span>
               </div>
+            </div>
+
+            <!-- Filter Pills -->
+            <div class="px-4 pt-3 pb-2 flex gap-1.5 overflow-hidden">
+              <span class="px-2 py-0.5 bg-accent/20 text-accent text-[9px] font-medium rounded-pill border border-accent/30">All DNA</span>
+              <span class="px-2 py-0.5 bg-white/[0.06] text-gray-400 text-[9px] font-medium rounded-pill">Hook</span>
+              <span class="px-2 py-0.5 bg-white/[0.06] text-gray-400 text-[9px] font-medium rounded-pill">Visual</span>
+              <span class="px-2 py-0.5 bg-white/[0.06] text-gray-400 text-[9px] font-medium rounded-pill">Audio</span>
+              <span class="px-2 py-0.5 bg-white/[0.06] text-gray-400 text-[9px] font-medium rounded-pill">ROAS > 3x</span>
+            </div>
+
+            <!-- Creative Card Grid -->
+            <div class="px-4 pb-4 grid grid-cols-3 gap-2">
+              @for (card of mockCreatives; track card.name) {
+                <div class="bg-white/[0.04] rounded-lg border border-white/[0.06] p-2.5 hover:bg-white/[0.06] transition-colors">
+                  <!-- Thumbnail placeholder -->
+                  <div class="aspect-[4/3] rounded mb-2 flex items-center justify-center text-lg" [class]="card.thumbBg">
+                    {{ card.emoji }}
+                  </div>
+                  <!-- DNA badges -->
+                  <div class="flex flex-wrap gap-0.5 mb-1.5">
+                    @for (tag of card.tags; track tag.label) {
+                      <span class="px-1 py-0.5 text-[7px] font-medium rounded" [class]="tag.cls">{{ tag.label }}</span>
+                    }
+                  </div>
+                  <!-- Metrics row -->
+                  <div class="flex items-center justify-between">
+                    <span class="text-[9px] font-mono font-bold" [class]="card.roas >= 3 ? 'text-green-400' : 'text-white/70'">{{ card.roas }}x</span>
+                    <div class="sparkline">
+                      @for (h of card.spark; track $index) {
+                        <div class="sparkline-bar" [style.height.px]="h"></div>
+                      }
+                    </div>
+                  </div>
+                </div>
+              }
             </div>
           </div>
 
-          <!-- Floating DNA Badges (glass-dark) -->
+          <!-- Floating DNA Badges -->
           <div class="absolute -top-4 -left-4 bg-white/[0.08] border border-white/[0.1] rounded-xl backdrop-blur-sm px-3 py-2 flex items-center gap-2 animate-float stagger-1">
             <div class="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
               <lucide-icon name="zap" [size]="16" class="text-amber-300"></lucide-icon>
@@ -110,10 +239,22 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
       </div>
     </section>
 
+    <!-- Social Proof / Logo Wall -->
+    <section class="py-12 bg-[#F7F8FA] border-b border-gray-200">
+      <div class="max-w-5xl mx-auto px-6 text-center">
+        <p class="text-xs text-gray-400 font-body font-medium uppercase tracking-widest mb-6">Trusted by leading D2C & e-commerce brands</p>
+        <div class="flex flex-wrap justify-center items-center gap-x-10 gap-y-4">
+          @for (logo of brandLogos; track logo) {
+            <span class="text-lg font-display font-bold text-gray-300 tracking-wide select-none hover:text-gray-500 transition-colors duration-300">{{ logo }}</span>
+          }
+        </div>
+      </div>
+    </section>
+
     <!-- Problem -> Solution -->
     <section class="py-20 bg-[#F7F8FA]">
       <div class="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16">
-        <div appAnimateOnScroll class="p-8 bg-gray-100 rounded-2xl border border-gray-200">
+        <div appAnimateOnScroll class="p-8 bg-gray-100 rounded-2xl border border-gray-200 hover:shadow-card-hover transition-shadow duration-300">
           <div class="text-red-500 text-sm font-mono font-bold mb-4">THE PROBLEM</div>
           <h2 class="text-page-title font-display text-navy mb-4">Dashboards show numbers. Not answers.</h2>
           <p class="text-gray-600 font-body leading-relaxed">
@@ -136,7 +277,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
           </div>
         </div>
 
-        <div appAnimateOnScroll [aosDelay]="150" class="p-8 bg-white rounded-2xl border border-accent/20 shadow-card">
+        <div appAnimateOnScroll [aosDelay]="150" class="p-8 bg-white rounded-2xl border border-accent/20 shadow-card hover:shadow-glow transition-shadow duration-300">
           <div class="text-accent text-sm font-mono font-bold mb-4">THE COSMISK WAY</div>
           <h2 class="text-page-title font-display text-navy mb-4">Extract Creative DNA. Know exactly why.</h2>
           <p class="text-gray-600 font-body leading-relaxed">
@@ -169,7 +310,6 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
       </div>
       <div class="max-w-4xl mx-auto px-6">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4">
-          <!-- Step 1 -->
           <div appAnimateOnScroll class="flex flex-col items-center text-center flex-1">
             <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
               <lucide-icon name="zap" [size]="28" class="text-accent"></lucide-icon>
@@ -177,11 +317,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
             <h3 class="text-card-title font-display text-navy mb-1">Connect</h3>
             <p class="text-sm text-gray-600 font-body max-w-[180px]">Link your Meta ad accounts in one click</p>
           </div>
-
-          <!-- Dashed line -->
           <div class="hidden md:block flex-1 max-w-[80px] border-t-2 border-dashed border-gray-300 mt-[-24px]"></div>
-
-          <!-- Step 2 -->
           <div appAnimateOnScroll [aosDelay]="150" class="flex flex-col items-center text-center flex-1">
             <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
               <lucide-icon name="brain" [size]="28" class="text-accent"></lucide-icon>
@@ -189,11 +325,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
             <h3 class="text-card-title font-display text-navy mb-1">Analyze</h3>
             <p class="text-sm text-gray-600 font-body max-w-[180px]">AI extracts Creative DNA from every ad</p>
           </div>
-
-          <!-- Dashed line -->
           <div class="hidden md:block flex-1 max-w-[80px] border-t-2 border-dashed border-gray-300 mt-[-24px]"></div>
-
-          <!-- Step 3 -->
           <div appAnimateOnScroll [aosDelay]="300" class="flex flex-col items-center text-center flex-1">
             <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
               <lucide-icon name="sparkles" [size]="28" class="text-accent"></lucide-icon>
@@ -216,7 +348,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
 
       <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-8">
         @for (dna of dnaCards; track dna.title; let i = $index) {
-          <div appAnimateOnScroll [aosDelay]="i * 100" class="card !p-8 text-center hover:-translate-y-1 transition-transform">
+          <div appAnimateOnScroll [aosDelay]="i * 100" class="card !p-8 text-center hover:-translate-y-2 hover:shadow-card-hover transition-all duration-300">
             <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center" [ngClass]="dna.bgClass">
               <lucide-icon [name]="dna.iconName" [size]="28" [ngClass]="dna.iconClass"></lucide-icon>
             </div>
@@ -247,8 +379,8 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
           @for (tab of featureTabs; track tab.id; let i = $index) {
             <button
               (click)="activeTab = i"
-              class="px-5 py-2.5 rounded-pill text-sm font-body font-medium transition-all border-0 cursor-pointer"
-              [ngClass]="activeTab === i ? 'bg-accent text-white' : 'bg-white text-navy hover:bg-gray-50'">
+              class="px-5 py-2.5 rounded-pill text-sm font-body font-medium transition-all duration-300 border-0 cursor-pointer"
+              [ngClass]="activeTab === i ? 'bg-accent text-white scale-105 shadow-glow' : 'bg-white text-navy hover:bg-gray-50 hover:scale-[1.02]'">
               {{ tab.title }}
             </button>
           }
@@ -268,19 +400,114 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
               }
             </ul>
           </div>
-          <div class="bg-white rounded-2xl p-8 shadow-card border border-divider">
-            <div class="aspect-video bg-[#F7F8FA] rounded-xl p-4 space-y-3">
-              <div class="flex gap-2">
-                <div class="flex-1 h-8 bg-white rounded-lg shadow-sm"></div>
-                <div class="flex-1 h-8 bg-white rounded-lg shadow-sm"></div>
-                <div class="flex-1 h-8 bg-white rounded-lg shadow-sm"></div>
-              </div>
-              <div class="h-24 bg-white rounded-lg shadow-sm"></div>
-              <div class="flex gap-2">
-                <div class="flex-1 h-16 bg-white rounded-lg shadow-sm"></div>
-                <div class="flex-1 h-16 bg-white rounded-lg shadow-sm"></div>
-              </div>
-            </div>
+
+          <!-- Feature Tab Mockups -->
+          <div class="bg-white rounded-2xl p-6 shadow-card border border-divider">
+            @switch (featureTabs[activeTab].id) {
+              <!-- Cockpit Mockup -->
+              @case ('cockpit') {
+                <div class="bg-[#F7F8FA] rounded-xl p-4">
+                  <div class="flex gap-1.5 mb-3">
+                    <span class="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-pill">All</span>
+                    <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-[10px] font-medium rounded-pill">Active</span>
+                    <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-[10px] font-medium rounded-pill">Top 10%</span>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2">
+                    @for (c of cockpitMockCards; track c.roas) {
+                      <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100">
+                        <div class="aspect-square rounded bg-gradient-to-br mb-1.5" [class]="c.bg"></div>
+                        <div class="flex flex-wrap gap-0.5 mb-1">
+                          @for (t of c.tags; track t) {
+                            <span class="px-1 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-medium rounded">{{ t }}</span>
+                          }
+                        </div>
+                        <div class="flex items-center justify-between">
+                          <span class="text-[9px] font-mono font-bold text-green-600">{{ c.roas }}x</span>
+                          <span class="text-[9px] font-mono text-gray-400">{{ c.ctr }}%</span>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+              <!-- Director Mockup -->
+              @case ('director') {
+                <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
+                  <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                    <p class="text-[10px] text-gray-400 font-body mb-1.5">DNA INPUTS</p>
+                    <div class="flex flex-wrap gap-1 mb-2">
+                      <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-medium rounded">Shock Statement</span>
+                      <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-medium rounded">Macro Texture</span>
+                      <span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-[8px] font-medium rounded">Hindi VO</span>
+                    </div>
+                    <button class="w-full py-1.5 bg-accent text-white text-[10px] font-semibold rounded border-0 cursor-default">Generate Brief</button>
+                  </div>
+                  <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                    <p class="text-[10px] text-gray-400 font-body mb-1">PREVIEW</p>
+                    <div class="h-20 bg-gradient-to-br from-accent/5 to-blue-50 rounded flex items-center justify-center">
+                      <span class="text-[10px] text-accent font-medium">Brief: "Kya aapko pata hai..."</span>
+                    </div>
+                  </div>
+                </div>
+              }
+              <!-- UGC Mockup -->
+              @case ('ugc') {
+                <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
+                  <div class="flex gap-2 items-center mb-1">
+                    @for (avatar of ['A', 'R', 'S', 'P']; track avatar) {
+                      <div class="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-bold">{{ avatar }}</div>
+                    }
+                    <span class="text-[10px] text-gray-400 font-body ml-1">+8 more</span>
+                  </div>
+                  <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                    <p class="text-[10px] text-gray-400 font-body mb-1">SCRIPT</p>
+                    <div class="space-y-1">
+                      <div class="h-2 bg-gray-200 rounded w-full"></div>
+                      <div class="h-2 bg-gray-200 rounded w-4/5"></div>
+                      <div class="h-2 bg-gray-200 rounded w-3/5"></div>
+                    </div>
+                  </div>
+                  <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                    <p class="text-[10px] text-gray-400 font-body mb-1">VIDEO PREVIEW</p>
+                    <div class="aspect-video bg-dark rounded flex items-center justify-center">
+                      <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                        <lucide-icon name="play" [size]="14" class="text-white"></lucide-icon>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+              <!-- Oracle Mockup -->
+              @case ('oracle') {
+                <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-2">
+                  <!-- User message -->
+                  <div class="flex justify-end">
+                    <div class="bg-accent text-white px-3 py-1.5 rounded-xl rounded-br-sm text-[11px] max-w-[75%]">
+                      Why did my ROAS drop this week?
+                    </div>
+                  </div>
+                  <!-- AI response -->
+                  <div class="flex justify-start">
+                    <div class="bg-white px-3 py-2 rounded-xl rounded-bl-sm text-[11px] text-navy max-w-[80%] shadow-sm border border-gray-100">
+                      <p class="m-0 mb-1">Your ROAS dropped <strong>18%</strong> because 3 top creatives fatigued. Their <strong>Hook DNA</strong> (Shock Statement) hit frequency cap.</p>
+                      <div class="flex gap-1 mt-1.5">
+                        <span class="px-1.5 py-0.5 bg-accent/10 text-accent text-[8px] rounded font-medium cursor-default">Iterate Hooks</span>
+                        <span class="px-1.5 py-0.5 bg-red-50 text-red-500 text-[8px] rounded font-medium cursor-default">Kill Fatigued</span>
+                        <span class="px-1.5 py-0.5 bg-green-50 text-green-600 text-[8px] rounded font-medium cursor-default">Scale Winners</span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Typing indicator -->
+                  <div class="flex justify-start">
+                    <div class="bg-white px-3 py-2 rounded-xl rounded-bl-sm shadow-sm border border-gray-100 flex gap-1 items-center">
+                      <div class="w-1.5 h-1.5 rounded-full bg-gray-400 typing-dot"></div>
+                      <div class="w-1.5 h-1.5 rounded-full bg-gray-400 typing-dot"></div>
+                      <div class="w-1.5 h-1.5 rounded-full bg-gray-400 typing-dot"></div>
+                    </div>
+                  </div>
+                </div>
+              }
+            }
           </div>
         </div>
       </div>
@@ -292,17 +519,16 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
         <h2 class="text-page-title font-display text-white mb-4">Simple Pricing. Powerful Intelligence.</h2>
         <p class="text-lg text-gray-400 font-body mb-8">Start free, scale as you grow.</p>
 
-        <!-- Annual/Monthly Toggle -->
         <div class="inline-flex items-center gap-3 bg-white/[0.06] rounded-pill px-2 py-1.5 border border-white/[0.08]">
           <button
             (click)="annual.set(false)"
-            class="px-4 py-1.5 rounded-pill text-sm font-body font-medium border-0 cursor-pointer transition-all"
+            class="px-4 py-1.5 rounded-pill text-sm font-body font-medium border-0 cursor-pointer transition-all duration-300"
             [ngClass]="!annual() ? 'bg-white text-navy' : 'bg-transparent text-white/70 hover:text-white'">
             Monthly
           </button>
           <button
             (click)="annual.set(true)"
-            class="px-4 py-1.5 rounded-pill text-sm font-body font-medium border-0 cursor-pointer transition-all"
+            class="px-4 py-1.5 rounded-pill text-sm font-body font-medium border-0 cursor-pointer transition-all duration-300"
             [ngClass]="annual() ? 'bg-white text-navy' : 'bg-transparent text-white/70 hover:text-white'">
             Annual
             <span class="ml-1 px-1.5 py-0.5 bg-green-500 text-white text-[10px] font-bold rounded-pill">Save 20%</span>
@@ -314,8 +540,8 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
         @for (plan of plans; track plan.name; let i = $index) {
           <div
             appAnimateOnScroll [aosDelay]="i * 100"
-            class="rounded-2xl p-8 transition-transform hover:-translate-y-1"
-            [ngClass]="plan.featured ? 'bg-white text-navy ring-2 ring-accent shadow-glow' : 'bg-white/[0.03] text-white border border-white/[0.08]'">
+            class="rounded-2xl p-8 transition-all duration-300 hover:-translate-y-2"
+            [ngClass]="plan.featured ? 'bg-white text-navy ring-2 ring-accent shadow-glow hover:shadow-glow-lg' : 'bg-white/[0.03] text-white border border-white/[0.08] hover:border-white/[0.15] hover:bg-white/[0.05]'">
             @if (plan.featured) {
               <div class="text-center mb-2">
                 <span class="px-3 py-1 bg-accent/10 text-accent text-xs font-bold rounded-pill">MOST POPULAR</span>
@@ -341,7 +567,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
             </ul>
             <a
               [routerLink]="'/signup'"
-              class="block text-center py-3 rounded-lg font-body font-semibold text-sm transition-all no-underline"
+              class="block text-center py-3 rounded-lg font-body font-semibold text-sm transition-all duration-300 no-underline hover:scale-[1.02]"
               [ngClass]="plan.featured ? 'bg-accent text-white hover:bg-accent-hover hover:shadow-glow' : 'bg-white/[0.06] text-white border border-white/[0.15] hover:bg-white/[0.1]'">
               Start Free Trial
             </a>
@@ -359,10 +585,10 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
 
         <div class="grid md:grid-cols-3 gap-8">
           @for (t of testimonials; track t.name; let i = $index) {
-            <div appAnimateOnScroll [aosDelay]="i * 100" class="card !p-8">
+            <div appAnimateOnScroll [aosDelay]="i * 100" class="card !p-8 hover:border-accent/20 hover:shadow-card-hover transition-all duration-300">
               <p class="text-gray-600 font-body text-sm italic mb-6 leading-relaxed">"{{ t.quote }}"</p>
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-sm">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white font-bold text-sm">
                   {{ t.initials }}
                 </div>
                 <div>
@@ -387,15 +613,75 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
         <h2 class="text-page-title lg:text-hero font-display text-white mb-6">
           Your Ads Have a DNA.<br><span class="text-gradient">Let's Decode It.</span>
         </h2>
-        <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline hover:shadow-glow transition-shadow">Start Free Trial</a>
+        <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline hover:shadow-glow hover:scale-[1.03] transition-all duration-300">Start Free Trial</a>
         <p class="text-sm text-gray-500 font-body mt-4">No credit card &middot; 14-day free trial &middot; Cancel anytime</p>
       </div>
     </section>
+
+    <!-- Demo Modal -->
+    @if (showDemo()) {
+      <div class="modal-backdrop" (click)="showDemo.set(false)">
+        <div class="modal-panel" (click)="$event.stopPropagation()">
+          <button (click)="showDemo.set(false)" class="absolute top-4 right-4 p-1 bg-transparent border-0 cursor-pointer text-gray-400 hover:text-navy transition-colors">
+            <lucide-icon name="x" [size]="20"></lucide-icon>
+          </button>
+          <div class="text-center mb-6">
+            <div class="w-12 h-12 mx-auto rounded-xl bg-accent/10 flex items-center justify-center mb-3">
+              <lucide-icon name="play" [size]="24" class="text-accent"></lucide-icon>
+            </div>
+            <h3 class="text-section-title font-display text-navy mb-2">See Cosmisk in Action</h3>
+            <p class="text-sm text-gray-500 font-body">Our product demo is coming soon. Get notified when it's ready.</p>
+          </div>
+          <!-- Placeholder video area -->
+          <div class="aspect-video bg-[#F7F8FA] rounded-xl mb-6 flex items-center justify-center border border-gray-200">
+            <div class="text-center">
+              <lucide-icon name="video" [size]="32" class="text-gray-300 mb-2"></lucide-icon>
+              <p class="text-sm text-gray-400 font-body m-0">Demo video coming soon</p>
+            </div>
+          </div>
+          <!-- Email capture in modal -->
+          @if (!demoSubmitted()) {
+            <div class="flex gap-2">
+              <input
+                type="email"
+                [(ngModel)]="demoEmail"
+                placeholder="Enter your email"
+                class="input flex-1" />
+              <button (click)="submitDemoEmail()" class="btn-primary !px-5 whitespace-nowrap">Notify Me</button>
+            </div>
+          } @else {
+            <div class="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-green-50 border border-green-200">
+              <lucide-icon name="check-circle" [size]="16" class="text-green-500"></lucide-icon>
+              <span class="text-sm text-green-700 font-body">Got it! We'll notify you when the demo is live.</span>
+            </div>
+          }
+        </div>
+      </div>
+    }
   `
 })
 export default class LandingComponent {
   activeTab = 0;
   annual = signal(false);
+  showDemo = signal(false);
+  heroEmail = '';
+  heroSubmitted = signal(false);
+  demoEmail = '';
+  demoSubmitted = signal(false);
+
+  submitHeroEmail() {
+    if (this.heroEmail.includes('@')) {
+      this.heroSubmitted.set(true);
+    }
+  }
+
+  submitDemoEmail() {
+    if (this.demoEmail.includes('@')) {
+      this.demoSubmitted.set(true);
+    }
+  }
+
+  brandLogos = ['Nectar', 'Urban Drape', 'FreshBase', 'The Skin Co.', 'Dhan Foods', 'FlexFit', 'MintLeaf', 'PurePlay'];
 
   stats = [
     { value: '\u20B9250Cr+', label: 'Ad Spend Analyzed' },
@@ -404,8 +690,27 @@ export default class LandingComponent {
     { value: '<20min', label: 'Data to Creative Brief' },
   ];
 
-  // Duplicated for seamless marquee loop
   marqueeStats = [...this.stats, ...this.stats];
+
+  // Hero dashboard mockup data
+  mockCreatives = [
+    { name: 'c1', emoji: '\uD83D\uDCF1', thumbBg: 'bg-gradient-to-br from-amber-900/30 to-amber-700/20', roas: 4.8, tags: [{ label: 'Shock', cls: 'bg-amber-500/20 text-amber-300' }, { label: 'Macro', cls: 'bg-blue-500/20 text-blue-300' }], spark: [4, 8, 6, 12, 10, 14, 11] },
+    { name: 'c2', emoji: '\uD83C\uDFA5', thumbBg: 'bg-gradient-to-br from-blue-900/30 to-blue-700/20', roas: 3.2, tags: [{ label: 'Curiosity', cls: 'bg-amber-500/20 text-amber-300' }, { label: 'UGC', cls: 'bg-blue-500/20 text-blue-300' }], spark: [6, 5, 9, 7, 11, 8, 10] },
+    { name: 'c3', emoji: '\uD83D\uDED2', thumbBg: 'bg-gradient-to-br from-emerald-900/30 to-emerald-700/20', roas: 5.1, tags: [{ label: 'Price', cls: 'bg-amber-500/20 text-amber-300' }, { label: 'Hindi', cls: 'bg-emerald-500/20 text-emerald-300' }], spark: [3, 7, 5, 10, 14, 12, 16] },
+    { name: 'c4', emoji: '\uD83C\uDF1F', thumbBg: 'bg-gradient-to-br from-violet-900/30 to-violet-700/20', roas: 2.4, tags: [{ label: 'Authority', cls: 'bg-amber-500/20 text-amber-300' }, { label: 'Warm', cls: 'bg-blue-500/20 text-blue-300' }], spark: [8, 6, 4, 5, 3, 6, 4] },
+    { name: 'c5', emoji: '\uD83D\uDE80', thumbBg: 'bg-gradient-to-br from-pink-900/30 to-pink-700/20', roas: 3.9, tags: [{ label: 'Social', cls: 'bg-amber-500/20 text-amber-300' }, { label: 'ASMR', cls: 'bg-emerald-500/20 text-emerald-300' }], spark: [5, 9, 11, 8, 13, 10, 12] },
+    { name: 'c6', emoji: '\uD83D\uDCA1', thumbBg: 'bg-gradient-to-br from-cyan-900/30 to-cyan-700/20', roas: 4.3, tags: [{ label: 'Demo', cls: 'bg-amber-500/20 text-amber-300' }, { label: 'Upbeat', cls: 'bg-emerald-500/20 text-emerald-300' }], spark: [7, 10, 8, 14, 11, 15, 13] },
+  ];
+
+  // Cockpit mockup cards (light theme version)
+  cockpitMockCards = [
+    { bg: 'from-amber-50 to-orange-50', tags: ['Shock', 'Macro'], roas: '4.8', ctr: '3.2' },
+    { bg: 'from-blue-50 to-indigo-50', tags: ['Curiosity', 'UGC'], roas: '3.2', ctr: '2.8' },
+    { bg: 'from-green-50 to-emerald-50', tags: ['Price', 'Hindi'], roas: '5.1', ctr: '4.1' },
+    { bg: 'from-violet-50 to-purple-50', tags: ['Authority'], roas: '2.4', ctr: '1.9' },
+    { bg: 'from-pink-50 to-rose-50', tags: ['Social', 'ASMR'], roas: '3.9', ctr: '3.0' },
+    { bg: 'from-cyan-50 to-teal-50', tags: ['Demo', 'Upbeat'], roas: '4.3', ctr: '3.5' },
+  ];
 
   dnaCards = [
     {
