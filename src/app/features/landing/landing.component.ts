@@ -604,6 +604,35 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
       </div>
     </section>
 
+    <!-- Integrations -->
+    <section class="py-20 bg-white">
+      <div class="max-w-7xl mx-auto px-6">
+        <div appAnimateOnScroll class="text-center mb-16">
+          <h2 class="text-page-title font-display text-navy mb-4">Connects With Your Stack</h2>
+          <p class="text-lg text-gray-600 font-body max-w-2xl mx-auto">
+            Cosmisk plugs into the platforms you already use. One-click setup, real-time sync.
+          </p>
+        </div>
+
+        <div appAnimateOnScroll class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-4xl mx-auto">
+          @for (integration of integrations; track integration.name; let i = $index) {
+            <div class="bg-[#F7F8FA] rounded-2xl border border-gray-100 p-5 flex flex-col items-center gap-3 hover:border-accent/20 hover:shadow-card transition-all duration-300">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center text-lg" [ngClass]="integration.bgClass">
+                {{ integration.emoji }}
+              </div>
+              <p class="text-xs font-body font-semibold text-navy m-0 text-center">{{ integration.name }}</p>
+              <div class="flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full" [ngClass]="integration.connected ? 'bg-green-400' : 'bg-amber-400'"></span>
+                <span class="text-[10px] font-body" [ngClass]="integration.connected ? 'text-green-600' : 'text-amber-600'">
+                  {{ integration.connected ? 'Connected' : 'Coming Soon' }}
+                </span>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
     <!-- Pricing Preview (Dark) -->
     <section class="py-20 bg-dark-mesh">
       <div appAnimateOnScroll class="max-w-7xl mx-auto px-6 text-center mb-12">
@@ -940,6 +969,15 @@ export default class LandingComponent implements OnInit, OnDestroy {
       description: 'Ask anything about your ads in natural language. Get data-backed answers with actionable recommendations.',
       points: ['"Why did my ROAS drop this week?"', 'Answers with specific creative data', 'Inline action buttons (scale, kill, iterate)', 'Streaming AI responses in real-time'],
     },
+  ];
+
+  integrations = [
+    { name: 'Meta Ads', emoji: '\uD83D\uDFE6', bgClass: 'bg-blue-100', connected: true },
+    { name: 'Google Ads', emoji: '\uD83D\uDD0D', bgClass: 'bg-red-50', connected: true },
+    { name: 'Shopify', emoji: '\uD83D\uDED2', bgClass: 'bg-green-50', connected: true },
+    { name: 'Slack', emoji: '\uD83D\uDCAC', bgClass: 'bg-purple-50', connected: true },
+    { name: 'Google Sheets', emoji: '\uD83D\uDCCA', bgClass: 'bg-emerald-50', connected: true },
+    { name: 'Google Drive', emoji: '\uD83D\uDCC1', bgClass: 'bg-amber-50', connected: true },
   ];
 
   comparisonRows = [

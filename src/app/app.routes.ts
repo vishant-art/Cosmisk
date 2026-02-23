@@ -14,6 +14,9 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./features/landing/landing.component') },
       { path: 'pricing', loadComponent: () => import('./features/pricing/pricing.component') },
+      { path: 'for-agencies', loadComponent: () => import('./features/for-agencies/for-agencies.component') },
+      { path: 'contact', loadComponent: () => import('./features/contact/contact.component') },
+      { path: 'blog', loadComponent: () => import('./features/blog/blog.component') },
     ]
   },
 

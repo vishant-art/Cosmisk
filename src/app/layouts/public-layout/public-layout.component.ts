@@ -22,10 +22,11 @@ import { LucideAngularModule } from 'lucide-angular';
         <nav class="hidden md:flex items-center gap-8">
           <a routerLink="/" class="text-sm font-body font-medium text-gray-400 hover:text-white no-underline transition-colors">Product</a>
           <a routerLink="/pricing" class="text-sm font-body font-medium text-gray-400 hover:text-white no-underline transition-colors">Pricing</a>
-          <a class="text-sm font-body font-medium text-gray-400 hover:text-white no-underline transition-colors cursor-pointer">
+          <a routerLink="/for-agencies" class="text-sm font-body font-medium text-gray-400 hover:text-white no-underline transition-colors">
             For Agencies
             <span class="ml-1 px-1.5 py-0.5 bg-accent/20 text-accent text-[10px] font-bold rounded">NEW</span>
           </a>
+          <a routerLink="/blog" class="text-sm font-body font-medium text-gray-400 hover:text-white no-underline transition-colors">Blog</a>
         </nav>
 
         <!-- Auth buttons (desktop) + Hamburger (mobile) -->
@@ -52,10 +53,11 @@ import { LucideAngularModule } from 'lucide-angular';
           <nav class="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-4">
             <a routerLink="/" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">Product</a>
             <a routerLink="/pricing" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">Pricing</a>
-            <a (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2 cursor-pointer">
+            <a routerLink="/for-agencies" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">
               For Agencies
               <span class="ml-1 px-1.5 py-0.5 bg-accent/20 text-accent text-[10px] font-bold rounded">NEW</span>
             </a>
+            <a routerLink="/blog" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">Blog</a>
             <div class="flex flex-col gap-3 pt-4 border-t border-white/[0.06]">
               <a routerLink="/login" (click)="mobileMenuOpen.set(false)" class="text-center py-2.5 text-sm font-body font-medium text-gray-300 hover:text-white no-underline transition-colors">Log In</a>
               <a routerLink="/signup" (click)="mobileMenuOpen.set(false)" class="btn-primary text-center no-underline">Start Free Trial</a>
@@ -95,7 +97,7 @@ import { LucideAngularModule } from 'lucide-angular';
           <div>
             <h4 class="font-body font-semibold text-sm mb-4 text-gray-300">Resources</h4>
             <ul class="space-y-2 list-none p-0">
-              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Blog</a></li>
+              <li><a routerLink="/blog" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Blog</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Case Studies</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Help Center</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">API Docs</a></li>
@@ -106,8 +108,8 @@ import { LucideAngularModule } from 'lucide-angular';
           <div>
             <h4 class="font-body font-semibold text-sm mb-4 text-gray-300">Company</h4>
             <ul class="space-y-2 list-none p-0">
-              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">About</a></li>
-              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Careers</a></li>
+              <li><a routerLink="/contact" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Contact</a></li>
+              <li><a routerLink="/for-agencies" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">For Agencies</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Privacy Policy</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Terms of Service</a></li>
             </ul>
