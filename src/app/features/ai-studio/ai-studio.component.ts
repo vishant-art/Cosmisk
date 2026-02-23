@@ -1,8 +1,9 @@
-const _BUILD_VER = '2026-02-13-v2';
+const _BUILD_VER = '2026-02-23-v2';
 import { Component, signal, inject, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
+import { AiService } from '../../core/services/ai.service';
 
 interface ChatMessage {
   id: string;
@@ -224,6 +225,7 @@ const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart
 })
 export default class AiStudioComponent {
   @ViewChild('chatContainer') chatContainer!: ElementRef;
+  private aiService = inject(AiService);
 
   messages = signal<ChatMessage[]>([]);
   typing = signal(false);
@@ -258,20 +260,36 @@ export default class AiStudioComponent {
     this.typing.set(true);
     this.scrollToBottom();
 
-    setTimeout(() => {
-      const response = this.findResponse(text);
-      const aiMsg: ChatMessage = {
-        id: 'msg-' + Date.now() + '-ai',
-        role: 'ai',
-        content: response.content,
-        timestamp: new Date(),
-        chart: response.chart,
-        table: response.table,
-      };
-      this.messages.update(msgs => [...msgs, aiMsg]);
-      this.typing.set(false);
-      this.scrollToBottom();
-    }, 1500 + Math.random() * 1000);
+    this.aiService.chat(text).subscribe({
+      next: (response) => {
+        const aiMsg: ChatMessage = {
+          id: 'msg-' + Date.now() + '-ai',
+          role: 'ai',
+          content: response.content,
+          timestamp: new Date(),
+          chart: response.chart,
+          table: response.table,
+        };
+        this.messages.update(msgs => [...msgs, aiMsg]);
+        this.typing.set(false);
+        this.scrollToBottom();
+      },
+      error: () => {
+        // Fallback to demo response when API unavailable
+        const fallback = this.findResponse(text);
+        const aiMsg: ChatMessage = {
+          id: 'msg-' + Date.now() + '-ai',
+          role: 'ai',
+          content: fallback.content,
+          timestamp: new Date(),
+          chart: fallback.chart,
+          table: fallback.table,
+        };
+        this.messages.update(msgs => [...msgs, aiMsg]);
+        this.typing.set(false);
+        this.scrollToBottom();
+      }
+    });
   }
 
   private findResponse(query: string): { content: string; chart?: ChatMessage['chart']; table?: ChatMessage['table'] } {

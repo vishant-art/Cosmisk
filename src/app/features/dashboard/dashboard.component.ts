@@ -1,21 +1,22 @@
-const _BUILD_VER = '2026-02-23-v1';
-import { Component, signal, inject, OnInit } from '@angular/core';
+const _BUILD_VER = '2026-02-23-v2';
+import { Component, signal, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { KpiCardComponent } from '../../shared/components/kpi-card/kpi-card.component';
 import { InsightCardComponent } from '../../shared/components/insight-card/insight-card.component';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
+import { AreaChartComponent } from '../../shared/components/area-chart/area-chart.component';
 import { LakhCrorePipe } from '../../shared/pipes/lakh-crore.pipe';
 import { DEMO_DASHBOARD_KPI, DEMO_CREATIVES, DEMO_INSIGHTS, DEMO_CHART_DATA } from '../../shared/data/demo-data';
 import { Creative } from '../../core/models/creative.model';
-import { UgcService, DashboardKpis } from '../../core/services/ugc.service';
+import { UgcService, DashboardKpis, UgcProjectSummary } from '../../core/services/ugc.service';
 import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, LakhCrorePipe, LucideAngularModule],
+  imports: [CommonModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
   template: `
     <!-- Welcome Header -->
     <div class="mb-6">
@@ -135,50 +136,13 @@ import { LucideAngularModule } from 'lucide-angular';
           </div>
         </div>
 
-        <!-- Area Chart -->
-        <div class="relative h-52 flex items-end gap-0 px-2">
-          <!-- Y-axis labels -->
-          <div class="absolute left-0 top-0 bottom-6 w-12 flex flex-col justify-between text-[10px] text-gray-400 font-mono">
-            <span>{{ getYLabel(1) }}</span>
-            <span>{{ getYLabel(0.5) }}</span>
-            <span>{{ getYLabel(0) }}</span>
-          </div>
-
-          <!-- Chart bars with area fill -->
-          <div class="ml-12 flex-1 flex items-end gap-1.5">
-            @for (point of chartData; track point.date) {
-              <div class="flex-1 flex flex-col items-center gap-1">
-                <div class="w-full relative group">
-                  <!-- Background bar (spend) -->
-                  @if (activeChartMetric === 'ROAS') {
-                    <div
-                      class="w-full bg-gray-100 rounded-t-sm absolute bottom-0"
-                      [style.height.px]="getSpendBarHeight(point)">
-                    </div>
-                  }
-                  <!-- Main bar -->
-                  <div
-                    class="w-full rounded-t-sm transition-all duration-300 hover:opacity-80 relative"
-                    [ngClass]="activeChartMetric === 'ROAS' ? 'bg-accent/30' : activeChartMetric === 'CTR' ? 'bg-blue-200' : activeChartMetric === 'CPA' ? 'bg-yellow-200' : 'bg-accent/20'"
-                    [style.height.px]="getChartBarHeight(point)">
-                    <!-- Data point dot -->
-                    <div class="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white"
-                      [ngClass]="activeChartMetric === 'ROAS' ? 'bg-accent' : activeChartMetric === 'CTR' ? 'bg-blue-500' : activeChartMetric === 'CPA' ? 'bg-yellow-500' : 'bg-accent'">
-                    </div>
-                  </div>
-                  <!-- Tooltip -->
-                  <div class="absolute -top-16 left-1/2 -translate-x-1/2 px-3 py-2 bg-navy text-white text-[10px] font-mono rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-lg">
-                    <div class="font-semibold mb-0.5">{{ point.date }}</div>
-                    <div>ROAS: {{ point.roas }}x</div>
-                    <div>Spend: &#8377;{{ (point.spend / 100000).toFixed(1) }}L</div>
-                    <div>Revenue: &#8377;{{ (point.revenue / 100000).toFixed(1) }}L</div>
-                  </div>
-                </div>
-                <span class="text-[10px] text-gray-400 font-mono mt-1">{{ point.date.split(' ')[1] }}</span>
-              </div>
-            }
-          </div>
-        </div>
+        <app-area-chart
+          [labels]="chartLabels"
+          [values]="chartValues()"
+          [label]="activeChartMetric"
+          [color]="chartColor()"
+          [suffix]="chartSuffix()"
+          [height]="208" />
       </div>
 
       <!-- AI Insights -->
@@ -274,6 +238,35 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
     </div>
 
+    <!-- Recent UGC Projects -->
+    <div class="card mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-card-title font-display text-navy m-0">Recent UGC Projects</h3>
+        <a routerLink="/app/ugc-studio" class="text-sm text-accent font-body font-semibold hover:underline no-underline flex items-center gap-1">
+          View All <lucide-icon name="arrow-right" [size]="14"></lucide-icon>
+        </a>
+      </div>
+      @if (recentProjects().length > 0) {
+        <div class="space-y-2">
+          @for (project of recentProjects(); track project.id) {
+            <a [routerLink]="['/app/ugc-studio', project.id]"
+              class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-accent/5 transition-colors no-underline">
+              <div>
+                <p class="text-sm font-semibold text-navy m-0">{{ project.brand_name }}</p>
+                <p class="text-xs text-gray-500 m-0">{{ project.client_code }} &middot; {{ project.num_scripts }} scripts</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-pill text-xs font-medium"
+                [ngClass]="project.status === 'Delivered' || project.status === 'Complete' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'">
+                {{ project.status }}
+              </span>
+            </a>
+          }
+        </div>
+      } @else {
+        <p class="text-sm text-gray-500">No UGC projects yet.</p>
+      }
+    </div>
+
     <!-- Quick Actions -->
     <div class="grid md:grid-cols-3 gap-6">
       @for (action of quickActions; track action.title) {
@@ -314,7 +307,32 @@ export default class DashboardComponent implements OnInit {
     { icon: 'file-text', title: 'View Report', description: 'Weekly performance summary', route: '/app/reports' },
   ];
 
+  recentProjects = signal<UgcProjectSummary[]>([]);
   deliveryRate = signal(0);
+
+  chartLabels = this.chartData.map(d => d.date.split(' ')[1]);
+
+  chartValues = computed(() => {
+    return this.chartData.map(d => {
+      switch (this.activeChartMetric) {
+        case 'ROAS': return d.roas;
+        case 'CTR': return +(d.roas * 0.65).toFixed(1);
+        case 'CPA': return Math.round(800 - (d.roas * 100));
+        case 'Spend': return Math.round(d.spend / 1000);
+        default: return d.roas;
+      }
+    });
+  });
+
+  chartColor = computed(() => {
+    const colors: Record<string, string> = { ROAS: '#6366F1', CTR: '#3B82F6', CPA: '#F59E0B', Spend: '#10B981' };
+    return colors[this.activeChartMetric] || '#6366F1';
+  });
+
+  chartSuffix = computed(() => {
+    const suffixes: Record<string, string> = { ROAS: 'x', CTR: '%', CPA: '', Spend: 'K' };
+    return suffixes[this.activeChartMetric] || '';
+  });
 
   ngOnInit() {
     this.ugcService.getDashboardKpis().subscribe({
@@ -323,9 +341,12 @@ export default class DashboardComponent implements OnInit {
         const total = data.scripts.total || 1;
         this.deliveryRate.set(Math.round((data.scripts.delivered / total) * 100));
       },
-      error: () => {
-        // API not available — dashboard still works with demo data below
-      },
+      error: () => {},
+    });
+
+    this.ugcService.getProjects().subscribe({
+      next: (data) => this.recentProjects.set(data.projects.slice(0, 5)),
+      error: () => {},
     });
   }
 
@@ -352,51 +373,4 @@ export default class DashboardComponent implements OnInit {
     console.log('Creative clicked:', creative.id, creative.name);
   }
 
-  getChartBarHeight(point: typeof DEMO_CHART_DATA[0]): number {
-    const getValue = (p: typeof DEMO_CHART_DATA[0]) => {
-      switch (this.activeChartMetric) {
-        case 'ROAS': return p.roas;
-        case 'CTR': return p.roas * 0.65;
-        case 'CPA': return 800 - (p.roas * 100);
-        case 'Spend': return p.spend;
-        default: return p.roas;
-      }
-    };
-    const values = this.chartData.map(getValue);
-    const current = getValue(point);
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-    return ((current - min) / (max - min || 1)) * 140 + 30;
-  }
-
-  getSpendBarHeight(point: typeof DEMO_CHART_DATA[0]): number {
-    const values = this.chartData.map(p => p.spend);
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-    return ((point.spend - min) / (max - min || 1)) * 100 + 20;
-  }
-
-  getYLabel(fraction: number): string {
-    const getValue = (p: typeof DEMO_CHART_DATA[0]) => {
-      switch (this.activeChartMetric) {
-        case 'ROAS': return p.roas;
-        case 'CTR': return p.roas * 0.65;
-        case 'CPA': return 800 - (p.roas * 100);
-        case 'Spend': return p.spend;
-        default: return p.roas;
-      }
-    };
-    const values = this.chartData.map(getValue);
-    const max = Math.max(...values);
-    const min = Math.min(...values);
-    const val = min + (max - min) * fraction;
-
-    switch (this.activeChartMetric) {
-      case 'ROAS': return val.toFixed(1) + 'x';
-      case 'CTR': return val.toFixed(1) + '%';
-      case 'CPA': return '₹' + Math.round(val);
-      case 'Spend': return '₹' + (val / 100000).toFixed(1) + 'L';
-      default: return String(val);
-    }
-  }
 }

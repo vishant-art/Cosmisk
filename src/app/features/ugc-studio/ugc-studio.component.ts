@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-02-23-v1';
 import { Component, signal, inject, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
 import { UgcService, UgcProjectSummary } from '../../core/services/ugc.service';
@@ -306,6 +307,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
 export default class UgcStudioComponent implements OnInit {
   private toast = inject(ToastService);
   private ugcService = inject(UgcService);
+  private router = inject(Router);
   protected Math = Math;
 
   wizardSteps = [
@@ -401,6 +403,6 @@ export default class UgcStudioComponent implements OnInit {
   }
 
   viewProject(project: UgcProjectSummary) {
-    this.selectedProject.set(project);
+    this.router.navigate(['/app/ugc-studio', project.id]);
   }
 }

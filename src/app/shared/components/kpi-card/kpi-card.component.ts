@@ -1,4 +1,4 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
 import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
@@ -22,9 +22,9 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
 
       <div class="mb-3">
         @if (isCurrency) {
-          <p class="text-metric-lg font-mono text-navy m-0">{{ value | lakhCrore }}</p>
+          <p class="text-metric-lg font-mono text-navy m-0">{{ displayCurrencyValue() | lakhCrore }}</p>
         } @else {
-          <p class="text-metric-lg font-mono text-navy m-0" [ngClass]="valueColor">{{ formattedValue }}</p>
+          <p class="text-metric-lg font-mono text-navy m-0" [ngClass]="valueColor">{{ formattedDisplayValue }}</p>
         }
       </div>
 
@@ -47,7 +47,7 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
     </div>
   `
 })
-export class KpiCardComponent {
+export class KpiCardComponent implements OnInit {
   @Input({ required: true }) title = '';
   @Input({ required: true }) value: number = 0;
   @Input() change?: number;
@@ -58,9 +58,41 @@ export class KpiCardComponent {
   @Input() sparkline: number[] = [];
   @Input() color: 'default' | 'green' | 'yellow' | 'red' = 'default';
 
+  displayValue = signal(0);
+  displayCurrencyValue = signal(0);
+
+  ngOnInit() {
+    if (this.value === 0) {
+      this.displayValue.set(0);
+      this.displayCurrencyValue.set(0);
+      return;
+    }
+    const duration = 800;
+    const steps = 30;
+    const increment = this.value / steps;
+    let current = 0;
+    const interval = setInterval(() => {
+      current += increment;
+      if (current >= this.value) {
+        this.displayValue.set(this.value);
+        this.displayCurrencyValue.set(this.value);
+        clearInterval(interval);
+      } else {
+        this.displayValue.set(Math.round(current * 10) / 10);
+        this.displayCurrencyValue.set(Math.round(current));
+      }
+    }, duration / steps);
+  }
+
   get formattedValue(): string {
     if (this.suffix) return `${this.value}${this.suffix}`;
     return String(this.value);
+  }
+
+  get formattedDisplayValue(): string {
+    const val = this.displayValue();
+    if (this.suffix) return `${val}${this.suffix}`;
+    return String(val);
   }
 
   get valueColor(): string {

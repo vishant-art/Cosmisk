@@ -1,8 +1,9 @@
-const _BUILD_VER = '2026-02-13-v2';
-import { Component, signal } from '@angular/core';
+const _BUILD_VER = '2026-02-23-v2';
+import { Component, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
+import { AreaChartComponent } from '../../shared/components/area-chart/area-chart.component';
 
 interface KpiCard {
   label: string;
@@ -26,7 +27,7 @@ interface BreakdownRow {
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, AreaChartComponent],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -97,29 +98,13 @@ interface BreakdownRow {
             }
           </div>
         </div>
-        <!-- Chart -->
-        <div class="flex items-end gap-1 h-52 border-b border-l border-gray-100 pl-8 pb-1 relative">
-          <!-- Y axis labels -->
-          @for (label of getYAxisLabels(); track label) {
-            <span class="absolute left-0 text-[10px] text-gray-400 font-body"
-              [style.bottom.px]="label.pos">{{ label.text }}</span>
-          }
-          @for (bar of chartData; track bar.label) {
-            <div class="flex-1 flex flex-col items-center justify-end h-full group relative">
-              <div class="w-full max-w-[24px] rounded-t transition-all group-hover:opacity-80"
-                [ngClass]="activeChartTab === 'ROAS' ? 'bg-accent' : activeChartTab === 'CTR' ? 'bg-blue-500' : activeChartTab === 'CPA' ? 'bg-amber-500' : 'bg-purple-500'"
-                [style.height.%]="bar.values[activeChartTab] / maxChartVal * 100">
-              </div>
-              <!-- Tooltip -->
-              <div class="absolute -top-8 bg-navy text-white text-[10px] font-body px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                {{ activeChartTab === 'Spend' ? '₹' : '' }}{{ bar.values[activeChartTab] }}{{ activeChartTab === 'ROAS' ? 'x' : activeChartTab === 'CTR' ? '%' : activeChartTab === 'CPA' ? '' : 'K' }}
-              </div>
-              @if (bar.label.endsWith('1') || bar.label.endsWith('5') || bar.label.endsWith('0')) {
-                <span class="text-[9px] text-gray-400 font-body mt-1">{{ bar.label }}</span>
-              }
-            </div>
-          }
-        </div>
+        <app-area-chart
+          [labels]="analyticsChartLabels"
+          [values]="analyticsChartValues()"
+          [label]="activeChartTab"
+          [color]="analyticsChartColor()"
+          [suffix]="analyticsChartSuffix()"
+          [height]="208" />
       </div>
 
       <!-- Row 4: Breakdown Table -->
@@ -252,6 +237,22 @@ export default class AnalyticsComponent {
   chartData = this.generateChartData();
   maxChartVal = 0;
 
+  analyticsChartLabels = this.chartData.map(d => d.label);
+
+  analyticsChartValues = computed(() => {
+    return this.chartData.map(d => d.values[this.activeChartTab] || 0);
+  });
+
+  analyticsChartColor = computed(() => {
+    const colors: Record<string, string> = { ROAS: '#6366F1', CTR: '#3B82F6', CPA: '#F59E0B', Spend: '#10B981' };
+    return colors[this.activeChartTab] || '#6366F1';
+  });
+
+  analyticsChartSuffix = computed(() => {
+    const suffixes: Record<string, string> = { ROAS: 'x', CTR: '%', CPA: '', Spend: 'K' };
+    return suffixes[this.activeChartTab] || '';
+  });
+
   audienceSegments = [
     { label: 'Women 25-34, Metro Cities', roas: 4.6, spend: '₹3.8L', share: 31 },
     { label: 'Women 35-44, Health Interest', roas: 4.1, spend: '₹2.9L', share: 23 },
@@ -291,17 +292,6 @@ export default class AnalyticsComponent {
       return Math.max(d.values['ROAS'], d.values['CTR'], d.values['CPA'], d.values['Spend']);
     }));
     return data;
-  }
-
-  getYAxisLabels(): { text: string; pos: number }[] {
-    const max = this.maxChartVal;
-    return [0, 0.25, 0.5, 0.75, 1].map(pct => ({
-      text: this.activeChartTab === 'ROAS' ? `${(max * pct).toFixed(1)}x` :
-            this.activeChartTab === 'CTR' ? `${(max * pct).toFixed(1)}%` :
-            this.activeChartTab === 'CPA' ? `₹${Math.round(max * pct)}` :
-            `₹${Math.round(max * pct)}K`,
-      pos: Math.round(pct * 200),
-    }));
   }
 
   switchBreakdown(tab: string) {

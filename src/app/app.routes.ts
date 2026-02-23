@@ -52,6 +52,7 @@ export const routes: Routes = [
       { path: 'creative-cockpit', loadChildren: () => import('./features/creative-cockpit/creative-cockpit.routes') },
       { path: 'director-lab', loadComponent: () => import('./features/director-lab/director-lab.component') },
       { path: 'ugc-studio', loadComponent: () => import('./features/ugc-studio/ugc-studio.component') },
+      { path: 'ugc-studio/:id', loadComponent: () => import('./features/ugc-studio/project-detail/project-detail.component') },
       { path: 'brain', loadComponent: () => import('./features/brain/brain.component') },
       { path: 'analytics', loadComponent: () => import('./features/analytics/analytics.component') },
       { path: 'ai-studio', loadComponent: () => import('./features/ai-studio/ai-studio.component') },

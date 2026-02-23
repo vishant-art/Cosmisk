@@ -24,18 +24,18 @@ import { LucideAngularModule } from 'lucide-angular';
       animation: confetti-fall 3s ease-in forwards;
       z-index: 50;
     }
-    .confetti-piece:nth-child(1) { left: 10%; background: #E74C3C; animation-delay: 0s; animation-duration: 2.5s; }
+    .confetti-piece:nth-child(1) { left: 10%; background: #6366F1; animation-delay: 0s; animation-duration: 2.5s; }
     .confetti-piece:nth-child(2) { left: 20%; background: #3498DB; animation-delay: 0.2s; animation-duration: 3s; border-radius: 50%; }
     .confetti-piece:nth-child(3) { left: 30%; background: #F39C12; animation-delay: 0.4s; animation-duration: 2.8s; }
     .confetti-piece:nth-child(4) { left: 40%; background: #2ECC71; animation-delay: 0.1s; animation-duration: 3.2s; border-radius: 50%; }
     .confetti-piece:nth-child(5) { left: 50%; background: #9B59B6; animation-delay: 0.3s; animation-duration: 2.6s; }
-    .confetti-piece:nth-child(6) { left: 60%; background: #E74C3C; animation-delay: 0.5s; animation-duration: 3.1s; border-radius: 50%; }
+    .confetti-piece:nth-child(6) { left: 60%; background: #6366F1; animation-delay: 0.5s; animation-duration: 3.1s; border-radius: 50%; }
     .confetti-piece:nth-child(7) { left: 70%; background: #1ABC9C; animation-delay: 0.15s; animation-duration: 2.9s; }
     .confetti-piece:nth-child(8) { left: 80%; background: #F39C12; animation-delay: 0.35s; animation-duration: 2.7s; border-radius: 50%; }
     .confetti-piece:nth-child(9) { left: 90%; background: #3498DB; animation-delay: 0.25s; animation-duration: 3.3s; }
     .confetti-piece:nth-child(10) { left: 15%; background: #2ECC71; animation-delay: 0.45s; animation-duration: 2.4s; border-radius: 50%; }
     .confetti-piece:nth-child(11) { left: 35%; background: #9B59B6; animation-delay: 0.55s; animation-duration: 3s; }
-    .confetti-piece:nth-child(12) { left: 55%; background: #E74C3C; animation-delay: 0.6s; animation-duration: 2.8s; border-radius: 50%; }
+    .confetti-piece:nth-child(12) { left: 55%; background: #6366F1; animation-delay: 0.6s; animation-duration: 2.8s; border-radius: 50%; }
     .confetti-piece:nth-child(13) { left: 75%; background: #F39C12; animation-delay: 0.1s; animation-duration: 3.4s; }
     .confetti-piece:nth-child(14) { left: 85%; background: #1ABC9C; animation-delay: 0.4s; animation-duration: 2.5s; border-radius: 50%; }
     .confetti-piece:nth-child(15) { left: 45%; background: #3498DB; animation-delay: 0.7s; animation-duration: 3.2s; }
@@ -106,7 +106,7 @@ import { LucideAngularModule } from 'lucide-angular';
           <div class="relative w-32 h-32 mx-auto mb-8">
             <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="45" fill="none" stroke="#E5E2DD" stroke-width="6"/>
-              <circle cx="50" cy="50" r="45" fill="none" stroke="#E74C3C" stroke-width="6"
+              <circle cx="50" cy="50" r="45" fill="none" stroke="#6366F1" stroke-width="6"
                 stroke-dasharray="283" [attr.stroke-dashoffset]="283 - (scanProgress() / 100 * 283)"
                 stroke-linecap="round" class="transition-all duration-500"/>
             </svg>

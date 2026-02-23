@@ -6,7 +6,7 @@ module.exports = {
       colors: {
         cream: '#FAF8F5',
         navy: { DEFAULT: '#1A1A2E', hover: '#2A2A3E', light: '#2A2A4E' },
-        accent: { DEFAULT: '#E74C3C', hover: '#C0392B', light: '#FEE2E2' },
+        accent: { DEFAULT: '#6366F1', hover: '#4F46E5', light: '#EEF2FF' },
         border: '#E5E2DD',
         divider: '#F0EDE8',
         'input-bg': '#F5F3F0',
@@ -17,12 +17,12 @@ module.exports = {
           'audio-bg': '#D1FAE5', 'audio-text': '#065F46',
         },
         chart: {
-          1: '#E74C3C', 2: '#3B82F6', 3: '#10B981', 4: '#F59E0B',
+          1: '#6366F1', 2: '#3B82F6', 3: '#10B981', 4: '#F59E0B',
           5: '#8B5CF6', 6: '#EC4899', 7: '#14B8A6', 8: '#F97316',
         },
       },
       fontFamily: {
-        display: ['Playfair Display', 'serif'],
+        display: ['DM Sans', 'sans-serif'],
         body: ['DM Sans', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
@@ -37,8 +37,8 @@ module.exports = {
         modal: '0 25px 50px rgba(0,0,0,0.25)',
         dropdown: '0 4px 16px rgba(0,0,0,0.12)',
         button: '0 1px 2px rgba(0,0,0,0.05)',
-        glow: '0 0 20px rgba(231, 76, 60, 0.15)',
-        'glow-lg': '0 0 40px rgba(231, 76, 60, 0.2)',
+        glow: '0 0 20px rgba(99, 102, 241, 0.15)',
+        'glow-lg': '0 0 40px rgba(99, 102, 241, 0.2)',
       },
       fontSize: {
         'hero': ['56px', { lineHeight: '64px', fontWeight: '700' }],
@@ -66,7 +66,7 @@ module.exports = {
         'shimmer': 'shimmer 2s ease-in-out infinite',
       },
       backgroundImage: {
-        'gradient-primary': 'linear-gradient(135deg, #E74C3C, #C0392B)',
+        'gradient-primary': 'linear-gradient(135deg, #6366F1, #4F46E5)',
         'gradient-sidebar': 'linear-gradient(180deg, #1E1E3F 0%, #141428 100%)',
       },
     },

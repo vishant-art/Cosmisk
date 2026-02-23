@@ -7,6 +7,11 @@ import { LucideAngularModule } from 'lucide-angular';
   selector: 'app-landing',
   standalone: true,
   imports: [CommonModule, RouterLink, LucideAngularModule],
+  styles: [`
+    :host h1, :host h2, :host h3 {
+      font-family: 'Playfair Display', serif !important;
+    }
+  `],
   template: `
     <!-- Hero Section -->
     <section class="relative overflow-hidden bg-gradient-hero py-20 lg:py-32">
