@@ -1,4 +1,3 @@
-const _BUILD_VER = '2026-02-13-v2';
 import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -12,10 +11,6 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
   standalone: true,
   imports: [CommonModule, FormsModule, DnaBadgeComponent, ModalComponent],
   template: `
-    <!-- DEBUG: If you see this red banner, new code IS loading -->
-    <div style="background:red;color:white;padding:16px;font-size:20px;font-weight:bold;text-align:center;border-radius:8px;margin-bottom:16px;">
-      NEW CODE LOADED - BUILD v2 - {{ buildTimestamp }}
-    </div>
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-page-title font-display text-navy m-0">Director Lab</h1>
       <span class="text-xs text-gray-400 font-mono">Briefs generated: 246</span>
@@ -295,7 +290,6 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
 export default class DirectorLabComponent {
   private toast = inject(ToastService);
 
-  buildTimestamp = '2026-02-13 19:15 UTC';
   creatives = DEMO_CREATIVES;
   baseCreativeId = '';
   selectedFormat = 'Video';
