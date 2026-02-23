@@ -4,12 +4,12 @@
 
 :root {
   // Backgrounds
-  --bg-page: #FAF8F5;
+  --bg-page: #F7F8FA;
   --bg-card: #FFFFFF;
-  --bg-sidebar: #1A1A2E;
-  --bg-sidebar-hover: #2A2A3E;
-  --bg-input: #F5F3F0;
-  --bg-code: #F8F7F5;
+  --bg-sidebar: #0C0C14;
+  --bg-sidebar-hover: #1A1A28;
+  --bg-input: #F1F3F7;
+  --bg-code: #F3F4F8;
   --bg-overlay: rgba(0,0,0,0.6);
 
   // Text
@@ -28,9 +28,9 @@
   --info: #3B82F6;
 
   // Borders
-  --border: #E5E2DD;
+  --border: #E3E5EB;
   --border-focus: #6366F1;
-  --divider: #F0EDE8;
+  --divider: #ECEEF3;
 
   // DNA Badge Colors
   --dna-hook-bg: #FEF3C7;
@@ -52,7 +52,7 @@
 
   // Shadows
   --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
-  --shadow-card-hover: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.08);
   --shadow-modal: 0 25px 50px rgba(0,0,0,0.25);
   --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.12);
   --shadow-button: 0 1px 2px rgba(0,0,0,0.05);
@@ -167,12 +167,11 @@ h1, h2, h3, h4, h5, h6 {
   .card {
     @apply bg-white rounded-card p-6;
     box-shadow: var(--shadow-card);
-    transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
-    border: 1px solid transparent;
+    border: 1px solid var(--divider);
+    transition: box-shadow 0.2s, transform 0.2s;
 
     &:hover {
       box-shadow: var(--shadow-card-hover);
-      border-color: var(--divider);
     }
   }
 
@@ -197,7 +196,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   .bg-gradient-sidebar {
-    background: linear-gradient(180deg, #1E1E3F 0%, #141428 100%);
+    background: linear-gradient(180deg, #0F0F1A 0%, #0C0C14 100%);
   }
 
   .bg-gradient-mesh {
@@ -213,8 +212,33 @@ h1, h2, h3, h4, h5, h6 {
       radial-gradient(ellipse at 30% 20%, rgba(99, 102, 241, 0.12) 0%, transparent 50%),
       radial-gradient(ellipse at 70% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
       radial-gradient(ellipse at 50% 50%, rgba(139, 92, 246, 0.06) 0%, transparent 60%),
-      #FAF8F5;
+      #F7F8FA;
     animation: gradient-shift 15s ease-in-out infinite;
+  }
+
+  // Dark section utilities
+  .bg-dark {
+    background: #0C0C14;
+  }
+
+  .bg-dark-mesh {
+    background:
+      radial-gradient(ellipse at 20% 30%, rgba(99, 102, 241, 0.07) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 70%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+      #0C0C14;
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #818CF8, #A78BFA, #818CF8);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: gradient-text 4s ease-in-out infinite;
+  }
+
+  .shadow-glow {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.3), 0 0 40px rgba(99, 102, 241, 0.1);
   }
 
   // Gradient border utility
@@ -244,6 +268,17 @@ h1, h2, h3, h4, h5, h6 {
     justify-content: center;
     vertical-align: middle;
   }
+}
+
+// Scroll animation directive styles
+[appAnimateOnScroll] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+[appAnimateOnScroll].aos-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 // Animations
@@ -299,6 +334,16 @@ h1, h2, h3, h4, h5, h6 {
   50% {
     background-position: 100% 50%;
   }
+}
+
+@keyframes gradient-text {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 @keyframes float {

@@ -11,7 +11,7 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
   standalone: true,
   imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent],
   template: `
-    <div class="min-h-screen bg-cream">
+    <div class="min-h-screen bg-[#F7F8FA]">
       <app-sidebar (collapsedChange)="sidebarCollapsed.set($event)" />
 
       <div class="transition-all duration-300"

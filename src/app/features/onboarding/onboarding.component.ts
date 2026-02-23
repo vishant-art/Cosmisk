@@ -105,7 +105,7 @@ import { LucideAngularModule } from 'lucide-angular';
           <!-- Progress Ring -->
           <div class="relative w-32 h-32 mx-auto mb-8">
             <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" fill="none" stroke="#E5E2DD" stroke-width="6"/>
+              <circle cx="50" cy="50" r="45" fill="none" stroke="#E3E5EB" stroke-width="6"/>
               <circle cx="50" cy="50" r="45" fill="none" stroke="#6366F1" stroke-width="6"
                 stroke-dasharray="283" [attr.stroke-dashoffset]="283 - (scanProgress() / 100 * 283)"
                 stroke-linecap="round" class="transition-all duration-500"/>
@@ -179,7 +179,7 @@ import { LucideAngularModule } from 'lucide-angular';
               <button
                 (click)="selectedGoal.set(goal.id)"
                 class="p-5 rounded-card border-2 text-left transition-all cursor-pointer bg-white"
-                [ngClass]="selectedGoal() === goal.id ? 'border-accent bg-red-50' : 'border-border hover:border-gray-300'">
+                [ngClass]="selectedGoal() === goal.id ? 'border-accent bg-accent/5' : 'border-border hover:border-gray-300'">
                 <lucide-icon [name]="goal.icon" [size]="20" class="text-accent mb-2 block"></lucide-icon>
                 <h3 class="text-sm font-body font-semibold text-navy m-0 mb-1">{{ goal.label }}</h3>
                 <p class="text-xs text-gray-500 font-body m-0">{{ goal.description }}</p>

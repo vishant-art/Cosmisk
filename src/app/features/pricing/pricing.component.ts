@@ -8,7 +8,7 @@ import { LucideAngularModule } from 'lucide-angular';
   standalone: true,
   imports: [CommonModule, RouterLink, LucideAngularModule],
   template: `
-    <section class="py-20 bg-cream">
+    <section class="py-20 bg-[#F7F8FA]">
       <div class="max-w-7xl mx-auto px-6 text-center mb-16">
         <h1 class="text-hero font-display text-navy mb-4">Simple Pricing. Powerful Intelligence.</h1>
         <p class="text-lg text-gray-600 font-body mb-8">Start free, scale as you grow. No hidden fees.</p>

@@ -2,108 +2,118 @@ import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
+import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scroll.directive';
 
 @Component({
   selector: 'app-landing',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule],
+  imports: [CommonModule, RouterLink, LucideAngularModule, AnimateOnScrollDirective],
   styles: [`
     :host h1, :host h2, :host h3 {
       font-family: 'Playfair Display', serif !important;
     }
+    .marquee-track {
+      display: flex;
+      width: max-content;
+      animation: marquee 30s linear infinite;
+    }
+    .marquee-track:hover {
+      animation-play-state: paused;
+    }
   `],
   template: `
-    <!-- Hero Section -->
-    <section class="relative overflow-hidden bg-gradient-hero py-20 lg:py-32">
-      <div class="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 items-center">
+    <!-- Hero Section (Dark) -->
+    <section class="relative overflow-hidden bg-dark-mesh py-24 lg:py-36 -mt-[72px] pt-[calc(6rem+72px)] lg:pt-[calc(9rem+72px)]">
+      <div class="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16 items-center">
         <div>
-          <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-accent/10 rounded-pill text-accent text-sm font-body font-semibold mb-6">
+          <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/[0.06] border border-white/[0.1] rounded-pill text-indigo-300 text-sm font-body font-semibold mb-6">
             <lucide-icon name="zap" [size]="14"></lucide-icon> THE ANTI-DASHBOARD
           </div>
-          <h1 class="text-hero font-display text-navy mb-6">
+          <h1 class="text-hero font-display text-white mb-6">
             The AI Creative Strategist That Knows
-            <span class="text-accent relative">Why Your Ads Work
-              <span class="absolute bottom-1 left-0 w-full h-1 bg-accent/30 rounded"></span>
-            </span>
+            <span class="text-gradient">Why Your Ads Work</span>
           </h1>
-          <p class="text-lg text-gray-600 font-body mb-8 max-w-lg leading-relaxed">
+          <p class="text-lg text-gray-400 font-body mb-8 max-w-lg leading-relaxed">
             Cosmisk decodes your Creative DNA, powers your entire UGC pipeline, and manages multiple brands from one cockpit
             -- so you stop guessing and start scaling what actually converts.
           </p>
           <div class="flex flex-wrap gap-4 mb-8">
-            <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline">Start Free Trial</a>
-            <button class="btn-outline !py-3.5 !px-8 !text-base">Watch Demo</button>
+            <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline hover:shadow-glow transition-shadow">Start Free Trial</a>
+            <button class="btn !py-3.5 !px-8 !text-base bg-white/[0.06] border border-white/[0.15] text-white hover:bg-white/[0.1] transition-all">Watch Demo</button>
           </div>
           <p class="text-sm text-gray-500 font-body">
-            Trusted by <strong class="text-navy">500+</strong> e-commerce brands &nbsp;&middot;&nbsp; &#8377;250Cr+ ad spend analyzed
+            Trusted by <strong class="text-white">500+</strong> e-commerce brands &nbsp;&middot;&nbsp; &#8377;250Cr+ ad spend analyzed
           </p>
         </div>
 
-        <!-- Mockup -->
+        <!-- Mockup (glass) -->
         <div class="relative">
-          <div class="bg-white rounded-2xl shadow-card-hover p-4 transform lg:rotate-1 lg:translate-x-4">
-            <div class="bg-cream rounded-xl p-6 space-y-4">
+          <div class="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 backdrop-blur-sm transform lg:rotate-1 lg:translate-x-4">
+            <div class="bg-white/[0.04] rounded-xl p-6 space-y-4">
               <div class="flex gap-3">
-                <div class="flex-1 bg-white rounded-card p-4 shadow-card">
+                <div class="flex-1 bg-white/[0.06] rounded-card p-4 border border-white/[0.08]">
                   <p class="text-xs text-gray-500 font-body m-0">ROAS</p>
-                  <p class="text-2xl font-mono font-bold text-green-600 m-0">4.8x</p>
+                  <p class="text-2xl font-mono font-bold text-green-400 m-0">4.8x</p>
                 </div>
-                <div class="flex-1 bg-white rounded-card p-4 shadow-card">
+                <div class="flex-1 bg-white/[0.06] rounded-card p-4 border border-white/[0.08]">
                   <p class="text-xs text-gray-500 font-body m-0">Spend</p>
-                  <p class="text-2xl font-mono font-bold text-navy m-0">&#8377;3.2L</p>
+                  <p class="text-2xl font-mono font-bold text-white m-0">&#8377;3.2L</p>
                 </div>
               </div>
-              <div class="bg-white rounded-card p-4 shadow-card">
+              <div class="bg-white/[0.06] rounded-card p-4 border border-white/[0.08]">
                 <p class="text-xs text-gray-500 font-body m-0 mb-2">Creative DNA</p>
                 <div class="flex flex-wrap gap-1.5">
-                  <span class="px-2.5 py-1 bg-dna-hook-bg text-dna-hook-text text-xs rounded-pill font-medium">Shock Statement</span>
-                  <span class="px-2.5 py-1 bg-dna-visual-bg text-dna-visual-text text-xs rounded-pill font-medium">Macro Texture</span>
-                  <span class="px-2.5 py-1 bg-dna-visual-bg text-dna-visual-text text-xs rounded-pill font-medium">Warm Palette</span>
-                  <span class="px-2.5 py-1 bg-dna-audio-bg text-dna-audio-text text-xs rounded-pill font-medium">Hindi VO</span>
+                  <span class="px-2.5 py-1 bg-amber-500/20 text-amber-300 text-xs rounded-pill font-medium">Shock Statement</span>
+                  <span class="px-2.5 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-pill font-medium">Macro Texture</span>
+                  <span class="px-2.5 py-1 bg-blue-500/20 text-blue-300 text-xs rounded-pill font-medium">Warm Palette</span>
+                  <span class="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 text-xs rounded-pill font-medium">Hindi VO</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Floating DNA Badges -->
-          <div class="absolute -top-4 -left-4 bg-white rounded-xl shadow-card px-3 py-2 flex items-center gap-2 animate-float stagger-1">
-            <div class="w-8 h-8 rounded-full bg-dna-hook-bg flex items-center justify-center">
-              <lucide-icon name="zap" [size]="16" class="text-dna-hook-text"></lucide-icon>
+          <!-- Floating DNA Badges (glass-dark) -->
+          <div class="absolute -top-4 -left-4 bg-white/[0.08] border border-white/[0.1] rounded-xl backdrop-blur-sm px-3 py-2 flex items-center gap-2 animate-float stagger-1">
+            <div class="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+              <lucide-icon name="zap" [size]="16" class="text-amber-300"></lucide-icon>
             </div>
-            <span class="text-xs font-body font-semibold text-navy">Hook DNA</span>
+            <span class="text-xs font-body font-semibold text-white">Hook DNA</span>
           </div>
-          <div class="absolute -bottom-2 -left-6 bg-white rounded-xl shadow-card px-3 py-2 flex items-center gap-2 animate-float stagger-2">
-            <div class="w-8 h-8 rounded-full bg-dna-visual-bg flex items-center justify-center">
-              <lucide-icon name="eye" [size]="16" class="text-dna-visual-text"></lucide-icon>
+          <div class="absolute -bottom-2 -left-6 bg-white/[0.08] border border-white/[0.1] rounded-xl backdrop-blur-sm px-3 py-2 flex items-center gap-2 animate-float stagger-2">
+            <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+              <lucide-icon name="eye" [size]="16" class="text-blue-300"></lucide-icon>
             </div>
-            <span class="text-xs font-body font-semibold text-navy">Visual DNA</span>
+            <span class="text-xs font-body font-semibold text-white">Visual DNA</span>
           </div>
-          <div class="absolute -bottom-4 -right-2 bg-white rounded-xl shadow-card px-3 py-2 flex items-center gap-2 animate-float stagger-3">
-            <div class="w-8 h-8 rounded-full bg-dna-audio-bg flex items-center justify-center">
-              <lucide-icon name="music" [size]="16" class="text-dna-audio-text"></lucide-icon>
+          <div class="absolute -bottom-4 -right-2 bg-white/[0.08] border border-white/[0.1] rounded-xl backdrop-blur-sm px-3 py-2 flex items-center gap-2 animate-float stagger-3">
+            <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <lucide-icon name="music" [size]="16" class="text-emerald-300"></lucide-icon>
             </div>
-            <span class="text-xs font-body font-semibold text-navy">Audio DNA</span>
+            <span class="text-xs font-body font-semibold text-white">Audio DNA</span>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Social Proof Bar -->
-    <section class="bg-navy py-10">
-      <div class="max-w-7xl mx-auto px-6 grid grid-cols-2 lg:grid-cols-4 gap-8 text-center">
-        @for (stat of stats; track stat.label) {
-          <div>
-            <p class="text-3xl lg:text-4xl font-mono font-bold text-white m-0 mb-1">{{ stat.value }}</p>
-            <p class="text-sm text-gray-400 font-body m-0">{{ stat.label }}</p>
+    <!-- Marquee Stats Bar -->
+    <section class="bg-dark py-8 border-t border-white/[0.04] overflow-hidden">
+      <div class="marquee-track">
+        @for (stat of marqueeStats; track $index) {
+          <div class="flex items-center gap-8 px-8">
+            <div class="text-center min-w-[140px]">
+              <p class="text-2xl font-mono font-bold text-white m-0 mb-0.5">{{ stat.value }}</p>
+              <p class="text-sm text-gray-500 font-body m-0">{{ stat.label }}</p>
+            </div>
+            <span class="w-1 h-1 rounded-full bg-gray-600"></span>
           </div>
         }
       </div>
     </section>
 
     <!-- Problem -> Solution -->
-    <section class="py-20 bg-cream">
+    <section class="py-20 bg-[#F7F8FA]">
       <div class="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16">
-        <div class="p-8 bg-gray-100 rounded-2xl border border-gray-200">
+        <div appAnimateOnScroll class="p-8 bg-gray-100 rounded-2xl border border-gray-200">
           <div class="text-red-500 text-sm font-mono font-bold mb-4">THE PROBLEM</div>
           <h2 class="text-page-title font-display text-navy mb-4">Dashboards show numbers. Not answers.</h2>
           <p class="text-gray-600 font-body leading-relaxed">
@@ -126,7 +136,7 @@ import { LucideAngularModule } from 'lucide-angular';
           </div>
         </div>
 
-        <div class="p-8 bg-white rounded-2xl border border-accent/20 shadow-card">
+        <div appAnimateOnScroll [aosDelay]="150" class="p-8 bg-white rounded-2xl border border-accent/20 shadow-card">
           <div class="text-accent text-sm font-mono font-bold mb-4">THE COSMISK WAY</div>
           <h2 class="text-page-title font-display text-navy mb-4">Extract Creative DNA. Know exactly why.</h2>
           <p class="text-gray-600 font-body leading-relaxed">
@@ -153,14 +163,14 @@ import { LucideAngularModule } from 'lucide-angular';
 
     <!-- How It Works -->
     <section class="py-20 bg-white">
-      <div class="max-w-7xl mx-auto px-6 text-center mb-16">
+      <div appAnimateOnScroll class="max-w-7xl mx-auto px-6 text-center mb-16">
         <h2 class="text-page-title font-display text-navy mb-4">How It Works</h2>
         <p class="text-lg text-gray-600 font-body">Three steps to creative intelligence</p>
       </div>
       <div class="max-w-4xl mx-auto px-6">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4">
           <!-- Step 1 -->
-          <div class="flex flex-col items-center text-center flex-1">
+          <div appAnimateOnScroll class="flex flex-col items-center text-center flex-1">
             <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
               <lucide-icon name="zap" [size]="28" class="text-accent"></lucide-icon>
             </div>
@@ -172,7 +182,7 @@ import { LucideAngularModule } from 'lucide-angular';
           <div class="hidden md:block flex-1 max-w-[80px] border-t-2 border-dashed border-gray-300 mt-[-24px]"></div>
 
           <!-- Step 2 -->
-          <div class="flex flex-col items-center text-center flex-1">
+          <div appAnimateOnScroll [aosDelay]="150" class="flex flex-col items-center text-center flex-1">
             <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
               <lucide-icon name="brain" [size]="28" class="text-accent"></lucide-icon>
             </div>
@@ -184,7 +194,7 @@ import { LucideAngularModule } from 'lucide-angular';
           <div class="hidden md:block flex-1 max-w-[80px] border-t-2 border-dashed border-gray-300 mt-[-24px]"></div>
 
           <!-- Step 3 -->
-          <div class="flex flex-col items-center text-center flex-1">
+          <div appAnimateOnScroll [aosDelay]="300" class="flex flex-col items-center text-center flex-1">
             <div class="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
               <lucide-icon name="sparkles" [size]="28" class="text-accent"></lucide-icon>
             </div>
@@ -196,8 +206,8 @@ import { LucideAngularModule } from 'lucide-angular';
     </section>
 
     <!-- Creative DNA Explanation -->
-    <section class="py-20 bg-cream">
-      <div class="max-w-7xl mx-auto px-6 text-center mb-16">
+    <section class="py-20 bg-[#F7F8FA]">
+      <div appAnimateOnScroll class="max-w-7xl mx-auto px-6 text-center mb-16">
         <h2 class="text-page-title font-display text-navy mb-4">Every Ad Has a DNA</h2>
         <p class="text-lg text-gray-600 font-body max-w-2xl mx-auto">
           Cosmisk breaks down each creative into three core DNA strands that determine its performance.
@@ -205,8 +215,8 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
 
       <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-8">
-        @for (dna of dnaCards; track dna.title) {
-          <div class="card !p-8 text-center hover:-translate-y-1 transition-transform">
+        @for (dna of dnaCards; track dna.title; let i = $index) {
+          <div appAnimateOnScroll [aosDelay]="i * 100" class="card !p-8 text-center hover:-translate-y-1 transition-transform">
             <div class="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center" [ngClass]="dna.bgClass">
               <lucide-icon [name]="dna.iconName" [size]="28" [ngClass]="dna.iconClass"></lucide-icon>
             </div>
@@ -225,7 +235,7 @@ import { LucideAngularModule } from 'lucide-angular';
     <!-- Feature Showcase -->
     <section class="py-20 bg-white">
       <div class="max-w-7xl mx-auto px-6">
-        <div class="text-center mb-16">
+        <div appAnimateOnScroll class="text-center mb-16">
           <h2 class="text-page-title font-display text-navy mb-4">Powerful Features, Simple Experience</h2>
           <p class="text-lg text-gray-600 font-body max-w-2xl mx-auto">
             From analysis to creation to publishing -- everything your creative team needs.
@@ -233,7 +243,7 @@ import { LucideAngularModule } from 'lucide-angular';
         </div>
 
         <!-- Tabs -->
-        <div class="flex justify-center gap-2 mb-12 flex-wrap">
+        <div appAnimateOnScroll class="flex justify-center gap-2 mb-12 flex-wrap">
           @for (tab of featureTabs; track tab.id; let i = $index) {
             <button
               (click)="activeTab = i"
@@ -258,8 +268,8 @@ import { LucideAngularModule } from 'lucide-angular';
               }
             </ul>
           </div>
-          <div class="bg-white rounded-2xl p-8 shadow-card">
-            <div class="aspect-video bg-cream rounded-xl p-4 space-y-3">
+          <div class="bg-white rounded-2xl p-8 shadow-card border border-divider">
+            <div class="aspect-video bg-[#F7F8FA] rounded-xl p-4 space-y-3">
               <div class="flex gap-2">
                 <div class="flex-1 h-8 bg-white rounded-lg shadow-sm"></div>
                 <div class="flex-1 h-8 bg-white rounded-lg shadow-sm"></div>
@@ -276,14 +286,14 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
     </section>
 
-    <!-- Pricing Preview -->
-    <section class="py-20 bg-navy">
-      <div class="max-w-7xl mx-auto px-6 text-center mb-12">
+    <!-- Pricing Preview (Dark) -->
+    <section class="py-20 bg-dark-mesh">
+      <div appAnimateOnScroll class="max-w-7xl mx-auto px-6 text-center mb-12">
         <h2 class="text-page-title font-display text-white mb-4">Simple Pricing. Powerful Intelligence.</h2>
         <p class="text-lg text-gray-400 font-body mb-8">Start free, scale as you grow.</p>
 
         <!-- Annual/Monthly Toggle -->
-        <div class="inline-flex items-center gap-3 bg-white/10 rounded-pill px-2 py-1.5">
+        <div class="inline-flex items-center gap-3 bg-white/[0.06] rounded-pill px-2 py-1.5 border border-white/[0.08]">
           <button
             (click)="annual.set(false)"
             class="px-4 py-1.5 rounded-pill text-sm font-body font-medium border-0 cursor-pointer transition-all"
@@ -301,10 +311,11 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
 
       <div class="max-w-5xl mx-auto px-6 grid md:grid-cols-3 gap-6">
-        @for (plan of plans; track plan.name) {
+        @for (plan of plans; track plan.name; let i = $index) {
           <div
+            appAnimateOnScroll [aosDelay]="i * 100"
             class="rounded-2xl p-8 transition-transform hover:-translate-y-1"
-            [ngClass]="plan.featured ? 'bg-white text-navy ring-2 ring-accent' : 'bg-white/5 text-white border border-white/10'">
+            [ngClass]="plan.featured ? 'bg-white text-navy ring-2 ring-accent shadow-glow' : 'bg-white/[0.03] text-white border border-white/[0.08]'">
             @if (plan.featured) {
               <div class="text-center mb-2">
                 <span class="px-3 py-1 bg-accent/10 text-accent text-xs font-bold rounded-pill">MOST POPULAR</span>
@@ -330,8 +341,8 @@ import { LucideAngularModule } from 'lucide-angular';
             </ul>
             <a
               [routerLink]="'/signup'"
-              class="block text-center py-3 rounded-lg font-body font-semibold text-sm transition-colors no-underline"
-              [ngClass]="plan.featured ? 'bg-accent text-white hover:bg-accent-hover' : 'bg-white/10 text-white hover:bg-white/20'">
+              class="block text-center py-3 rounded-lg font-body font-semibold text-sm transition-all no-underline"
+              [ngClass]="plan.featured ? 'bg-accent text-white hover:bg-accent-hover hover:shadow-glow' : 'bg-white/[0.06] text-white border border-white/[0.15] hover:bg-white/[0.1]'">
               Start Free Trial
             </a>
           </div>
@@ -340,15 +351,15 @@ import { LucideAngularModule } from 'lucide-angular';
     </section>
 
     <!-- Testimonials -->
-    <section class="py-20 bg-cream">
+    <section class="py-20 bg-[#F7F8FA]">
       <div class="max-w-7xl mx-auto px-6">
-        <div class="text-center mb-16">
+        <div appAnimateOnScroll class="text-center mb-16">
           <h2 class="text-page-title font-display text-navy mb-4">Loved by Performance Marketers</h2>
         </div>
 
         <div class="grid md:grid-cols-3 gap-8">
-          @for (t of testimonials; track t.name) {
-            <div class="card !p-8">
+          @for (t of testimonials; track t.name; let i = $index) {
+            <div appAnimateOnScroll [aosDelay]="i * 100" class="card !p-8">
               <p class="text-gray-600 font-body text-sm italic mb-6 leading-relaxed">"{{ t.quote }}"</p>
               <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-sm">
@@ -370,13 +381,13 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
     </section>
 
-    <!-- Final CTA -->
-    <section class="py-24 bg-white text-center">
-      <div class="max-w-3xl mx-auto px-6">
-        <h2 class="text-page-title lg:text-hero font-display text-navy mb-6">
-          Your Ads Have a DNA.<br>Let's Decode It.
+    <!-- Final CTA (Dark) -->
+    <section class="py-24 bg-dark-mesh text-center">
+      <div appAnimateOnScroll class="max-w-3xl mx-auto px-6">
+        <h2 class="text-page-title lg:text-hero font-display text-white mb-6">
+          Your Ads Have a DNA.<br><span class="text-gradient">Let's Decode It.</span>
         </h2>
-        <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline">Start Free Trial</a>
+        <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline hover:shadow-glow transition-shadow">Start Free Trial</a>
         <p class="text-sm text-gray-500 font-body mt-4">No credit card &middot; 14-day free trial &middot; Cancel anytime</p>
       </div>
     </section>
@@ -392,6 +403,9 @@ export default class LandingComponent {
     { value: '500+', label: 'Brands Trust Cosmisk' },
     { value: '<20min', label: 'Data to Creative Brief' },
   ];
+
+  // Duplicated for seamless marquee loop
+  marqueeStats = [...this.stats, ...this.stats];
 
   dnaCards = [
     {

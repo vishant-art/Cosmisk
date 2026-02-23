@@ -31,7 +31,7 @@ interface NavGroup {
       <!-- Logo -->
       <div class="flex items-center h-16 px-4 shrink-0" [class.justify-center]="collapsed()">
         <a routerLink="/app/dashboard" class="flex items-center gap-2.5 no-underline">
-          <div class="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+          <div class="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center" style="filter: drop-shadow(0 0 8px rgba(99,102,241,0.4))">
             <lucide-icon name="sparkles" [size]="16" class="text-accent"></lucide-icon>
           </div>
           @if (!collapsed()) {
@@ -88,8 +88,8 @@ interface NavGroup {
       </nav>
 
       <!-- Bottom: Settings + Collapse -->
-      <div class="px-2 pb-4 mt-auto space-y-1 shrink-0">
-        <div class="mx-3 mb-2 h-px bg-white/[0.06]"></div>
+      <div class="px-2 pb-4 mt-auto space-y-1 shrink-0 border-t border-white/[0.06] pt-2">
+        <div class="mx-3 mb-2"></div>
         <a
           routerLink="/app/settings"
           routerLinkActive="sidebar-active"
@@ -130,7 +130,7 @@ interface NavGroup {
     :host { display: block; }
 
     .sidebar-shell {
-      background: linear-gradient(180deg, #1E1E3F 0%, #141428 100%);
+      background: linear-gradient(180deg, #0F0F1A 0%, #0C0C14 100%);
     }
 
     .sidebar-nav::-webkit-scrollbar {
@@ -143,7 +143,7 @@ interface NavGroup {
 
     .sidebar-active {
       color: white !important;
-      background: rgba(231, 76, 60, 0.1) !important;
+      background: rgba(255, 255, 255, 0.08) !important;
       border-left: 3px solid var(--accent);
     }
     .sidebar-active .sidebar-icon {

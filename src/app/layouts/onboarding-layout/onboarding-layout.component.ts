@@ -7,7 +7,7 @@ import { RouterOutlet } from '@angular/router';
   standalone: true,
   imports: [CommonModule, RouterOutlet],
   template: `
-    <div class="min-h-screen bg-cream flex flex-col">
+    <div class="min-h-screen bg-[#F7F8FA] flex flex-col">
       <!-- Logo -->
       <div class="py-6 px-8">
         <span class="text-accent font-display font-bold text-2xl">COSMISK</span>

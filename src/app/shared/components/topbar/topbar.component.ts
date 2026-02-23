@@ -15,7 +15,7 @@ import { LucideAngularModule } from 'lucide-angular';
     LucideAngularModule
   ],
   template: `
-    <header class="sticky top-0 z-20 h-16 bg-white/80 backdrop-blur-md border-b border-divider flex items-center justify-between px-8">
+    <header class="sticky top-0 z-20 h-16 bg-white/80 backdrop-blur-xl border-b border-divider flex items-center justify-between px-8">
       <!-- Left: Title + Breadcrumb -->
       <div class="flex items-center gap-3">
         <button class="lg:hidden p-2 hover:bg-gray-100 rounded-lg border-0 bg-transparent cursor-pointer" (click)="onMenuToggle()">

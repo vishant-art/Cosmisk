@@ -85,7 +85,7 @@ export class AreaChartComponent implements AfterViewInit, OnChanges, OnDestroy {
             border: { display: false }
           },
           y: {
-            grid: { color: '#F0EDE8' },
+            grid: { color: '#ECEEF3' },
             ticks: { color: '#9CA3AF', font: { family: 'JetBrains Mono', size: 10 } },
             border: { display: false }
           }

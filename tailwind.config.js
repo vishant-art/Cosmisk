@@ -4,13 +4,14 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        cream: '#FAF8F5',
+        cream: '#F7F8FA',
+        dark: '#0C0C14',
         navy: { DEFAULT: '#1A1A2E', hover: '#2A2A3E', light: '#2A2A4E' },
         accent: { DEFAULT: '#6366F1', hover: '#4F46E5', light: '#EEF2FF' },
-        border: '#E5E2DD',
-        divider: '#F0EDE8',
-        'input-bg': '#F5F3F0',
-        'code-bg': '#F8F7F5',
+        border: '#E3E5EB',
+        divider: '#ECEEF3',
+        'input-bg': '#F1F3F7',
+        'code-bg': '#F3F4F8',
         dna: {
           'hook-bg': '#FEF3C7', 'hook-text': '#92400E',
           'visual-bg': '#DBEAFE', 'visual-text': '#1E40AF',
@@ -22,6 +23,7 @@ module.exports = {
         },
       },
       fontFamily: {
+        serif: ['Playfair Display', 'serif'],
         display: ['DM Sans', 'sans-serif'],
         body: ['DM Sans', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
@@ -33,7 +35,7 @@ module.exports = {
       },
       boxShadow: {
         card: '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
-        'card-hover': '0 4px 12px rgba(0,0,0,0.08)',
+        'card-hover': '0 8px 24px rgba(0,0,0,0.08)',
         modal: '0 25px 50px rgba(0,0,0,0.25)',
         dropdown: '0 4px 16px rgba(0,0,0,0.12)',
         button: '0 1px 2px rgba(0,0,0,0.05)',
@@ -67,7 +69,7 @@ module.exports = {
       },
       backgroundImage: {
         'gradient-primary': 'linear-gradient(135deg, #6366F1, #4F46E5)',
-        'gradient-sidebar': 'linear-gradient(180deg, #1E1E3F 0%, #141428 100%)',
+        'gradient-sidebar': 'linear-gradient(180deg, #0F0F1A 0%, #0C0C14 100%)',
       },
     },
   },

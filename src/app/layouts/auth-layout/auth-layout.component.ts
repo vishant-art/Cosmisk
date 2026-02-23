@@ -8,30 +8,37 @@ import { LucideAngularModule } from 'lucide-angular';
   standalone: true,
   imports: [CommonModule, RouterOutlet, RouterLink, LucideAngularModule],
   styles: [`
-    @keyframes gradient-shift {
+    @keyframes auth-mesh {
       0%, 100% { background-position: 0% 50%; }
       50% { background-position: 100% 50%; }
+    }
+    .auth-left {
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(99, 102, 241, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 70%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+        #0C0C14;
     }
   `],
   template: `
     <div class="min-h-screen flex">
       <!-- Left Panel (desktop only) -->
-      <div class="hidden lg:flex lg:w-1/2 bg-navy relative overflow-hidden flex-col items-center justify-center p-12"
-        style="background: linear-gradient(135deg, #1A1A2E 0%, #2A1A3E 50%, #1A1A2E 100%); background-size: 200% 200%; animation: gradient-shift 15s ease-in-out infinite;">
-        <!-- Subtle pattern overlay -->
-        <div class="absolute inset-0 opacity-[0.03]"
+      <div class="hidden lg:flex lg:w-1/2 auth-left relative overflow-hidden flex-col items-center justify-center p-12">
+        <!-- Subtle dot pattern -->
+        <div class="absolute inset-0 opacity-[0.02]"
           style="background-image: radial-gradient(circle at 25% 25%, white 1px, transparent 1px), radial-gradient(circle at 75% 75%, white 1px, transparent 1px); background-size: 50px 50px;">
         </div>
 
         <div class="relative z-10 text-center max-w-md">
-          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-accent/20 flex items-center justify-center"><lucide-icon name="sparkles" [size]="24" class="text-accent"></lucide-icon></div>
+          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-accent/20 flex items-center justify-center" style="filter: drop-shadow(0 0 8px rgba(99,102,241,0.4))">
+            <lucide-icon name="sparkles" [size]="24" class="text-accent"></lucide-icon>
+          </div>
           <a routerLink="/" class="no-underline">
             <h1 class="text-white font-display font-bold text-4xl mb-3">COSMISK</h1>
           </a>
           <p class="text-gray-400 font-body text-lg mb-12">AI-Powered Creative Intelligence</p>
 
-          <!-- Testimonial -->
-          <div class="bg-white/5 rounded-card p-6 border border-white/10">
+          <!-- Testimonial (glass) -->
+          <div class="bg-white/[0.04] rounded-card p-6 border border-white/[0.08] backdrop-blur-sm">
             <p class="text-white/90 font-body text-sm italic mb-4 leading-relaxed">
               "{{ testimonials[activeTestimonial()].quote }}"
             </p>
@@ -59,7 +66,7 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
 
       <!-- Right Panel (form) -->
-      <div class="flex-1 flex items-center justify-center p-6 bg-cream">
+      <div class="flex-1 flex items-center justify-center p-6 bg-[#F7F8FA]">
         <div class="w-full max-w-md">
           <router-outlet />
         </div>
