@@ -3,10 +3,10 @@ export interface Brand {
   name: string;
   category: string;
   logoUrl?: string;
-  monthlySpend: number;
-  roas: number;
-  alertCount: number;
+  monthlySpend?: number;
+  roas?: number;
+  alertCount?: number;
   status: 'active' | 'warning' | 'paused';
-  activeCampaigns: number;
-  activeCreatives: number;
+  activeCampaigns?: number;
+  activeCreatives?: number;
 }

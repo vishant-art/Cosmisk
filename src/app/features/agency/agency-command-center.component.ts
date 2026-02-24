@@ -95,7 +95,7 @@ import { BrandService } from '../../core/services/brand.service';
                   }">
                   {{ brand.status }}
                 </span>
-                @if (brand.alertCount > 0) {
+                @if (brand.alertCount && brand.alertCount > 0) {
                   <span class="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
                     {{ brand.alertCount }}
                   </span>
@@ -107,17 +107,17 @@ import { BrandService } from '../../core/services/brand.service';
             <div class="grid grid-cols-3 gap-3 mb-3">
               <div>
                 <span class="text-[10px] text-gray-500 font-body block">Monthly Spend</span>
-                <span class="text-sm font-body font-semibold text-navy">{{ formatCurrency(brand.monthlySpend) }}</span>
+                <span class="text-sm font-body font-semibold text-navy">{{ formatCurrency(brand.monthlySpend ?? 0) }}</span>
               </div>
               <div>
                 <span class="text-[10px] text-gray-500 font-body block">ROAS</span>
-                <span class="text-sm font-body font-semibold" [ngClass]="brand.roas >= 3 ? 'text-green-600' : brand.roas >= 2 ? 'text-amber-600' : 'text-red-600'">
-                  {{ brand.roas }}x
+                <span class="text-sm font-body font-semibold" [ngClass]="(brand.roas ?? 0) >= 3 ? 'text-green-600' : (brand.roas ?? 0) >= 2 ? 'text-amber-600' : 'text-red-600'">
+                  {{ brand.roas ?? 0 }}x
                 </span>
               </div>
               <div>
                 <span class="text-[10px] text-gray-500 font-body block">Campaigns</span>
-                <span class="text-sm font-body font-semibold text-navy">{{ brand.activeCampaigns }}</span>
+                <span class="text-sm font-body font-semibold text-navy">{{ brand.activeCampaigns ?? 0 }}</span>
               </div>
             </div>
 
@@ -125,15 +125,15 @@ import { BrandService } from '../../core/services/brand.service';
             <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
               <div class="h-full rounded-full transition-all"
                 [ngClass]="{
-                  'bg-green-500': brand.roas >= 3,
-                  'bg-amber-500': brand.roas >= 2 && brand.roas < 3,
-                  'bg-red-500': brand.roas < 2
+                  'bg-green-500': (brand.roas ?? 0) >= 3,
+                  'bg-amber-500': (brand.roas ?? 0) >= 2 && (brand.roas ?? 0) < 3,
+                  'bg-red-500': (brand.roas ?? 0) < 2
                 }"
-                [style.width.%]="(brand.roas / 5) * 100"></div>
+                [style.width.%]="((brand.roas ?? 0) / 5) * 100"></div>
             </div>
 
             <div class="flex items-center justify-between">
-              <span class="text-xs text-gray-400 font-body">{{ brand.activeCreatives }} creatives</span>
+              <span class="text-xs text-gray-400 font-body">{{ brand.activeCreatives ?? 0 }} creatives</span>
               <span class="text-xs text-accent font-body font-semibold hover:underline">
                 Open Dashboard <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon>
               </span>
@@ -170,13 +170,13 @@ export default class AgencyCommandCenterComponent {
   brands = this.brandService.allBrands;
 
   totalBrands = computed(() => this.brands().length);
-  totalSpend = computed(() => this.brands().reduce((sum, b) => sum + b.monthlySpend, 0));
+  totalSpend = computed(() => this.brands().reduce((sum, b) => sum + (b.monthlySpend ?? 0), 0));
   avgRoas = computed(() => {
     const brands = this.brands();
-    return brands.reduce((sum, b) => sum + b.roas, 0) / brands.length;
+    return brands.reduce((sum, b) => sum + (b.roas ?? 0), 0) / brands.length;
   });
-  totalCampaigns = computed(() => this.brands().reduce((sum, b) => sum + b.activeCampaigns, 0));
-  totalAlerts = computed(() => this.brands().reduce((sum, b) => sum + b.alertCount, 0));
+  totalCampaigns = computed(() => this.brands().reduce((sum, b) => sum + (b.activeCampaigns ?? 0), 0));
+  totalAlerts = computed(() => this.brands().reduce((sum, b) => sum + (b.alertCount ?? 0), 0));
 
   teamMembers = [
     { name: 'Arjun M.', role: 'Owner', color: '#6366f1' },

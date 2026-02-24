@@ -39,12 +39,14 @@ import { LucideAngularModule } from 'lucide-angular';
                   {{ brand.name.charAt(0) }}
                 </span>
                 <span class="flex-1 text-left truncate">{{ brand.name }}</span>
-                <span
-                  class="text-xs font-mono px-1.5 py-0.5 rounded"
-                  [class]="getRoasClass(brand.roas)">
-                  {{ brand.roas }}x
-                </span>
-                @if (brand.alertCount > 0) {
+                @if (brand.roas != null) {
+                  <span
+                    class="text-xs font-mono px-1.5 py-0.5 rounded"
+                    [class]="getRoasClass(brand.roas)">
+                    {{ brand.roas }}x
+                  </span>
+                }
+                @if (brand.alertCount && brand.alertCount > 0) {
                   <span class="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center">
                     {{ brand.alertCount }}
                   </span>
@@ -88,9 +90,9 @@ export class BrandSwitcherComponent {
     this.searchTerm.set('');
   }
 
-  getRoasClass(roas: number): string {
-    if (roas >= 3) return 'bg-green-900/30 text-green-400';
-    if (roas >= 2) return 'bg-yellow-900/30 text-yellow-400';
+  getRoasClass(roas: number | undefined): string {
+    if (roas != null && roas >= 3) return 'bg-green-900/30 text-green-400';
+    if (roas != null && roas >= 2) return 'bg-yellow-900/30 text-yellow-400';
     return 'bg-red-900/30 text-red-400';
   }
 }
