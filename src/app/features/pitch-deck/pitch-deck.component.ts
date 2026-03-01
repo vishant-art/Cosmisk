@@ -1,11 +1,12 @@
 import { Component } from '@angular/core';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { PITCH_DECK_HTML } from './pitch-deck-content';
 
 @Component({
   selector: 'app-pitch-deck',
   standalone: true,
   template: `
-    <iframe [src]="deckUrl" class="pitch-frame"></iframe>
+    <iframe [srcdoc]="deckHtml" class="pitch-frame"></iframe>
   `,
   styles: [`
     :host {
@@ -22,9 +23,9 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
   `]
 })
 export default class PitchDeckComponent {
-  deckUrl: SafeResourceUrl;
+  deckHtml: SafeHtml;
 
   constructor(private sanitizer: DomSanitizer) {
-    this.deckUrl = this.sanitizer.bypassSecurityTrustResourceUrl('/assets/pitch-deck.html');
+    this.deckHtml = this.sanitizer.bypassSecurityTrustHtml(PITCH_DECK_HTML);
   }
 }
