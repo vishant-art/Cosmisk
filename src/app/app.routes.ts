@@ -7,6 +7,18 @@ import { authGuard } from './core/guards/auth.guard';
 import { onboardingGuard } from './core/guards/onboarding.guard';
 
 export const routes: Routes = [
+  // Pitch deck (standalone, full-screen — must be before empty-path routes)
+  {
+    path: 'pitch-deck',
+    loadComponent: () => import('./features/pitch-deck/pitch-deck.component'),
+  },
+
+  // Forgot password (standalone layout, not split screen)
+  {
+    path: 'forgot-password',
+    loadComponent: () => import('./features/auth/forgot-password/forgot-password.component'),
+  },
+
   // Public pages (no auth required)
   {
     path: '',
@@ -25,18 +37,6 @@ export const routes: Routes = [
       { path: 'login', loadComponent: () => import('./features/auth/login/login.component') },
       { path: 'signup', loadComponent: () => import('./features/auth/signup/signup.component') },
     ]
-  },
-
-  // Forgot password (standalone layout, not split screen)
-  {
-    path: 'forgot-password',
-    loadComponent: () => import('./features/auth/forgot-password/forgot-password.component'),
-  },
-
-  // Pitch deck (standalone, full-screen)
-  {
-    path: 'pitch-deck',
-    loadComponent: () => import('./features/pitch-deck/pitch-deck.component'),
   },
 
   // Onboarding (auth required)
