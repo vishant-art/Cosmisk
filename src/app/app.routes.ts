@@ -33,6 +33,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/forgot-password/forgot-password.component'),
   },
 
+  // Pitch deck (standalone, full-screen)
+  {
+    path: 'pitch-deck',
+    loadComponent: () => import('./features/pitch-deck/pitch-deck.component'),
+  },
+
   // Onboarding (auth required)
   {
     path: 'onboarding',
