@@ -8,12 +8,6 @@ import { onboardingGuard } from './core/guards/onboarding.guard';
 import PitchDeckComponent from './features/pitch-deck/pitch-deck.component';
 
 export const routes: Routes = [
-  // Pitch deck (eager-loaded to avoid lazy chunk issues)
-  {
-    path: 'pitch-deck',
-    component: PitchDeckComponent,
-  },
-
   // Forgot password (standalone layout, not split screen)
   {
     path: 'forgot-password',
@@ -27,6 +21,7 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./features/landing/landing.component') },
       { path: 'pricing', loadComponent: () => import('./features/pricing/pricing.component') },
+      { path: 'pitch-deck', component: PitchDeckComponent },
     ]
   },
 
