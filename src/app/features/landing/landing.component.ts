@@ -256,7 +256,10 @@ import { RouterLink } from '@angular/router';
         <h2 class="text-page-title lg:text-hero font-display text-navy mb-6">
           Your Ads Have a DNA.<br>Let's Decode It.
         </h2>
-        <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline">Start Free Trial</a>
+        <div class="flex flex-wrap justify-center gap-4 mb-4">
+          <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline">Start Free Trial</a>
+          <button (click)="downloadPitchDeck()" class="btn-outline !py-4 !px-10 !text-lg cursor-pointer">Download Pitch Deck</button>
+        </div>
         <p class="text-sm text-gray-500 font-body mt-4">No credit card · 14-day free trial · Cancel anytime</p>
       </div>
     </section>
@@ -264,6 +267,21 @@ import { RouterLink } from '@angular/router';
 })
 export default class LandingComponent {
   activeTab = 0;
+
+  downloadPitchDeck() {
+    import('../pitch-deck/pitch-deck-pdf').then(({ PITCH_DECK_PDF_BASE64 }) => {
+      const byteChars = atob(PITCH_DECK_PDF_BASE64);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Cosmisk-Pitch-Deck.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
 
   stats = [
     { value: '₹250Cr+', label: 'Ad Spend Analyzed' },
