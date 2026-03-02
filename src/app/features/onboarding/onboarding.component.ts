@@ -1,16 +1,16 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
-import { InsightCardComponent } from '../../shared/components/insight-card/insight-card.component';
-import { DEMO_INSIGHTS } from '../../shared/data/demo-data';
+import { UgcService } from '../../core/services/ugc.service';
+import { ToastService } from '../../core/services/toast.service';
 import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-onboarding',
   standalone: true,
-  imports: [CommonModule, FormsModule, InsightCardComponent, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   styles: [`
     @keyframes confetti-fall {
       0% { transform: translateY(-100%) rotate(0deg); opacity: 1; }
@@ -39,227 +39,196 @@ import { LucideAngularModule } from 'lucide-angular';
     .confetti-piece:nth-child(13) { left: 75%; background: #F39C12; animation-delay: 0.1s; animation-duration: 3.4s; }
     .confetti-piece:nth-child(14) { left: 85%; background: #1ABC9C; animation-delay: 0.4s; animation-duration: 2.5s; border-radius: 50%; }
     .confetti-piece:nth-child(15) { left: 45%; background: #3498DB; animation-delay: 0.7s; animation-duration: 3.2s; }
-
-    @keyframes scroll-text {
-      0% { transform: translateY(0); }
-      100% { transform: translateY(-50%); }
-    }
-    .animate-scroll-text {
-      animation: scroll-text 4s linear infinite;
-    }
   `],
   template: `
     <div class="w-full max-w-2xl mx-auto">
       <!-- Progress Bar -->
       <div class="mb-8">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-sm font-body font-medium text-gray-500">Step {{ currentStep() }} of 5</span>
+          <span class="text-sm font-body font-medium text-gray-500">Step {{ currentStep() }} of 4</span>
+          @if (currentStep() > 1 && currentStep() <= 4) {
+            <button (click)="prevStep()" class="text-sm text-accent hover:underline font-body border-0 bg-transparent cursor-pointer">
+              ← Back
+            </button>
+          }
         </div>
         <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
           <div
             class="h-full bg-accent rounded-full transition-all duration-500"
-            [style.width.%]="currentStep() * 20">
+            [style.width.%]="currentStep() <= 4 ? currentStep() * 25 : 100">
           </div>
         </div>
       </div>
 
-      <!-- Step 1: Connect Meta -->
+      <!-- Step 1: Brand & Product -->
       @if (currentStep() === 1) {
-        <div class="text-center animate-fade-in">
-          <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-            <lucide-icon name="zap" [size]="32" class="text-accent"></lucide-icon>
-          </div>
-          <h2 class="text-page-title font-display text-navy mb-3">Let's connect your Meta ad account</h2>
-          <p class="text-gray-600 font-body mb-8 max-w-md mx-auto">
-            We'll analyze your creatives and show you insights in under 60 seconds.
-          </p>
-
-          @if (!metaConnected()) {
-            <button (click)="connectMeta()" class="btn-primary !py-3.5 !px-8 !text-base mb-4">
-              <lucide-icon name="globe" [size]="18" class="mr-2"></lucide-icon> Connect with Meta
-            </button>
-          } @else {
-            <div class="inline-flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-lg font-body font-medium mb-4">
-              <span>✓</span> Meta Ads Connected — 8 ad accounts found
-            </div>
-            <br>
-            <button (click)="nextStep()" class="btn-primary !py-3 !px-8 mt-4">Continue</button>
-          }
-
-          <p class="text-xs text-gray-400 font-body mt-4">We request read-only access. We never modify your campaigns.</p>
-          <button (click)="nextStep()" class="text-sm text-gray-500 hover:text-accent mt-4 font-body border-0 bg-transparent cursor-pointer">
-            Skip for now →
-          </button>
-        </div>
-      }
-
-      <!-- Step 2: AI Scanning -->
-      @if (currentStep() === 2) {
-        <div class="text-center animate-fade-in">
-          <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-            <lucide-icon name="brain" [size]="32" class="text-accent pulse-dot"></lucide-icon>
-          </div>
-          <h2 class="text-page-title font-display text-navy mb-3">Our AI is reading your ad DNA...</h2>
-          <p class="text-gray-600 font-body mb-8">Hang tight. This usually takes 30-60 seconds.</p>
-
-          <!-- Progress Ring -->
-          <div class="relative w-32 h-32 mx-auto mb-8">
-            <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="45" fill="none" stroke="#E3E5EB" stroke-width="6"/>
-              <circle cx="50" cy="50" r="45" fill="none" stroke="#6366F1" stroke-width="6"
-                stroke-dasharray="283" [attr.stroke-dashoffset]="283 - (scanProgress() / 100 * 283)"
-                stroke-linecap="round" class="transition-all duration-500"/>
-            </svg>
-            <span class="absolute inset-0 flex items-center justify-center text-xl font-mono font-bold text-navy">
-              {{ scanProgress() }}%
-            </span>
-          </div>
-
-          <!-- AI Processing Text -->
-          <div class="mt-4 bg-navy/5 rounded-lg p-3 font-mono text-[10px] text-gray-400 h-16 overflow-hidden relative">
-            <div class="animate-scroll-text space-y-1">
-              <p class="m-0">Analyzing hook patterns...</p>
-              <p class="m-0">Extracting visual DNA signatures...</p>
-              <p class="m-0">Processing audio fingerprints...</p>
-              <p class="m-0">Matching against 10,000+ creative patterns...</p>
-              <p class="m-0">Generating intelligence report...</p>
-            </div>
-          </div>
-
-          <!-- Checklist -->
-          <div class="max-w-sm mx-auto space-y-3 text-left mt-6">
-            @for (item of scanItems; track item.label; let i = $index) {
-              <div class="flex items-center gap-3 text-sm font-body">
-                @if (scanProgress() > item.threshold) {
-                  <span class="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">✓</span>
-                  <span class="text-navy">{{ item.complete }}</span>
-                } @else {
-                  <span class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">
-                    <span class="w-3 h-3 bg-gray-300 rounded-full pulse-dot"></span>
-                  </span>
-                  <span class="text-gray-500">{{ item.label }}</span>
-                }
-              </div>
-            }
-          </div>
-        </div>
-      }
-
-      <!-- Step 3: Success Oracle -->
-      @if (currentStep() === 3) {
-        <div class="text-center animate-fade-in">
-          <div class="w-20 h-20 mx-auto mb-6 bg-yellow-50 rounded-full flex items-center justify-center">
-            <lucide-icon name="sparkles" [size]="32" class="text-accent"></lucide-icon>
-          </div>
-          <h2 class="text-page-title font-display text-navy mb-3">Your First Creative Intelligence Report</h2>
-          <p class="text-gray-600 font-body mb-8">Here's what our AI discovered about your ads.</p>
-
-          <div class="space-y-4 text-left max-w-lg mx-auto mb-8">
-            @for (insight of insights; track insight.id) {
-              <app-insight-card [insight]="insight" />
-            }
-          </div>
-
-          <button (click)="nextStep()" class="btn-primary !py-3 !px-8">Continue Setup →</button>
-        </div>
-      }
-
-      <!-- Step 4: Set Goals -->
-      @if (currentStep() === 4) {
         <div class="animate-fade-in">
           <div class="text-center mb-8">
             <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <lucide-icon name="target" [size]="32" class="text-accent"></lucide-icon>
+              <lucide-icon name="building-2" [size]="32" class="text-accent"></lucide-icon>
             </div>
-            <h2 class="text-page-title font-display text-navy mb-3">What are you optimizing for?</h2>
+            <h2 class="text-page-title font-display text-navy mb-3">Tell us about your brand</h2>
+            <p class="text-gray-600 font-body">We'll use this to create your UGC project and start research.</p>
           </div>
 
-          <div class="grid grid-cols-2 gap-4 mb-8">
-            @for (goal of goals; track goal.id) {
-              <button
-                (click)="selectedGoal.set(goal.id)"
-                class="p-5 rounded-card border-2 text-left transition-all cursor-pointer bg-white"
-                [ngClass]="selectedGoal() === goal.id ? 'border-accent bg-accent/5' : 'border-border hover:border-gray-300'">
-                <lucide-icon [name]="goal.icon" [size]="20" class="text-accent mb-2 block"></lucide-icon>
-                <h3 class="text-sm font-body font-semibold text-navy m-0 mb-1">{{ goal.label }}</h3>
-                <p class="text-xs text-gray-500 font-body m-0">{{ goal.description }}</p>
-              </button>
-            }
-          </div>
-
-          <div class="grid grid-cols-2 gap-4 mb-8">
+          <div class="space-y-5">
             <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">My current ROAS target</label>
-              <div class="relative">
-                <input type="number" [(ngModel)]="roasTarget" class="input !pr-8" placeholder="3.0">
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">x</span>
-              </div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Brand Name <span class="text-red-500">*</span></label>
+              <input type="text" [(ngModel)]="brand_name" class="input" placeholder="e.g. GlowVita">
             </div>
             <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Monthly Meta budget</label>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                <input type="text" [(ngModel)]="budget" class="input !pl-8" placeholder="18,00,000">
-              </div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Website URL <span class="text-red-500">*</span></label>
+              <input type="url" [(ngModel)]="website_url" class="input" placeholder="e.g. https://glowvita.com">
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Product / Service to Promote <span class="text-red-500">*</span></label>
+              <textarea [(ngModel)]="product_feature" class="input !h-20 resize-none" placeholder="What product or service do you want UGC ads for?"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">What makes you different?</label>
+              <textarea [(ngModel)]="differentiator" class="input !h-20 resize-none" placeholder="Your unique selling point vs competitors"></textarea>
             </div>
           </div>
 
-          <div class="text-center">
+          <div class="text-center mt-8">
+            <button (click)="nextStep()" [disabled]="!brand_name || !website_url || !product_feature"
+              class="btn-primary !py-3 !px-8 disabled:opacity-50 disabled:cursor-not-allowed">
+              Continue →
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Step 2: Target Audience -->
+      @if (currentStep() === 2) {
+        <div class="animate-fade-in">
+          <div class="text-center mb-8">
+            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
+              <lucide-icon name="users" [size]="32" class="text-accent"></lucide-icon>
+            </div>
+            <h2 class="text-page-title font-display text-navy mb-3">Who are you selling to?</h2>
+            <p class="text-gray-600 font-body">Understanding your audience helps us write scripts that convert.</p>
+          </div>
+
+          <div class="space-y-5">
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Target Audience</label>
+              <textarea [(ngModel)]="target_user" class="input !h-20 resize-none" placeholder="e.g. Women 25-40, interested in skincare, mid-to-premium segment"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Biggest Problem You Solve</label>
+              <textarea [(ngModel)]="biggest_problem" class="input !h-20 resize-none" placeholder="What pain point does your product address?"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Main Hesitation to Buy</label>
+              <textarea [(ngModel)]="main_hesitation" class="input !h-16 resize-none" placeholder="Why do people hesitate before purchasing?"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Social Proof</label>
+              <textarea [(ngModel)]="social_proof" class="input !h-16 resize-none" placeholder="Reviews, ratings, testimonials, press mentions..."></textarea>
+            </div>
+          </div>
+
+          <div class="text-center mt-8">
             <button (click)="nextStep()" class="btn-primary !py-3 !px-8">Continue →</button>
           </div>
         </div>
       }
 
-      <!-- Step 5: Competitors -->
-      @if (currentStep() === 5) {
+      <!-- Step 3: Brand Voice & Identity -->
+      @if (currentStep() === 3) {
         <div class="animate-fade-in">
           <div class="text-center mb-8">
             <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <lucide-icon name="eye" [size]="32" class="text-accent"></lucide-icon>
+              <lucide-icon name="palette" [size]="32" class="text-accent"></lucide-icon>
             </div>
-            <h2 class="text-page-title font-display text-navy mb-3">Who are your competitors?</h2>
-            <p class="text-gray-600 font-body">We'll track their ad strategies so you stay ahead.</p>
+            <h2 class="text-page-title font-display text-navy mb-3">Brand voice & positioning</h2>
+            <p class="text-gray-600 font-body">This shapes the tone and style of your UGC scripts.</p>
           </div>
 
-          <div class="bg-white rounded-card p-6 shadow-card mb-6">
-            <p class="text-xs text-gray-500 font-body font-medium mb-4 uppercase tracking-wider">AI Suggested Competitors</p>
-            <div class="space-y-3">
-              @for (comp of competitors; track comp.name) {
-                <div class="flex items-center justify-between p-3 rounded-lg border border-border hover:border-gray-300 transition-colors">
-                  <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-500">
-                      {{ comp.name.charAt(0) }}
-                    </div>
-                    <div>
-                      <p class="text-sm font-body font-medium text-navy m-0">{{ comp.name }}</p>
-                      <p class="text-xs text-gray-500 m-0">{{ comp.category }}</p>
-                    </div>
-                  </div>
-                  <button
-                    (click)="comp.added = !comp.added"
-                    class="px-4 py-1.5 rounded-lg text-xs font-body font-medium transition-all border-0 cursor-pointer"
-                    [ngClass]="comp.added ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
-                    {{ comp.added ? '✓ Added' : 'Add' }}
-                  </button>
-                </div>
+          <div class="space-y-5">
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Brand Personality</label>
+              <textarea [(ngModel)]="brand_personality" class="input !h-16 resize-none" placeholder="e.g. Fun, approachable, science-backed, premium but not stuffy"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Key Selling Proposition</label>
+              <textarea [(ngModel)]="selling_proposition" class="input !h-16 resize-none" placeholder="The one thing you want every ad to communicate"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Credibility / Trust Signal</label>
+              <input type="text" [(ngModel)]="credibility_point" class="input" placeholder="e.g. Dermatologist-approved, 50,000+ happy customers">
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Competitors</label>
+              <input type="text" [(ngModel)]="competitors" class="input" placeholder="e.g. WOW Skin Science, Oziva, mCaffeine">
+            </div>
+          </div>
+
+          <div class="text-center mt-8">
+            <button (click)="nextStep()" class="btn-primary !py-3 !px-8">Continue →</button>
+          </div>
+        </div>
+      }
+
+      <!-- Step 4: Project Setup -->
+      @if (currentStep() === 4) {
+        <div class="animate-fade-in">
+          <div class="text-center mb-8">
+            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
+              <lucide-icon name="clapperboard" [size]="32" class="text-accent"></lucide-icon>
+            </div>
+            <h2 class="text-page-title font-display text-navy mb-3">Project details</h2>
+            <p class="text-gray-600 font-body">Almost there! Just a few more details to get started.</p>
+          </div>
+
+          <div class="space-y-5">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-body font-medium text-navy mb-1">Number of Scripts</label>
+                <input type="number" [(ngModel)]="num_scripts" class="input" min="1" max="20" placeholder="5">
+              </div>
+              <div>
+                <label class="block text-sm font-body font-medium text-navy mb-1">WhatsApp Number</label>
+                <input type="tel" [(ngModel)]="whatsapp_number" class="input" placeholder="+91 98765 43210">
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Preferred UGC Concepts</label>
+              <textarea [(ngModel)]="best_concepts" class="input !h-16 resize-none" placeholder="e.g. Unboxing, Before/After, Testimonial, GRWM"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Reference Ads (URLs or descriptions)</label>
+              <textarea [(ngModel)]="reference_ads" class="input !h-16 resize-none" placeholder="Links to ads you like, or describe the style you want"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Things to Avoid</label>
+              <input type="text" [(ngModel)]="do_not_say" class="input" placeholder="Claims, words, or themes you don't want in ads">
+            </div>
+            <div>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Additional Notes</label>
+              <textarea [(ngModel)]="additional_notes" class="input !h-16 resize-none" placeholder="Anything else we should know?"></textarea>
+            </div>
+          </div>
+
+          <div class="text-center mt-8">
+            <button (click)="submitOnboarding()" [disabled]="submitting()"
+              class="btn-primary !py-4 !px-10 !text-base disabled:opacity-50 disabled:cursor-not-allowed">
+              @if (submitting()) {
+                <span class="inline-flex items-center gap-2">
+                  <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  Setting up your project...
+                </span>
+              } @else {
+                Launch Project
               }
-            </div>
-          </div>
-
-          <div class="text-center">
-            <button (click)="completeOnboarding()" class="btn-primary !py-4 !px-10 !text-base">
-              Launch Cosmisk
-            </button>
-            <br>
-            <button (click)="completeOnboarding()" class="text-sm text-gray-500 hover:text-accent mt-3 font-body border-0 bg-transparent cursor-pointer">
-              I'll add competitors later →
             </button>
           </div>
         </div>
       }
 
-      <!-- Confetti Screen -->
-      @if (currentStep() === 6) {
+      <!-- Step 5: Success -->
+      @if (currentStep() === 5) {
         <div class="text-center animate-fade-in py-12 relative">
           <!-- Confetti pieces -->
           <div class="confetti-piece"></div>
@@ -280,8 +249,9 @@ import { LucideAngularModule } from 'lucide-angular';
 
           <div class="mb-6"><lucide-icon name="sparkles" [size]="48" class="text-accent"></lucide-icon></div>
           <h2 class="text-page-title font-display text-navy mb-3">You're all set!</h2>
-          <p class="text-gray-600 font-body mb-8">Your Creative DNA analysis is ready.</p>
-          <button (click)="goToDashboard()" class="btn-primary !py-3.5 !px-8 !text-base">Go to Dashboard</button>
+          <p class="text-gray-600 font-body mb-2">Your project <strong>{{ clientCode() }}</strong> has been created.</p>
+          <p class="text-gray-500 font-body text-sm mb-8">Our AI is already researching your brand and scouting creators. You'll see concepts appear shortly.</p>
+          <button (click)="goToStudio()" class="btn-primary !py-3.5 !px-8 !text-base">Go to UGC Studio</button>
         </div>
       }
     </div>
@@ -290,69 +260,89 @@ import { LucideAngularModule } from 'lucide-angular';
 export default class OnboardingComponent {
   private router = inject(Router);
   private auth = inject(AuthService);
+  private ugc = inject(UgcService);
+  private toast = inject(ToastService);
 
   currentStep = signal(1);
-  metaConnected = signal(false);
-  scanProgress = signal(0);
-  selectedGoal = signal('roas');
-  roasTarget = 3.0;
-  budget = '18,00,000';
+  submitting = signal(false);
+  clientCode = signal('');
 
-  insights = DEMO_INSIGHTS;
+  // Step 1: Brand & Product
+  brand_name = '';
+  website_url = '';
+  product_feature = '';
+  differentiator = '';
 
-  scanItems = [
-    { label: 'Scanning active campaigns...', complete: 'Found 8 campaigns', threshold: 20 },
-    { label: 'Analyzing 47 creatives...', complete: '47 creatives analyzed', threshold: 45 },
-    { label: 'Extracting Creative DNA...', complete: 'DNA profiles created', threshold: 70 },
-    { label: 'Generating first insights...', complete: '3 insights ready!', threshold: 90 },
-  ];
+  // Step 2: Target Audience
+  target_user = '';
+  biggest_problem = '';
+  main_hesitation = '';
+  social_proof = '';
 
-  goals = [
-    { id: 'roas', icon: 'trending-up', label: 'Maximize ROAS', description: 'Highest return on every rupee spent' },
-    { id: 'cpa', icon: 'trending-down', label: 'Lower CPA/CAC', description: 'Bring customer acquisition cost down' },
-    { id: 'scale', icon: 'bar-chart-3', label: 'Scale Spend', description: 'Spend more while maintaining efficiency' },
-    { id: 'velocity', icon: 'zap', label: 'Creative Velocity', description: 'Produce winning creatives faster' },
-  ];
+  // Step 3: Brand Voice
+  brand_personality = '';
+  selling_proposition = '';
+  credibility_point = '';
+  competitors = '';
 
-  competitors = [
-    { name: 'WOW Skin Science', category: 'Health & Wellness', added: false },
-    { name: 'Oziva', category: 'Health & Wellness', added: false },
-    { name: 'The Man Company', category: 'Personal Care', added: false },
-  ];
-
-  connectMeta() {
-    this.metaConnected.set(true);
-  }
+  // Step 4: Project Setup
+  num_scripts = 5;
+  whatsapp_number = '';
+  best_concepts = '';
+  reference_ads = '';
+  do_not_say = '';
+  additional_notes = '';
 
   nextStep() {
-    const step = this.currentStep();
-    if (step === 1) {
-      this.currentStep.set(2);
-      this.startScan();
-    } else {
-      this.currentStep.update(s => s + 1);
-    }
+    this.currentStep.update(s => s + 1);
   }
 
-  private startScan() {
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 8 + 2;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        setTimeout(() => this.currentStep.set(3), 500);
-      }
-      this.scanProgress.set(Math.round(progress));
-    }, 300);
+  prevStep() {
+    this.currentStep.update(s => Math.max(1, s - 1));
   }
 
-  completeOnboarding() {
-    this.currentStep.set(6);
+  submitOnboarding() {
+    this.submitting.set(true);
+
+    const user = this.auth.user();
+    const payload = {
+      client_name: user?.name || '',
+      client_email: user?.email || '',
+      whatsapp_number: this.whatsapp_number,
+      brand_name: this.brand_name,
+      website_url: this.website_url,
+      product_feature: this.product_feature,
+      differentiator: this.differentiator,
+      target_user: this.target_user,
+      biggest_problem: this.biggest_problem,
+      main_hesitation: this.main_hesitation,
+      social_proof: this.social_proof,
+      brand_personality: this.brand_personality,
+      selling_proposition: this.selling_proposition,
+      credibility_point: this.credibility_point,
+      competitors: this.competitors,
+      best_concepts: this.best_concepts,
+      reference_ads: this.reference_ads,
+      do_not_say: this.do_not_say,
+      additional_notes: this.additional_notes,
+      num_scripts: this.num_scripts || 5,
+    };
+
+    this.ugc.onboardProject(payload).subscribe({
+      next: (res: any) => {
+        this.submitting.set(false);
+        this.clientCode.set(res.client_code || '');
+        this.auth.setOnboardingComplete();
+        this.currentStep.set(5);
+      },
+      error: (err) => {
+        this.submitting.set(false);
+        this.toast.error('Onboarding failed', err.error?.error || 'Please try again.');
+      },
+    });
   }
 
-  goToDashboard() {
-    this.auth.setOnboardingComplete();
-    this.router.navigate(['/app/dashboard']);
+  goToStudio() {
+    this.router.navigate(['/app/ugc-studio']);
   }
 }
