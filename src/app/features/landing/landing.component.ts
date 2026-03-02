@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
@@ -27,9 +27,9 @@ import { RouterLink } from '@angular/router';
           <div class="flex flex-wrap gap-4 mb-8">
             <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline">Start Free Trial</a>
             <button class="btn-outline !py-3.5 !px-8 !text-base">Watch Demo</button>
-            <button (click)="downloadPitchDeck()" class="inline-flex items-center gap-2 px-8 py-3.5 text-base font-semibold rounded-xl text-white cursor-pointer border-0" style="background: linear-gradient(135deg, #E74C3C, #C0392B);">
+            <a href="/pitch-deck.pdf" download="Cosmisk-Pitch-Deck.pdf" class="inline-flex items-center gap-2 px-8 py-3.5 text-base font-semibold rounded-xl text-white cursor-pointer border-0 no-underline" style="background: linear-gradient(135deg, #E74C3C, #C0392B);">
               📄 Pitch Deck PDF
-            </button>
+            </a>
           </div>
           <p class="text-sm text-gray-500 font-body">
             Trusted by <strong class="text-navy">500+</strong> e-commerce brands &nbsp;·&nbsp; ₹250Cr+ ad spend analyzed
@@ -261,49 +261,15 @@ import { RouterLink } from '@angular/router';
         </h2>
         <div class="flex flex-wrap justify-center gap-4 mb-4">
           <a routerLink="/signup" class="btn-primary !py-4 !px-10 !text-lg no-underline">Start Free Trial</a>
-          <button (click)="downloadPitchDeck()" class="btn-outline !py-4 !px-10 !text-lg cursor-pointer">Download Pitch Deck</button>
+          <a href="/pitch-deck.pdf" download="Cosmisk-Pitch-Deck.pdf" class="btn-outline !py-4 !px-10 !text-lg cursor-pointer no-underline">Download Pitch Deck</a>
         </div>
         <p class="text-sm text-gray-500 font-body mt-4">No credit card · 14-day free trial · Cancel anytime</p>
       </div>
     </section>
   `
 })
-export default class LandingComponent implements OnInit {
+export default class LandingComponent {
   activeTab = 0;
-  private pdfBase64: string | null = null;
-
-  ngOnInit() {
-    // Pre-load PDF data in background
-    import('../pitch-deck/pitch-deck-pdf').then(({ PITCH_DECK_PDF_BASE64 }) => {
-      this.pdfBase64 = PITCH_DECK_PDF_BASE64;
-    });
-  }
-
-  downloadPitchDeck() {
-    if (this.pdfBase64) {
-      this.triggerDownload(this.pdfBase64);
-    } else {
-      import('../pitch-deck/pitch-deck-pdf').then(({ PITCH_DECK_PDF_BASE64 }) => {
-        this.pdfBase64 = PITCH_DECK_PDF_BASE64;
-        this.triggerDownload(PITCH_DECK_PDF_BASE64);
-      });
-    }
-  }
-
-  private triggerDownload(base64: string) {
-    const byteChars = atob(base64);
-    const byteNums = new Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([new Uint8Array(byteNums)], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'Cosmisk-Pitch-Deck.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
 
   stats = [
     { value: '₹250Cr+', label: 'Ad Spend Analyzed' },
