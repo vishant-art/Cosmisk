@@ -5,12 +5,13 @@ import { OnboardingLayoutComponent } from './layouts/onboarding-layout/onboardin
 import { AppLayoutComponent } from './layouts/app-layout/app-layout.component';
 import { authGuard } from './core/guards/auth.guard';
 import { onboardingGuard } from './core/guards/onboarding.guard';
+import PitchDeckComponent from './features/pitch-deck/pitch-deck.component';
 
 export const routes: Routes = [
-  // Pitch deck (standalone, full-screen — must be before empty-path routes)
+  // Pitch deck (eager-loaded to avoid lazy chunk issues)
   {
     path: 'pitch-deck',
-    loadComponent: () => import('./features/pitch-deck/pitch-deck.component'),
+    component: PitchDeckComponent,
   },
 
   // Forgot password (standalone layout, not split screen)
