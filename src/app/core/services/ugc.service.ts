@@ -16,10 +16,19 @@ export interface UgcProjectSummary {
 export interface UgcConcept {
   id: string;
   title: string;
+  concept_name?: string;
   angle: string;
+  concept_pitch?: string;
   hook_type: string;
+  hook_text?: string;
+  framework?: string;
+  format?: string;
+  funnel_stage?: string;
   status: string;
+  pm_status?: string;
+  client_status?: string;
   virality_score?: number;
+  platform?: string;
 }
 
 export interface UgcScript {
@@ -86,6 +95,14 @@ export class UgcService {
       action: 'pm_approve',
       concept_ids: conceptIds,
       notes,
+    });
+  }
+
+  clientApproveConcepts(projectId: string, conceptIds: string[]) {
+    return this.api.post(environment.UGC_APPROVE, {
+      project_id: projectId,
+      action: 'client_approve',
+      concept_ids: conceptIds,
     });
   }
 

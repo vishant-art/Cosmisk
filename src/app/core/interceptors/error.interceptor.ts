@@ -1,12 +1,12 @@
 import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
 import { catchError, throwError } from 'rxjs';
 import { ToastService } from '../services/toast.service';
+import { AuthService } from '../services/auth.service';
 
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const toast = inject(ToastService);
-  const router = inject(Router);
+  const auth = inject(AuthService);
 
   return next(req).pipe(
     catchError(error => {
@@ -14,7 +14,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         case 401:
           if (!req.url.includes('auth/login') && !req.url.includes('auth/signup')) {
             toast.error('Session expired', 'Please log in again.');
-            router.navigate(['/login']);
+            auth.logout();
           }
           break;
         case 403:

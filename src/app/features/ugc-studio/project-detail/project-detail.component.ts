@@ -100,6 +100,18 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
                   }
                 </button>
               }
+              @if (clientReviewConcepts().length > 0) {
+                <button
+                  (click)="startScriptWriting()"
+                  [disabled]="approving()"
+                  class="px-4 py-2 bg-green-600 text-white rounded-pill text-xs font-body font-semibold hover:bg-green-700 transition-colors disabled:opacity-40">
+                  @if (approving()) {
+                    Starting...
+                  } @else {
+                    Start Script Writing ({{ clientReviewConcepts().length }} concepts)
+                  }
+                </button>
+              }
             </div>
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
               @for (concept of project()!.project.concepts; track concept.id) {
@@ -227,7 +239,7 @@ export default class ProjectDetailComponent implements OnInit, OnDestroy {
     this.refreshInterval = setInterval(() => {
       const status = this.project()?.project.status;
       if (status && !['Delivered', 'Complete', 'Client Review'].includes(status)) {
-        this.loadProject();
+        this.loadProject(true);
       }
     }, 30000);
   }
@@ -236,11 +248,11 @@ export default class ProjectDetailComponent implements OnInit, OnDestroy {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
   }
 
-  loadProject() {
+  loadProject(silent = false) {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) return;
 
-    this.loading.set(true);
+    if (!silent) this.loading.set(true);
     this.error.set(false);
     this.ugcService.getProjectDetail(id).subscribe({
       next: (data) => {
@@ -249,7 +261,7 @@ export default class ProjectDetailComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.loading.set(false);
-        this.error.set(true);
+        if (!silent) this.error.set(true);
       },
     });
   }
@@ -259,12 +271,15 @@ export default class ProjectDetailComponent implements OnInit, OnDestroy {
     const map: Record<string, number> = {
       'Onboarding': 0,
       'Research': 1,
+      'Concepts Pending': 2,
+      'PM Review': 2,
       'Concept Review': 2,
+      'Client Review': 2,
       'Scripting': 3,
       'Script Review': 3,
+      'QA Review': 3,
       'Delivered': 4,
       'Complete': 4,
-      'Client Review': 4,
     };
     return map[status] ?? 0;
   };
@@ -272,6 +287,12 @@ export default class ProjectDetailComponent implements OnInit, OnDestroy {
   pendingConcepts = () => {
     return (this.project()?.project.concepts || []).filter(
       c => c.status === 'Pending' || c.status === 'pending'
+    );
+  };
+
+  clientReviewConcepts = () => {
+    return (this.project()?.project.concepts || []).filter(
+      c => c.status === 'Approved' && (c.client_status === 'Pending' || !c.client_status)
     );
   };
 
@@ -305,6 +326,25 @@ export default class ProjectDetailComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.toast.error('Failed to approve', 'Please try again');
+        this.approving.set(false);
+      },
+    });
+  }
+
+  startScriptWriting() {
+    const projectId = this.project()?.project.id;
+    if (!projectId) return;
+
+    const approved = this.clientReviewConcepts().map(c => c.id);
+    this.approving.set(true);
+    this.ugcService.clientApproveConcepts(projectId, approved).subscribe({
+      next: () => {
+        this.toast.success('Script Writing Started', `${approved.length} concepts approved for script generation.`);
+        this.approving.set(false);
+        this.loadProject();
+      },
+      error: () => {
+        this.toast.error('Failed to start', 'Please try again');
         this.approving.set(false);
       },
     });
