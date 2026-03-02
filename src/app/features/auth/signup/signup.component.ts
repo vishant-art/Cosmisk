@@ -173,21 +173,18 @@ export default class SignupComponent {
     }
 
     this.loading.set(true);
-    // Demo: set onboardingComplete to false so user goes through onboarding
-    setTimeout(() => {
-      const demoUser = {
-        id: 'user-001',
-        name: this.form.get('name')?.value || 'User',
-        email: this.form.get('email')?.value || 'user@example.com',
-        role: 'owner' as const,
-        onboardingComplete: false,
-        plan: 'trial' as const,
-        createdAt: new Date().toISOString(),
-      };
-      this.auth.handleAuthResponse({ token: 'demo-token', user: demoUser });
-      this.toast.success('Account created!', 'Welcome to Cosmisk.');
-      this.router.navigate(['/onboarding']);
-      this.loading.set(false);
-    }, 800);
+    const { name, email, password } = this.form.value;
+    this.auth.signup(name!, email!, password!).subscribe({
+      next: (res) => {
+        this.auth.handleAuthResponse(res);
+        this.toast.success('Account created!', 'Welcome to Cosmisk.');
+        this.router.navigate(['/onboarding']);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.loading.set(false);
+        this.toast.error('Signup failed', err.error?.error || 'Please try again.');
+      },
+    });
   }
 }

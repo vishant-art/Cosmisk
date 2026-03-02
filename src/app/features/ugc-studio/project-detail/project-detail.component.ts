@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit } from '@angular/core';
+import { Component, signal, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
@@ -205,11 +205,12 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
     </div>
   `
 })
-export default class ProjectDetailComponent implements OnInit {
+export default class ProjectDetailComponent implements OnInit, OnDestroy {
   private ugcService = inject(UgcService);
   private toast = inject(ToastService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private refreshInterval?: ReturnType<typeof setInterval>;
 
   loading = signal(false);
   error = signal(false);
@@ -223,6 +224,16 @@ export default class ProjectDetailComponent implements OnInit {
 
   ngOnInit() {
     this.loadProject();
+    this.refreshInterval = setInterval(() => {
+      const status = this.project()?.project.status;
+      if (status && !['Delivered', 'Complete', 'Client Review'].includes(status)) {
+        this.loadProject();
+      }
+    }, 30000);
+  }
+
+  ngOnDestroy() {
+    if (this.refreshInterval) clearInterval(this.refreshInterval);
   }
 
   loadProject() {

@@ -12,8 +12,10 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
     catchError(error => {
       switch (error.status) {
         case 401:
-          toast.error('Session expired', 'Please log in again.');
-          router.navigate(['/login']);
+          if (!req.url.includes('auth/login') && !req.url.includes('auth/signup')) {
+            toast.error('Session expired', 'Please log in again.');
+            router.navigate(['/login']);
+          }
           break;
         case 403:
           toast.error('Access denied', "You don't have permission to do that.");
