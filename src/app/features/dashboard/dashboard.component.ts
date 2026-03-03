@@ -24,13 +24,13 @@ import { LucideAngularModule } from 'lucide-angular';
       <p class="text-sm text-gray-500 font-body mt-1">Here's your creative intelligence summary</p>
     </div>
 
-    <!-- Alert Banner -->
+    <!-- Alert Banner (preview) -->
     @if (!alertDismissed()) {
-      <div class="bg-red-50 border border-red-200 rounded-card p-4 mb-6 flex items-center justify-between animate-fade-in">
+      <div class="bg-gray-50 border border-gray-200 rounded-card p-4 mb-6 flex items-center justify-between animate-fade-in opacity-60">
         <div class="flex items-center gap-3">
-          <lucide-icon name="alert-triangle" [size]="18" class="text-red-500"></lucide-icon>
-          <p class="text-sm font-body text-red-800 m-0">
-            <strong>3 creatives need attention.</strong> 1 rising star detected.
+          <lucide-icon name="alert-triangle" [size]="18" class="text-gray-400"></lucide-icon>
+          <p class="text-sm font-body text-gray-500 m-0">
+            <strong>Creative alerts will appear here</strong> once Meta Ads is connected.
           </p>
         </div>
         <div class="flex items-center gap-3">
@@ -79,8 +79,12 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
     }
 
-    <!-- Ad Performance KPI Cards (demo data) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <!-- Ad Performance KPI Cards (preview — connects to Meta Ads) -->
+    <div class="flex items-center gap-2 mb-3">
+      <h3 class="text-sm font-display text-gray-400 m-0">Ad Performance</h3>
+      <span class="px-2 py-0.5 bg-gray-100 text-gray-400 text-[10px] font-body font-medium rounded-pill">Preview</span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 opacity-60">
       <a routerLink="/app/analytics" class="no-underline">
         <app-kpi-card
           title="Total Spend"
@@ -118,8 +122,8 @@ import { LucideAngularModule } from 'lucide-angular';
       </a>
     </div>
 
-    <!-- Chart + Insights Row -->
-    <div class="grid lg:grid-cols-5 gap-6 mb-8">
+    <!-- Chart + Insights Row (preview — connects to Meta Ads) -->
+    <div class="grid lg:grid-cols-5 gap-6 mb-8 opacity-60">
       <!-- Performance Chart -->
       <div class="lg:col-span-3 card">
         <div class="flex items-center justify-between mb-4">
@@ -165,8 +169,8 @@ import { LucideAngularModule } from 'lucide-angular';
       </div>
     </div>
 
-    <!-- Top Creatives Table -->
-    <div class="card mb-8">
+    <!-- Top Creatives Table (preview) -->
+    <div class="card mb-8 opacity-60">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-card-title font-display text-navy m-0">Top Performing Creatives</h3>
         <a routerLink="/app/creative-cockpit" class="text-sm text-accent font-body font-semibold hover:underline no-underline">

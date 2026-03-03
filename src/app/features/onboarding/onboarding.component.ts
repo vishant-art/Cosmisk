@@ -130,7 +130,8 @@ import { LucideAngularModule } from 'lucide-angular';
           </div>
 
           <div class="text-center mt-8">
-            <button (click)="nextStep()" class="btn-primary !py-3 !px-8">Continue →</button>
+            <button (click)="nextStep()" [disabled]="!target_user"
+              class="btn-primary !py-3 !px-8 disabled:opacity-50 disabled:cursor-not-allowed">Continue →</button>
           </div>
         </div>
       }
@@ -212,7 +213,7 @@ import { LucideAngularModule } from 'lucide-angular';
           </div>
 
           <div class="text-center mt-8">
-            <button (click)="submitOnboarding()" [disabled]="submitting()"
+            <button (click)="submitOnboarding()" [disabled]="submitting() || !num_scripts || num_scripts < 1"
               class="btn-primary !py-4 !px-10 !text-base disabled:opacity-50 disabled:cursor-not-allowed">
               @if (submitting()) {
                 <span class="inline-flex items-center gap-2">

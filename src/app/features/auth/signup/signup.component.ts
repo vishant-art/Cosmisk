@@ -33,6 +33,14 @@ import { LucideAngularModule } from 'lucide-angular';
         <div class="flex-1 h-px bg-divider"></div>
       </div>
 
+      <!-- Error Banner -->
+      @if (errorMessage()) {
+        <div class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+          <lucide-icon name="alert-circle" [size]="16" class="text-red-500"></lucide-icon>
+          <p class="text-sm text-red-600 font-body m-0">{{ errorMessage() }}</p>
+        </div>
+      }
+
       <!-- Form -->
       <form [formGroup]="form" (ngSubmit)="onSubmit()">
         <div class="space-y-4">
@@ -148,6 +156,7 @@ export default class SignupComponent {
 
   showPassword = signal(false);
   loading = signal(false);
+  errorMessage = signal('');
 
   form = this.fb.group({
     name: ['', [Validators.required]],
@@ -167,6 +176,8 @@ export default class SignupComponent {
   }
 
   onSubmit() {
+    this.errorMessage.set('');
+
     if (this.form.invalid || !this.form.get('terms')?.value) {
       this.form.markAllAsTouched();
       return;
@@ -183,7 +194,7 @@ export default class SignupComponent {
       },
       error: (err) => {
         this.loading.set(false);
-        this.toast.error('Signup failed', err.error?.error || 'Please try again.');
+        this.errorMessage.set(err.error?.error || 'Signup failed. Please try again.');
       },
     });
   }

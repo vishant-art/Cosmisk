@@ -24,6 +24,18 @@ export class AuthService {
     const storedToken = localStorage.getItem('cosmisk_token');
     const storedUser = localStorage.getItem('cosmisk_user');
     if (storedToken && storedUser) {
+      try {
+        const payload = JSON.parse(atob(storedToken.split('.')[1]));
+        if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+          localStorage.removeItem('cosmisk_token');
+          localStorage.removeItem('cosmisk_user');
+          return;
+        }
+      } catch { /* malformed token — clear it */
+        localStorage.removeItem('cosmisk_token');
+        localStorage.removeItem('cosmisk_user');
+        return;
+      }
       this.token.set(storedToken);
       this.currentUser.set(JSON.parse(storedUser));
     }
@@ -69,17 +81,4 @@ export class AuthService {
     this.router.navigate(['/login']);
   }
 
-  // Demo login for development
-  demoLogin() {
-    const demoUser: User = {
-      id: 'user-001',
-      name: 'Rajesh Gupta',
-      email: 'rajesh@nectarsupplements.com',
-      role: 'owner',
-      onboardingComplete: true,
-      plan: 'growth',
-      createdAt: '2026-01-01T00:00:00Z',
-    };
-    this.storeAuth({ token: 'demo-token', user: demoUser });
-  }
 }
