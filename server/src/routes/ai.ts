@@ -82,14 +82,32 @@ type Intent =
 function detectIntent(message: string): Intent {
   const lower = message.toLowerCase();
 
+  // Help — always first
   if (lower.includes('help') || lower.includes('what can you do')) return 'help';
-  if (lower.includes('script') || lower.includes('write me') || lower.includes('give me a') || lower.includes('generate') || lower.includes('create a') || lower.includes('ad copy') || lower.includes('new ad') || lower.includes('brief') || lower.includes('write a')) return 'script';
+
+  // Overview — check before script to prevent "give me a full overview" matching script
+  if (lower.includes('overview') || lower.includes('how is my account') || lower.includes('how am i doing') || lower.includes('account performance') || lower.includes('summary') || lower.includes('report') || lower.includes('how are my ads')) return 'overview';
+
+  // Forecast
   if (lower.includes('predict') || lower.includes('forecast') || lower.includes('next week') || lower.includes('project')) return 'forecast';
-  if (lower.includes('audience') || lower.includes('who') || lower.includes('demographic') || lower.includes('age') || lower.includes('gender')) return 'audience';
-  if (lower.includes('creative') || lower.includes('hook') || lower.includes('which ads') || lower.includes('top ads') || lower.includes('best ads')) return 'creative';
+
+  // Script / Ad Copy / Hooks — content generation
+  if (lower.includes('script') || lower.includes('hook') || lower.includes('ad copy') || lower.includes('write me') || lower.includes('write a') || lower.includes('generate') || lower.includes('create a') || lower.includes('new ad') || lower.includes('brief') || lower.includes('give me') && (lower.includes('hook') || lower.includes('script') || lower.includes('copy') || lower.includes('ad') || lower.includes('new'))) return 'script';
+
+  // Audience
+  if (lower.includes('audience') || lower.includes('who') || lower.includes('demographic') || lower.includes('age') || lower.includes('gender') || lower.includes('segment')) return 'audience';
+
+  // Creative performance
+  if (lower.includes('creative') || lower.includes('which ads') || lower.includes('top ads') || lower.includes('best ads') || lower.includes('performing') && lower.includes('ads')) return 'creative';
+
+  // CPA
   if (lower.includes('cpa') || lower.includes('cost per') || lower.includes('acquisition')) return 'cpa';
-  if (lower.includes('roas') || lower.includes('return on') || lower.includes('performance') || lower.includes('best performing')) return 'roas';
-  if (lower.includes('spend') || lower.includes('budget') || lower.includes('spending')) return 'spend';
+
+  // ROAS
+  if (lower.includes('roas') || lower.includes('return on') || lower.includes('best performing') || lower.includes('best campaign')) return 'roas';
+
+  // Spend
+  if (lower.includes('spend') || lower.includes('budget') || lower.includes('spending') || lower.includes('where is my money')) return 'spend';
 
   return 'overview';
 }
