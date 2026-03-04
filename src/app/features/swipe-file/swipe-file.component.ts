@@ -133,6 +133,8 @@ export default class SwipeFileComponent implements OnInit {
     const acc = this.adAccountService.currentAccount();
     if (acc) {
       this.loadTopAds(acc.id, acc.credential_group);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 

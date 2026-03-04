@@ -536,6 +536,8 @@ export default class CreativeCockpitComponent {
     if (acc) {
       console.log('[CreativeCockpit] Loading ads for account:', acc.id, acc.name, 'datePreset:', datePreset);
       this.loadTopAds(acc.id, acc.credential_group, datePreset);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 

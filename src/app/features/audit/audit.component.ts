@@ -232,6 +232,8 @@ export default class AuditComponent implements OnInit {
     const acc = this.adAccountService.currentAccount();
     if (acc) {
       this.loadAuditData(acc.id, acc.credential_group);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 

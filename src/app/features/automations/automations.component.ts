@@ -288,6 +288,9 @@ export default class AutomationsComponent {
     if (acc) {
       this.loadAutomations();
       this.loadActivity(acc.id);
+    } else {
+      this.loading.set(false);
+      this.activityLoading.set(false);
     }
   }, { allowSignalWrites: true });
 

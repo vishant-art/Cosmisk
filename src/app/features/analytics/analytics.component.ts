@@ -313,6 +313,8 @@ export default class AnalyticsComponent {
     const datePreset = this.dateRangeService.datePreset();
     if (acc) {
       this.loadAnalytics(acc.id, acc.credential_group, datePreset);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 

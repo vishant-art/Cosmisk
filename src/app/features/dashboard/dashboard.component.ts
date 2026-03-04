@@ -287,6 +287,9 @@ export default class DashboardComponent implements OnInit {
       this.loadTopAds(acc.id, acc.credential_group, datePreset);
       this.loadChartData(acc.id, acc.credential_group, datePreset);
       this.loadInsights(acc.id, acc.credential_group);
+    } else {
+      this.loading.set(false);
+      this.insightsLoading.set(false);
     }
   }, { allowSignalWrites: true });
 

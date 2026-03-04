@@ -208,6 +208,8 @@ export default class AttributionComponent {
     const acc = this.adAccountService.currentAccount();
     if (acc) {
       this.loadAttributionData(acc.id, acc.credential_group);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 

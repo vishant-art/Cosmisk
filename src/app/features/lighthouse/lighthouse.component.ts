@@ -266,6 +266,8 @@ export default class LighthouseComponent implements OnInit {
     const datePreset = this.dateRangeService.datePreset();
     if (acc) {
       this.loadCampaignData(acc.id, acc.credential_group, datePreset);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 

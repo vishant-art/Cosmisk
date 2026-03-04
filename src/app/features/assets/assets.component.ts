@@ -157,6 +157,8 @@ export default class AssetsComponent {
     const acc = this.adAccountService.currentAccount();
     if (acc) {
       this.loadAssets(acc.id);
+    } else {
+      this.loading.set(false);
     }
   }, { allowSignalWrites: true });
 
