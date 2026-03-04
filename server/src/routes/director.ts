@@ -123,84 +123,153 @@ export async function directorRoutes(app: FastifyInstance) {
     const topPerformers = topAdsData.slice(0, 5);
     const topVideoAds = topPerformers.filter((a: any) => a.object_type === 'VIDEO');
     const topImageAds = topPerformers.filter((a: any) => a.object_type !== 'VIDEO');
+    const hasData = topAdsData.length > 0;
+    const bestAd = topPerformers[0];
+    const bestCtrAd = [...topAdsData].sort((a: any, b: any) => b.metrics.ctr - a.metrics.ctr)[0];
 
-    // Build the hook DNA based on actual top performers
+    // ---- Hook DNA: specific, not generic ----
     const hookPatterns: string[] = [];
     if (baseCreativeInsight && baseCreativeInsight.metrics.roas >= benchmarks.avgRoas) {
-      hookPatterns.push(`Base creative "${baseCreativeInsight.name}" has ${baseCreativeInsight.metrics.roas}x ROAS — iterate on its hook angle`);
+      hookPatterns.push(`Iterate on "${baseCreativeInsight.name}" (${baseCreativeInsight.metrics.roas}x ROAS)`);
     }
-    if (topPerformers.length > 0) {
-      hookPatterns.push(`Top performer "${topPerformers[0].name}" achieved ${topPerformers[0].metrics.roas}x ROAS with ${topPerformers[0].metrics.ctr}% CTR`);
+    if (bestAd) {
+      hookPatterns.push(`"${bestAd.name}" pattern — ${bestAd.metrics.roas}x ROAS, ${bestAd.metrics.ctr}% CTR`);
     }
-    if (benchmarks.topCtr > 0) {
-      hookPatterns.push(`Best CTR in account: ${benchmarks.topCtr}% — aim for attention-grabbing openers`);
+    if (bestCtrAd && bestCtrAd !== bestAd) {
+      hookPatterns.push(`"${bestCtrAd.name}" engagement style — ${bestCtrAd.metrics.ctr}% CTR`);
     }
     if (hookPatterns.length === 0) {
-      hookPatterns.push('Lead with a bold claim or question to stop the scroll');
-      hookPatterns.push('Use pattern interrupts and relatable scenarios');
+      hookPatterns.push('Pattern interrupt + curiosity gap');
+      hookPatterns.push('Problem-agitation opener');
     }
 
-    // Build visual DNA
+    // ---- Visual DNA ----
     const visualPatterns: string[] = [];
     if (topVideoAds.length > 0) {
-      visualPatterns.push(`Video ads average ${round(topVideoAds.reduce((s: number, a: any) => s + a.metrics.roas, 0) / topVideoAds.length, 1)}x ROAS — prioritize video format`);
+      const vidAvgRoas = round(topVideoAds.reduce((s: number, a: any) => s + a.metrics.roas, 0) / topVideoAds.length, 1);
+      visualPatterns.push(`Video converts at ${vidAvgRoas}x ROAS`);
     }
     if (topImageAds.length > 0) {
-      visualPatterns.push(`Static ads average ${round(topImageAds.reduce((s: number, a: any) => s + a.metrics.roas, 0) / topImageAds.length, 1)}x ROAS`);
+      const imgAvgRoas = round(topImageAds.reduce((s: number, a: any) => s + a.metrics.roas, 0) / topImageAds.length, 1);
+      visualPatterns.push(`Static converts at ${imgAvgRoas}x ROAS`);
     }
     if (visualPatterns.length === 0) {
-      visualPatterns.push('Show the product in action with lifestyle context');
-      visualPatterns.push('Use brand colors and clean composition');
+      visualPatterns.push(isVideo ? 'UGC-first visual language' : 'Product hero with lifestyle context');
     }
 
-    // Generate scenes based on format
+    // ---- Hook Script: context-aware, not template ----
+    const hookBank = [
+      // Data-backed hooks
+      ...(hasData ? [
+        `I tried every ${productFocus.toLowerCase() || 'option'} out there. This is the only one that actually worked.`,
+        `${benchmarks.topRoas > 3 ? 'Everyone is asking me about this — ' : ''}here's the honest truth about ${productFocus || 'this product'}.`,
+        `POV: You finally found a ${productFocus.toLowerCase() || 'product'} that actually delivers on its promises.`,
+      ] : []),
+      // Tone-adapted hooks
+      ...(tones.includes('Urgent') ? [`Stop scrolling — this ${productFocus.toLowerCase() || 'deal'} won't last.`] : []),
+      ...(tones.includes('Educational') ? [`The #1 mistake people make with ${productFocus.toLowerCase() || 'this'} — and how to fix it.`] : []),
+      ...(tones.includes('Bold') ? [`${productFocus || 'This'} is about to change your life. No, seriously.`] : []),
+      ...(tones.includes('Aspirational') ? [`What if your ${productFocus.toLowerCase() || 'routine'} actually worked the way you imagined?`] : []),
+      ...(tones.includes('Playful') ? [`Okay but why did no one tell me about ${productFocus.toLowerCase() || 'this'} sooner??`] : []),
+      ...(tones.includes('Emotional') ? [`I wish someone had shown me this ${productFocus.toLowerCase() || 'product'} a year ago.`] : []),
+      ...(tones.includes('Premium') ? [`There's a reason ${productFocus || 'this brand'} is different from everything else.`] : []),
+      ...(tones.includes('Conversational') ? [`Can we talk about ${productFocus.toLowerCase() || 'this'} for a second? Because wow.`] : []),
+      // Audience-aware hooks
+      ...(targetAudience ? [`${targetAudience} — this one's for you.`] : []),
+    ];
+    // Pick the best hook (first data-backed one, or first tone-matched one)
+    const hookScript = hookBank[0] || `Wait — you need to see what ${productFocus || 'this'} can do.`;
+
+    // ---- Scenes: specific creative direction, not generic ----
     const scenes: { time: string; description: string }[] = [];
     if (isVideo) {
-      scenes.push({ time: '0:00 - 0:03', description: `Hook: Bold ${tones[0]?.toLowerCase() || 'engaging'} opener targeting ${targetAudience}. Pattern interrupt to stop the scroll.` });
-      scenes.push({ time: '0:03 - 0:07', description: `Problem: Show the pain point or desire that ${productFocus} solves. Build emotional connection.` });
-      scenes.push({ time: '0:07 - 0:15', description: `Solution: Introduce ${productFocus} as the answer. Demonstrate key benefit with clear visuals.` });
-      scenes.push({ time: '0:15 - 0:22', description: `Proof: Social proof, results, or before/after transformation. Build credibility.` });
-      scenes.push({ time: '0:22 - 0:30', description: `CTA: Clear call-to-action with urgency. Direct response with offer or next step.` });
+      scenes.push({
+        time: '0:00 - 0:03',
+        description: `HOOK: Creator looks directly at camera, mid-thought. "${hookScript}" — deliver with genuine energy, not scripted. Shoot in natural light, phone-in-hand selfie style.${bestCtrAd ? ` Mirror the energy of your ${bestCtrAd.metrics.ctr}% CTR winner.` : ''}`,
+      });
+      scenes.push({
+        time: '0:03 - 0:08',
+        description: `PROBLEM: ${targetAudience ? `Show a relatable ${targetAudience.toLowerCase()} moment` : 'Show the frustration'} — the failed alternatives, the wasted money, the disappointment. Quick cuts (1-2 sec each). Use real scenarios your customers experience.${productFocus ? ` Focus on the specific pain ${productFocus} solves.` : ''}`,
+      });
+      scenes.push({
+        time: '0:08 - 0:18',
+        description: `SOLUTION: Unboxing or first-use moment with ${productFocus || 'the product'}. Show texture, quality, the "aha" moment. Creator's genuine reaction. B-roll of product in use — hands, close-ups, lifestyle context. This is the money shot.${benchmarks.avgRoas > 2 ? ` Your ${benchmarks.avgRoas}x ROAS proves the product delivers — let the visuals prove it too.` : ''}`,
+      });
+      scenes.push({
+        time: '0:18 - 0:24',
+        description: `PROOF: Show real results — before/after, screenshots of reviews, DMs from happy customers, or the creator's own transformation. Flash 3-4 proof points in quick succession. Numbers > words.${hasData ? ` Reference: your top ad "${bestAd.name}" converts at ${bestAd.metrics.roas}x — that's proof of demand.` : ''}`,
+      });
+      scenes.push({
+        time: '0:24 - 0:30',
+        description: `CTA: Creator back on camera, direct and urgent. "Link in bio / tap below — they're running [specific offer] right now." End with product hero shot + brand logo. Add urgency: limited stock, time-limited discount, or exclusive bundle.`,
+      });
     } else {
-      scenes.push({ time: 'Frame 1', description: `Single hero image: ${productFocus} in lifestyle context, targeting ${targetAudience}. Bold headline with ${tones.join('/')} tone. Clear value prop and CTA overlay.` });
+      scenes.push({
+        time: 'Hero Frame',
+        description: `${productFocus || 'Product'} as centerpiece — lifestyle setting that resonates with ${targetAudience || 'your audience'}. Bold headline above: "${hookScript.substring(0, 60)}". Clean background, product takes 60% of frame. Overlay: key benefit + star rating or review count. CTA button: clear, contrasting color.`,
+      });
+      if (tones.includes('Premium') || tones.includes('Aspirational')) {
+        scenes.push({
+          time: 'Detail Frame',
+          description: `Close-up product detail shot — texture, ingredients, craftsmanship. Minimal text. Let the quality speak. Subtle brand elements.`,
+        });
+      }
     }
 
-    // Build the hook script
-    let hookScript = `"Wait — are you still ${targetAudience.toLowerCase().includes('women') ? 'doing this wrong' : 'missing out on this'}?"`;
-    if (benchmarks.avgRoas > 0) {
-      hookScript += ` (Based on hooks from ads achieving ${benchmarks.topRoas}x ROAS in your account)`;
-    }
+    // ---- CTA: specific to the context ----
+    const ctaOptions = [
+      productFocus ? `Shop ${productFocus} Now` : 'Shop Now',
+      targetAudience ? `Made for ${targetAudience} — Get Yours` : 'Get Yours Today',
+      tones.includes('Urgent') ? 'Limited Stock — Order Now' : '',
+      tones.includes('Premium') ? `Experience ${productFocus || 'the Difference'}` : '',
+    ].filter(Boolean);
+    const cta = ctaOptions[0] || 'Shop Now';
 
-    // Build CTA with performance context
-    let cta = `Shop ${productFocus} Now`;
-    if (benchmarks.avgCpa > 0) {
-      cta += ` — Target CPA: $${benchmarks.avgCpa} (current avg)`;
-    }
+    // ---- Concept name: descriptive, not generic ----
+    const toneLabel = tones.length > 2 ? tones.slice(0, 2).join(' + ') : tones.join(' + ');
+    const conceptName = [
+      productFocus || 'Creative',
+      '—',
+      toneLabel || 'Direct',
+      isVideo ? 'Video' : 'Static',
+      targetAudience ? `for ${targetAudience}` : '',
+      hasData ? `(${benchmarks.avgRoas}x ROAS baseline)` : '',
+    ].filter(Boolean).join(' ');
 
-    // Build the concept name
-    const conceptName = `${productFocus} — ${tones[0] || 'Direct'} ${isVideo ? 'Video' : 'Static'} for ${targetAudience}`;
-
-    // Build audio direction
-    let audioDirection = `${tones.join(', ')} tone. `;
+    // ---- Audio direction: specific ----
+    let audioDirection = '';
     if (isVideo) {
-      audioDirection += 'Upbeat background music that matches brand energy. Clear voiceover with confident pacing.';
+      const mood = tones.includes('Urgent') ? 'fast-paced, energetic' :
+                   tones.includes('Premium') ? 'minimal, ambient' :
+                   tones.includes('Playful') ? 'upbeat, fun' :
+                   tones.includes('Emotional') ? 'soft piano, emotional build' :
+                   'trending audio style, confident pacing';
+      audioDirection = `Music: ${mood}. Voiceover: Natural, ${tones[0]?.toLowerCase() || 'confident'} tone — sounds like a real person, not a script. Match the creator to ${targetAudience || 'your core audience'} demographic. Subtitles mandatory (85% of viewers watch without sound).`;
     } else {
-      audioDirection += 'N/A (static image).';
+      audioDirection = 'N/A (static image).';
     }
 
-    // Generate variations
-    const variations = [
-      { id: `var_${Date.now()}_1`, format: isVideo ? 'Video (16:9)' : 'Image (1:1)', name: `${conceptName} — Hero`, approved: false },
-      { id: `var_${Date.now()}_2`, format: isVideo ? 'Video (9:16)' : 'Image (9:16)', name: `${conceptName} — Story`, approved: false },
-      { id: `var_${Date.now()}_3`, format: isVideo ? 'Video (1:1)' : 'Image (4:5)', name: `${conceptName} — Feed`, approved: false },
-    ];
-
-    // If we have performance data, add a "winner variant" note
-    if (topPerformers.length > 0) {
+    // ---- Variations: diverse, strategic ----
+    const variations: { id: string; format: string; name: string; approved: boolean }[] = [];
+    if (isVideo) {
+      variations.push(
+        { id: `var_${Date.now()}_1`, format: 'Video (9:16)', name: `Story/Reel — ${toneLabel} Hook — ${targetAudience || 'Broad'}`, approved: false },
+        { id: `var_${Date.now()}_2`, format: 'Video (1:1)', name: `Feed — Problem/Solution Arc — ${targetAudience || 'Broad'}`, approved: false },
+        { id: `var_${Date.now()}_3`, format: 'Video (16:9)', name: `In-Stream — Extended Proof Cut — ${targetAudience || 'Broad'}`, approved: false },
+      );
+    } else {
+      variations.push(
+        { id: `var_${Date.now()}_1`, format: 'Image (1:1)', name: `Feed — Hero Product Shot — ${targetAudience || 'Broad'}`, approved: false },
+        { id: `var_${Date.now()}_2`, format: 'Image (9:16)', name: `Story — Bold Text Overlay — ${targetAudience || 'Broad'}`, approved: false },
+        { id: `var_${Date.now()}_3`, format: 'Image (4:5)', name: `Carousel — Benefit Breakdown — ${targetAudience || 'Broad'}`, approved: false },
+      );
+    }
+    // Winner remix if we have data
+    if (bestAd) {
       variations.push({
         id: `var_${Date.now()}_4`,
-        format: topPerformers[0].object_type === 'VIDEO' ? 'Video (Remix)' : 'Image (Remix)',
-        name: `Remix of "${topPerformers[0].name}" — ${topPerformers[0].metrics.roas}x ROAS winner`,
+        format: bestAd.object_type === 'VIDEO' ? 'Video (Remix)' : 'Image (Remix)',
+        name: `Remix of "${bestAd.name}" — ${bestAd.metrics.roas}x ROAS winner`,
         approved: false,
       });
     }
@@ -213,7 +282,6 @@ export async function directorRoutes(app: FastifyInstance) {
       scenes,
       audioDirection,
       cta,
-      // Extra context for the frontend
       benchmarks: benchmarks.avgRoas > 0 ? benchmarks : undefined,
       baseCreativeInsight: baseCreativeInsight ? {
         name: baseCreativeInsight.name,

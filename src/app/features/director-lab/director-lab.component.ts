@@ -447,13 +447,16 @@ export default class DirectorLabComponent implements OnInit {
     const selectedTones = this.tones.filter(t => t.selected).map(t => t.label);
     const baseCreative = this.creatives.find((c: any) => c.id === this.baseCreativeId);
 
+    const acc = this.adAccountService.currentAccount();
     this.api.post<any>(environment.DIRECTOR_GENERATE_BRIEF, {
-      base_creative: baseCreative?.name || '',
+      base_creative: this.baseCreativeId || '',
       patterns: selectedPatterns,
       format: this.selectedFormat,
       target_audience: this.targetAudience,
       product_focus: this.productFocus,
       tones: selectedTones,
+      account_id: acc?.id || '',
+      credential_group: acc?.credential_group || '',
     }).subscribe({
       next: (res) => {
         this.genProgress.set(100);
