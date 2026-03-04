@@ -28,6 +28,8 @@ export interface Creative {
   format: CreativeFormat;
   duration?: number;
   thumbnailUrl: string;
+  videoId?: string;
+  videoSourceUrl?: string;
   status: CreativeStatus;
   dna: CreativeDna;
   metrics: {

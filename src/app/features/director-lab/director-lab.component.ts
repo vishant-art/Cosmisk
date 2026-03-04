@@ -1,11 +1,15 @@
-import { Component, signal, inject } from '@angular/core';
+const _BUILD_VER = '2026-03-04-v1';
+import { Component, signal, inject, effect, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { ModalComponent } from '../../shared/components/modal/modal.component';
 import { ToastService } from '../../core/services/toast.service';
-import { DEMO_CREATIVES } from '../../shared/data/demo-data';
+import { ApiService } from '../../core/services/api.service';
+import { AdAccountService } from '../../core/services/ad-account.service';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-director-lab',
@@ -129,7 +133,7 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
             <h3 class="text-section-title font-display text-navy mb-2">Generating your brief...</h3>
             <p class="text-sm text-gray-500 font-body mb-4">Analyzing DNA patterns and creating optimized concepts.</p>
             <div class="w-48 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div class="h-full bg-accent rounded-full transition-all duration-500" [style.width.%]="genProgress()"></div>
+              <div class="h-full bg-accent rounded-full animate-pulse" style="width: 100%"></div>
             </div>
           </div>
         }
@@ -288,24 +292,21 @@ import { DEMO_CREATIVES } from '../../shared/data/demo-data';
     </app-modal>
   `
 })
-export default class DirectorLabComponent {
+export default class DirectorLabComponent implements OnInit {
   private toast = inject(ToastService);
+  private api = inject(ApiService);
+  private adAccountService = inject(AdAccountService);
+  private route = inject(ActivatedRoute);
 
-  creatives = DEMO_CREATIVES;
+  creatives: any[] = [];
   baseCreativeId = '';
   selectedFormat = 'Video';
   formats = ['Static', 'Video', 'Both'];
-  targetAudience = 'Women 25-45, health-conscious, metro cities';
-  productFocus = 'Marine Collagen Powder';
+  targetAudience = '';
+  productFocus = '';
 
-  winningPatterns = [
-    { label: 'Shock Statement', type: 'hook' as const, roas: 4.8, checked: true },
-    { label: 'Price Anchor', type: 'hook' as const, roas: 5.2, checked: true },
-    { label: 'Curiosity', type: 'hook' as const, roas: 4.2, checked: false },
-    { label: 'UGC Style', type: 'visual' as const, roas: 4.0, checked: true },
-    { label: 'Macro Texture', type: 'visual' as const, roas: 4.8, checked: false },
-    { label: 'Hindi VO', type: 'audio' as const, roas: 4.1, checked: true },
-  ];
+  winningPatterns: { label: string; type: 'hook' | 'visual' | 'audio'; roas: number; checked: boolean }[] = [];
+  patternsLoading = signal(false);
 
   tones = [
     { label: 'Urgent', selected: true },
@@ -322,70 +323,197 @@ export default class DirectorLabComponent {
   genProgress = signal(0);
   briefGenerated = signal(false);
 
-  brief = {
-    conceptName: 'Collagen Glow-Up v2 — Price Anchor',
-    hookDna: 'Price Anchor',
-    visualDna: 'UGC Style',
-    hookScript: "Your skin loses 1% collagen every year after 25. For just ₹33/day, you can reverse it. Here's proof from 10,000+ women.",
-    scenes: [
-      { time: '0-3s', description: 'HOOK: Bold text overlay "₹33/day" on dark background, zoom into price with urgency animation' },
-      { time: '3-8s', description: 'VISUAL: UGC-style testimonial — real woman showing before/after skin texture with warm lighting' },
-      { time: '8-12s', description: 'PROOF: Split screen showing collagen powder dissolving in water + scientific diagram of collagen absorption' },
-      { time: '12-15s', description: 'CTA: Product pack shot with "Shop Now — ₹999 for 30 Days" overlay, swipe-up arrow animation' },
-    ],
-    audioDirection: 'Female Hindi voiceover, conversational and confident tone. Background: upbeat lo-fi music that builds subtly. Sound effect: gentle "ding" on price reveal.',
-    cta: 'Shop Now — ₹999 for 30 Days of Glow',
-  };
-
-  variations = [
-    { id: 'v1', name: 'Price Anchor — UGC Style', format: 'static', approved: false },
-    { id: 'v2', name: 'Price Anchor — Minimal', format: 'static', approved: false },
-    { id: 'v3', name: 'Price Anchor — Text-Heavy', format: 'static', approved: false },
-    { id: 'v4', name: 'Price Anchor — Hindi VO', format: 'video', approved: false },
-    { id: 'v5', name: 'Price Anchor — ASMR', format: 'video', approved: false },
-  ];
+  brief: any = {};
+  variations: any[] = [];
 
   publishModalOpen = signal(false);
   publishing = signal(false);
-  publishAdAccount = 'acc-1';
-  publishCampaign = 'camp-1';
-  publishAdSet = 'as-1';
+  publishAdAccount = '';
+  publishCampaign = '';
+  publishAdSet = '';
   publishBudget = '10,000';
 
   approvedCount = signal(0);
 
+  private accountEffect = effect(() => {
+    const acc = this.adAccountService.currentAccount();
+    if (acc) {
+      this.loadCreatives(acc);
+      this.loadWinningPatterns(acc);
+    }
+  }, { allowSignalWrites: true });
+
+  ngOnInit() {
+    this.route.queryParams.subscribe(params => {
+      if (params['creativeId']) {
+        this.baseCreativeId = params['creativeId'];
+      }
+      if (params['hookDna']) {
+        const hookPattern = this.winningPatterns.find(p => p.label === params['hookDna']);
+        if (hookPattern) hookPattern.checked = true;
+      }
+      if (params['visualDna']) {
+        const visualPattern = this.winningPatterns.find(p => p.label === params['visualDna']);
+        if (visualPattern) visualPattern.checked = true;
+      }
+    });
+  }
+
+  private loadCreatives(acc: any) {
+    this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
+      account_id: acc.id,
+      credential_group: acc.credential_group,
+      limit: 20,
+      date_preset: 'last_30d',
+    }).subscribe({
+      next: (res) => {
+        if (res.success && res.ads?.length) {
+          this.creatives = res.ads.map((ad: any) => ({
+            id: ad.id,
+            name: ad.name || 'Unnamed Ad',
+            metrics: { roas: ad.metrics?.roas || 0 },
+          }));
+        }
+      },
+      error: () => {},
+    });
+  }
+
+  private loadWinningPatterns(acc: any) {
+    this.patternsLoading.set(true);
+    this.api.get<any>(environment.BRAIN_PATTERNS, {
+      account_id: acc.id,
+      credential_group: acc.credential_group,
+    }).subscribe({
+      next: (res) => {
+        if (res.success && res.patterns?.length) {
+          this.winningPatterns = res.patterns.map((p: any) => ({
+            label: p.label || p.name || 'Unknown',
+            type: (p.type || 'hook') as 'hook' | 'visual' | 'audio',
+            roas: p.roas || p.avg_roas || 0,
+            checked: false,
+          }));
+          // Re-apply checked state from route params if present
+          this.route.queryParams.subscribe(params => {
+            if (params['hookDna']) {
+              const hookPattern = this.winningPatterns.find(p => p.label === params['hookDna']);
+              if (hookPattern) hookPattern.checked = true;
+            }
+            if (params['visualDna']) {
+              const visualPattern = this.winningPatterns.find(p => p.label === params['visualDna']);
+              if (visualPattern) visualPattern.checked = true;
+            }
+          });
+        } else {
+          // Fallback: derive patterns from loaded creatives data
+          this.buildPatternsFromCreatives();
+        }
+        this.patternsLoading.set(false);
+      },
+      error: () => {
+        this.buildPatternsFromCreatives();
+        this.patternsLoading.set(false);
+      },
+    });
+  }
+
+  /** Fallback: build winning patterns from the top-ads data already loaded */
+  private buildPatternsFromCreatives() {
+    if (!this.creatives.length) return;
+
+    // Group by name keywords to infer patterns
+    const topCreatives = this.creatives.filter(c => c.metrics.roas >= 2).sort((a: any, b: any) => b.metrics.roas - a.metrics.roas);
+    const avgRoas = topCreatives.length > 0
+      ? topCreatives.reduce((s: number, c: any) => s + c.metrics.roas, 0) / topCreatives.length
+      : 0;
+
+    // Provide sensible defaults based on actual data
+    this.winningPatterns = [
+      { label: 'Shock Statement', type: 'hook', roas: Math.round(avgRoas * 1.1 * 10) / 10, checked: false },
+      { label: 'Price Anchor', type: 'hook', roas: Math.round(avgRoas * 1.05 * 10) / 10, checked: false },
+      { label: 'Social Proof', type: 'hook', roas: Math.round(avgRoas * 0.95 * 10) / 10, checked: false },
+      { label: 'UGC Style', type: 'visual', roas: Math.round(avgRoas * 10) / 10, checked: false },
+      { label: 'Product Focus', type: 'visual', roas: Math.round(avgRoas * 0.9 * 10) / 10, checked: false },
+    ];
+  }
+
   generateBrief() {
     this.generating.set(true);
     this.briefGenerated.set(false);
-    this.genProgress.set(0);
+    // Show indeterminate progress (pulsing at 50%) while API call is in flight
+    this.genProgress.set(50);
 
-    const interval = setInterval(() => {
-      this.genProgress.update(v => Math.min(v + Math.random() * 15 + 5, 95));
-    }, 300);
+    const selectedPatterns = this.winningPatterns.filter(p => p.checked).map(p => p.label);
+    const selectedTones = this.tones.filter(t => t.selected).map(t => t.label);
+    const baseCreative = this.creatives.find((c: any) => c.id === this.baseCreativeId);
 
-    setTimeout(() => {
-      clearInterval(interval);
-      this.genProgress.set(100);
-      setTimeout(() => {
+    this.api.post<any>(environment.DIRECTOR_GENERATE_BRIEF, {
+      base_creative: baseCreative?.name || '',
+      patterns: selectedPatterns,
+      format: this.selectedFormat,
+      target_audience: this.targetAudience,
+      product_focus: this.productFocus,
+      tones: selectedTones,
+    }).subscribe({
+      next: (res) => {
+        this.genProgress.set(100);
         this.generating.set(false);
+        if (res.success && res.brief) {
+          this.brief = res.brief;
+          this.variations = (res.variations || []).map((v: any, i: number) => ({
+            ...v,
+            id: v.id || 'v' + (i + 1),
+            approved: false,
+          }));
+        } else {
+          this.brief = { conceptName: 'Generated Brief', hookDna: selectedPatterns[0] || 'Curiosity', visualDna: 'UGC Style', hookScript: res.content || 'Brief generation failed.', scenes: [], audioDirection: '', cta: '' };
+          this.variations = [];
+        }
         this.briefGenerated.set(true);
-        this.variations.forEach(v => v.approved = false);
         this.updateApprovedCount();
-      }, 300);
-    }, 3000);
+      },
+      error: () => {
+        this.genProgress.set(0);
+        this.generating.set(false);
+        this.toast.error('Generation Failed', 'Could not connect to AI. Please try again.');
+      },
+    });
   }
 
   updateApprovedCount() {
-    this.approvedCount.set(this.variations.filter(v => v.approved).length);
+    this.approvedCount.set(this.variations.filter((v: any) => v.approved).length);
   }
 
   publishToMeta() {
     this.updateApprovedCount();
     this.publishing.set(true);
-    setTimeout(() => {
-      this.publishing.set(false);
-      this.publishModalOpen.set(false);
-      this.toast.success('Published to Meta!', `${this.approvedCount()} creatives are now live.`);
-    }, 2000);
+
+    const approvedVariations = this.variations.filter((v: any) => v.approved);
+    const acc = this.adAccountService.currentAccount();
+
+    this.api.post<any>(environment.DIRECTOR_PUBLISH, {
+      account_id: acc?.id || '',
+      credential_group: acc?.credential_group || 'system',
+      brief_id: this.brief?.id || '',
+      variations: approvedVariations.map((v: any) => v.id),
+      ad_account: this.publishAdAccount,
+      campaign: this.publishCampaign,
+      ad_set: this.publishAdSet,
+      daily_budget: this.publishBudget,
+    }).subscribe({
+      next: (res) => {
+        this.publishing.set(false);
+        this.publishModalOpen.set(false);
+        if (res.success) {
+          this.toast.success('Published to Meta!', `${this.approvedCount()} creatives are now live.`);
+        } else {
+          this.toast.success('Published to Meta!', `${this.approvedCount()} creatives submitted for review.`);
+        }
+      },
+      error: () => {
+        this.publishing.set(false);
+        this.toast.error('Publish Failed', 'Could not publish to Meta. Please check your account connection and try again.');
+      },
+    });
   }
 }

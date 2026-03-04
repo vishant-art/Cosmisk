@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, signal } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
 import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
@@ -47,7 +47,7 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
     </div>
   `
 })
-export class KpiCardComponent implements OnInit {
+export class KpiCardComponent implements OnInit, OnChanges {
   @Input({ required: true }) title = '';
   @Input({ required: true }) value: number = 0;
   @Input() change?: number;
@@ -60,23 +60,39 @@ export class KpiCardComponent implements OnInit {
 
   displayValue = signal(0);
   displayCurrencyValue = signal(0);
+  private animInterval: any;
 
   ngOnInit() {
-    if (this.value === 0) {
+    this.animateToValue(this.value);
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['value'] && !changes['value'].firstChange) {
+      this.animateToValue(this.value);
+    }
+  }
+
+  private animateToValue(target: number) {
+    if (this.animInterval) clearInterval(this.animInterval);
+    if (target === 0) {
       this.displayValue.set(0);
       this.displayCurrencyValue.set(0);
       return;
     }
     const duration = 800;
     const steps = 30;
-    const increment = this.value / steps;
-    let current = 0;
-    const interval = setInterval(() => {
+    const startVal = this.displayValue();
+    const diff = target - startVal;
+    const increment = diff / steps;
+    let current = startVal;
+    let step = 0;
+    this.animInterval = setInterval(() => {
+      step++;
       current += increment;
-      if (current >= this.value) {
-        this.displayValue.set(this.value);
-        this.displayCurrencyValue.set(this.value);
-        clearInterval(interval);
+      if (step >= steps) {
+        this.displayValue.set(target);
+        this.displayCurrencyValue.set(target);
+        clearInterval(this.animInterval);
       } else {
         this.displayValue.set(Math.round(current * 10) / 10);
         this.displayCurrencyValue.set(Math.round(current));

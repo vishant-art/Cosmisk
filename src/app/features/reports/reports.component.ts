@@ -1,9 +1,12 @@
-const _BUILD_VER = '2026-02-13-v2';
-import { Component, signal, inject } from '@angular/core';
+const _BUILD_VER = '2026-03-04-v1';
+import { Component, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
+import { ApiService } from '../../core/services/api.service';
+import { AdAccountService } from '../../core/services/ad-account.service';
+import { environment } from '../../../environments/environment';
 
 interface Report {
   id: string;
@@ -128,11 +131,31 @@ interface Report {
       <div class="bg-white rounded-card shadow-card overflow-hidden">
         <div class="p-4 border-b border-gray-100 flex items-center justify-between">
           <h3 class="text-sm font-display text-navy m-0">Generated Reports</h3>
-          <span class="text-xs text-gray-400 font-body">{{ reports.length }} reports</span>
+          @if (!loading()) {
+            <span class="text-xs text-gray-400 font-body">{{ reports.length }} reports</span>
+          }
         </div>
-        @if (reports.length === 0) {
+        @if (loading()) {
+          <div class="p-4 space-y-3">
+            @for (i of [1,2,3,4]; track i) {
+              <div class="animate-pulse flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div class="flex-1 space-y-2">
+                  <div class="h-3 bg-gray-200 rounded w-48"></div>
+                  <div class="h-2 bg-gray-200 rounded w-32"></div>
+                </div>
+                <div class="h-5 bg-gray-200 rounded w-14 ml-4"></div>
+              </div>
+            }
+          </div>
+        } @else if (loadError()) {
           <div class="p-12 text-center">
-            <span class="text-4xl block mb-3"><lucide-icon name="file-text" [size]="32"></lucide-icon></span>
+            <lucide-icon name="alert-circle" [size]="32" class="text-red-300 mx-auto mb-3"></lucide-icon>
+            <p class="text-sm text-red-500 font-body mb-1">Failed to load reports</p>
+            <button (click)="loadReports()" class="text-xs text-accent font-body font-semibold hover:underline">Try Again</button>
+          </div>
+        } @else if (reports.length === 0) {
+          <div class="p-12 text-center">
+            <lucide-icon name="file-text" [size]="32" class="text-gray-300 mx-auto mb-3"></lucide-icon>
             <p class="text-sm text-gray-500 font-body mb-0">No reports generated yet</p>
           </div>
         } @else {
@@ -184,11 +207,15 @@ interface Report {
     </div>
   `
 })
-export default class ReportsComponent {
+export default class ReportsComponent implements OnInit {
   private toast = inject(ToastService);
+  private api = inject(ApiService);
+  private adAccountService = inject(AdAccountService);
 
   showGenerator = signal(false);
   generating = signal(false);
+  loading = signal(true);
+  loadError = signal(false);
 
   reportName = '';
   reportType = 'performance';
@@ -208,57 +235,90 @@ export default class ReportsComponent {
     { label: 'Trend Analysis', checked: true },
   ];
 
-  reports: Report[] = [
-    { id: 'r-1', name: 'January 2024 Performance', type: 'Performance Summary', dateRange: 'Jan 1-31', status: 'Ready', createdAt: 'Feb 1, 2024', size: '2.4 MB' },
-    { id: 'r-2', name: 'Collagen Range Deep Dive', type: 'Creative Analysis', dateRange: 'Jan 15 - Feb 8', status: 'Ready', createdAt: 'Feb 8, 2024', size: '3.1 MB' },
-    { id: 'r-3', name: 'Weekly Client Report — W5', type: 'Full Account Report', dateRange: 'Jan 29 - Feb 4', status: 'Scheduled', createdAt: 'Feb 5, 2024', size: '-' },
-    { id: 'r-4', name: 'Audience Insights Q4', type: 'Audience Insights', dateRange: 'Oct-Dec 2023', status: 'Ready', createdAt: 'Jan 5, 2024', size: '1.8 MB' },
-  ];
+  reports: Report[] = [];
+
+  ngOnInit() {
+    this.loadReports();
+  }
+
+  loadReports() {
+    this.loading.set(true);
+    this.loadError.set(false);
+    const acc = this.adAccountService.currentAccount();
+    const params: Record<string, string> = {};
+    if (acc) params['account_id'] = acc.id;
+
+    this.api.get<any>(environment.REPORTS_LIST, params).subscribe({
+      next: (res) => {
+        if (res.success && res.reports?.length) {
+          this.reports = res.reports;
+        } else {
+          this.reports = [];
+        }
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.loading.set(false);
+        this.loadError.set(true);
+        console.error('Failed to load reports:', err);
+      },
+    });
+  }
 
   generateReport() {
     this.generating.set(true);
-    setTimeout(() => {
-      const typeLabels: Record<string, string> = {
-        performance: 'Performance Summary',
-        creative: 'Creative Analysis',
-        audience: 'Audience Insights',
-        competitive: 'Competitive Analysis',
-        full: 'Full Account Report',
-      };
-      const rangeLbls: Record<string, string> = {
-        '7d': 'Last 7 Days',
-        '30d': 'Last 30 Days',
-        'mtd': 'Month to Date',
-        '90d': 'Last Quarter',
-        'custom': 'Custom',
-      };
-      this.reports.unshift({
-        id: 'r-' + Date.now(),
-        name: this.reportName || 'Untitled Report',
-        type: typeLabels[this.reportType] ?? 'Performance Summary',
-        dateRange: rangeLbls[this.reportDateRange] ?? 'Last 30 Days',
-        status: 'Ready',
-        createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        size: (1.5 + Math.random() * 3).toFixed(1) + ' MB',
-      });
-      this.generating.set(false);
-      this.showGenerator.set(false);
-      this.toast.success('Report Generated!', 'Your report is ready for download');
-    }, 3000);
+    const acc = this.adAccountService.currentAccount();
+    const sections = this.reportSections.filter(s => s.checked).map(s => s.label);
+
+    this.api.post<any>(environment.REPORTS_GENERATE, {
+      name: this.reportName || 'Untitled Report',
+      type: this.reportType,
+      date_range: this.reportDateRange,
+      brand: this.reportBrand,
+      sections,
+      include_branding: this.includeAgencyBranding,
+      include_ai_summary: this.includeAiSummary,
+      account_id: acc?.id || '',
+      credential_group: acc?.credential_group || 'system',
+    }).subscribe({
+      next: (res) => {
+        const typeLabels: Record<string, string> = {
+          performance: 'Performance Summary',
+          creative: 'Creative Analysis',
+          audience: 'Audience Insights',
+          competitive: 'Competitive Analysis',
+          full: 'Full Account Report',
+        };
+        const rangeLbls: Record<string, string> = {
+          '7d': 'Last 7 Days',
+          '30d': 'Last 30 Days',
+          'mtd': 'Month to Date',
+          '90d': 'Last Quarter',
+          'custom': 'Custom',
+        };
+        this.reports.unshift({
+          id: res.report_id || 'r-' + Date.now(),
+          name: this.reportName || 'Untitled Report',
+          type: typeLabels[this.reportType] ?? 'Performance Summary',
+          dateRange: rangeLbls[this.reportDateRange] ?? 'Last 30 Days',
+          status: 'Ready',
+          createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          size: res.size || 'PDF',
+        });
+        this.generating.set(false);
+        this.showGenerator.set(false);
+        this.toast.success('Report Generated!', res.doc_url ? 'View in Google Docs' : 'Your report is ready');
+      },
+      error: () => {
+        this.generating.set(false);
+        this.toast.error('Generation Failed', 'Could not generate report. Please try again.');
+      },
+    });
   }
 
   scheduleReport() {
-    this.reports.unshift({
-      id: 'r-' + Date.now(),
-      name: (this.reportName || 'Weekly Report') + ' (Scheduled)',
-      type: 'Performance Summary',
-      dateRange: 'Weekly',
-      status: 'Scheduled',
-      createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      size: '-',
-    });
-    this.showGenerator.set(false);
     this.toast.info('Report Scheduled', 'Weekly report will be generated every Monday');
+    this.showGenerator.set(false);
   }
 
   downloadReport(report: Report) {

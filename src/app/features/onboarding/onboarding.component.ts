@@ -1,9 +1,11 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 import { UgcService } from '../../core/services/ugc.service';
+import { MetaOAuthService } from '../../core/services/meta-oauth.service';
+import { AdAccountService } from '../../core/services/ad-account.service';
 import { ToastService } from '../../core/services/toast.service';
 import { LucideAngularModule } from 'lucide-angular';
 
@@ -36,31 +38,30 @@ import { LucideAngularModule } from 'lucide-angular';
     .confetti-piece:nth-child(10) { left: 15%; background: #2ECC71; animation-delay: 0.45s; animation-duration: 2.4s; border-radius: 50%; }
     .confetti-piece:nth-child(11) { left: 35%; background: #9B59B6; animation-delay: 0.55s; animation-duration: 3s; }
     .confetti-piece:nth-child(12) { left: 55%; background: #6366F1; animation-delay: 0.6s; animation-duration: 2.8s; border-radius: 50%; }
-    .confetti-piece:nth-child(13) { left: 75%; background: #F39C12; animation-delay: 0.1s; animation-duration: 3.4s; }
-    .confetti-piece:nth-child(14) { left: 85%; background: #1ABC9C; animation-delay: 0.4s; animation-duration: 2.5s; border-radius: 50%; }
-    .confetti-piece:nth-child(15) { left: 45%; background: #3498DB; animation-delay: 0.7s; animation-duration: 3.2s; }
   `],
   template: `
     <div class="w-full max-w-2xl mx-auto">
       <!-- Progress Bar -->
-      <div class="mb-8">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-sm font-body font-medium text-gray-500">Step {{ currentStep() }} of 4</span>
-          @if (currentStep() > 1 && currentStep() <= 4) {
-            <button (click)="prevStep()" class="text-sm text-accent hover:underline font-body border-0 bg-transparent cursor-pointer">
-              ← Back
-            </button>
-          }
-        </div>
-        <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div
-            class="h-full bg-accent rounded-full transition-all duration-500"
-            [style.width.%]="currentStep() <= 4 ? currentStep() * 25 : 100">
+      @if (currentStep() <= 2) {
+        <div class="mb-8">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-body font-medium text-gray-500">Step {{ currentStep() }} of 2</span>
+            @if (currentStep() === 2) {
+              <button (click)="prevStep()" class="text-sm text-accent hover:underline font-body border-0 bg-transparent cursor-pointer">
+                ← Back
+              </button>
+            }
+          </div>
+          <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              class="h-full bg-accent rounded-full transition-all duration-500"
+              [style.width.%]="currentStep() * 50">
+            </div>
           </div>
         </div>
-      </div>
+      }
 
-      <!-- Step 1: Brand & Product -->
+      <!-- Step 1: Brand Basics -->
       @if (currentStep() === 1) {
         <div class="animate-fade-in">
           <div class="text-center mb-8">
@@ -68,7 +69,7 @@ import { LucideAngularModule } from 'lucide-angular';
               <lucide-icon name="building-2" [size]="32" class="text-accent"></lucide-icon>
             </div>
             <h2 class="text-page-title font-display text-navy mb-3">Tell us about your brand</h2>
-            <p class="text-gray-600 font-body">We'll use this to create your UGC project and start research.</p>
+            <p class="text-gray-600 font-body">We'll personalize your Cosmisk experience based on this.</p>
           </div>
 
           <div class="space-y-5">
@@ -81,160 +82,139 @@ import { LucideAngularModule } from 'lucide-angular';
               <input type="url" [(ngModel)]="website_url" class="input" placeholder="e.g. https://glowvita.com">
             </div>
             <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Product / Service to Promote <span class="text-red-500">*</span></label>
-              <textarea [(ngModel)]="product_feature" class="input !h-20 resize-none" placeholder="What product or service do you want UGC ads for?"></textarea>
+              <label class="block text-sm font-body font-medium text-navy mb-1">Industry <span class="text-red-500">*</span></label>
+              <select [(ngModel)]="industry" class="input">
+                <option value="">Select your industry</option>
+                <option value="Beauty & Skincare">Beauty & Skincare</option>
+                <option value="Health & Wellness">Health & Wellness</option>
+                <option value="Fashion & Apparel">Fashion & Apparel</option>
+                <option value="Food & Beverage">Food & Beverage</option>
+                <option value="Home & Living">Home & Living</option>
+                <option value="Tech & Electronics">Tech & Electronics</option>
+                <option value="Fitness & Sports">Fitness & Sports</option>
+                <option value="Pet Care">Pet Care</option>
+                <option value="Automotive">Automotive</option>
+                <option value="Education">Education</option>
+                <option value="Finance & Fintech">Finance & Fintech</option>
+                <option value="SaaS & Software">SaaS & Software</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
             <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">What makes you different?</label>
-              <textarea [(ngModel)]="differentiator" class="input !h-20 resize-none" placeholder="Your unique selling point vs competitors"></textarea>
+              <label class="block text-sm font-body font-medium text-navy mb-1">What do you sell?</label>
+              <textarea [(ngModel)]="product_feature" class="input !h-16 resize-none" placeholder="Brief description of your product or service"></textarea>
             </div>
           </div>
 
           <div class="text-center mt-8">
-            <button (click)="nextStep()" [disabled]="!brand_name || !website_url || !product_feature"
+            <button (click)="submitBrand()" [disabled]="!brand_name || !website_url || !industry || submitting()"
               class="btn-primary !py-3 !px-8 disabled:opacity-50 disabled:cursor-not-allowed">
-              Continue →
-            </button>
-          </div>
-        </div>
-      }
-
-      <!-- Step 2: Target Audience -->
-      @if (currentStep() === 2) {
-        <div class="animate-fade-in">
-          <div class="text-center mb-8">
-            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <lucide-icon name="users" [size]="32" class="text-accent"></lucide-icon>
-            </div>
-            <h2 class="text-page-title font-display text-navy mb-3">Who are you selling to?</h2>
-            <p class="text-gray-600 font-body">Understanding your audience helps us write scripts that convert.</p>
-          </div>
-
-          <div class="space-y-5">
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Target Audience</label>
-              <textarea [(ngModel)]="target_user" class="input !h-20 resize-none" placeholder="e.g. Women 25-40, interested in skincare, mid-to-premium segment"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Biggest Problem You Solve</label>
-              <textarea [(ngModel)]="biggest_problem" class="input !h-20 resize-none" placeholder="What pain point does your product address?"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Main Hesitation to Buy</label>
-              <textarea [(ngModel)]="main_hesitation" class="input !h-16 resize-none" placeholder="Why do people hesitate before purchasing?"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Social Proof</label>
-              <textarea [(ngModel)]="social_proof" class="input !h-16 resize-none" placeholder="Reviews, ratings, testimonials, press mentions..."></textarea>
-            </div>
-          </div>
-
-          <div class="text-center mt-8">
-            <button (click)="nextStep()" [disabled]="!target_user"
-              class="btn-primary !py-3 !px-8 disabled:opacity-50 disabled:cursor-not-allowed">Continue →</button>
-          </div>
-        </div>
-      }
-
-      <!-- Step 3: Brand Voice & Identity -->
-      @if (currentStep() === 3) {
-        <div class="animate-fade-in">
-          <div class="text-center mb-8">
-            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <lucide-icon name="palette" [size]="32" class="text-accent"></lucide-icon>
-            </div>
-            <h2 class="text-page-title font-display text-navy mb-3">Brand voice & positioning</h2>
-            <p class="text-gray-600 font-body">This shapes the tone and style of your UGC scripts.</p>
-          </div>
-
-          <div class="space-y-5">
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Brand Personality</label>
-              <textarea [(ngModel)]="brand_personality" class="input !h-16 resize-none" placeholder="e.g. Fun, approachable, science-backed, premium but not stuffy"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Key Selling Proposition</label>
-              <textarea [(ngModel)]="selling_proposition" class="input !h-16 resize-none" placeholder="The one thing you want every ad to communicate"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Credibility / Trust Signal</label>
-              <input type="text" [(ngModel)]="credibility_point" class="input" placeholder="e.g. Dermatologist-approved, 50,000+ happy customers">
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Competitors</label>
-              <input type="text" [(ngModel)]="competitors" class="input" placeholder="e.g. WOW Skin Science, Oziva, mCaffeine">
-            </div>
-          </div>
-
-          <div class="text-center mt-8">
-            <button (click)="nextStep()" class="btn-primary !py-3 !px-8">Continue →</button>
-          </div>
-        </div>
-      }
-
-      <!-- Step 4: Project Setup -->
-      @if (currentStep() === 4) {
-        <div class="animate-fade-in">
-          <div class="text-center mb-8">
-            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
-              <lucide-icon name="clapperboard" [size]="32" class="text-accent"></lucide-icon>
-            </div>
-            <h2 class="text-page-title font-display text-navy mb-3">Project details</h2>
-            <p class="text-gray-600 font-body">Almost there! Just a few more details to get started.</p>
-          </div>
-
-          <div class="space-y-5">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-body font-medium text-navy mb-1">Number of Scripts</label>
-                <input type="number" [(ngModel)]="num_scripts" class="input" min="1" max="20" placeholder="5">
-              </div>
-              <div>
-                <label class="block text-sm font-body font-medium text-navy mb-1">WhatsApp Number</label>
-                <input type="tel" [(ngModel)]="whatsapp_number" class="input" placeholder="+91 98765 43210">
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Preferred UGC Concepts</label>
-              <textarea [(ngModel)]="best_concepts" class="input !h-16 resize-none" placeholder="e.g. Unboxing, Before/After, Testimonial, GRWM"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Reference Ads (URLs or descriptions)</label>
-              <textarea [(ngModel)]="reference_ads" class="input !h-16 resize-none" placeholder="Links to ads you like, or describe the style you want"></textarea>
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Things to Avoid</label>
-              <input type="text" [(ngModel)]="do_not_say" class="input" placeholder="Claims, words, or themes you don't want in ads">
-            </div>
-            <div>
-              <label class="block text-sm font-body font-medium text-navy mb-1">Additional Notes</label>
-              <textarea [(ngModel)]="additional_notes" class="input !h-16 resize-none" placeholder="Anything else we should know?"></textarea>
-            </div>
-          </div>
-
-          <div class="text-center mt-8">
-            <button (click)="submitOnboarding()" [disabled]="submitting() || !num_scripts || num_scripts < 1"
-              class="btn-primary !py-4 !px-10 !text-base disabled:opacity-50 disabled:cursor-not-allowed">
               @if (submitting()) {
                 <span class="inline-flex items-center gap-2">
                   <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                  Setting up your project...
+                  Setting up...
                 </span>
               } @else {
-                Launch Project
+                Continue →
               }
             </button>
           </div>
         </div>
       }
 
-      <!-- Step 5: Success -->
-      @if (currentStep() === 5) {
+      <!-- Step 2: Connect Ad Account -->
+      @if (currentStep() === 2) {
+        <div class="animate-fade-in">
+          <div class="text-center mb-8">
+            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
+              <lucide-icon name="bar-chart-3" [size]="32" class="text-accent"></lucide-icon>
+            </div>
+            <h2 class="text-page-title font-display text-navy mb-3">Connect your ad account</h2>
+            <p class="text-gray-600 font-body">Link your Meta Ads account to unlock analytics, AI insights, and creative intelligence.</p>
+          </div>
+
+          <div class="space-y-4 max-w-sm mx-auto">
+            <!-- Meta Ads -->
+            <div class="border rounded-xl p-5 transition-all"
+              [class]="metaOAuth.isConnected() ? 'border-green-300 bg-green-50/50' : 'border-gray-200 hover:border-accent/30'">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/></svg>
+                  </div>
+                  <div>
+                    <p class="font-body font-semibold text-navy text-sm">Meta Ads</p>
+                    @if (metaOAuth.isConnected()) {
+                      <p class="text-xs text-green-600 font-body">{{ metaOAuth.connectedAccountCount() }} account(s) connected</p>
+                    } @else {
+                      <p class="text-xs text-gray-500 font-body">Facebook & Instagram Ads</p>
+                    }
+                  </div>
+                </div>
+                @if (metaOAuth.isConnected()) {
+                  <lucide-icon name="check-circle-2" [size]="24" class="text-green-500"></lucide-icon>
+                } @else if (metaOAuth.connectionStatus() === 'loading') {
+                  <span class="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></span>
+                } @else {
+                  <button (click)="connectMeta()" class="px-4 py-1.5 bg-accent text-white text-xs font-body font-semibold rounded-full hover:bg-accent/90">
+                    Connect
+                  </button>
+                }
+              </div>
+            </div>
+
+            <!-- Google Ads (coming soon) -->
+            <div class="border border-gray-200 rounded-xl p-5 opacity-60">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-white border border-gray-200 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" fill="#4285F4"/></svg>
+                  </div>
+                  <div>
+                    <p class="font-body font-semibold text-navy text-sm">Google Ads</p>
+                    <p class="text-xs text-gray-400 font-body">Coming soon</p>
+                  </div>
+                </div>
+                <span class="text-xs text-gray-400 font-body bg-gray-100 px-2 py-1 rounded-full">Soon</span>
+              </div>
+            </div>
+
+            <!-- TikTok Ads (coming soon) -->
+            <div class="border border-gray-200 rounded-xl p-5 opacity-60">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.2a6.34 6.34 0 0010.86 4.48 6.3 6.3 0 001.83-4.47V8.73a8.26 8.26 0 004.76 1.5V6.79a4.83 4.83 0 01-1.01-.1z"/></svg>
+                  </div>
+                  <div>
+                    <p class="font-body font-semibold text-navy text-sm">TikTok Ads</p>
+                    <p class="text-xs text-gray-400 font-body">Coming soon</p>
+                  </div>
+                </div>
+                <span class="text-xs text-gray-400 font-body bg-gray-100 px-2 py-1 rounded-full">Soon</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-center mt-8 space-y-3">
+            <button (click)="completeOnboarding()"
+              class="btn-primary !py-3 !px-8">
+              @if (metaOAuth.isConnected()) {
+                Go to Dashboard →
+              } @else {
+                Skip for Now →
+              }
+            </button>
+            @if (!metaOAuth.isConnected()) {
+              <p class="text-xs text-gray-400 font-body">You can connect ad accounts anytime from Settings</p>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Step 3: Success -->
+      @if (currentStep() === 3) {
         <div class="text-center animate-fade-in py-12 relative">
-          <!-- Confetti pieces -->
-          <div class="confetti-piece"></div>
-          <div class="confetti-piece"></div>
-          <div class="confetti-piece"></div>
           <div class="confetti-piece"></div>
           <div class="confetti-piece"></div>
           <div class="confetti-piece"></div>
@@ -249,10 +229,14 @@ import { LucideAngularModule } from 'lucide-angular';
           <div class="confetti-piece"></div>
 
           <div class="mb-6"><lucide-icon name="sparkles" [size]="48" class="text-accent"></lucide-icon></div>
-          <h2 class="text-page-title font-display text-navy mb-3">You're all set!</h2>
-          <p class="text-gray-600 font-body mb-2">Your project <strong>{{ clientCode() }}</strong> has been created.</p>
-          <p class="text-gray-500 font-body text-sm mb-8">Our AI is already researching your brand and scouting creators. You'll see concepts appear shortly.</p>
-          <button (click)="goToStudio()" class="btn-primary !py-3.5 !px-8 !text-base">Go to UGC Studio</button>
+          <h2 class="text-page-title font-display text-navy mb-3">Welcome to Cosmisk!</h2>
+          <p class="text-gray-600 font-body mb-2">Your brand <strong>{{ brand_name }}</strong> is all set up.</p>
+          @if (metaOAuth.isConnected()) {
+            <p class="text-gray-500 font-body text-sm mb-8">Your ad accounts are connected. Head to the dashboard to see your performance data.</p>
+          } @else {
+            <p class="text-gray-500 font-body text-sm mb-8">Connect your ad accounts from Settings to unlock full analytics and AI insights.</p>
+          }
+          <button (click)="goToDashboard()" class="btn-primary !py-3.5 !px-8 !text-base">Go to Dashboard</button>
         </div>
       }
     </div>
@@ -262,88 +246,75 @@ export default class OnboardingComponent {
   private router = inject(Router);
   private auth = inject(AuthService);
   private ugc = inject(UgcService);
+  private adAccounts = inject(AdAccountService);
   private toast = inject(ToastService);
+  metaOAuth = inject(MetaOAuthService);
 
   currentStep = signal(1);
   submitting = signal(false);
-  clientCode = signal('');
 
-  // Step 1: Brand & Product
+  // Step 1: Brand Basics
   brand_name = '';
   website_url = '';
+  industry = '';
   product_feature = '';
-  differentiator = '';
-
-  // Step 2: Target Audience
-  target_user = '';
-  biggest_problem = '';
-  main_hesitation = '';
-  social_proof = '';
-
-  // Step 3: Brand Voice
-  brand_personality = '';
-  selling_proposition = '';
-  credibility_point = '';
-  competitors = '';
-
-  // Step 4: Project Setup
-  num_scripts = 5;
-  whatsapp_number = '';
-  best_concepts = '';
-  reference_ads = '';
-  do_not_say = '';
-  additional_notes = '';
-
-  nextStep() {
-    this.currentStep.update(s => s + 1);
-  }
 
   prevStep() {
     this.currentStep.update(s => Math.max(1, s - 1));
   }
 
-  submitOnboarding() {
+  submitBrand() {
     this.submitting.set(true);
 
     const user = this.auth.user();
     const payload = {
       client_name: user?.name || '',
       client_email: user?.email || '',
-      whatsapp_number: this.whatsapp_number,
       brand_name: this.brand_name,
       website_url: this.website_url,
-      product_feature: this.product_feature,
-      differentiator: this.differentiator,
-      target_user: this.target_user,
-      biggest_problem: this.biggest_problem,
-      main_hesitation: this.main_hesitation,
-      social_proof: this.social_proof,
-      brand_personality: this.brand_personality,
-      selling_proposition: this.selling_proposition,
-      credibility_point: this.credibility_point,
-      competitors: this.competitors,
-      best_concepts: this.best_concepts,
-      reference_ads: this.reference_ads,
-      do_not_say: this.do_not_say,
-      additional_notes: this.additional_notes,
-      num_scripts: this.num_scripts || 5,
+      product_feature: this.product_feature || this.industry,
+      differentiator: '',
+      target_user: '',
+      biggest_problem: '',
+      main_hesitation: '',
+      social_proof: '',
+      brand_personality: '',
+      selling_proposition: '',
+      credibility_point: '',
+      competitors: '',
+      best_concepts: '',
+      reference_ads: '',
+      do_not_say: '',
+      additional_notes: `Industry: ${this.industry}`,
+      num_scripts: 5,
+      whatsapp_number: '',
     };
 
     this.ugc.onboardProject(payload).subscribe({
-      next: (res: any) => {
+      next: () => {
         this.submitting.set(false);
-        this.clientCode.set(res.client_code || '');
-        this.auth.setOnboardingComplete();
-        this.currentStep.set(5);
+        this.currentStep.set(2);
       },
       error: (err) => {
         this.submitting.set(false);
-        this.toast.error('Onboarding failed', err.error?.error || 'Please try again.');
+        this.toast.error('Setup failed', err.error?.error || 'Please try again.');
       },
     });
   }
 
-  goToStudio() {
-    this.router.navigate(['/app/ugc-studio']);
+  connectMeta() {
+    this.metaOAuth.openOAuthPopup();
+  }
+
+  completeOnboarding() {
+    this.auth.setOnboardingComplete();
+    if (this.metaOAuth.isConnected()) {
+      this.adAccounts.loadAccounts();
+    }
+    this.currentStep.set(3);
+  }
+
+  goToDashboard() {
+    this.router.navigate(['/app/dashboard']);
   }
 }

@@ -2,6 +2,7 @@ import { Component, signal, HostListener, Output, EventEmitter } from '@angular/
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { BrandSwitcherComponent } from '../brand-switcher/brand-switcher.component';
+import { AccountSwitcherComponent } from '../account-switcher/account-switcher.component';
 import { LucideAngularModule } from 'lucide-angular';
 
 interface NavItem {
@@ -21,7 +22,7 @@ interface NavGroup {
   standalone: true,
   imports: [
     CommonModule, RouterLink, RouterLinkActive, BrandSwitcherComponent,
-    LucideAngularModule
+    AccountSwitcherComponent, LucideAngularModule
   ],
   template: `
     <aside
@@ -42,8 +43,11 @@ interface NavGroup {
 
       <!-- Brand Switcher -->
       @if (!collapsed()) {
-        <div class="px-3 mb-4">
+        <div class="px-3 mb-2">
           <app-brand-switcher />
+        </div>
+        <div class="px-3 mb-4">
+          <app-account-switcher />
         </div>
       }
 
@@ -200,7 +204,7 @@ export class SidebarComponent {
         { label: 'Dashboard', icon: 'layout-dashboard', route: '/app/dashboard' },
         { label: 'Creative Cockpit', icon: 'palette', route: '/app/creative-cockpit' },
         { label: 'Director Lab', icon: 'clapperboard', route: '/app/director-lab' },
-        { label: 'UGC Studio', icon: 'video', route: '/app/ugc-studio' },
+        { label: 'Creative Studio', icon: 'video', route: '/app/ugc-studio' },
       ]
     },
     {

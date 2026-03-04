@@ -7,7 +7,7 @@ import { errorInterceptor } from './core/interceptors/error.interceptor';
 import {
   LucideAngularModule,
   // Navigation & Layout
-  LayoutDashboard, Palette, Clapperboard, Video, Brain, BarChart3,
+  LayoutDashboard, Palette, Clapperboard, Video, VideoOff, Brain, BarChart3,
   MessageSquare, FileText, Megaphone, Image, FolderOpen, Bookmark,
   Gauge, GitBranch, Shield, Workflow, Settings, ChevronLeft, ChevronDown,
   ChevronRight, PanelLeft, Menu, X, MoreVertical, ExternalLink,
@@ -22,7 +22,8 @@ import {
   CreditCard, User, Users, Globe, Smartphone, ShoppingCart,
   Camera, Package, Layers, Star, Heart, Mail, KeyRound,
   Building2, MonitorPlay, Wand2, Bot, Briefcase, DollarSign,
-  BellRing, FileUp, LayoutGrid
+  BellRing, FileUp, LayoutGrid, List, CircleDot,
+  CheckCircle, ClipboardList, IndianRupee, MapPin, Scan, XCircle
 } from 'lucide-angular';
 
 export const appConfig: ApplicationConfig = {
@@ -49,7 +50,8 @@ export const appConfig: ApplicationConfig = {
         CreditCard, User, Users, Globe, Smartphone, ShoppingCart,
         Camera, Package, Layers, Star, Heart, Mail, KeyRound,
         Building2, MonitorPlay, Wand2, Bot, Briefcase, DollarSign,
-        BellRing, FileUp, LayoutGrid
+        BellRing, FileUp, LayoutGrid, List, CircleDot,
+        CheckCircle, ClipboardList, IndianRupee, MapPin, Scan, XCircle
       })
     ),
   ]

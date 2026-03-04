@@ -1,5 +1,6 @@
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule } from 'lucide-angular';
 import { Creative } from '../../../core/models/creative.model';
 import { DnaBadgeComponent } from '../dna-badge/dna-badge.component';
 import { StatusBadgeComponent } from '../status-badge/status-badge.component';
@@ -8,16 +9,26 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
 @Component({
   selector: 'app-creative-card',
   standalone: true,
-  imports: [CommonModule, DnaBadgeComponent, StatusBadgeComponent, LakhCrorePipe],
+  imports: [CommonModule, DnaBadgeComponent, StatusBadgeComponent, LakhCrorePipe, LucideAngularModule],
   template: `
     <div class="card !p-0 overflow-hidden cursor-pointer group hover:-translate-y-1 transition-all duration-200">
-      <!-- Thumbnail -->
+      <!-- Media Preview -->
       <div class="relative aspect-square bg-gray-100 overflow-hidden">
         <img
           [src]="creative.thumbnailUrl"
           [alt]="creative.name"
           class="w-full h-full object-cover"
-          loading="lazy">
+          loading="lazy"
+          (error)="onImgError($event)">
+
+        <!-- Video Play Icon -->
+        @if (creative.format === 'video') {
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center backdrop-blur-sm group-hover:opacity-0 transition-opacity">
+              <lucide-icon name="play" [size]="18" class="text-white ml-0.5"></lucide-icon>
+            </div>
+          </div>
+        }
 
         <!-- Format Badge -->
         <span class="absolute top-3 left-3 px-2 py-0.5 bg-black/60 text-white text-[10px] font-mono rounded uppercase">
@@ -77,6 +88,11 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
 })
 export class CreativeCardComponent {
   @Input({ required: true }) creative!: Creative;
+
+  onImgError(event: Event) {
+    const img = event.target as HTMLImageElement;
+    img.src = `https://placehold.co/400x400/E0E7FF/4338CA?text=${encodeURIComponent((this.creative.name || 'Ad').substring(0, 15))}`;
+  }
 
   get statusDotClass(): string {
     switch (this.creative.status) {

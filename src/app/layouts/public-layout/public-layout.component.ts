@@ -88,7 +88,7 @@ import { LucideAngularModule } from 'lucide-angular';
             <ul class="space-y-2 list-none p-0">
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Creative Cockpit</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Director Lab</a></li>
-              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">UGC Studio</a></li>
+              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Creative Studio</a></li>
               <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">AI Oracle</a></li>
             </ul>
           </div>

@@ -100,7 +100,7 @@ export class CommandPaletteComponent {
     { id: 'nav-dashboard', label: 'Dashboard', category: 'Pages', icon: '&#9632;', route: '/app/dashboard' },
     { id: 'nav-cockpit', label: 'Creative Cockpit', category: 'Pages', icon: '&#127912;', route: '/app/creative-cockpit' },
     { id: 'nav-director', label: 'Director Lab', category: 'Pages', icon: '&#127916;', route: '/app/director-lab' },
-    { id: 'nav-ugc', label: 'UGC Studio', category: 'Pages', icon: '&#9654;', route: '/app/ugc-studio' },
+    { id: 'nav-ugc', label: 'Creative Studio', category: 'Pages', icon: '&#9654;', route: '/app/ugc-studio' },
     { id: 'nav-brain', label: 'Brain', category: 'Pages', icon: '&#129504;', route: '/app/brain' },
     { id: 'nav-analytics', label: 'Analytics', category: 'Pages', icon: '&#128202;', route: '/app/analytics' },
     { id: 'nav-ai', label: 'AI Studio', category: 'Pages', icon: '&#128172;', route: '/app/ai-studio' },

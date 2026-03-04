@@ -1,9 +1,11 @@
-const _BUILD_VER = '2026-02-23-v2';
+const _BUILD_VER = '2026-03-03-v1';
 import { Component, signal, inject, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { AiService } from '../../core/services/ai.service';
+import { AdAccountService } from '../../core/services/ad-account.service';
+import { DateRangeService } from '../../core/services/date-range.service';
 
 interface ChatMessage {
   id: string;
@@ -23,64 +25,6 @@ const SUGGESTED_QUESTIONS = [
   { icon: '🧬', text: 'What DNA patterns work for skincare?' },
 ];
 
-const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart']; table?: ChatMessage['table'] }> = {
-  'best performing hook': {
-    content: 'Based on the last 30 days, your **top performing hook type is "Shock Statement"** with an average ROAS of 4.8x across 12 creatives. Here\'s the breakdown:',
-    chart: {
-      type: 'bar',
-      data: [
-        { label: 'Shock Statement', value: 4.8 },
-        { label: 'Price Anchor', value: 4.2 },
-        { label: 'Social Proof', value: 3.9 },
-        { label: 'Curiosity', value: 3.5 },
-        { label: 'Authority', value: 3.1 },
-      ]
-    }
-  },
-  'highest roas': {
-    content: 'Here are your **top 5 creatives by ROAS** this month:',
-    table: {
-      headers: ['Creative', 'ROAS', 'Spend', 'Status'],
-      rows: [
-        ['Marine Collagen — Shock Hook', '5.2x', '₹1.8L', 'Winning'],
-        ['Vitamin C Serum — UGC', '4.8x', '₹92K', 'Winning'],
-        ['Bundle Offer — Price Anchor', '4.5x', '₹1.2L', 'Stable'],
-        ['Before/After — Transformation', '4.2x', '₹67K', 'New'],
-        ['Testimonial Reel — Hindi', '3.9x', '₹2.1L', 'Stable'],
-      ]
-    }
-  },
-  'fatiguing': {
-    content: '⚠️ **3 creatives are showing fatigue signals:**\n\n1. **"Summer Sale Banner"** — CTR dropped 34% in 7 days. Recommend pausing.\n2. **"Hydration Hero"** — ROAS down from 3.8x to 2.1x. Iterate with new hook.\n3. **"Protein Powder Lifestyle"** — Frequency at 4.2 (above 3.0 threshold).\n\nI recommend creating new variations using the Director Lab for creatives #1 and #2.',
-  },
-  'audience segments': {
-    content: 'Your **best converting audience segments** based on the last 30 days:',
-    table: {
-      headers: ['Segment', 'CPA', 'ROAS', 'Conv. Rate'],
-      rows: [
-        ['Women 25-34, Metro', '₹245', '4.6x', '3.8%'],
-        ['Women 35-44, Health Interest', '₹312', '4.1x', '3.2%'],
-        ['Men 25-34, Fitness', '₹398', '3.5x', '2.7%'],
-        ['Women 18-24, Beauty', '₹425', '3.1x', '2.4%'],
-      ]
-    }
-  },
-  'predict': {
-    content: '🔮 **Spend Forecast for Next 7 Days:**\n\nAt current daily spend of ~₹42K/day:\n- **Projected weekly spend:** ₹2.94L\n- **Monthly pace:** ₹12.6L (budget: ₹15L)\n- **Status:** UNDER-PACING by ~16%\n\n**Recommendation:** Increase daily budgets on your top 3 winning creatives by 15-20% to hit your monthly target. This should improve utilization without sacrificing ROAS.',
-  },
-  'dna patterns': {
-    content: 'For **skincare category**, the winning DNA patterns are:\n\n🟡 **Hook:** Shock Statement + Transformation hooks deliver 4.5x avg ROAS\n🔵 **Visual:** UGC Style + Before/After visuals outperform by 38%\n🟢 **Audio:** Hindi VO with Emotional tone has 2.1x higher completion rate\n\n**Top DNA Combination:** Shock Statement + UGC Style + Hindi VO = 5.2x ROAS',
-    chart: {
-      type: 'bar',
-      data: [
-        { label: 'Shock+UGC+Hindi', value: 5.2 },
-        { label: 'Price+Lifestyle+Music', value: 4.1 },
-        { label: 'Social+Macro+English', value: 3.6 },
-        { label: 'Curiosity+Text+Silent', value: 2.8 },
-      ]
-    }
-  },
-};
 
 @Component({
   selector: 'app-ai-studio',
@@ -226,6 +170,8 @@ const AI_RESPONSES: Record<string, { content: string; chart?: ChatMessage['chart
 export default class AiStudioComponent {
   @ViewChild('chatContainer') chatContainer!: ElementRef;
   private aiService = inject(AiService);
+  private adAccountService = inject(AdAccountService);
+  private dateRangeService = inject(DateRangeService);
 
   messages = signal<ChatMessage[]>([]);
   typing = signal(false);
@@ -260,7 +206,14 @@ export default class AiStudioComponent {
     this.typing.set(true);
     this.scrollToBottom();
 
-    this.aiService.chat(text).subscribe({
+    const acc = this.adAccountService.currentAccount();
+    const context = acc ? {
+      account_id: acc.id,
+      credential_group: acc.credential_group,
+      date_preset: this.dateRangeService.datePreset(),
+    } : undefined;
+
+    this.aiService.chat(text, context).subscribe({
       next: (response) => {
         const aiMsg: ChatMessage = {
           id: 'msg-' + Date.now() + '-ai',
@@ -275,31 +228,17 @@ export default class AiStudioComponent {
         this.scrollToBottom();
       },
       error: () => {
-        // Fallback to demo response when API unavailable
-        const fallback = this.findResponse(text);
         const aiMsg: ChatMessage = {
           id: 'msg-' + Date.now() + '-ai',
           role: 'ai',
-          content: fallback.content,
+          content: 'Could not connect to Cosmisk AI. Please check your connection and try again.',
           timestamp: new Date(),
-          chart: fallback.chart,
-          table: fallback.table,
         };
         this.messages.update(msgs => [...msgs, aiMsg]);
         this.typing.set(false);
         this.scrollToBottom();
       }
     });
-  }
-
-  private findResponse(query: string): { content: string; chart?: ChatMessage['chart']; table?: ChatMessage['table'] } {
-    const lower = query.toLowerCase();
-    for (const [key, value] of Object.entries(AI_RESPONSES)) {
-      if (lower.includes(key)) return value;
-    }
-    return {
-      content: `Great question! Based on your account data:\n\n📊 Your overall account ROAS this month is **3.8x** (up 12% from last month).\n\nYour top performing campaign "Collagen Range — Feb" is driving 62% of conversions with a CPA of ₹285.\n\nWould you like me to dig deeper into any specific metric or creative?`
-    };
   }
 
   formatMessage(content: string): string {

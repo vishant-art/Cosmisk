@@ -1,11 +1,14 @@
 export const environment = {
   production: true,
-  N8N_BASE_URL: 'https://n8n.cosmisk.ai/webhook',
-  META_APP_ID: 'YOUR_META_APP_ID',
+  N8N_BASE_URL: 'https://api.cosmisk.ai',
+  META_APP_ID: '675224542133938',
 
   AUTH_LOGIN: 'auth/login',
   AUTH_SIGNUP: 'auth/signup',
   AUTH_META_OAUTH: 'auth/meta-oauth',
+  AUTH_META_OAUTH_EXCHANGE: 'auth/meta-oauth/exchange',
+  AUTH_META_STATUS: 'auth/meta-status',
+  AUTH_META_DISCONNECT: 'auth/meta-disconnect',
   AUTH_REFRESH: 'auth/refresh',
 
   ONBOARD_CONNECT_META: 'onboarding/connect',
@@ -52,6 +55,12 @@ export const environment = {
 
   BRANDS_LIST: 'brands/list',
   BRANDS_SWITCH: 'brands/switch',
+
+  AD_ACCOUNTS_LIST: 'ad-accounts/list',
+  AD_ACCOUNT_KPIS: 'ad-accounts/kpis',
+  AD_ACCOUNT_TOP_ADS: 'ad-accounts/top-ads',
+  AD_ACCOUNT_VIDEO_SOURCE: 'ad-accounts/video-source',
+  ANALYTICS_FULL: 'analytics/full',
 
   SETTINGS_PROFILE: 'settings/profile',
   SETTINGS_TEAM: 'settings/team',

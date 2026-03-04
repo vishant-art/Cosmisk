@@ -106,11 +106,11 @@ export default class PricingComponent {
     },
     {
       name: 'Growth', monthlyPrice: '₹14,999', annualPrice: '₹11,999', featured: true,
-      features: ['3 brands', 'Unlimited ad accounts', 'Advanced DNA (Hook+Visual+Audio)', 'Director Lab + UGC Studio (50/mo)', '50 AI Oracle queries/day', 'Lighthouse budget pacing', 'Branded reports', '5 team members', 'Priority support'],
+      features: ['3 brands', 'Unlimited ad accounts', 'Advanced DNA (Hook+Visual+Audio)', 'Director Lab + Creative Studio (50/mo)', '50 AI Oracle queries/day', 'Lighthouse budget pacing', 'Branded reports', '5 team members', 'Priority support'],
     },
     {
       name: 'Scale', monthlyPrice: '₹29,999', annualPrice: '₹23,999', featured: false,
-      features: ['Unlimited brands', 'Agency Command Center', 'Cross-brand Brain intelligence', 'UGC Studio (200/mo)', 'Unlimited AI queries', 'White-label reports', 'Advanced attribution', 'Unlimited team members', 'Dedicated CSM', 'API access'],
+      features: ['Unlimited brands', 'Agency Command Center', 'Cross-brand Brain intelligence', 'Creative Studio (200/mo)', 'Unlimited AI queries', 'White-label reports', 'Advanced attribution', 'Unlimited team members', 'Dedicated CSM', 'API access'],
     },
   ];
 

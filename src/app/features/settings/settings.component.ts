@@ -1,8 +1,11 @@
-const _BUILD_VER = '2026-02-13-v2';
-import { Component, signal } from '@angular/core';
+const _BUILD_VER = '2026-03-03-v2';
+import { Component, signal, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
+import { ToastService } from '../../core/services/toast.service';
+import { AdAccountService } from '../../core/services/ad-account.service';
+import { MetaOAuthService } from '../../core/services/meta-oauth.service';
 
 @Component({
   selector: 'app-settings',
@@ -112,7 +115,7 @@ import { LucideAngularModule } from 'lucide-angular';
                 </div>
               </div>
               <div class="flex justify-end mt-6">
-                <button class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
+                <button (click)="saveProfile()" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
                   Save Changes
                 </button>
               </div>
@@ -124,7 +127,49 @@ import { LucideAngularModule } from 'lucide-angular';
       <!-- Connected Accounts Tab -->
       @if (activeTab() === 'accounts') {
         <div class="space-y-4">
-          @for (account of connectedAccounts; track account.name) {
+          <!-- Meta Business Suite — OAuth -->
+          <div class="bg-white rounded-card shadow-card p-5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="w-10 h-10 rounded-full flex items-center justify-center text-xl" style="background-color: #e8f0fe">
+                  M
+                </span>
+                <div>
+                  <h3 class="text-sm font-body font-semibold text-navy m-0">Meta Business Suite</h3>
+                  @if (metaOAuth.connectionStatus() === 'loading') {
+                    <p class="text-xs text-gray-400 font-body m-0 mt-0.5">Checking connection...</p>
+                  }
+                  @if (metaOAuth.connectionStatus() === 'connected') {
+                    <p class="text-xs text-green-600 font-body m-0 mt-0.5">{{ metaOAuth.connectedAccountCount() }} ad account(s) connected as {{ metaOAuth.metaUserName() }}</p>
+                  }
+                  @if (metaOAuth.connectionStatus() === 'expired') {
+                    <p class="text-xs text-amber-600 font-body m-0 mt-0.5">Token expired — please reconnect</p>
+                  }
+                  @if (metaOAuth.connectionStatus() === 'disconnected') {
+                    <p class="text-xs text-gray-500 font-body m-0 mt-0.5">Connect your Meta ad accounts to view performance data</p>
+                  }
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                @if (metaOAuth.connectionStatus() === 'connected') {
+                  <button (click)="disconnectMeta()" class="px-4 py-2 rounded-pill text-xs font-body font-semibold border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors">
+                    Disconnect
+                  </button>
+                }
+                @if (metaOAuth.connectionStatus() === 'disconnected' || metaOAuth.connectionStatus() === 'expired') {
+                  <button (click)="connectMeta()" class="px-4 py-2 rounded-pill text-xs font-body font-semibold bg-accent text-white hover:bg-accent/90 transition-colors">
+                    {{ metaOAuth.connectionStatus() === 'expired' ? 'Reconnect' : 'Connect' }}
+                  </button>
+                }
+                @if (metaOAuth.connectionStatus() === 'loading') {
+                  <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Other accounts (static) -->
+          @for (account of otherAccounts; track account.name) {
             <div class="bg-white rounded-card shadow-card p-5">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
@@ -136,11 +181,8 @@ import { LucideAngularModule } from 'lucide-angular';
                     <p class="text-xs text-gray-500 font-body m-0 mt-0.5">{{ account.description }}</p>
                   </div>
                 </div>
-                <button class="px-4 py-2 rounded-pill text-xs font-body font-semibold transition-colors"
-                  [ngClass]="account.connected
-                    ? 'border border-green-200 text-green-700 bg-green-50'
-                    : 'bg-accent text-white hover:bg-accent/90'">
-                  {{ account.connected ? 'Connected' : 'Connect' }}
+                <button class="px-4 py-2 rounded-pill text-xs font-body font-semibold bg-gray-100 text-gray-400 cursor-not-allowed">
+                  Coming Soon
                 </button>
               </div>
             </div>
@@ -235,7 +277,7 @@ import { LucideAngularModule } from 'lucide-angular';
               </div>
               <div class="p-4 bg-gray-50 rounded-lg">
                 <span class="text-xs text-gray-500 font-body block mb-1">Next Billing Date</span>
-                <span class="text-lg font-display text-navy">Mar 1, 2024</span>
+                <span class="text-lg font-display text-navy">Apr 1, 2026</span>
               </div>
             </div>
           </div>
@@ -267,11 +309,11 @@ import { LucideAngularModule } from 'lucide-angular';
                 </div>
                 <div class="flex gap-3">
                   <label class="flex items-center gap-1 text-xs font-body text-gray-600">
-                    <input type="checkbox" [checked]="pref.email" class="rounded" />
+                    <input type="checkbox" [(ngModel)]="pref.email" class="rounded" />
                     Email
                   </label>
                   <label class="flex items-center gap-1 text-xs font-body text-gray-600">
-                    <input type="checkbox" [checked]="pref.push" class="rounded" />
+                    <input type="checkbox" [(ngModel)]="pref.push" class="rounded" />
                     Push
                   </label>
                 </div>
@@ -283,7 +325,11 @@ import { LucideAngularModule } from 'lucide-angular';
     </div>
   `
 })
-export default class SettingsComponent {
+export default class SettingsComponent implements OnInit {
+  private toast = inject(ToastService);
+  private adAccountService = inject(AdAccountService);
+  metaOAuth = inject(MetaOAuthService);
+
   activeTab = signal('profile');
 
   tabs = [
@@ -294,32 +340,26 @@ export default class SettingsComponent {
     { id: 'notifications', label: 'Notifications' },
   ];
 
-  // Profile
-  profileName = 'Arjun Mehta';
-  profileEmail = 'arjun@glowderm.in';
-  profilePhone = '+91 98765 43210';
+  // Profile — loaded from localStorage/JWT
+  profileName = '';
+  profileEmail = '';
+  profilePhone = '';
   timezone = 'IST';
   language = 'en';
   currency = 'INR';
   dateFormat = 'DD/MM/YYYY';
 
-  // Connected Accounts
-  connectedAccounts = [
-    { name: 'Meta Business Suite', icon: '📘', bg: '#e8f0fe', description: 'Ad accounts, pages, and pixel data', connected: true },
-    { name: 'Google Analytics', icon: '📊', bg: '#fef3e2', description: 'Website analytics and conversion tracking', connected: true },
-    { name: 'Shopify', icon: '🛍️', bg: '#e8f5e9', description: 'E-commerce data and product catalog', connected: true },
-    { name: 'Google Ads', icon: '📣', bg: '#fff3e0', description: 'Cross-platform campaign management', connected: false },
-    { name: 'Slack', icon: '💬', bg: '#f3e5f5', description: 'Team notifications and alerts', connected: false },
+  // Other connected accounts (non-Meta)
+  otherAccounts = [
+    { name: 'Google Analytics', icon: 'G', bg: '#fef3e2', description: 'Website analytics and conversion tracking' },
+    { name: 'Shopify', icon: 'S', bg: '#e8f5e9', description: 'E-commerce data and product catalog' },
+    { name: 'Google Ads', icon: 'A', bg: '#fff3e0', description: 'Cross-platform campaign management' },
+    { name: 'Slack', icon: 'SL', bg: '#f3e5f5', description: 'Team notifications and alerts' },
   ];
 
   // Team
   teamMembers = [
-    { name: 'Arjun Mehta', email: 'arjun@glowderm.in', role: 'Owner', status: 'Active' },
-    { name: 'Priya Sharma', email: 'priya@glowderm.in', role: 'Admin', status: 'Active' },
-    { name: 'Rahul Verma', email: 'rahul@glowderm.in', role: 'Media Buyer', status: 'Active' },
-    { name: 'Neha Gupta', email: 'neha@glowderm.in', role: 'Designer', status: 'Active' },
-    { name: 'Vikram Singh', email: 'vikram@glowderm.in', role: 'Media Buyer', status: 'Invited' },
-    { name: 'Ananya Patel', email: 'ananya@glowderm.in', role: 'Viewer', status: 'Active' },
+    { name: 'Vishat Jain', email: 'vishat@cosmisk.ai', role: 'Owner', status: 'Active' },
   ];
 
   // Notifications
@@ -330,4 +370,53 @@ export default class SettingsComponent {
     { label: 'Weekly Reports', description: 'Performance summary every Monday', email: true, push: false },
     { label: 'Team Activity', description: 'Member joins, role changes, new campaigns', email: false, push: true },
   ];
+
+  ngOnInit() {
+    this.loadProfile();
+  }
+
+  private loadProfile() {
+    // Load from localStorage (saved from JWT on login)
+    const token = localStorage.getItem('cosmisk_token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        this.profileName = payload.name || payload.sub || '';
+        this.profileEmail = payload.email || '';
+      } catch { /* ignore bad token */ }
+    }
+    // Load saved preferences
+    const prefs = localStorage.getItem('cosmisk_preferences');
+    if (prefs) {
+      try {
+        const p = JSON.parse(prefs);
+        this.timezone = p.timezone || 'IST';
+        this.language = p.language || 'en';
+        this.currency = p.currency || 'INR';
+        this.dateFormat = p.dateFormat || 'DD/MM/YYYY';
+        this.profilePhone = p.phone || '';
+      } catch { /* ignore */ }
+    }
+  }
+
+  connectMeta() {
+    this.metaOAuth.openOAuthPopup();
+  }
+
+  disconnectMeta() {
+    this.metaOAuth.disconnect();
+    this.toast.info('Disconnected', 'Meta Ads account has been disconnected');
+    this.adAccountService.loadAccounts();
+  }
+
+  saveProfile() {
+    localStorage.setItem('cosmisk_preferences', JSON.stringify({
+      timezone: this.timezone,
+      language: this.language,
+      currency: this.currency,
+      dateFormat: this.dateFormat,
+      phone: this.profilePhone,
+    }));
+    this.toast.success('Saved', 'Your preferences have been updated');
+  }
 }

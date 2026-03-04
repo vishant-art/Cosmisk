@@ -14,9 +14,9 @@ import { LucideAngularModule } from 'lucide-angular';
         (click)="open.set(!open())"
         class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-sidebar-hover)] text-white text-sm font-body hover:bg-white/10 transition-colors border-0 cursor-pointer">
         <span class="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-white text-xs font-bold shrink-0">
-          {{ brandService.currentBrand().name.charAt(0) }}
+          {{ brandService.currentBrand()?.name?.charAt(0) || 'C' }}
         </span>
-        <span class="truncate flex-1 text-left">{{ brandService.currentBrand().name }}</span>
+        <span class="truncate flex-1 text-left">{{ brandService.currentBrand()?.name || 'Select Brand' }}</span>
         <lucide-icon name="chevron-down" [size]="12" class="text-gray-500"></lucide-icon>
       </button>
 
@@ -34,7 +34,7 @@ import { LucideAngularModule } from 'lucide-angular';
               <button
                 (click)="selectBrand(brand.id)"
                 class="w-full flex items-center gap-2 px-3 py-2 text-gray-300 hover:bg-white/10 hover:text-white text-sm transition-colors border-0 bg-transparent cursor-pointer"
-                [class.text-white]="brand.id === brandService.currentBrand().id">
+                [class.text-white]="brand.id === brandService.currentBrand()?.id">
                 <span class="w-5 h-5 rounded-full bg-accent/20 flex items-center justify-center text-accent text-xs font-bold shrink-0">
                   {{ brand.name.charAt(0) }}
                 </span>

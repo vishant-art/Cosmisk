@@ -375,7 +375,7 @@ export default class ForAgenciesComponent {
     { icon: 'brain', title: 'Cross-Brand Brain', description: 'Winning DNA patterns from one brand automatically suggested to others. Intelligence that compounds.', bgClass: 'bg-emerald-100', iconClass: 'text-emerald-600' },
     { icon: 'users', title: 'Team Permissions', description: 'Role-based access. Media buyers see their brands, managers see everything, clients see reports.', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
     { icon: 'bar-chart-3', title: 'Agency Dashboard', description: 'Aggregate KPIs across all brands. Spot underperformers before clients notice.', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
-    { icon: 'video', title: 'Scalable UGC Studio', description: 'Produce UGC-style ads for every brand. AI avatars, scripts from DNA, Hindi + English.', bgClass: 'bg-pink-100', iconClass: 'text-pink-600' },
+    { icon: 'video', title: 'Scalable Creative Studio', description: 'Produce UGC-style ads for every brand. AI avatars, scripts from DNA, Hindi + English.', bgClass: 'bg-pink-100', iconClass: 'text-pink-600' },
   ];
 
   whiteLabel = [

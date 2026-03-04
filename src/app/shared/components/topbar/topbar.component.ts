@@ -1,9 +1,10 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, NavigationEnd } from '@angular/router';
+import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { DateRangeService, DatePreset } from '../../../core/services/date-range.service';
 import { RelativeTimePipe } from '../../pipes/relative-time.pipe';
 import { LucideAngularModule } from 'lucide-angular';
 
@@ -11,7 +12,7 @@ import { LucideAngularModule } from 'lucide-angular';
   selector: 'app-topbar',
   standalone: true,
   imports: [
-    CommonModule, RelativeTimePipe,
+    CommonModule, RouterLink, RelativeTimePipe,
     LucideAngularModule
   ],
   template: `
@@ -44,7 +45,7 @@ import { LucideAngularModule } from 'lucide-angular';
             (click)="datePickerOpen.set(!datePickerOpen())"
             class="btn-secondary !py-1.5 !px-3 !text-xs flex items-center gap-1.5">
             <lucide-icon name="calendar" [size]="14" class="text-gray-500"></lucide-icon>
-            {{ selectedRange }}
+            {{ selectedRange() }}
             <lucide-icon name="chevron-down" [size]="12" class="text-gray-400"></lucide-icon>
           </button>
           @if (datePickerOpen()) {
@@ -53,8 +54,8 @@ import { LucideAngularModule } from 'lucide-angular';
                 <button
                   (click)="selectRange(range)"
                   class="w-full text-left px-4 py-2 text-sm font-body hover:bg-cream transition-colors border-0 bg-transparent cursor-pointer"
-                  [class.text-accent]="range === selectedRange"
-                  [class.font-semibold]="range === selectedRange">
+                  [class.text-accent]="range === selectedRange()"
+                  [class.font-semibold]="range === selectedRange()">
                   {{ range }}
                 </button>
               }
@@ -145,6 +146,7 @@ import { LucideAngularModule } from 'lucide-angular';
 export class TopbarComponent implements OnInit, OnDestroy {
   authService = inject(AuthService);
   notificationService = inject(NotificationService);
+  private dateRangeService = inject(DateRangeService);
   private router = inject(Router);
   private routerSub: any;
 
@@ -155,14 +157,24 @@ export class TopbarComponent implements OnInit, OnDestroy {
   notifOpen = signal(false);
   userMenuOpen = signal(false);
 
-  selectedRange = 'Last 7 Days';
+  selectedRange = computed(() => this.dateRangeService.displayLabel());
   dateRanges = ['Today', 'Yesterday', 'Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'This Month', 'Last Month'];
+
+  private labelToPreset: Record<string, DatePreset> = {
+    'Today': 'today',
+    'Yesterday': 'yesterday',
+    'Last 7 Days': 'last_7d',
+    'Last 14 Days': 'last_14d',
+    'Last 30 Days': 'last_30d',
+    'This Month': 'this_month',
+    'Last Month': 'last_month',
+  };
 
   private routeTitles: Record<string, { title: string; breadcrumb?: string }> = {
     '/app/dashboard': { title: 'Dashboard' },
     '/app/creative-cockpit': { title: 'Creative Cockpit', breadcrumb: 'Command' },
     '/app/director-lab': { title: 'Director Lab', breadcrumb: 'Command' },
-    '/app/ugc-studio': { title: 'UGC Studio', breadcrumb: 'Command' },
+    '/app/ugc-studio': { title: 'Creative Studio', breadcrumb: 'Command' },
     '/app/brain': { title: 'Brain', breadcrumb: 'Intelligence' },
     '/app/analytics': { title: 'Analytics', breadcrumb: 'Intelligence' },
     '/app/ai-studio': { title: 'AI Studio', breadcrumb: 'Intelligence' },
@@ -176,6 +188,7 @@ export class TopbarComponent implements OnInit, OnDestroy {
     '/app/audit': { title: 'Account Audit', breadcrumb: 'Optimize' },
     '/app/automations': { title: 'Automations', breadcrumb: 'Optimize' },
     '/app/settings': { title: 'Settings' },
+    '/app/agency': { title: 'Agency Command Center' },
   };
 
   ngOnInit() {
@@ -197,7 +210,10 @@ export class TopbarComponent implements OnInit, OnDestroy {
   }
 
   selectRange(range: string) {
-    this.selectedRange = range;
+    const preset = this.labelToPreset[range];
+    if (preset) {
+      this.dateRangeService.setPreset(preset);
+    }
     this.datePickerOpen.set(false);
   }
 

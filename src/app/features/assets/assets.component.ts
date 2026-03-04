@@ -1,7 +1,10 @@
-const _BUILD_VER = '2026-02-13-v2';
-import { Component, signal } from '@angular/core';
+const _BUILD_VER = '2026-03-04-v1';
+import { Component, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
+import { AdAccountService } from '../../core/services/ad-account.service';
+import { ApiService } from '../../core/services/api.service';
+import { environment } from '../../../environments/environment';
 
 interface AssetFile {
   id: string;
@@ -11,6 +14,12 @@ interface AssetFile {
   size: string;
   date: string;
   thumbnail: string;
+}
+
+interface AssetFolder {
+  name: string;
+  icon: string;
+  count: number;
 }
 
 @Component({
@@ -34,27 +43,35 @@ interface AssetFile {
         <div class="w-56 shrink-0 hidden md:block">
           <div class="bg-white rounded-card shadow-card p-4">
             <h3 class="text-xs font-body font-semibold text-gray-500 uppercase mb-3 mt-0">Folders</h3>
-            <ul class="space-y-0.5 m-0 p-0 list-none">
-              @for (folder of folders; track folder.name) {
-                <li>
-                  <button
-                    (click)="activeFolder.set(folder.name)"
-                    class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-body transition-colors border-0 bg-transparent cursor-pointer text-left"
-                    [ngClass]="activeFolder() === folder.name ? 'bg-accent/10 text-accent font-semibold' : 'text-gray-600 hover:bg-gray-50'">
-                    <lucide-icon [name]="folder.icon" [size]="16"></lucide-icon>
-                    <span class="flex-1">{{ folder.name }}</span>
-                    <span class="text-[10px] text-gray-400">{{ folder.count }}</span>
-                  </button>
-                </li>
-              }
-            </ul>
+            @if (loading()) {
+              <div class="space-y-2">
+                @for (i of [1,2,3,4]; track i) {
+                  <div class="h-8 bg-gray-100 rounded-lg animate-pulse"></div>
+                }
+              </div>
+            } @else {
+              <ul class="space-y-0.5 m-0 p-0 list-none">
+                @for (folder of folders(); track folder.name) {
+                  <li>
+                    <button
+                      (click)="activeFolder.set(folder.name)"
+                      class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-body transition-colors border-0 bg-transparent cursor-pointer text-left"
+                      [ngClass]="activeFolder() === folder.name ? 'bg-accent/10 text-accent font-semibold' : 'text-gray-600 hover:bg-gray-50'">
+                      <lucide-icon [name]="folder.icon" [size]="16"></lucide-icon>
+                      <span class="flex-1 truncate">{{ folder.name }}</span>
+                      <span class="text-[10px] text-gray-400">{{ folder.count }}</span>
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
             <div class="mt-4 pt-3 border-t border-gray-100">
               <div class="flex justify-between text-xs font-body text-gray-500 mb-1">
                 <span>Storage Used</span>
-                <span>4.2 / 10 GB</span>
+                <span>{{ storageUsed() }}</span>
               </div>
               <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div class="h-full bg-accent rounded-full" style="width: 42%"></div>
+                <div class="h-full bg-accent rounded-full" [style.width.%]="storagePercent()"></div>
               </div>
             </div>
           </div>
@@ -69,60 +86,129 @@ interface AssetFile {
               <button class="px-3 py-1 text-xs font-body border border-gray-200 rounded-lg hover:bg-gray-50">List</button>
             </div>
           </div>
-          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            @for (file of getFilteredFiles(); track file.id) {
-              <div class="bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all cursor-pointer group">
-                <div class="aspect-square bg-gradient-to-br flex items-center justify-center text-3xl"
-                  [ngClass]="{
-                    'from-blue-50 to-blue-100': file.type === 'video',
-                    'from-purple-50 to-purple-100': file.type === 'image',
-                    'from-amber-50 to-amber-100': file.type === 'document',
-                    'from-green-50 to-green-100': file.type === 'brief'
-                  }">
-                  @if (file.type === 'video') { <lucide-icon name="clapperboard" [size]="32"></lucide-icon> } @else if (file.type === 'image') { <lucide-icon name="image" [size]="32"></lucide-icon> } @else if (file.type === 'document') { <lucide-icon name="file-text" [size]="32"></lucide-icon> } @else { <lucide-icon name="clipboard-list" [size]="32"></lucide-icon> }
-                </div>
-                <div class="p-3">
-                  <h4 class="text-xs font-body font-semibold text-navy m-0 truncate">{{ file.name }}</h4>
-                  <div class="flex items-center justify-between mt-1">
-                    <span class="text-[10px] text-gray-400 font-body">{{ file.size }}</span>
-                    <span class="text-[10px] text-gray-400 font-body">{{ file.date }}</span>
+          @if (loading()) {
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              @for (i of [1,2,3,4,5,6,7,8]; track i) {
+                <div class="bg-white rounded-card shadow-card overflow-hidden animate-pulse">
+                  <div class="aspect-square bg-gray-100"></div>
+                  <div class="p-3">
+                    <div class="h-3 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div class="flex justify-between">
+                      <div class="h-2 bg-gray-100 rounded w-12"></div>
+                      <div class="h-2 bg-gray-100 rounded w-10"></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            }
-          </div>
+              }
+            </div>
+          } @else {
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              @for (file of getFilteredFiles(); track file.id) {
+                <div class="bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all cursor-pointer group">
+                  @if (file.thumbnail) {
+                    <div class="aspect-square bg-gray-100 overflow-hidden">
+                      <img [src]="file.thumbnail" [alt]="file.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    </div>
+                  } @else {
+                    <div class="aspect-square bg-gradient-to-br flex items-center justify-center text-3xl"
+                      [ngClass]="{
+                        'from-blue-50 to-blue-100': file.type === 'video',
+                        'from-purple-50 to-purple-100': file.type === 'image',
+                        'from-amber-50 to-amber-100': file.type === 'document',
+                        'from-green-50 to-green-100': file.type === 'brief'
+                      }">
+                      @if (file.type === 'video') { <lucide-icon name="clapperboard" [size]="32"></lucide-icon> } @else if (file.type === 'image') { <lucide-icon name="image" [size]="32"></lucide-icon> } @else if (file.type === 'document') { <lucide-icon name="file-text" [size]="32"></lucide-icon> } @else { <lucide-icon name="clipboard-list" [size]="32"></lucide-icon> }
+                    </div>
+                  }
+                  <div class="p-3">
+                    <h4 class="text-xs font-body font-semibold text-navy m-0 truncate">{{ file.name }}</h4>
+                    <div class="flex items-center justify-between mt-1">
+                      <span class="text-[10px] text-gray-400 font-body">{{ file.size }}</span>
+                      <span class="text-[10px] text-gray-400 font-body">{{ file.date }}</span>
+                    </div>
+                  </div>
+                </div>
+              }
+              @if (getFilteredFiles().length === 0) {
+                <div class="col-span-full text-center py-12">
+                  <lucide-icon name="folder-open" [size]="40" class="text-gray-300 mx-auto mb-3"></lucide-icon>
+                  <p class="text-sm text-gray-400 font-body">No files found in this folder</p>
+                </div>
+              }
+            </div>
+          }
         </div>
       </div>
     </div>
   `
 })
 export default class AssetsComponent {
+  private adAccountService = inject(AdAccountService);
+  private api = inject(ApiService);
+
+  loading = signal(true);
   activeFolder = signal('All Files');
+  files = signal<AssetFile[]>([]);
+  folders = signal<AssetFolder[]>([
+    { name: 'All Files', icon: 'folder-open', count: 0 },
+  ]);
 
-  folders = [
-    { name: 'All Files', icon: 'folder-open', count: 10 },
-    { name: 'Creatives', icon: 'palette', count: 4 },
-    { name: 'UGC Videos', icon: 'video', count: 2 },
-    { name: 'Briefs', icon: 'clipboard-list', count: 2 },
-    { name: 'Reports', icon: 'file-text', count: 1 },
-    { name: 'Brand Kit', icon: 'bookmark', count: 1 },
-  ];
+  private accountEffect = effect(() => {
+    const acc = this.adAccountService.currentAccount();
+    if (acc) {
+      this.loadAssets(acc.id);
+    }
+  }, { allowSignalWrites: true });
 
-  files: AssetFile[] = [
-    { id: 'f-1', name: 'Collagen Glow-Up.mp4', type: 'video', folder: 'Creatives', size: '24.5 MB', date: 'Feb 10', thumbnail: '' },
-    { id: 'f-2', name: 'Morning Routine Reel.mp4', type: 'video', folder: 'Creatives', size: '18.2 MB', date: 'Feb 8', thumbnail: '' },
-    { id: 'f-3', name: '₹999 Offer Banner.png', type: 'image', folder: 'Creatives', size: '1.2 MB', date: 'Feb 6', thumbnail: '' },
-    { id: 'f-4', name: 'Before After Carousel.zip', type: 'image', folder: 'Creatives', size: '8.4 MB', date: 'Feb 4', thumbnail: '' },
-    { id: 'f-5', name: 'Priya - Collagen Script.mp4', type: 'video', folder: 'UGC Videos', size: '32.1 MB', date: 'Feb 9', thumbnail: '' },
-    { id: 'f-6', name: 'Rahul - Summer Sale.mp4', type: 'video', folder: 'UGC Videos', size: '15.8 MB', date: 'Feb 7', thumbnail: '' },
-    { id: 'f-7', name: 'CB-0247 Brief.pdf', type: 'brief', folder: 'Briefs', size: '2.1 MB', date: 'Feb 11', thumbnail: '' },
-    { id: 'f-8', name: 'CB-0246 Brief.pdf', type: 'brief', folder: 'Briefs', size: '1.8 MB', date: 'Feb 5', thumbnail: '' },
-    { id: 'f-9', name: 'Jan 2024 Performance.pdf', type: 'document', folder: 'Reports', size: '3.2 MB', date: 'Feb 1', thumbnail: '' },
-    { id: 'f-10', name: 'Brand Guidelines.pdf', type: 'document', folder: 'Brand Kit', size: '5.6 MB', date: 'Jan 15', thumbnail: '' },
-  ];
+  storageUsed = signal('-- / 10 GB');
+  storagePercent = signal(0);
 
   getFilteredFiles(): AssetFile[] {
-    if (this.activeFolder() === 'All Files') return this.files;
-    return this.files.filter(f => f.folder === this.activeFolder());
+    const all = this.files();
+    if (this.activeFolder() === 'All Files') return all;
+    return all.filter(f => f.folder === this.activeFolder());
+  }
+
+  private loadAssets(accountId: string) {
+    this.loading.set(true);
+
+    // Load files
+    this.api.get<any>(environment.ASSETS_LIST, {
+      account_id: accountId,
+    }).subscribe({
+      next: (res) => {
+        if (res.success && res.files) {
+          this.files.set(res.files);
+          // Estimate storage from file count
+          const totalFiles = res.files.length;
+          const estimatedGB = Math.round(totalFiles * 0.15 * 10) / 10; // ~150 MB avg per creative
+          this.storageUsed.set(`${estimatedGB} / 10 GB`);
+          this.storagePercent.set(Math.min(100, Math.round((estimatedGB / 10) * 100)));
+        }
+        this.loading.set(false);
+      },
+      error: () => {
+        this.loading.set(false);
+      },
+    });
+
+    // Load folders
+    this.api.get<any>(environment.ASSETS_FOLDERS, {
+      account_id: accountId,
+    }).subscribe({
+      next: (res) => {
+        if (res.success && res.folders) {
+          this.folders.set(res.folders);
+          // Reset active folder if the current one no longer exists
+          const folderNames = res.folders.map((f: AssetFolder) => f.name);
+          if (!folderNames.includes(this.activeFolder())) {
+            this.activeFolder.set('All Files');
+          }
+        }
+      },
+      error: () => {
+        // Keep the default folder on error
+      },
+    });
   }
 }

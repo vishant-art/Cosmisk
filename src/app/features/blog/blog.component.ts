@@ -177,7 +177,7 @@ export default class BlogComponent {
       excerpt: 'From guessing to data-driven creative decisions. A detailed breakdown of Nectar\'s transformation.',
       date: 'Feb 8, 2026', category: 'Case Studies', readTime: '10 min read',
       author: 'Vishant Jain', authorInitials: 'VJ', authorColor: '#6366F1',
-      icon: 'trophy', bgClass: 'bg-gradient-to-br from-emerald-400 to-teal-600', tagClass: 'bg-green-100 text-green-700',
+      icon: 'crown', bgClass: 'bg-gradient-to-br from-emerald-400 to-teal-600', tagClass: 'bg-green-100 text-green-700',
     },
     {
       title: 'Cross-Brand Intelligence: The Agency Superpower Nobody Talks About',

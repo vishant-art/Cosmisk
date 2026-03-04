@@ -92,7 +92,7 @@ export class AuthLayoutComponent implements OnInit, OnDestroy {
       role: 'CEO, AdScale Agency'
     },
     {
-      quote: "We reduced our creative production time by 60% using Director Lab and UGC Studio. Game changer for D2C.",
+      quote: "We reduced our creative production time by 60% using Director Lab and Creative Studio. Game changer for D2C.",
       name: 'Amit Patel',
       initials: 'AP',
       role: 'CMO, Urban Drape'
