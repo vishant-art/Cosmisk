@@ -211,6 +211,7 @@ export default class AiStudioComponent {
       account_id: acc.id,
       credential_group: acc.credential_group,
       date_preset: this.dateRangeService.datePreset(),
+      currency: acc.currency || 'USD',
     } : undefined;
 
     this.aiService.chat(text, context).subscribe({

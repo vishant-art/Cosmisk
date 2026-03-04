@@ -13,7 +13,7 @@ export interface AiChatResponse {
 export class AiService {
   private api = inject(ApiService);
 
-  chat(message: string, context?: { account_id?: string; credential_group?: string; date_preset?: string }): Observable<AiChatResponse> {
+  chat(message: string, context?: { account_id?: string; credential_group?: string; date_preset?: string; currency?: string }): Observable<AiChatResponse> {
     return this.api.post<any>(environment.AI_CHAT, { message, ...context }).pipe(
       map(response => ({
         content: response.content || response.text || String(response),
