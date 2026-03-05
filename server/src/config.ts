@@ -33,6 +33,8 @@ export const config = {
     'https://www.cosmisk.ai',
     'https://app.cosmisk.ai',
     'https://cosmisk.vercel.app',
+    'https://cosmisk.com',
+    'https://www.cosmisk.com',
     process.env.FRONTEND_URL || '',
   ].filter(Boolean) as string[],
 } as const;
