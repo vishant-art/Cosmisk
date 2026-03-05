@@ -18,6 +18,8 @@ export const routes: Routes = [
       { path: 'contact', loadComponent: () => import('./features/contact/contact.component') },
       { path: 'blog', loadComponent: () => import('./features/blog/blog.component') },
       { path: 'pitch-deck', loadComponent: () => import('./features/pitch-deck/pitch-deck.component') },
+      { path: 'privacy-policy', loadComponent: () => import('./features/legal/privacy-policy.component') },
+      { path: 'data-deletion', loadComponent: () => import('./features/legal/data-deletion.component') },
     ]
   },
 
