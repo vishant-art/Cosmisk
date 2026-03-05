@@ -158,4 +158,12 @@ export async function authRoutes(app: FastifyInstance) {
     db.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(request.user.id);
     return { success: true };
   });
+
+  // DELETE /auth/account — self-delete (authenticated user deletes their own account)
+  app.delete('/account', { preHandler: [app.authenticate] }, async (request) => {
+    const db = getDb();
+    db.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(request.user.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(request.user.id);
+    return { success: true };
+  });
 }
