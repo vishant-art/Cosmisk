@@ -1,4 +1,4 @@
-import { Component, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy, AfterViewInit, ElementRef, NgZone, inject, ViewChild, ViewChildren, QueryList } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -121,6 +121,149 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     .carousel-dot-active {
       width: 24px;
       border-radius: 10px;
+    }
+
+    /* === Animated Product Showcases === */
+
+    /* Card fly-in for cockpit grid */
+    .card-fly-in {
+      opacity: 0;
+      transform: translateY(24px) scale(0.95);
+      animation: card-fly-in 0.5s ease-out forwards;
+    }
+    @keyframes card-fly-in {
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Sparkline bar grow */
+    .bar-grow {
+      transform-origin: bottom;
+      animation: bar-grow 0.6s ease-out forwards;
+      transform: scaleY(0);
+    }
+    @keyframes bar-grow {
+      to { transform: scaleY(1); }
+    }
+
+    /* ROAS badge pop */
+    .roas-badge-pop {
+      animation: roas-pop 0.3s ease-out forwards;
+      opacity: 0; transform: scale(0.6);
+    }
+    @keyframes roas-pop {
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Chat message slide-in */
+    .chat-msg-in {
+      opacity: 0;
+      transform: translateY(12px);
+      animation: chat-msg-in 0.4s ease-out forwards;
+    }
+    @keyframes chat-msg-in {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Type-text cursor blink */
+    .type-cursor::after {
+      content: '|';
+      animation: cursor-blink 0.7s step-end infinite;
+      color: #6366F1;
+      font-weight: bold;
+    }
+    @keyframes cursor-blink {
+      50% { opacity: 0; }
+    }
+
+    /* Metric glow */
+    .metric-glow {
+      animation: metric-glow 2s ease-in-out infinite;
+    }
+    @keyframes metric-glow {
+      0%, 100% { text-shadow: 0 0 8px rgba(99, 102, 241, 0.3); }
+      50% { text-shadow: 0 0 20px rgba(99, 102, 241, 0.6); }
+    }
+
+    /* ROAS highlight in chat */
+    .roas-highlight {
+      color: #6366F1;
+      font-weight: 700;
+      text-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+    }
+
+    /* Action button slide-in */
+    .action-btn-in {
+      opacity: 0;
+      transform: translateX(-8px);
+      animation: action-btn-in 0.3s ease-out forwards;
+    }
+    @keyframes action-btn-in {
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* KPI card animate in */
+    .kpi-card-in {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: kpi-card-in 0.6s ease-out forwards;
+    }
+    @keyframes kpi-card-in {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* KPI glow bg */
+    .kpi-glow {
+      position: relative;
+    }
+    .kpi-glow::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 20px;
+      background: radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%);
+      z-index: -1;
+      animation: kpi-bg-glow 3s ease-in-out infinite;
+    }
+    @keyframes kpi-bg-glow {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    /* Change badge pulse */
+    .change-pulse {
+      animation: change-pulse 2s ease-in-out infinite;
+    }
+    @keyframes change-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.3); }
+      50% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    }
+
+    /* Big counter section */
+    .counter-glow {
+      text-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Feature Showcase */
+    .feature-showcase-inner {
+      will-change: auto;
+    }
+    .feature-showcase-inner [class*="showcase-"] {
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .feature-showcase-inner [class*="showcase-"] {
+        transition: none !important;
+      }
+      .card-fly-in, .bar-grow, .roas-badge-pop, .chat-msg-in,
+      .action-btn-in, .kpi-card-in, .change-pulse, .metric-glow {
+        animation: none !important;
+        opacity: 1 !important;
+        transform: none !important;
+      }
+      .type-cursor::after { animation: none !important; }
+      .kpi-glow::before { animation: none !important; }
     }
   `],
   template: `
@@ -413,238 +556,252 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     </section>
 
     <!-- ============================================================ -->
-    <!-- SECTION 6: Feature Deep Dive - Creative Cockpit              -->
+    <!-- SECTIONS 6-9: Pinned Feature Showcase (Desktop)               -->
     <!-- ============================================================ -->
-    <section class="py-20 bg-[#F7F8FA]">
-      <div class="max-w-7xl mx-auto px-6">
-        <div appAnimateOnScroll class="grid lg:grid-cols-2 gap-12 items-center">
-          <!-- Text Left -->
-          <div>
-            <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">CREATIVE COCKPIT</span>
-            <h2 class="text-page-title font-display text-navy mb-4">See all your creatives with their DNA</h2>
-            <p class="text-gray-600 font-body mb-6 leading-relaxed">Every creative tagged with its unique DNA fingerprint. Filter, sort, and spot winning patterns at a glance.</p>
-            <ul class="space-y-3 list-none p-0">
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Grid view with DNA badges on every creative
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Filter by Hook, Visual, Audio DNA types
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Instant ROAS/CTR/CPA metrics
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Frame-by-frame DNA analysis for videos
-              </li>
-            </ul>
-          </div>
-          <!-- Mockup Right -->
-          <div class="bg-white rounded-2xl p-6 shadow-card border border-divider">
-            <div class="bg-[#F7F8FA] rounded-xl p-4">
-              <div class="flex gap-1.5 mb-3">
-                <span class="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-pill">All</span>
-                <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-[10px] font-medium rounded-pill">Active</span>
-                <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-[10px] font-medium rounded-pill">Top 10%</span>
+    <section class="hidden lg:block bg-[#F7F8FA]">
+      <div #featureShowcase class="feature-showcase" style="height: 400vh">
+        <div class="feature-showcase-inner sticky top-0 h-screen flex items-center overflow-hidden">
+          <div class="max-w-7xl mx-auto px-6 w-full">
+            <div class="grid lg:grid-cols-2 gap-12 items-center relative">
+
+              <!-- Progress Indicator (left edge) -->
+              <div class="absolute -left-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0 z-10">
+                <div class="relative flex flex-col items-center">
+                  <!-- Track line background -->
+                  <div class="absolute top-2 bottom-2 w-0.5 bg-gray-200 rounded-full"></div>
+                  <!-- Track line fill -->
+                  <div #progressFill class="absolute top-2 w-0.5 bg-accent rounded-full transition-none" style="height: 0%"></div>
+                  @for (feat of showcaseFeatures; track feat.key; let i = $index) {
+                    <div class="relative flex items-center gap-3 py-6">
+                      <div #progressDot
+                        class="w-3 h-3 rounded-full border-2 transition-all duration-300 z-10"
+                        [class]="activeShowcaseIndex() === i ? 'bg-accent border-accent scale-125' : 'bg-white border-gray-300'">
+                      </div>
+                      <span
+                        class="text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-300"
+                        [class]="activeShowcaseIndex() === i ? 'text-accent opacity-100' : 'text-gray-400 opacity-0'">
+                        {{ feat.label }}
+                      </span>
+                    </div>
+                  }
+                </div>
               </div>
-              <div class="grid grid-cols-3 gap-2">
-                @for (c of cockpitMockCards; track c.roas) {
-                  <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100">
-                    <div class="aspect-square rounded bg-gradient-to-br mb-1.5" [class]="c.bg"></div>
-                    <div class="flex flex-wrap gap-0.5 mb-1">
-                      @for (t of c.tags; track t) {
-                        <span class="px-1 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-medium rounded">{{ t }}</span>
+
+              <!-- Text Panel (left col) -->
+              <div class="relative min-h-[320px] pl-12">
+                @for (feat of showcaseFeatures; track feat.key; let i = $index) {
+                  <div #showcaseText
+                    class="absolute inset-0 pl-12 flex flex-col justify-center"
+                    [style.opacity]="activeShowcaseIndex() === i ? 1 : 0"
+                    [style.transform]="activeShowcaseIndex() === i ? 'translateY(0)' : (activeShowcaseIndex() > i ? 'translateY(-30px)' : 'translateY(30px)')">
+                    <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">{{ feat.label }}</span>
+                    <h2 class="text-page-title font-display text-navy mb-4">{{ feat.heading }}</h2>
+                    <p class="text-gray-600 font-body mb-6 leading-relaxed">{{ feat.desc }}</p>
+                    <ul class="space-y-3 list-none p-0">
+                      @for (bullet of feat.bullets; track bullet) {
+                        <li class="flex items-start gap-2 text-sm font-body text-navy">
+                          <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
+                          {{ bullet }}
+                        </li>
                       }
-                    </div>
-                    <div class="flex items-center justify-between">
-                      <span class="text-[9px] font-mono font-bold text-green-600">{{ c.roas }}x</span>
-                      <span class="text-[9px] font-mono text-gray-400">{{ c.ctr }}%</span>
-                    </div>
+                    </ul>
                   </div>
                 }
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- ============================================================ -->
-    <!-- SECTION 7: Feature Deep Dive - Director Lab                  -->
-    <!-- ============================================================ -->
-    <section class="py-20 bg-white">
-      <div class="max-w-7xl mx-auto px-6">
-        <div appAnimateOnScroll class="grid lg:grid-cols-2 gap-12 items-center">
-          <!-- Mockup Left -->
-          <div class="bg-white rounded-2xl p-6 shadow-card border border-divider order-2 lg:order-1">
-            <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
-              <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-                <p class="text-[10px] text-gray-400 font-body mb-1.5">DNA INPUTS</p>
-                <div class="flex flex-wrap gap-1 mb-2">
-                  <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-medium rounded">Shock Statement</span>
-                  <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-medium rounded">Macro Texture</span>
-                  <span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-[8px] font-medium rounded">Hindi VO</span>
+              <!-- Mockup Panel (right col) -->
+              <div class="relative min-h-[380px]">
+                <!-- Cockpit Mockup -->
+                <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
+                  <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
+                    <div class="bg-[#F7F8FA] rounded-xl p-4">
+                      <div class="flex gap-1.5 mb-3">
+                        <span class="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-pill">All</span>
+                        <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-[10px] font-medium rounded-pill">Active</span>
+                        <span class="px-2 py-0.5 bg-gray-200 text-gray-500 text-[10px] font-medium rounded-pill">Top 10%</span>
+                      </div>
+                      <div class="grid grid-cols-3 gap-2">
+                        @for (c of cockpitMockCards; track c.roas; let i = $index) {
+                          <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100 showcase-cockpit-card" [style.animation-delay]="(i * 80) + 'ms'">
+                            <div class="aspect-square rounded bg-gradient-to-br mb-1.5" [class]="c.bg"></div>
+                            <div class="flex flex-wrap gap-0.5 mb-1">
+                              @for (t of c.tags; track t; let ti = $index) {
+                                <span class="px-1 py-0.5 text-[7px] font-medium rounded"
+                                  [class]="ti === 0 ? 'bg-amber-100 text-amber-700' : ti === 1 ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'">{{ t }}</span>
+                              }
+                            </div>
+                            <div class="flex items-center justify-between">
+                              <span class="text-[9px] font-mono font-bold"
+                                [class]="(+c.roas) >= 3 ? 'text-green-600' : (+c.roas) < 1 ? 'text-red-500' : 'text-gray-600'">{{ c.roas }}x</span>
+                              <div class="sparkline">
+                                @for (h of c.spark; track $index) {
+                                  <div class="sparkline-bar" [style.height.px]="h"></div>
+                                }
+                              </div>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <button class="w-full py-1.5 bg-accent text-white text-[10px] font-semibold rounded border-0 cursor-default">Generate Brief</button>
-              </div>
-              <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-                <p class="text-[10px] text-gray-400 font-body mb-1">PREVIEW</p>
-                <div class="h-20 bg-gradient-to-br from-accent/5 to-blue-50 rounded flex items-center justify-center">
-                  <span class="text-[10px] text-accent font-medium">Brief: "Kya aapko pata hai..."</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- Text Right -->
-          <div class="order-1 lg:order-2">
-            <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">DIRECTOR LAB</span>
-            <h2 class="text-page-title font-display text-navy mb-4">Generate briefs from winning DNA</h2>
-            <p class="text-gray-600 font-body mb-6 leading-relaxed">AI creates data-backed creative briefs using your top-performing DNA patterns. Approve with one click and publish.</p>
-            <ul class="space-y-3 list-none p-0">
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                AI-generated briefs from winning patterns
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Static + video variations in minutes
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Publish directly to Meta Ads Manager
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Pre-filled with your top-performing DNA
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- ============================================================ -->
-    <!-- SECTION 8: Feature Deep Dive - UGC Studio                    -->
-    <!-- ============================================================ -->
-    <section class="py-20 bg-[#F7F8FA]">
-      <div class="max-w-7xl mx-auto px-6">
-        <div appAnimateOnScroll class="grid lg:grid-cols-2 gap-12 items-center">
-          <!-- Text Left -->
-          <div>
-            <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">CREATIVE STUDIO</span>
-            <h2 class="text-page-title font-display text-navy mb-4">Script to UGC video in under a minute</h2>
-            <p class="text-gray-600 font-body mb-6 leading-relaxed">Create UGC-style ad videos using AI avatars. No human creators, no 3-week turnarounds. Just proven DNA-backed content.</p>
-            <ul class="space-y-3 list-none p-0">
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                12+ diverse AI avatars
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                AI script generation from DNA patterns
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Hindi + English voiceover support
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Direct publish to Meta campaigns
-              </li>
-            </ul>
-          </div>
-          <!-- Mockup Right -->
-          <div class="bg-white rounded-2xl p-6 shadow-card border border-divider">
-            <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
-              <div class="flex gap-2 items-center mb-1">
-                @for (avatar of ['A', 'R', 'S', 'P']; track avatar) {
-                  <div class="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-bold">{{ avatar }}</div>
-                }
-                <span class="text-[10px] text-gray-400 font-body ml-1">+8 more</span>
-              </div>
-              <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-                <p class="text-[10px] text-gray-400 font-body mb-1">SCRIPT</p>
-                <div class="space-y-1">
-                  <div class="h-2 bg-gray-200 rounded w-full"></div>
-                  <div class="h-2 bg-gray-200 rounded w-4/5"></div>
-                  <div class="h-2 bg-gray-200 rounded w-3/5"></div>
+                <!-- Director Lab Mockup -->
+                <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
+                  <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
+                    <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
+                      <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                        <p class="text-[10px] text-gray-400 font-body mb-1.5">DNA INPUTS</p>
+                        <div class="flex flex-wrap gap-1 mb-2">
+                          <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-medium rounded showcase-director-tag">Shock Statement</span>
+                          <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-medium rounded showcase-director-tag">Macro Texture</span>
+                          <span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-[8px] font-medium rounded showcase-director-tag">Hindi VO</span>
+                        </div>
+                        <button class="w-full py-1.5 bg-accent text-white text-[10px] font-semibold rounded border-0 cursor-default showcase-director-btn">Generate Brief</button>
+                      </div>
+                      <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100 showcase-director-preview">
+                        <p class="text-[10px] text-gray-400 font-body mb-1">PREVIEW</p>
+                        <div class="h-20 bg-gradient-to-br from-accent/5 to-blue-50 rounded flex items-center justify-center">
+                          <span class="text-[10px] text-accent font-medium">Brief: "Kya aapko pata hai..."</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
-                <p class="text-[10px] text-gray-400 font-body mb-1">VIDEO PREVIEW</p>
-                <div class="aspect-video bg-dark rounded flex items-center justify-center">
-                  <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                    <lucide-icon name="play" [size]="14" class="text-white"></lucide-icon>
+
+                <!-- UGC Studio Mockup -->
+                <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
+                  <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
+                    <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
+                      <div class="flex gap-2 items-center mb-1">
+                        @for (avatar of ['A', 'R', 'S', 'P']; track avatar) {
+                          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-violet-500 flex items-center justify-center text-white text-xs font-bold showcase-ugc-avatar">{{ avatar }}</div>
+                        }
+                        <span class="text-[10px] text-gray-400 font-body ml-1">+8 more</span>
+                      </div>
+                      <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100 showcase-ugc-script">
+                        <p class="text-[10px] text-gray-400 font-body mb-1">SCRIPT</p>
+                        <div class="space-y-1">
+                          <div class="h-2 bg-gray-200 rounded w-full"></div>
+                          <div class="h-2 bg-gray-200 rounded w-4/5"></div>
+                          <div class="h-2 bg-gray-200 rounded w-3/5"></div>
+                        </div>
+                      </div>
+                      <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100 showcase-ugc-video">
+                        <p class="text-[10px] text-gray-400 font-body mb-1">VIDEO PREVIEW</p>
+                        <div class="aspect-video bg-dark rounded flex items-center justify-center">
+                          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                            <lucide-icon name="play" [size]="14" class="text-white"></lucide-icon>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- AI Oracle Mockup -->
+                <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
+                  <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
+                    <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-2 min-h-[200px]">
+                      <div class="flex justify-end showcase-oracle-msg">
+                        <div class="bg-accent text-white px-3 py-1.5 rounded-xl rounded-br-sm text-[11px] max-w-[75%]">Why did my ROAS drop this week?</div>
+                      </div>
+                      <div class="flex justify-start showcase-oracle-msg">
+                        <div class="bg-white px-3 py-2 rounded-xl rounded-bl-sm text-[11px] text-navy max-w-[80%] shadow-sm border border-gray-100">
+                          <p class="m-0 mb-1">Your ROAS dropped 18% because 3 top creatives fatigued. Their Hook DNA (Shock Statement) hit frequency cap.</p>
+                          <div class="flex gap-1 mt-1.5 showcase-oracle-actions">
+                            <span class="px-1.5 py-0.5 bg-accent/10 text-accent text-[8px] rounded font-medium cursor-default">Iterate Hooks</span>
+                            <span class="px-1.5 py-0.5 bg-red-50 text-red-500 text-[8px] rounded font-medium cursor-default">Kill Fatigued</span>
+                            <span class="px-1.5 py-0.5 bg-green-50 text-green-600 text-[8px] rounded font-medium cursor-default">Scale Winners</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
+
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ============================================================ -->
-    <!-- SECTION 9: Feature Deep Dive - AI Oracle                     -->
-    <!-- ============================================================ -->
-    <section class="py-20 bg-white">
-      <div class="max-w-7xl mx-auto px-6">
-        <div appAnimateOnScroll class="grid lg:grid-cols-2 gap-12 items-center">
-          <!-- Mockup Left -->
-          <div class="bg-white rounded-2xl p-6 shadow-card border border-divider order-2 lg:order-1">
-            <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-2">
-              <div class="flex justify-end">
-                <div class="bg-accent text-white px-3 py-1.5 rounded-xl rounded-br-sm text-[11px] max-w-[75%]">Why did my ROAS drop this week?</div>
-              </div>
-              <div class="flex justify-start">
-                <div class="bg-white px-3 py-2 rounded-xl rounded-bl-sm text-[11px] text-navy max-w-[80%] shadow-sm border border-gray-100">
-                  <p class="m-0 mb-1">Your ROAS dropped <strong>18%</strong> because 3 top creatives fatigued. Their <strong>Hook DNA</strong> (Shock Statement) hit frequency cap.</p>
-                  <div class="flex gap-1 mt-1.5">
-                    <span class="px-1.5 py-0.5 bg-accent/10 text-accent text-[8px] rounded font-medium cursor-default">Iterate Hooks</span>
-                    <span class="px-1.5 py-0.5 bg-red-50 text-red-500 text-[8px] rounded font-medium cursor-default">Kill Fatigued</span>
-                    <span class="px-1.5 py-0.5 bg-green-50 text-green-600 text-[8px] rounded font-medium cursor-default">Scale Winners</span>
-                  </div>
-                </div>
-              </div>
-              <div class="flex justify-start">
-                <div class="bg-white px-3 py-2 rounded-xl rounded-bl-sm shadow-sm border border-gray-100 flex gap-1 items-center">
-                  <div class="w-1.5 h-1.5 rounded-full bg-gray-400 typing-dot"></div>
-                  <div class="w-1.5 h-1.5 rounded-full bg-gray-400 typing-dot"></div>
-                  <div class="w-1.5 h-1.5 rounded-full bg-gray-400 typing-dot"></div>
-                </div>
-              </div>
+    <!-- Mobile: Original stacked sections (unchanged) -->
+    <div class="lg:hidden">
+      <!-- Section 6: Cockpit -->
+      <section class="py-20 bg-[#F7F8FA]">
+        <div class="max-w-7xl mx-auto px-6">
+          <div appAnimateOnScroll class="grid gap-8 items-center">
+            <div>
+              <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">CREATIVE COCKPIT</span>
+              <h2 class="text-page-title font-display text-navy mb-4">See all your creatives with their DNA</h2>
+              <p class="text-gray-600 font-body mb-6 leading-relaxed">Every creative tagged with its unique DNA fingerprint. Filter, sort, and spot winning patterns at a glance.</p>
+              <ul class="space-y-3 list-none p-0">
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Grid view with DNA badges on every creative</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Filter by Hook, Visual, Audio DNA types</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Instant ROAS/CTR/CPA metrics</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Frame-by-frame DNA analysis for videos</li>
+              </ul>
             </div>
           </div>
-          <!-- Text Right -->
-          <div class="order-1 lg:order-2">
-            <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">AI ORACLE</span>
-            <h2 class="text-page-title font-display text-navy mb-4">Ask anything about your ads</h2>
-            <p class="text-gray-600 font-body mb-6 leading-relaxed">Natural language queries, data-backed answers. No more digging through dashboards to find out what went wrong.</p>
-            <ul class="space-y-3 list-none p-0">
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                "Why did my ROAS drop this week?"
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Answers with specific creative data
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Inline action buttons (scale, kill, iterate)
-              </li>
-              <li class="flex items-start gap-2 text-sm font-body text-navy">
-                <lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>
-                Streaming AI responses in real-time
-              </li>
-            </ul>
+        </div>
+      </section>
+      <!-- Section 7: Director Lab -->
+      <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+          <div appAnimateOnScroll class="grid gap-8 items-center">
+            <div>
+              <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">DIRECTOR LAB</span>
+              <h2 class="text-page-title font-display text-navy mb-4">Generate briefs from winning DNA</h2>
+              <p class="text-gray-600 font-body mb-6 leading-relaxed">AI creates data-backed creative briefs using your top-performing DNA patterns.</p>
+              <ul class="space-y-3 list-none p-0">
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>AI-generated briefs from winning patterns</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Static + video variations in minutes</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Publish directly to Meta Ads Manager</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Pre-filled with your top-performing DNA</li>
+              </ul>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+      <!-- Section 8: UGC Studio -->
+      <section class="py-20 bg-[#F7F8FA]">
+        <div class="max-w-7xl mx-auto px-6">
+          <div appAnimateOnScroll class="grid gap-8 items-center">
+            <div>
+              <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">CREATIVE STUDIO</span>
+              <h2 class="text-page-title font-display text-navy mb-4">Script to UGC video in under a minute</h2>
+              <p class="text-gray-600 font-body mb-6 leading-relaxed">Create UGC-style ad videos using AI avatars. No human creators, no 3-week turnarounds.</p>
+              <ul class="space-y-3 list-none p-0">
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>12+ diverse AI avatars</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>AI script generation from DNA patterns</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Hindi + English voiceover support</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Direct publish to Meta campaigns</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- Section 9: AI Oracle -->
+      <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+          <div appAnimateOnScroll class="grid gap-8 items-center">
+            <div>
+              <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">AI ORACLE</span>
+              <h2 class="text-page-title font-display text-navy mb-4">Ask anything about your ads</h2>
+              <p class="text-gray-600 font-body mb-6 leading-relaxed">Natural language queries, data-backed answers.</p>
+              <ul class="space-y-3 list-none p-0">
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>"Why did my ROAS drop this week?"</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Answers with specific creative data</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Inline action buttons (scale, kill, iterate)</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Streaming AI responses in real-time</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
 
     <!-- ============================================================ -->
     <!-- SECTION 10: Comparison Table (KEPT)                          -->
@@ -681,19 +838,57 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     </section>
 
     <!-- ============================================================ -->
-    <!-- SECTION 11: Results / Case Studies (NEW, dark)               -->
+    <!-- SECTION 11: Results / KPI Demo (dark)                        -->
     <!-- ============================================================ -->
     <section class="py-20 bg-dark-mesh">
       <div class="max-w-7xl mx-auto px-6 text-center mb-12">
         <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">RESULTS</span>
         <h2 class="text-page-title font-display text-white mb-4">Real Impact, Real Numbers</h2>
       </div>
-      <div class="max-w-5xl mx-auto px-6 grid md:grid-cols-3 gap-6">
-        @for (cs of caseStudies; track cs.brand) {
-          <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center hover:bg-white/[0.06] transition-all">
-            <p class="text-4xl font-mono font-bold text-white mb-2">{{ cs.metric }}</p>
-            <p class="text-sm text-gray-400 font-body mb-4">{{ cs.desc }}</p>
-            <p class="text-xs text-gray-500 font-body">-- {{ cs.person }}, {{ cs.brand }}</p>
+      <div id="kpi-demo" class="max-w-5xl mx-auto px-6 grid md:grid-cols-3 gap-6">
+        <!-- KPI Card 1: ROAS -->
+        @if (kpiCardCount() >= 1) {
+          <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center kpi-card-in kpi-glow" style="animation-delay: 0ms">
+            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[0] }}x</p>
+            <p class="text-sm text-gray-400 font-body mb-3">Average ROAS improvement</p>
+            <div class="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-pill change-pulse">
+              <span class="text-[10px] text-green-400 font-mono font-bold">+128%</span>
+            </div>
+            <div class="flex justify-center mt-3 sparkline" style="height: 24px">
+              @for (h of [4, 7, 5, 10, 8, 14, 12, 18, 16, 22]; track $index) {
+                <div class="sparkline-bar" [class.bar-grow]="kpiBarsGrown()" [style.height.px]="h" [style.animation-delay]="($index * 40) + 'ms'" style="width: 4px; margin: 0 1px;"></div>
+              }
+            </div>
+          </div>
+        }
+        <!-- KPI Card 2: CPA Saved -->
+        @if (kpiCardCount() >= 2) {
+          <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center kpi-card-in kpi-glow" style="animation-delay: 200ms">
+            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[1] }}%</p>
+            <p class="text-sm text-gray-400 font-body mb-3">CPA reduction</p>
+            <div class="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-pill change-pulse">
+              <span class="text-[10px] text-green-400 font-mono font-bold">-32%</span>
+            </div>
+            <div class="flex justify-center mt-3 sparkline" style="height: 24px">
+              @for (h of [20, 18, 16, 14, 12, 10, 9, 8, 7, 6]; track $index) {
+                <div class="sparkline-bar" [class.bar-grow]="kpiBarsGrown()" [style.height.px]="h" [style.animation-delay]="($index * 40) + 'ms'" style="width: 4px; margin: 0 1px; background: #22C55E;"></div>
+              }
+            </div>
+          </div>
+        }
+        <!-- KPI Card 3: Revenue -->
+        @if (kpiCardCount() >= 3) {
+          <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center kpi-card-in kpi-glow" style="animation-delay: 400ms">
+            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">&#8377;{{ kpiCountValues()[2] }}L</p>
+            <p class="text-sm text-gray-400 font-body mb-3">Revenue attributed</p>
+            <div class="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-pill change-pulse">
+              <span class="text-[10px] text-green-400 font-mono font-bold">+84%</span>
+            </div>
+            <div class="flex justify-center mt-3 sparkline" style="height: 24px">
+              @for (h of [6, 8, 7, 11, 10, 14, 13, 17, 19, 22]; track $index) {
+                <div class="sparkline-bar" [class.bar-grow]="kpiBarsGrown()" [style.height.px]="h" [style.animation-delay]="($index * 40) + 'ms'" style="width: 4px; margin: 0 1px; background: #A78BFA;"></div>
+              }
+            </div>
           </div>
         }
       </div>
@@ -726,6 +921,54 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
               </div>
             </div>
           }
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- SECTION 12.5: Big Results Counter (dark)                     -->
+    <!-- ============================================================ -->
+    <section id="big-counter" class="py-20 bg-dark-mesh">
+      <div class="max-w-6xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+        <div>
+          <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
+            @if (bigCounterStarted()) {
+              <span [appCountUp]="'&#8377;250Cr+'" [countDuration]="2000">0</span>
+            } @else {
+              <span>0</span>
+            }
+          </p>
+          <p class="text-sm text-gray-400 font-body">Ad spend analyzed</p>
+        </div>
+        <div>
+          <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
+            @if (bigCounterStarted()) {
+              <span [appCountUp]="'4.2x'" [countDuration]="2000">0</span>
+            } @else {
+              <span>0</span>
+            }
+          </p>
+          <p class="text-sm text-gray-400 font-body">Avg ROAS improvement</p>
+        </div>
+        <div>
+          <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
+            @if (bigCounterStarted()) {
+              <span [appCountUp]="'12,000+'" [countDuration]="2000">0</span>
+            } @else {
+              <span>0</span>
+            }
+          </p>
+          <p class="text-sm text-gray-400 font-body">Creatives decoded</p>
+        </div>
+        <div>
+          <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
+            @if (bigCounterStarted()) {
+              <span [appCountUp]="'60%'" [countDuration]="2000">0</span>
+            } @else {
+              <span>0</span>
+            }
+          </p>
+          <p class="text-sm text-gray-400 font-body">Faster campaign launches</p>
         </div>
       </div>
     </section>
@@ -975,7 +1218,51 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     }
   `
 })
-export default class LandingComponent implements OnInit, OnDestroy {
+export default class LandingComponent implements OnInit, OnDestroy, AfterViewInit {
+  private el = inject(ElementRef);
+  private zone = inject(NgZone);
+
+  // Feature Showcase refs
+  @ViewChild('featureShowcase') featureShowcaseRef!: ElementRef;
+  @ViewChild('progressFill') progressFillRef!: ElementRef;
+  @ViewChildren('progressDot') progressDots!: QueryList<ElementRef>;
+  @ViewChildren('showcaseText') showcaseTexts!: QueryList<ElementRef>;
+  @ViewChildren('showcaseMockup') showcaseMockups!: QueryList<ElementRef>;
+
+  activeShowcaseIndex = signal(0);
+  private showcaseCleanup: (() => void) | null = null;
+
+  showcaseFeatures = [
+    {
+      key: 'cockpit',
+      label: 'CREATIVE COCKPIT',
+      heading: 'See all your creatives with their DNA',
+      desc: 'Every creative tagged with its unique DNA fingerprint. Filter, sort, and spot winning patterns at a glance.',
+      bullets: ['Grid view with DNA badges on every creative', 'Filter by Hook, Visual, Audio DNA types', 'Instant ROAS/CTR/CPA metrics', 'Frame-by-frame DNA analysis for videos'],
+    },
+    {
+      key: 'director',
+      label: 'DIRECTOR LAB',
+      heading: 'Generate briefs from winning DNA',
+      desc: 'AI creates data-backed creative briefs using your top-performing DNA patterns. Approve with one click and publish.',
+      bullets: ['AI-generated briefs from winning patterns', 'Static + video variations in minutes', 'Publish directly to Meta Ads Manager', 'Pre-filled with your top-performing DNA'],
+    },
+    {
+      key: 'ugc',
+      label: 'CREATIVE STUDIO',
+      heading: 'Script to UGC video in under a minute',
+      desc: 'Create UGC-style ad videos using AI avatars. No human creators, no 3-week turnarounds. Just proven DNA-backed content.',
+      bullets: ['12+ diverse AI avatars', 'AI script generation from DNA patterns', 'Hindi + English voiceover support', 'Direct publish to Meta campaigns'],
+    },
+    {
+      key: 'oracle',
+      label: 'AI ORACLE',
+      heading: 'Ask anything about your ads',
+      desc: 'Natural language queries, data-backed answers. No more digging through dashboards to find out what went wrong.',
+      bullets: ['"Why did my ROAS drop this week?"', 'Answers with specific creative data', 'Inline action buttons (scale, kill, iterate)', 'Streaming AI responses in real-time'],
+    },
+  ];
+
   annual = signal(false);
   showDemo = signal(false);
   heroEmail = '';
@@ -994,6 +1281,36 @@ export default class LandingComponent implements OnInit, OnDestroy {
   // FAQ state
   openFaq = signal<number | null>(null);
 
+  // === Animated Showcase State ===
+
+  // AI Chat Demo (Section 9)
+  chatStarted = signal(false);
+  chatStep = signal(0); // 0=nothing, 1=user msg, 2=typing, 3=response typing, 4=response done, 5=actions
+  chatTypedText = signal('');
+  private chatTimeouts: ReturnType<typeof setTimeout>[] = [];
+  private chatLoopTimeout?: ReturnType<typeof setTimeout>;
+
+  // Cockpit Demo (Section 6)
+  cockpitStarted = signal(false);
+  cockpitCardCount = signal(0);
+  cockpitTagStep = signal(0);
+  cockpitBarsGrown = signal(false);
+  private cockpitTimeouts: ReturnType<typeof setTimeout>[] = [];
+  private cockpitLoopTimeout?: ReturnType<typeof setTimeout>;
+
+  // KPI Demo (Section 11)
+  kpiStarted = signal(false);
+  kpiCardCount = signal(0);
+  kpiCountValues = signal([0, 0, 0]);
+  kpiBarsGrown = signal(false);
+  private kpiTimeouts: ReturnType<typeof setTimeout>[] = [];
+  private kpiFrameId?: number;
+
+  // Big Results Counter
+  bigCounterStarted = signal(false);
+
+  private observers: IntersectionObserver[] = [];
+
   toggleFaq(index: number) {
     this.openFaq.set(this.openFaq() === index ? null : index);
   }
@@ -1004,9 +1321,282 @@ export default class LandingComponent implements OnInit, OnDestroy {
     }, 6000);
   }
 
+  ngAfterViewInit() {
+    this.zone.runOutsideAngular(() => {
+      this.setupDemoObservers();
+      this.setupFeatureShowcase();
+    });
+  }
+
   ngOnDestroy() {
     if (this.carouselInterval) clearInterval(this.carouselInterval);
     this.scanTimeouts.forEach(t => clearTimeout(t));
+    this.chatTimeouts.forEach(t => clearTimeout(t));
+    if (this.chatLoopTimeout) clearTimeout(this.chatLoopTimeout);
+    this.cockpitTimeouts.forEach(t => clearTimeout(t));
+    if (this.cockpitLoopTimeout) clearTimeout(this.cockpitLoopTimeout);
+    this.kpiTimeouts.forEach(t => clearTimeout(t));
+    if (this.kpiFrameId) cancelAnimationFrame(this.kpiFrameId);
+    this.observers.forEach(o => o.disconnect());
+    if (this.showcaseCleanup) this.showcaseCleanup();
+  }
+
+  private async setupFeatureShowcase() {
+    // Skip on mobile (< 1024px) or reduced motion
+    if (typeof window === 'undefined') return;
+    if (window.innerWidth < 1024) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // Show all features visible with no animation
+      if (this.showcaseMockups) {
+        this.showcaseMockups.forEach((m, i) => {
+          if (i === 0) m.nativeElement.style.opacity = '1';
+        });
+      }
+      return;
+    }
+
+    const showcaseEl = this.featureShowcaseRef?.nativeElement;
+    if (!showcaseEl) return;
+
+    const { gsap } = await import('gsap');
+    const { ScrollTrigger } = await import('gsap/ScrollTrigger');
+    gsap.registerPlugin(ScrollTrigger);
+
+    const mockups = this.showcaseMockups.toArray().map(m => m.nativeElement);
+    const texts = this.showcaseTexts.toArray().map(t => t.nativeElement);
+    const progressFill = this.progressFillRef?.nativeElement;
+    const featureCount = this.showcaseFeatures.length;
+
+    // Set initial state: first feature visible
+    if (mockups[0]) gsap.set(mockups[0], { opacity: 1 });
+    if (texts[0]) gsap.set(texts[0], { opacity: 1, y: 0 });
+
+    // Hide all others
+    for (let i = 1; i < featureCount; i++) {
+      if (mockups[i]) gsap.set(mockups[i], { opacity: 0 });
+      if (texts[i]) gsap.set(texts[i], { opacity: 0, y: 30 });
+    }
+
+    const st = ScrollTrigger.create({
+      trigger: showcaseEl,
+      start: 'top top',
+      end: 'bottom bottom',
+      scrub: 0,
+      onUpdate: (self) => {
+        const progress = self.progress; // 0 to 1
+        const rawIndex = progress * featureCount;
+        const activeIndex = Math.min(Math.floor(rawIndex), featureCount - 1);
+        const localProgress = rawIndex - activeIndex; // 0-1 within each feature
+
+        // Update active index for progress dots
+        this.zone.run(() => this.activeShowcaseIndex.set(activeIndex));
+
+        // Update progress fill line
+        if (progressFill) {
+          progressFill.style.height = `${progress * 100}%`;
+        }
+
+        // Show/hide mockups and texts
+        for (let i = 0; i < featureCount; i++) {
+          if (i === activeIndex) {
+            // Active feature: fade in, then start fading out at end of its section
+            const fadeOutStart = 0.7; // start fading at 70% through this feature's section
+            let opacity = 1;
+            let textY = 0;
+
+            if (localProgress > fadeOutStart && activeIndex < featureCount - 1) {
+              const fadeProgress = (localProgress - fadeOutStart) / (1 - fadeOutStart);
+              opacity = 1 - fadeProgress;
+              textY = -30 * fadeProgress;
+            }
+
+            if (mockups[i]) mockups[i].style.opacity = String(opacity);
+            if (texts[i]) {
+              texts[i].style.opacity = String(opacity);
+              texts[i].style.transform = `translateY(${textY}px)`;
+            }
+          } else if (i === activeIndex + 1 && localProgress > 0.7) {
+            // Next feature: start fading in
+            const fadeProgress = (localProgress - 0.7) / 0.3;
+            if (mockups[i]) mockups[i].style.opacity = String(fadeProgress);
+            if (texts[i]) {
+              texts[i].style.opacity = String(fadeProgress);
+              texts[i].style.transform = `translateY(${30 * (1 - fadeProgress)}px)`;
+            }
+          } else {
+            // Inactive: hidden
+            if (mockups[i]) mockups[i].style.opacity = '0';
+            if (texts[i]) {
+              texts[i].style.opacity = '0';
+              texts[i].style.transform = i < activeIndex ? 'translateY(-30px)' : 'translateY(30px)';
+            }
+          }
+        }
+      },
+    });
+
+    this.showcaseCleanup = () => {
+      st.kill();
+      ScrollTrigger.getAll().forEach(t => t.kill());
+    };
+  }
+
+  private setupDemoObservers() {
+    const root = this.el.nativeElement as HTMLElement;
+
+    // Chat demo observer
+    const chatEl = root.querySelector('#chat-demo');
+    if (chatEl) {
+      const obs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && !this.chatStarted()) {
+          this.zone.run(() => this.startChatDemo());
+        }
+      }, { threshold: 0.3 });
+      obs.observe(chatEl);
+      this.observers.push(obs);
+    }
+
+    // Cockpit demo observer
+    const cockpitEl = root.querySelector('#cockpit-demo');
+    if (cockpitEl) {
+      const obs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && !this.cockpitStarted()) {
+          this.zone.run(() => this.startCockpitDemo());
+        }
+      }, { threshold: 0.3 });
+      obs.observe(cockpitEl);
+      this.observers.push(obs);
+    }
+
+    // KPI demo observer
+    const kpiEl = root.querySelector('#kpi-demo');
+    if (kpiEl) {
+      const obs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && !this.kpiStarted()) {
+          this.zone.run(() => this.startKpiDemo());
+        }
+      }, { threshold: 0.3 });
+      obs.observe(kpiEl);
+      this.observers.push(obs);
+    }
+
+    // Big counter observer
+    const counterEl = root.querySelector('#big-counter');
+    if (counterEl) {
+      const obs = new IntersectionObserver(entries => {
+        if (entries[0].isIntersecting && !this.bigCounterStarted()) {
+          this.zone.run(() => this.bigCounterStarted.set(true));
+        }
+      }, { threshold: 0.3 });
+      obs.observe(counterEl);
+      this.observers.push(obs);
+    }
+  }
+
+  // --- Chat Demo ---
+  private readonly chatFullResponse = 'Your ROAS dropped 18% because 3 top creatives fatigued. Their Hook DNA (Shock Statement) hit frequency cap.';
+
+  startChatDemo() {
+    this.chatStarted.set(true);
+    this.chatStep.set(0);
+    this.chatTypedText.set('');
+    this.chatTimeouts.forEach(t => clearTimeout(t));
+    this.chatTimeouts = [];
+
+    // Step 1: User message appears
+    this.chatTimeouts.push(setTimeout(() => this.chatStep.set(1), 300));
+    // Step 2: Typing indicator
+    this.chatTimeouts.push(setTimeout(() => this.chatStep.set(2), 1200));
+    // Step 3: Start typing response
+    this.chatTimeouts.push(setTimeout(() => {
+      this.chatStep.set(3);
+      this.typeResponse(0);
+    }, 2200));
+  }
+
+  private typeResponse(index: number) {
+    if (index > this.chatFullResponse.length) {
+      this.chatStep.set(4);
+      // Step 5: Action buttons
+      this.chatTimeouts.push(setTimeout(() => this.chatStep.set(5), 400));
+      // Auto-loop after 4s
+      this.chatLoopTimeout = setTimeout(() => {
+        this.chatStarted.set(false);
+        this.chatStep.set(0);
+        this.chatTypedText.set('');
+        setTimeout(() => this.startChatDemo(), 500);
+      }, 4000);
+      return;
+    }
+    this.chatTypedText.set(this.chatFullResponse.slice(0, index));
+    this.chatTimeouts.push(setTimeout(() => this.typeResponse(index + 2), 30));
+  }
+
+  // --- Cockpit Demo ---
+  startCockpitDemo() {
+    this.cockpitStarted.set(true);
+    this.cockpitCardCount.set(0);
+    this.cockpitTagStep.set(0);
+    this.cockpitBarsGrown.set(false);
+    this.cockpitTimeouts.forEach(t => clearTimeout(t));
+    this.cockpitTimeouts = [];
+
+    // Stagger cards in
+    for (let i = 1; i <= 6; i++) {
+      this.cockpitTimeouts.push(setTimeout(() => this.cockpitCardCount.set(i), i * 100));
+    }
+    // Then tags pop in
+    this.cockpitTimeouts.push(setTimeout(() => this.cockpitTagStep.set(1), 800));  // Hook
+    this.cockpitTimeouts.push(setTimeout(() => this.cockpitTagStep.set(2), 1100)); // Visual
+    this.cockpitTimeouts.push(setTimeout(() => this.cockpitTagStep.set(3), 1400)); // Audio
+    // Then bars grow
+    this.cockpitTimeouts.push(setTimeout(() => this.cockpitBarsGrown.set(true), 1600));
+    // Auto-loop
+    this.cockpitLoopTimeout = setTimeout(() => {
+      this.cockpitStarted.set(false);
+      setTimeout(() => this.startCockpitDemo(), 500);
+    }, 6000);
+  }
+
+  // --- KPI Demo ---
+  startKpiDemo() {
+    this.kpiStarted.set(true);
+    this.kpiCardCount.set(0);
+    this.kpiCountValues.set([0, 0, 0]);
+    this.kpiBarsGrown.set(false);
+    this.kpiTimeouts.forEach(t => clearTimeout(t));
+    this.kpiTimeouts = [];
+
+    // Stagger KPI cards
+    for (let i = 1; i <= 3; i++) {
+      this.kpiTimeouts.push(setTimeout(() => this.kpiCardCount.set(i), i * 200));
+    }
+    // Count up after cards are in
+    this.kpiTimeouts.push(setTimeout(() => this.animateKpiCountUp(), 800));
+    // Bars grow
+    this.kpiTimeouts.push(setTimeout(() => this.kpiBarsGrown.set(true), 2200));
+  }
+
+  private animateKpiCountUp() {
+    const targets = [4.2, 32, 12.4];
+    const duration = 1200;
+    const startTime = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      this.zone.run(() => {
+        this.kpiCountValues.set([
+          Math.round(eased * targets[0] * 10) / 10,
+          Math.round(eased * targets[1]),
+          Math.round(eased * targets[2] * 10) / 10,
+        ]);
+      });
+      if (progress < 1) {
+        this.kpiFrameId = requestAnimationFrame(animate);
+      }
+    };
+    this.kpiFrameId = requestAnimationFrame(animate);
   }
 
   startDnaScan() {
@@ -1078,12 +1668,12 @@ export default class LandingComponent implements OnInit, OnDestroy {
   ];
 
   cockpitMockCards = [
-    { bg: 'from-amber-50 to-orange-50', tags: ['Shock', 'Macro'], roas: '4.8', ctr: '3.2' },
-    { bg: 'from-blue-50 to-indigo-50', tags: ['Curiosity', 'UGC'], roas: '3.2', ctr: '2.8' },
-    { bg: 'from-green-50 to-emerald-50', tags: ['Price', 'Hindi'], roas: '5.1', ctr: '4.1' },
-    { bg: 'from-violet-50 to-purple-50', tags: ['Authority'], roas: '2.4', ctr: '1.9' },
-    { bg: 'from-pink-50 to-rose-50', tags: ['Social', 'ASMR'], roas: '3.9', ctr: '3.0' },
-    { bg: 'from-cyan-50 to-teal-50', tags: ['Demo', 'Upbeat'], roas: '4.3', ctr: '3.5' },
+    { bg: 'from-amber-50 to-orange-50', tags: ['Shock', 'Macro'], roas: '4.8', ctr: '3.2', spark: [4, 8, 6, 12, 10, 14, 11] },
+    { bg: 'from-blue-50 to-indigo-50', tags: ['Curiosity', 'UGC'], roas: '3.2', ctr: '2.8', spark: [6, 5, 9, 7, 11, 8, 10] },
+    { bg: 'from-green-50 to-emerald-50', tags: ['Price', 'Hindi'], roas: '5.1', ctr: '4.1', spark: [3, 7, 5, 10, 14, 12, 16] },
+    { bg: 'from-violet-50 to-purple-50', tags: ['Authority'], roas: '2.4', ctr: '1.9', spark: [8, 6, 4, 5, 3, 6, 4] },
+    { bg: 'from-pink-50 to-rose-50', tags: ['Social', 'ASMR'], roas: '3.9', ctr: '3.0', spark: [5, 9, 11, 8, 13, 10, 12] },
+    { bg: 'from-cyan-50 to-teal-50', tags: ['Demo', 'Upbeat'], roas: '4.3', ctr: '3.5', spark: [7, 10, 8, 14, 11, 15, 13] },
   ];
 
   dnaCards = [
