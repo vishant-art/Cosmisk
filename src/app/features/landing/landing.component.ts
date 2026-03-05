@@ -248,8 +248,8 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <!-- ============================================================ -->
     <!-- SECTION 2: Logo Wall (light marquee)                         -->
     <!-- ============================================================ -->
-    <section class="py-10 bg-[#F7F8FA] border-b border-gray-200 overflow-hidden">
-      <div class="max-w-5xl mx-auto px-6 text-center mb-6">
+    <section class="py-16 bg-white border-t border-b border-gray-200 overflow-hidden">
+      <div class="max-w-5xl mx-auto px-6 text-center mb-8">
         <p class="text-xs text-gray-400 font-body font-medium uppercase tracking-[0.2em] mb-0">Trusted by India's fastest-growing brands</p>
       </div>
       <div class="marquee-track">
