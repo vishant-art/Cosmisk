@@ -842,22 +842,7 @@ app.addHook('onResponse', (request, reply, done) => {
   done();
 });
 
-// Serve frontend static files in production
-if (config.nodeEnv === 'production') {
-  const path = await import('path');
-  const fastifyStatic = await import('@fastify/static');
-  const publicDir = path.resolve(import.meta.dirname || '.', '../../public');
-  await app.register(fastifyStatic.default, {
-    root: publicDir,
-    prefix: '/',
-    decorateReply: false,
-  });
-
-  // SPA fallback — serve index.html for Angular routes
-  app.setNotFoundHandler(async (_request, reply) => {
-    return reply.sendFile('index.html');
-  });
-}
+// Frontend is served by Vercel — no static file serving needed here
 
 // Initialize DB on startup
 getDb();
