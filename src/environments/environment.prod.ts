@@ -1,6 +1,6 @@
 export const environment = {
   production: true,
-  N8N_BASE_URL: 'https://api.cosmisk.ai',
+  N8N_BASE_URL: 'https://cosmisk-production.up.railway.app',
   META_APP_ID: '675224542133938',
 
   AUTH_LOGIN: 'auth/login',
