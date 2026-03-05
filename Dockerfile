@@ -1,6 +1,9 @@
 # ---- Build Stage ----
 FROM node:20-alpine AS builder
 
+# Native build tools for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 # Install server dependencies
@@ -14,10 +17,13 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:20-alpine AS production
 
+# Native modules need these at runtime
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 COPY --from=builder /app/package.json /app/package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && apk del python3 make g++
 
 COPY --from=builder /app/dist/ ./dist/
 
