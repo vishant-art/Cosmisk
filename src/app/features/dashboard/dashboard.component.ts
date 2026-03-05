@@ -204,7 +204,7 @@ import { environment } from '../../../environments/environment';
           <tbody>
             @for (creative of topCreatives; track creative.id; let i = $index) {
               <tr
-                class="border-b border-divider hover:bg-cream transition-colors cursor-pointer"
+                class="border-b border-divider row-hover transition-colors cursor-pointer"
                 (click)="onCreativeClick(creative)">
                 <td class="py-3 px-2 text-gray-400 font-mono text-xs">{{ i + 1 }}</td>
                 <td class="py-3 px-2">
@@ -241,7 +241,7 @@ import { environment } from '../../../environments/environment';
     <!-- Creative Intelligence Actions -->
     <div class="grid md:grid-cols-4 gap-5">
       @for (action of quickActions; track action.title) {
-        <a [routerLink]="action.route" class="card !p-5 flex flex-col items-center text-center hover:-translate-y-1 transition-all no-underline group">
+        <a [routerLink]="action.route" class="card card-lift glow-on-hover !p-5 flex flex-col items-center text-center no-underline group">
           <div class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mb-3"
             [ngClass]="action.bgClass">
             <lucide-icon [name]="action.icon" [size]="22" [class]="action.iconClass"></lucide-icon>

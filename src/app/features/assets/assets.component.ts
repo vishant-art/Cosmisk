@@ -104,7 +104,7 @@ interface AssetFolder {
           } @else {
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               @for (file of getFilteredFiles(); track file.id) {
-                <div class="bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all cursor-pointer group">
+                <div class="bg-white rounded-card shadow-card overflow-hidden card-lift cursor-pointer group">
                   @if (file.thumbnail) {
                     <div class="aspect-square bg-gray-100 overflow-hidden">
                       <img [src]="file.thumbnail" [alt]="file.name" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />

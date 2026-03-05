@@ -1,15 +1,17 @@
-import { Component, signal, HostListener, Output, EventEmitter } from '@angular/core';
+import { Component, signal, HostListener, Output, EventEmitter, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { BrandSwitcherComponent } from '../brand-switcher/brand-switcher.component';
 import { AccountSwitcherComponent } from '../account-switcher/account-switcher.component';
 import { LucideAngularModule } from 'lucide-angular';
+import { AutopilotBadgeService } from '../../../core/services/autopilot-badge.service';
 
 interface NavItem {
   label: string;
   icon: string;
   route: string;
   pro?: boolean;
+  badge?: 'autopilot';
 }
 
 interface NavGroup {
@@ -75,7 +77,11 @@ interface NavGroup {
                     <lucide-icon [name]="item.icon" [size]="20" [strokeWidth]="1.75" class="shrink-0 sidebar-icon"></lucide-icon>
                     @if (!collapsed()) {
                       <span class="text-sm font-body font-medium truncate">{{ item.label }}</span>
-                      @if (item.pro) {
+                      @if (item.badge === 'autopilot' && badgeService.unreadCount() > 0) {
+                        <span class="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold font-mono bg-red-500 text-white rounded-full leading-none">
+                          {{ badgeService.unreadCount() > 99 ? '99+' : badgeService.unreadCount() }}
+                        </span>
+                      } @else if (item.pro) {
                         <span class="ml-auto px-1.5 py-0.5 text-[9px] font-bold font-mono bg-accent/15 text-accent rounded">PRO</span>
                       }
                     }
@@ -192,10 +198,21 @@ interface NavGroup {
     }
   `]
 })
-export class SidebarComponent {
+export class SidebarComponent implements OnInit, OnDestroy {
+  badgeService = inject(AutopilotBadgeService);
   collapsed = signal(false);
   mobileOpen = signal(false);
   @Output() collapsedChange = new EventEmitter<boolean>();
+  private badgeInterval: ReturnType<typeof setInterval> | null = null;
+
+  ngOnInit() {
+    this.badgeService.refresh();
+    this.badgeInterval = setInterval(() => this.badgeService.refresh(), 60_000);
+  }
+
+  ngOnDestroy() {
+    if (this.badgeInterval) clearInterval(this.badgeInterval);
+  }
 
   navGroups: NavGroup[] = [
     {
@@ -211,6 +228,8 @@ export class SidebarComponent {
       title: 'Intelligence',
       items: [
         { label: 'Brain', icon: 'brain', route: '/app/brain', pro: true },
+        { label: 'Autopilot', icon: 'zap', route: '/app/autopilot', pro: true, badge: 'autopilot' },
+        { label: 'Competitor Spy', icon: 'search', route: '/app/competitor-spy', pro: true },
         { label: 'Analytics', icon: 'bar-chart-3', route: '/app/analytics' },
         { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio' },
         { label: 'Reports', icon: 'file-text', route: '/app/reports' },

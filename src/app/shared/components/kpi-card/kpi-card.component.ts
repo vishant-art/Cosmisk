@@ -8,7 +8,7 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
   standalone: true,
   imports: [CommonModule, LakhCrorePipe, LucideAngularModule],
   template: `
-    <div class="card cursor-pointer hover:-translate-y-0.5 group">
+    <div class="card card-lift glow-on-hover cursor-pointer group">
       <div class="flex items-start justify-between mb-3">
         <p class="text-sm text-gray-500 font-body font-medium m-0">{{ title }}</p>
         @if (change !== undefined) {

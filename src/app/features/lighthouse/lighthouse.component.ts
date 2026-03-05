@@ -288,15 +288,33 @@ export default class LighthouseComponent implements OnInit {
     }
     const topCampaign = [...this.campaigns].sort((a, b) => b.roas - a.roas)[0];
     const lowCampaign = [...this.campaigns].sort((a, b) => a.roas - b.roas)[0];
+    const daysRemaining = Math.max(1, this.totalDays - this.currentDay);
+    const remainingBudget = this.remaining * 100000; // convert lakhs to rupees
+    const targetDailySpend = remainingBudget / daysRemaining;
+
+    // Compute specific amounts
+    const topDailyBudget = topCampaign ? this.parseCurrencyAmount(topCampaign.budget) / Math.max(this.currentDay, 1) : 0;
+    const lowDailyBudget = lowCampaign ? this.parseCurrencyAmount(lowCampaign.budget) / Math.max(this.currentDay, 1) : 0;
+
     switch (this.overallStatus) {
-      case 'ON TRACK':
-        return `Your spend is well-paced for this period. Continue current budget allocation. Consider scaling "${topCampaign?.name}" (${topCampaign?.roas}x ROAS) by 10-15% to maximize remaining budget efficiency.`;
-      case 'AHEAD':
-        return `You're spending faster than planned. Consider reducing daily budgets by 10% on lower-performing campaigns like "${lowCampaign?.name}" to avoid overspend. Redirect surplus to "${topCampaign?.name}" which has the highest ROAS.`;
-      case 'BEHIND':
-        return `You're under-pacing. Increase daily budgets on top performers like "${topCampaign?.name}" by 15-20%. Consider launching new creatives from Director Lab to increase eligible auction inventory.`;
-      case 'CRITICAL':
-        return 'Spend is critically behind target. Immediate action needed: increase all campaign budgets by 25%, expand audience targeting, and activate backup creatives from your asset library.';
+      case 'ON TRACK': {
+        const scaleAmount = Math.round(topDailyBudget * 0.15);
+        return `Spend is well-paced (${this.spendProgress}% spent, ${this.timeElapsed}% through). Scale '${topCampaign?.name}' by ${this.formatCurrency(scaleAmount)}/day (currently ${topCampaign?.roas}x ROAS) — this uses the ${this.formatCurrency(remainingBudget)} remaining budget efficiently over ${daysRemaining} days.`;
+      }
+      case 'AHEAD': {
+        const reduceAmount = Math.round(lowDailyBudget * 0.15);
+        const surplus = Math.round((this.avgDailySpend * 1000 - targetDailySpend));
+        return `Overspending by ~${this.formatCurrency(Math.abs(surplus))}/day. Reduce '${lowCampaign?.name}' by ${this.formatCurrency(reduceAmount)}/day (${lowCampaign?.roas}x ROAS) and redirect to '${topCampaign?.name}' (${topCampaign?.roas}x). Target ${this.formatCurrency(targetDailySpend)}/day for remaining ${daysRemaining} days.`;
+      }
+      case 'BEHIND': {
+        const increaseAmount = Math.round(topDailyBudget * 0.20);
+        const shortfall = Math.round(targetDailySpend - this.avgDailySpend * 1000);
+        return `Underspending by ~${this.formatCurrency(Math.abs(shortfall))}/day. Increase '${topCampaign?.name}' by ${this.formatCurrency(increaseAmount)}/day — at ${topCampaign?.roas}x ROAS each additional ${this.formatCurrency(1000)} generates ~${this.formatCurrency(1000 * (topCampaign?.roas || 1))} revenue. Need ${this.formatCurrency(targetDailySpend)}/day to use ${this.formatCurrency(remainingBudget)} over ${daysRemaining} days.`;
+      }
+      case 'CRITICAL': {
+        const totalIncrease = Math.round(targetDailySpend - this.avgDailySpend * 1000);
+        return `Critically behind — ${this.formatCurrency(remainingBudget)} unspent with ${daysRemaining} days left. Need ${this.formatCurrency(targetDailySpend)}/day (currently ${this.formatCurrency(this.avgDailySpend * 1000)}). Increase '${topCampaign?.name}' budget by ${this.formatCurrency(Math.round(totalIncrease * 0.6))} (best ROAS at ${topCampaign?.roas}x) and distribute ${this.formatCurrency(Math.round(totalIncrease * 0.4))} across other campaigns.`;
+      }
     }
   }
 
@@ -381,7 +399,7 @@ export default class LighthouseComponent implements OnInit {
         spentPct: campSpentPct,
         paceStatus,
         roas,
-        recommendation: this.generateRecommendation(paceStatus, roas, c.label),
+        recommendation: this.generateRecommendation(paceStatus, roas, c.label, campSpend),
       };
     });
 
@@ -389,16 +407,45 @@ export default class LighthouseComponent implements OnInit {
     this.campaigns.sort((a, b) => b.roas - a.roas);
   }
 
-  private generateRecommendation(pace: string, roas: number, name: string): string {
-    if (pace === 'Critical' && roas < 2) return 'Review targeting; consider pausing low CTR ad sets';
-    if (pace === 'Critical') return 'Increase budget by 25% to catch up on pacing';
-    if (pace === 'Behind' && roas >= 3) return 'Expand audience; increase daily budget by 15-20%';
-    if (pace === 'Behind') return 'Expand audience; add lookalike 2-5%';
-    if (pace === 'Ahead' && roas >= 4) return 'Performing well, maintain pace or scale further';
-    if (pace === 'Ahead') return 'Reduce daily budget by 10% to avoid overspend';
-    if (roas >= 4) return 'Scale top ad sets by 15%';
-    if (roas >= 3) return 'Performing well, maintain pace';
-    return 'Monitor performance closely; test new creatives';
+  private generateRecommendation(pace: string, roas: number, name: string, campSpend?: number): string {
+    const dailySpend = (campSpend || 0) / Math.max(this.currentDay, 1);
+    const daysRemaining = Math.max(1, this.totalDays - this.currentDay);
+
+    if (pace === 'Critical' && roas < 2) {
+      return `Pause '${name}' — ${roas.toFixed(1)}x ROAS is unprofitable. Reallocate ${this.formatCurrency(dailySpend)}/day to top performers.`;
+    }
+    if (pace === 'Critical') {
+      const increase = Math.round(dailySpend * 0.25);
+      return `Increase by ${this.formatCurrency(increase)}/day to catch pacing. ${roas.toFixed(1)}x ROAS supports higher spend.`;
+    }
+    if (pace === 'Behind' && roas >= 3) {
+      const increase = Math.round(dailySpend * 0.20);
+      return `Scale by ${this.formatCurrency(increase)}/day — at ${roas.toFixed(1)}x ROAS, each ${this.formatCurrency(1000)} generates ~${this.formatCurrency(roas * 1000)}.`;
+    }
+    if (pace === 'Behind') {
+      return `Expand audience for '${name}' — add lookalike 2-5% to increase delivery at ${roas.toFixed(1)}x ROAS.`;
+    }
+    if (pace === 'Ahead' && roas >= 4) {
+      return `Strong at ${roas.toFixed(1)}x ROAS. Maintain pace — ${this.formatCurrency(dailySpend * daysRemaining)} projected remaining spend.`;
+    }
+    if (pace === 'Ahead') {
+      const reduce = Math.round(dailySpend * 0.10);
+      return `Reduce by ${this.formatCurrency(reduce)}/day to avoid overspend (${roas.toFixed(1)}x ROAS).`;
+    }
+    if (roas >= 4) {
+      const scale = Math.round(dailySpend * 0.15);
+      return `Scale by ${this.formatCurrency(scale)}/day — ${roas.toFixed(1)}x ROAS is excellent.`;
+    }
+    if (roas >= 3) return `Maintain — ${roas.toFixed(1)}x ROAS is profitable at ${this.formatCurrency(dailySpend)}/day.`;
+    return `Monitor '${name}' closely (${roas.toFixed(1)}x ROAS). Test new creatives before scaling.`;
+  }
+
+  private parseCurrencyAmount(formatted: string): number {
+    if (!formatted) return 0;
+    const num = parseFloat(formatted.replace(/[^\d.]/g, ''));
+    if (formatted.includes('L')) return num * 100000;
+    if (formatted.includes('K')) return num * 1000;
+    return num || 0;
   }
 
   private formatCurrency(amount: number): string {

@@ -23,7 +23,7 @@ export class MetaApiService {
         error?.error?.code
       );
     }
-    return res.json() as Promise<T>;
+    return res.json().catch(() => ({} as T)) as Promise<T>;
   }
 
   async getAllPages<T = any>(path: string, params: Record<string, string> = {}): Promise<T[]> {
@@ -55,7 +55,7 @@ export class MetaApiService {
         );
       }
 
-      const json = await res.json() as any;
+      const json = await res.json().catch(() => ({})) as any;
       if (json.data) {
         allData.push(...json.data);
       }

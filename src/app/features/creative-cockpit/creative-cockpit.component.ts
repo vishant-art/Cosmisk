@@ -135,13 +135,13 @@ import { environment } from '../../../environments/environment';
       </div>
     }
 
-    <!-- List View (placeholder) -->
+    <!-- List View -->
     @if (!loading() && currentView() === 'list') {
       <div class="space-y-3">
         @for (creative of filteredCreatives(); track creative.id) {
           <div
             (click)="openDetail(creative)"
-            class="card !p-4 flex items-center gap-4 cursor-pointer hover:-translate-y-0.5 transition-all">
+            class="card card-lift glow-on-hover !p-4 flex items-center gap-4 cursor-pointer">
             <img [src]="creative.thumbnailUrl" [alt]="creative.name" class="w-16 h-16 rounded-lg object-cover bg-gray-100">
             <div class="flex-1 min-w-0">
               <h3 class="text-sm font-body font-semibold text-navy m-0 truncate">{{ creative.name }}</h3>
@@ -161,7 +161,7 @@ import { environment } from '../../../environments/environment';
       </div>
     }
 
-    <!-- Table View (placeholder) -->
+    <!-- Table View -->
     @if (!loading() && currentView() === 'table') {
       <div class="card overflow-x-auto">
         <table class="w-full text-sm font-body">
@@ -534,7 +534,6 @@ export default class CreativeCockpitComponent {
     const acc = this.adAccountService.currentAccount();
     const datePreset = this.dateRangeService.datePreset();
     if (acc) {
-      console.log('[CreativeCockpit] Loading ads for account:', acc.id, acc.name, 'datePreset:', datePreset);
       this.loadTopAds(acc.id, acc.credential_group, datePreset);
     } else {
       this.loading.set(false);
@@ -551,9 +550,6 @@ export default class CreativeCockpitComponent {
     }).subscribe({
       next: (res) => {
         if (res.success && res.ads?.length) {
-          // Log first ad to see available fields
-          console.log('[CreativeCockpit] Sample ad fields:', JSON.stringify(Object.keys(res.ads[0])));
-          console.log('[CreativeCockpit] Sample ad data:', JSON.stringify(res.ads[0]).substring(0, 500));
           this.allCreatives.set(res.ads.map((ad: any, i: number) => {
             const roas = ad.metrics?.roas || 0;
             const ctr = ad.metrics?.ctr || 0;
@@ -771,7 +767,6 @@ export default class CreativeCockpitComponent {
     }
 
     if (!creative.videoId) {
-      console.log('[CreativeCockpit] No videoId for creative:', creative.name);
       this.videoError.set(true);
       return;
     }
@@ -784,17 +779,15 @@ export default class CreativeCockpitComponent {
       credential_group: acc?.credential_group || 'system',
     }).subscribe({
         next: (res) => {
-          console.log('[CreativeCockpit] video-source response:', JSON.stringify(res).substring(0, 300));
           if (res.success && (res.video_url || res.source || res.url)) {
             this.videoUrl.set(res.video_url || res.source || res.url);
           } else {
-            console.log('[CreativeCockpit] No video URL in response for video_id:', creative.videoId);
             this.videoError.set(true);
           }
           this.videoLoading.set(false);
         },
         error: (err) => {
-          console.log('[CreativeCockpit] video-source error:', err.status);
+          // video source fetch failed
           this.videoLoading.set(false);
           this.videoError.set(true);
         },

@@ -73,7 +73,7 @@ interface SwipeAd {
         <!-- Masonry Grid -->
         <div class="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
           @for (ad of savedAds(); track ad.id) {
-            <div class="break-inside-avoid bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all">
+            <div class="break-inside-avoid bg-white rounded-card shadow-card overflow-hidden card-lift">
               <!-- Thumbnail -->
               <div class="w-full flex items-center justify-center text-4xl"
                 [style.height.px]="ad.height"

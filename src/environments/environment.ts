@@ -27,7 +27,6 @@ export const environment = {
   CREATIVES_RECOMMENDATIONS: 'creatives/recommendations',
 
   DIRECTOR_GENERATE_BRIEF: 'director/generate-brief',
-  DIRECTOR_GENERATE_CREATIVE: 'director/generate',
   DIRECTOR_PUBLISH: 'director/publish',
 
   UGC_PROJECTS: 'ugc/projects',
@@ -41,14 +40,13 @@ export const environment = {
   UGC_DELIVER: 'ugc-delivery',
   UGC_REVISE: 'ugc-script-revision',
   UGC_AVATARS: 'ugc/avatars',
-  UGC_GENERATE_SCRIPT: 'ugc/generate-script',
-  UGC_GENERATE_VIDEO: 'ugc/generate-video',
 
   CAMPAIGNS_LIST: 'campaigns/list',
   CAMPAIGNS_CREATE: 'campaigns/create',
   CAMPAIGNS_UPDATE: 'campaigns/update',
   CAMPAIGNS_LAUNCH: 'campaigns/launch',
   CAMPAIGNS_DETAIL: 'campaigns/detail',
+  CAMPAIGNS_SUGGEST: 'campaigns/suggest',
 
   BRAIN_PATTERNS: 'brain/patterns',
   BRAIN_COMPARE: 'brain/compare',
@@ -79,4 +77,43 @@ export const environment = {
   SETTINGS_PROFILE: 'settings/profile',
   SETTINGS_TEAM: 'settings/team',
   SETTINGS_BILLING: 'settings/billing',
+
+  MEDIA_GENERATE_IMAGE: 'media/generate-image',
+  MEDIA_GENERATE_VIDEO: 'media/generate-video',
+  MEDIA_VIDEO_STATUS: 'media/video-status',
+
+  BILLING_PLANS: 'billing/plans',
+  BILLING_STATUS: 'billing/status',
+  BILLING_CREATE_CHECKOUT: 'billing/create-checkout',
+  BILLING_CREATE_PORTAL: 'billing/create-portal',
+
+  AUTOPILOT_ALERTS: 'autopilot/alerts',
+  AUTOPILOT_UNREAD_COUNT: 'autopilot/unread-count',
+  AUTOPILOT_MARK_READ: 'autopilot/mark-read',
+  AUTOPILOT_RUN: 'autopilot/run',
+
+  COMPETITOR_SPY_SEARCH: 'competitor-spy/search',
+  COMPETITOR_SPY_ANALYZE: 'competitor-spy/analyze',
+
+  GOOGLE_ADS_OAUTH_URL: 'google-ads/oauth-url',
+  GOOGLE_ADS_OAUTH_EXCHANGE: 'google-ads/oauth/exchange',
+  GOOGLE_ADS_STATUS: 'google-ads/status',
+  GOOGLE_ADS_ACCOUNTS: 'google-ads/accounts',
+  GOOGLE_ADS_KPIS: 'google-ads/kpis',
+  GOOGLE_ADS_CAMPAIGNS: 'google-ads/campaigns',
+  GOOGLE_ADS_ANALYZE: 'google-ads/analyze',
+  GOOGLE_ADS_DISCONNECT: 'google-ads/disconnect',
+
+  TIKTOK_ADS_OAUTH_URL: 'tiktok-ads/oauth-url',
+  TIKTOK_ADS_OAUTH_EXCHANGE: 'tiktok-ads/oauth/exchange',
+  TIKTOK_ADS_STATUS: 'tiktok-ads/status',
+  TIKTOK_ADS_KPIS: 'tiktok-ads/kpis',
+  TIKTOK_ADS_CAMPAIGNS: 'tiktok-ads/campaigns',
+  TIKTOK_ADS_ANALYZE: 'tiktok-ads/analyze',
+  TIKTOK_ADS_DISCONNECT: 'tiktok-ads/disconnect',
+
+  DIRECTOR_AUTO_PUBLISH: 'director/auto-publish',
+  DIRECTOR_UPDATE_STATUS: 'director/update-status',
+
+  REPORTS_GENERATE_WEEKLY: 'reports/generate-weekly',
 };

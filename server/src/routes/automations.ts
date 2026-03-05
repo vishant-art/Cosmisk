@@ -4,6 +4,8 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
+import { fmt, setCurrency } from '../services/format-helpers.js';
+import { assessConfidence, computeTrend, trendCaveat } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
 
 /* ------------------------------------------------------------------ */
@@ -267,53 +269,175 @@ export async function automationRoutes(app: FastifyInstance) {
       }
       const meta = new MetaApiService(token);
 
-      // Fetch recent ads with insights for last_7d to generate activity
-      const adsRaw = await meta.getAllPages<any>(`/${account_id}/ads`, {
-        fields: 'id,name,insights.date_preset(last_7d){spend,ctr,actions,action_values,purchase_roas},status',
-        limit: '50',
-        filtering: JSON.stringify([
-          { field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PAUSED'] },
-        ]),
-      });
+      // Detect currency
+      try {
+        const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
+        if (accInfo?.currency) setCurrency(accInfo.currency);
+      } catch { /* keep default */ }
 
-      const activity: Array<{ type: string; message: string; time: string }> = [];
+      // Fetch account-level averages + 7d ads + daily breakdown for trend analysis
+      const [accountInsights, adsRaw, adsDailyRaw] = await Promise.all([
+        meta.get<any>(`/${account_id}/insights`, {
+          fields: 'spend,ctr,cpc,actions,action_values,purchase_roas',
+          date_preset: 'last_7d',
+          level: 'account',
+        }),
+        meta.getAllPages<any>(`/${account_id}/ads`, {
+          fields: 'id,name,insights.date_preset(last_7d){spend,ctr,actions,action_values,purchase_roas},status',
+          limit: '50',
+          filtering: JSON.stringify([
+            { field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PAUSED'] },
+          ]),
+        }),
+        // Daily ad-level data for trend detection
+        meta.get<any>(`/${account_id}/insights`, {
+          fields: 'ad_name,ad_id,spend,ctr,actions,action_values,purchase_roas',
+          level: 'ad',
+          date_preset: 'last_7d',
+          time_increment: '1',
+          limit: '200',
+        }),
+      ]);
+
+      const accountMetrics = parseInsightMetrics(accountInsights.data?.[0] || {});
+      const avgCpa = accountMetrics.cpa || 0;
+      const avgRoas = accountMetrics.roas || 0;
+      const avgCtr = accountMetrics.ctr || 0;
+      const totalAccountSpend = accountMetrics.spend || 0;
+
+      // Build daily metric maps per ad for trend analysis
+      const dailyCpaByAd = new Map<string, number[]>();
+      const dailyRoasByAd = new Map<string, number[]>();
+      const dailyCtrByAd = new Map<string, number[]>();
+      for (const row of (adsDailyRaw.data || [])) {
+        const adId = row.ad_id;
+        if (!dailyCpaByAd.has(adId)) { dailyCpaByAd.set(adId, []); dailyRoasByAd.set(adId, []); dailyCtrByAd.set(adId, []); }
+        const dm = parseInsightMetrics(row);
+        dailyCpaByAd.get(adId)!.push(dm.cpa);
+        dailyRoasByAd.get(adId)!.push(dm.roas);
+        dailyCtrByAd.get(adId)!.push(dm.ctr);
+      }
+
+      // Find top performer for suggested reallocation — with confidence check
+      const allAds = adsRaw.map((ad: any) => {
+        const m = parseInsightMetrics(ad.insights?.data?.[0] || {});
+        const conf = assessConfidence({ spend: m.spend, totalAccountSpend, conversions: m.conversions, impressions: m.impressions });
+        return { id: ad.id, name: ad.name || 'Unnamed Ad', status: ad.status, confidence: conf, ...m };
+      });
+      // Top performer must have enough data to be credible
+      const topPerformer = [...allAds]
+        .filter(a => a.roas > 0 && a.confidence.shouldRecommendAction)
+        .sort((a, b) => b.roas - a.roas)[0]
+        || [...allAds].sort((a, b) => b.roas - a.roas).find(a => a.roas > 0);
+
+      const activity: Array<{ type: string; message: string; time: string; context?: string; suggestedAction?: string }> = [];
 
       for (const ad of adsRaw) {
         const insight = ad.insights?.data?.[0] || {};
         const m = parseInsightMetrics(insight);
         const adName = ad.name || 'Unnamed Ad';
         const shortName = adName.length > 30 ? adName.substring(0, 27) + '...' : adName;
+        const conf = assessConfidence({ spend: m.spend, totalAccountSpend, conversions: m.conversions, impressions: m.impressions });
 
-        // Generate activity entries based on performance thresholds
-        if (m.cpa > 500 && m.spend > 1000) {
+        // Get trends for this ad
+        const cpaTrend = computeTrend(dailyCpaByAd.get(ad.id) || []);
+        const roasTrend = computeTrend(dailyRoasByAd.get(ad.id) || []);
+        const ctrTrend = computeTrend(dailyCtrByAd.get(ad.id) || []);
+
+        // HIGH CPA ALERT — but check: is CPA improving? Is data reliable?
+        if (m.cpa > avgCpa * 1.5 && m.cpa > 100 && m.spend > 0) {
+          const aboveAvgPct = avgCpa > 0 ? Math.round(((m.cpa - avgCpa) / avgCpa) * 100) : 0;
+
+          // Check trend before recommending pause
+          const trendNote = trendCaveat('CPA', true, cpaTrend);
+          const isRecovering = cpaTrend.direction === 'declining'; // CPA declining = improving
+
+          let suggested: string;
+          if (isRecovering) {
+            suggested = `CPA is ${cpaTrend.label} (getting better). Monitor for 2-3 more days before acting.`;
+          } else if (!conf.shouldRecommendAction) {
+            suggested = `Only ${fmt(m.spend)} spent (${m.conversions} conversion${m.conversions !== 1 ? 's' : ''}) — not enough data to confidently recommend pausing. Let it run longer.`;
+          } else if (topPerformer && topPerformer.name !== adName) {
+            suggested = `Pause and reallocate ${fmt(m.spend)} to '${topPerformer.name}' (${topPerformer.roas.toFixed(1)}x ROAS).`;
+          } else {
+            suggested = `Pause and test new creatives with cost cap at ${fmt(avgCpa * 0.8)}.`;
+          }
+
           activity.push({
             type: 'pause',
-            message: `High CPA alert: "${shortName}" — CPA at ₹${Math.round(m.cpa)}`,
+            message: `High CPA alert: "${shortName}" — CPA at ${fmt(m.cpa)}`,
             time: 'This week',
+            context: (avgCpa > 0 ? `${aboveAvgPct}% above your ${fmt(avgCpa)} account average.` : `CPA of ${fmt(m.cpa)} on ${fmt(m.spend)} spend.`) + (trendNote ? ` ${trendNote}` : '') + (conf.caveat ? ` ${conf.caveat}` : ''),
+            suggestedAction: suggested,
           });
         }
 
-        if (m.roas > 3 && m.spend > 2000) {
+        // STRONG PERFORMER — check if trend is stable/growing, and data is reliable
+        if (m.roas > 2 && m.spend > 0) {
+          const aboveAvgPct = avgRoas > 0 ? Math.round(((m.roas - avgRoas) / avgRoas) * 100) : 0;
+          const trendNote = roasTrend.direction !== 'stable' ? ` ROAS trend: ${roasTrend.label}.` : '';
+
+          let suggested: string;
+          if (!conf.shouldRecommendAction) {
+            suggested = `${m.roas.toFixed(1)}x ROAS looks strong but based on ${m.conversions} conversion${m.conversions !== 1 ? 's' : ''} from ${fmt(m.spend)}. Wait for more data before scaling.`;
+          } else if (roasTrend.direction === 'declining') {
+            suggested = `ROAS is ${roasTrend.label} — hold off on scaling until the trend stabilizes. Current performance may not sustain at higher budget.`;
+          } else {
+            suggested = `Increase budget by 15-20% (add ~${fmt(m.spend * 0.15 / 7)}/day). At ${m.roas.toFixed(1)}x ROAS, each ${fmt(1000)} generates ~${fmt(m.roas * 1000)}.`;
+          }
+
           activity.push({
             type: 'budget',
             message: `Strong performer: "${shortName}" — ROAS ${m.roas.toFixed(1)}x`,
             time: 'This week',
+            context: (avgRoas > 0 ? `${aboveAvgPct}% above your ${avgRoas.toFixed(1)}x account average.` : `${m.roas.toFixed(1)}x ROAS on ${fmt(m.spend)} spend.`) + trendNote + (conf.caveat ? ` ${conf.caveat}` : ''),
+            suggestedAction: suggested,
           });
         }
 
-        if (m.ctr < 0.5 && m.spend > 500) {
+        // LOW CTR — but check if CTR is recovering
+        if (m.ctr < avgCtr * 0.5 && m.ctr < 1 && m.impressions > 500) {
+          const belowAvgPct = avgCtr > 0 ? Math.round(((avgCtr - m.ctr) / avgCtr) * 100) : 0;
+          const trendNote = trendCaveat('CTR', true, ctrTrend);
+
+          let suggested: string;
+          if (ctrTrend.direction === 'improving') {
+            suggested = `CTR is ${ctrTrend.label} — the latest creatives may be working. Monitor for 2-3 more days.`;
+          } else {
+            suggested = `Creative fatigue likely. Create 3-5 new variations with different hooks. Test UGC-style content.`;
+          }
+
           activity.push({
             type: 'notify',
             message: `Low CTR warning: "${shortName}" — CTR ${m.ctr.toFixed(2)}%`,
             time: 'This week',
+            context: (avgCtr > 0 ? `${belowAvgPct}% below your ${avgCtr.toFixed(2)}% account average.` : `Only ${m.ctr.toFixed(2)}% CTR on ${fmt(m.spend)} spend.`) + (trendNote ? ` ${trendNote}` : ''),
+            suggestedAction: suggested,
           });
         }
 
-        if (ad.status === 'PAUSED') {
+        // PAUSED ADS — was it paused prematurely?
+        if (ad.status === 'PAUSED' && m.spend > 0) {
+          const roasWasGood = m.roas >= 2;
+          const roasWasTrending = roasTrend.direction === 'improving';
+
+          let suggested: string;
+          if (roasWasGood && conf.shouldRecommendAction) {
+            suggested = `Consider reactivating — ${m.roas.toFixed(1)}x ROAS on ${fmt(m.spend)} with ${m.conversions} conversions was solidly profitable.`;
+          } else if (roasWasTrending) {
+            suggested = `ROAS was ${roasTrend.label} before being paused. Consider reactivating — the ad may have been paused prematurely.`;
+          } else if (!conf.shouldRecommendAction && m.roas > 0) {
+            suggested = `Had ${m.roas.toFixed(1)}x ROAS but only ${m.conversions} conversion${m.conversions !== 1 ? 's' : ''} — not enough data to judge. Consider reactivating to gather more.`;
+          } else {
+            suggested = 'Keep paused. Test new creatives before reactivating.';
+          }
+
           activity.push({
             type: 'pause',
             message: `Paused: "${shortName}"`,
             time: 'Recently',
+            context: m.roas > 0 ? `Was running at ${m.roas.toFixed(1)}x ROAS, ${fmt(m.spend)} spent (${m.conversions} conversions)` : `${fmt(m.spend)} total spend before pause`,
+            suggestedAction: suggested,
           });
         }
       }

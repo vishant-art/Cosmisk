@@ -18,8 +18,10 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
         [style.margin-left.px]="sidebarCollapsed() ? 72 : 260">
         <app-topbar />
 
-        <main class="p-8 animate-page-enter">
-          <router-outlet />
+        <main class="p-8">
+          <div class="route-animate" [attr.data-route]="routeKey">
+            <router-outlet (activate)="onRouteActivate()" />
+          </div>
         </main>
       </div>
 
@@ -30,4 +32,9 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
 })
 export class AppLayoutComponent {
   sidebarCollapsed = signal(false);
+  routeKey = 0;
+
+  onRouteActivate() {
+    this.routeKey++;
+  }
 }

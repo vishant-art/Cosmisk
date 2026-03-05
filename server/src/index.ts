@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import { config } from './config.js';
 import { getDb, closeDb } from './db/index.js';
 import { authPlugin } from './plugins/auth.js';
@@ -17,12 +19,26 @@ import { brandRoutes } from './routes/brands.js';
 import { assetRoutes } from './routes/assets.js';
 import { automationRoutes } from './routes/automations.js';
 import { campaignRoutes } from './routes/campaigns.js';
+import { mediaGenRoutes } from './routes/media-gen.js';
+import { billingRoutes } from './routes/billing.js';
+import { autopilotRoutes } from './routes/autopilot.js';
+import { competitorSpyRoutes } from './routes/competitor-spy.js';
+import { googleAdsRoutes } from './routes/google-ads.js';
+import { tiktokAdsRoutes } from './routes/tiktok-ads.js';
+import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import { MetaApiService } from './services/meta-api.js';
 import { parseInsightMetrics } from './services/insights-parser.js';
 import type { MetaTokenRow, UserRow } from './types/index.js';
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: {
+    level: config.nodeEnv === 'production' ? 'info' : 'debug',
+    ...(config.nodeEnv === 'production' ? {} : {
+      transport: { target: 'pino-pretty', options: { colorize: true } },
+    }),
+  },
+});
 
 await app.register(cors, {
   origin: config.corsOrigins,
@@ -31,7 +47,20 @@ await app.register(cors, {
   credentials: true,
 });
 
+// Security headers
+await app.register(helmet, {
+  contentSecurityPolicy: false, // disable CSP for now — frontend served separately
+});
+
+// Rate limiting — 100 req/min per IP on AI and media endpoints
+await app.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  allowList: ['127.0.0.1'],
+});
+
 await app.register(authPlugin);
+await app.register(usageLimiterPlugin);
 
 // Health check
 app.get('/health', async () => ({ status: 'ok' }));
@@ -51,6 +80,12 @@ await app.register(brandRoutes, { prefix: '/brands' });
 await app.register(assetRoutes, { prefix: '/assets' });
 await app.register(automationRoutes, { prefix: '/automations' });
 await app.register(campaignRoutes, { prefix: '/campaigns' });
+await app.register(mediaGenRoutes, { prefix: '/media' });
+await app.register(billingRoutes, { prefix: '/billing' });
+await app.register(autopilotRoutes, { prefix: '/autopilot' });
+await app.register(competitorSpyRoutes, { prefix: '/competitor-spy' });
+await app.register(googleAdsRoutes, { prefix: '/google-ads' });
+await app.register(tiktokAdsRoutes, { prefix: '/tiktok-ads' });
 
 // --- Creatives & Dashboard Top-Creatives: real Meta-backed implementations ---
 
@@ -655,7 +690,7 @@ app.post('/settings/team', { preHandler: [app.authenticate] }, async (_request, 
   });
 });
 
-// GET /settings/billing — return user's plan from DB
+// GET /settings/billing — return user's plan + usage from DB
 app.get('/settings/billing', { preHandler: [app.authenticate] }, async (request, reply) => {
   const db = getDb();
   const user = db.prepare('SELECT id, plan, created_at FROM users WHERE id = ?').get(request.user.id) as Pick<UserRow, 'id' | 'plan' | 'created_at'> | undefined;
@@ -664,6 +699,7 @@ app.get('/settings/billing', { preHandler: [app.authenticate] }, async (request,
     return reply.status(404).send({ success: false, error: 'User not found' });
   }
 
+  // Forward to billing/status for full details
   return {
     success: true,
     plan: user.plan,
@@ -673,14 +709,6 @@ app.get('/settings/billing', { preHandler: [app.authenticate] }, async (request,
       member_since: user.created_at,
     },
   };
-});
-
-// POST /settings/billing — feature not available
-app.post('/settings/billing', { preHandler: [app.authenticate] }, async (_request, reply) => {
-  return reply.status(501).send({
-    success: false,
-    error: 'Billing management is not yet available. Contact support@cosmisk.ai to change your plan.',
-  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -747,86 +775,8 @@ app.get('/brain/compare', { preHandler: [app.authenticate] }, async (request, re
 });
 
 /* ------------------------------------------------------------------ */
-/*  5. Director endpoints — generate and publish creative concepts     */
+/*  5. Director endpoints — publish creative concepts                  */
 /* ------------------------------------------------------------------ */
-
-// POST /director/generate — template-based creative concept generation
-app.post('/director/generate', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const {
-    objective,
-    target_audience,
-    tone,
-    format,
-    product_name,
-    key_message,
-  } = request.body as {
-    objective?: string;
-    target_audience?: string;
-    tone?: string;
-    format?: string;
-    product_name?: string;
-    key_message?: string;
-  };
-
-  if (!objective) {
-    return reply.status(400).send({ success: false, error: 'objective is required' });
-  }
-
-  // Template-based concept generation
-  const toneLabel = tone || 'professional';
-  const formatLabel = format || 'image';
-  const audience = target_audience || 'general audience';
-  const product = product_name || 'your product';
-  const message = key_message || objective;
-
-  const hooks = [
-    `Stop scrolling — ${product} changes everything.`,
-    `What if ${product} could solve your biggest challenge?`,
-    `${audience} are switching to ${product}. Here's why.`,
-    `The secret behind ${product} that nobody talks about.`,
-  ];
-
-  const bodies = [
-    `Designed for ${audience}, ${product} delivers on ${message}. Try it risk-free today.`,
-    `We built ${product} with one goal: ${message}. See the difference for yourself.`,
-    `Join thousands who trust ${product} for ${message}. Results speak louder than ads.`,
-  ];
-
-  const ctas = [
-    'Shop Now',
-    'Learn More',
-    'Get Started',
-    'Try Free',
-  ];
-
-  // Pick variations deterministically based on input length
-  const seed = (objective + (target_audience || '')).length;
-  const hook = hooks[seed % hooks.length];
-  const body = bodies[seed % bodies.length];
-  const cta = ctas[seed % ctas.length];
-
-  const conceptId = `concept_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-  return {
-    success: true,
-    creative: {
-      id: conceptId,
-      objective,
-      target_audience: audience,
-      tone: toneLabel,
-      format: formatLabel,
-      hook,
-      body,
-      cta,
-      variations: [
-        { label: 'Variation A', hook: hooks[0], body: bodies[0], cta: ctas[0] },
-        { label: 'Variation B', hook: hooks[1], body: bodies[1], cta: ctas[1] },
-        { label: 'Variation C', hook: hooks[2], body: bodies[2], cta: ctas[2] },
-      ],
-      generated_at: new Date().toISOString(),
-    },
-  };
-});
 
 // POST /director/publish — acknowledge publish request
 app.post('/director/publish', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -873,155 +823,41 @@ app.post('/brands/switch', { preHandler: [app.authenticate] }, async (request, r
 // GET /ugc/avatars — return default avatar personas
 app.get('/ugc/avatars', { preHandler: [app.authenticate] }, async () => {
   const avatars = [
-    {
-      id: 'avatar_01',
-      name: 'Sophia',
-      age_range: '25-34',
-      gender: 'female',
-      style: 'casual',
-      description: 'Relatable everyday creator with a warm, authentic tone. Great for lifestyle and wellness brands.',
-      thumbnail: '/avatars/sophia.png',
-    },
-    {
-      id: 'avatar_02',
-      name: 'Marcus',
-      age_range: '30-40',
-      gender: 'male',
-      style: 'professional',
-      description: 'Confident and authoritative presenter. Ideal for tech, finance, and B2B products.',
-      thumbnail: '/avatars/marcus.png',
-    },
-    {
-      id: 'avatar_03',
-      name: 'Aisha',
-      age_range: '20-28',
-      gender: 'female',
-      style: 'energetic',
-      description: 'High-energy, trend-savvy creator. Perfect for beauty, fashion, and Gen-Z audiences.',
-      thumbnail: '/avatars/aisha.png',
-    },
-    {
-      id: 'avatar_04',
-      name: 'Jake',
-      age_range: '22-30',
-      gender: 'male',
-      style: 'humorous',
-      description: 'Witty and humorous presenter who makes any product fun. Great for food, entertainment, and DTC brands.',
-      thumbnail: '/avatars/jake.png',
-    },
-    {
-      id: 'avatar_05',
-      name: 'Priya',
-      age_range: '28-38',
-      gender: 'female',
-      style: 'expert',
-      description: 'Knowledgeable and trustworthy expert voice. Ideal for health, education, and premium brands.',
-      thumbnail: '/avatars/priya.png',
-    },
-    {
-      id: 'avatar_06',
-      name: 'Chris',
-      age_range: '35-45',
-      gender: 'male',
-      style: 'storyteller',
-      description: 'Engaging storyteller with a relatable dad-next-door vibe. Works well for family, home, and insurance brands.',
-      thumbnail: '/avatars/chris.png',
-    },
+    { id: 'avatar_01', name: 'Sophia', age_range: '25-34', gender: 'female', style: 'casual', description: 'Relatable everyday creator with a warm, authentic tone. Great for lifestyle and wellness brands.', thumbnail: '/avatars/sophia.png' },
+    { id: 'avatar_02', name: 'Marcus', age_range: '30-40', gender: 'male', style: 'professional', description: 'Confident and authoritative presenter. Ideal for tech, finance, and B2B products.', thumbnail: '/avatars/marcus.png' },
+    { id: 'avatar_03', name: 'Aisha', age_range: '20-28', gender: 'female', style: 'energetic', description: 'High-energy, trend-savvy creator. Perfect for beauty, fashion, and Gen-Z audiences.', thumbnail: '/avatars/aisha.png' },
+    { id: 'avatar_04', name: 'Jake', age_range: '22-30', gender: 'male', style: 'humorous', description: 'Witty and humorous presenter who makes any product fun. Great for food, entertainment, and DTC brands.', thumbnail: '/avatars/jake.png' },
+    { id: 'avatar_05', name: 'Priya', age_range: '28-38', gender: 'female', style: 'expert', description: 'Knowledgeable and trustworthy expert voice. Ideal for health, education, and premium brands.', thumbnail: '/avatars/priya.png' },
+    { id: 'avatar_06', name: 'Chris', age_range: '35-45', gender: 'male', style: 'storyteller', description: 'Engaging storyteller with a relatable dad-next-door vibe. Works well for family, home, and insurance brands.', thumbnail: '/avatars/chris.png' },
   ];
-
   return { success: true, avatars };
 });
 
-// POST /ugc/generate-script — template-based script generation
-app.post('/ugc/generate-script', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const {
-    avatar_id,
-    product_name,
-    key_benefit,
-    tone,
-    duration,
-    hook_style,
-  } = request.body as {
-    avatar_id?: string;
-    product_name?: string;
-    key_benefit?: string;
-    tone?: string;
-    duration?: string;
-    hook_style?: string;
-  };
-
-  if (!product_name) {
-    return reply.status(400).send({ success: false, error: 'product_name is required' });
+// Request timing hook
+app.addHook('onResponse', (request, reply, done) => {
+  const duration = reply.elapsedTime;
+  if (duration > 2000) {
+    request.log.warn({ url: request.url, method: request.method, duration: `${Math.round(duration)}ms` }, 'Slow request');
   }
-
-  const benefit = key_benefit || 'amazing results';
-  const toneLabel = tone || 'casual';
-  const durationLabel = duration || '30s';
-  const hookLabel = hook_style || 'question';
-
-  // Build template script
-  const hookOptions: Record<string, string> = {
-    question: `Have you tried ${product_name} yet? Let me tell you why it's a game-changer.`,
-    shock: `I can't believe I waited so long to try ${product_name}. Seriously.`,
-    story: `So last week I was struggling with the same problem you have... then I found ${product_name}.`,
-    statistic: `Did you know that 9 out of 10 people who try ${product_name} never go back? Here's why.`,
-  };
-
-  const hook = hookOptions[hookLabel] || hookOptions.question;
-
-  const script = {
-    id: `script_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    avatar_id: avatar_id || null,
-    product_name,
-    tone: toneLabel,
-    duration: durationLabel,
-    sections: [
-      {
-        label: 'Hook',
-        timestamp: '0:00 - 0:03',
-        text: hook,
-        direction: 'Look directly at camera. Expressive, grab attention immediately.',
-      },
-      {
-        label: 'Problem',
-        timestamp: '0:03 - 0:08',
-        text: `We all know the struggle — finding something that actually delivers ${benefit} without the hassle.`,
-        direction: 'Relatable tone. Nod along as if empathizing with the viewer.',
-      },
-      {
-        label: 'Solution',
-        timestamp: '0:08 - 0:18',
-        text: `That's exactly why ${product_name} exists. It's designed to give you ${benefit} — no gimmicks, just results.`,
-        direction: 'Hold up the product. Show genuine excitement.',
-      },
-      {
-        label: 'Proof',
-        timestamp: '0:18 - 0:25',
-        text: `I've been using it for a week now and the difference is unreal. My friends keep asking what changed.`,
-        direction: 'Show before/after or demonstrate the product in use.',
-      },
-      {
-        label: 'CTA',
-        timestamp: '0:25 - 0:30',
-        text: `Tap the link below and try ${product_name} for yourself. You won't regret it.`,
-        direction: 'Point down at the link. Smile and be encouraging.',
-      },
-    ],
-    generated_at: new Date().toISOString(),
-  };
-
-  return { success: true, script };
+  done();
 });
 
-// POST /ugc/generate-video — coming soon
-app.post('/ugc/generate-video', { preHandler: [app.authenticate] }, async (_request, reply) => {
-  return reply.status(501).send({
-    success: false,
-    error: 'Video generation is coming soon. Use /ugc/generate-script to create scripts, then record manually or with our upcoming AI video tool.',
-    feature: 'ugc-video-generation',
-    status: 'coming_soon',
+// Serve frontend static files in production
+if (config.nodeEnv === 'production') {
+  const path = await import('path');
+  const fastifyStatic = await import('@fastify/static');
+  const publicDir = path.resolve(import.meta.dirname || '.', '../../public');
+  await app.register(fastifyStatic.default, {
+    root: publicDir,
+    prefix: '/',
+    decorateReply: false,
   });
-});
+
+  // SPA fallback — serve index.html for Angular routes
+  app.setNotFoundHandler(async (_request, reply) => {
+    return reply.sendFile('index.html');
+  });
+}
 
 // Initialize DB on startup
 getDb();

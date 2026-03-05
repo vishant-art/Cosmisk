@@ -355,7 +355,7 @@ export default class CampaignsComponent implements OnInit {
   loadingCampaigns = signal(true);
   launching = signal(false);
   aiSuggestionLoading = signal(false);
-  aiSuggestion = signal('Based on your top creatives, "Conversions" with CBO will deliver optimal results.');
+  aiSuggestion = signal('Loading suggestion...');
   campaigns = signal<Campaign[]>([]);
   selectedCreatives = signal<number[]>([1, 2, 3]);
   currentCampaignId = signal<string | null>(null);
@@ -383,6 +383,7 @@ export default class CampaignsComponent implements OnInit {
 
   ngOnInit() {
     this.loadCampaigns();
+    this.fetchSuggestion();
   }
 
   private loadCampaigns() {
@@ -528,28 +529,36 @@ export default class CampaignsComponent implements OnInit {
     });
   }
 
-  private fetchAiSuggestion() {
-    if (!this.objective && !this.campaignName) return;
+  private fetchSuggestion() {
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) {
+      this.aiSuggestion.set('Select an ad account to get a data-driven campaign recommendation.');
+      return;
+    }
 
     this.aiSuggestionLoading.set(true);
-    const acc = this.adAccountService.currentAccount();
-
-    this.api.post<any>(environment.AI_CHAT, {
-      message: `I'm creating a Meta ad campaign called "${this.campaignName}" with objective "${this.objective}" and budget ₹${this.budget || 50000}/day. Give me a one-sentence recommendation for optimal campaign settings. Be specific and actionable.`,
-      account_id: acc?.id || '',
-      context: 'campaign_builder',
-    }).subscribe({
+    this.api.get<any>(environment.CAMPAIGNS_SUGGEST, { account_id: acc.id }).subscribe({
       next: (res) => {
-        if (res.reply || res.message || res.response) {
-          this.aiSuggestion.set(res.reply || res.message || res.response);
+        if (res.suggestion) {
+          this.aiSuggestion.set(res.suggestion);
+        }
+        if (res.recommended) {
+          // Pre-fill form with data-driven defaults
+          if (!this.objective && res.recommended.objective) this.objective = res.recommended.objective;
+          if (!this.budget && res.recommended.budget) this.budget = res.recommended.budget;
+          if (res.recommended.campaign_type === 'cbo') this.campaignType = 'cbo';
         }
         this.aiSuggestionLoading.set(false);
       },
       error: () => {
         this.aiSuggestionLoading.set(false);
-        // Keep the default suggestion on error
       },
     });
+  }
+
+  private fetchAiSuggestion() {
+    // Refresh suggestion when campaign settings change
+    this.fetchSuggestion();
   }
 
   private resetForm() {
@@ -567,6 +576,7 @@ export default class CampaignsComponent implements OnInit {
     this.selectedCreatives.set([1, 2, 3]);
     this.currentCampaignId.set(null);
     this.activeStep.set(1);
-    this.aiSuggestion.set('Based on your top creatives, "Conversions" with CBO will deliver optimal results.');
+    this.aiSuggestion.set('Loading suggestion...');
+    this.fetchSuggestion();
   }
 }

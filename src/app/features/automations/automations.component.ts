@@ -175,7 +175,7 @@ interface ActivityLogEntry {
           }
         } @else {
           @for (rule of rules(); track rule.id) {
-            <div class="bg-white rounded-card shadow-card p-5 hover:shadow-card-hover transition-all">
+            <div class="bg-white rounded-card shadow-card p-5 card-lift">
               <div class="flex items-start justify-between gap-4">
                 <div class="flex-1">
                   <div class="flex items-center gap-3 mb-2">

@@ -9,12 +9,17 @@ export interface AiChatResponse {
   table?: { headers: string[]; rows: string[][] };
 }
 
+export interface ChatHistoryMessage {
+  role: 'user' | 'ai';
+  content: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AiService {
   private api = inject(ApiService);
 
-  chat(message: string, context?: { account_id?: string; credential_group?: string; date_preset?: string; currency?: string }): Observable<AiChatResponse> {
-    return this.api.post<any>(environment.AI_CHAT, { message, ...context }).pipe(
+  chat(message: string, context?: { account_id?: string; credential_group?: string; date_preset?: string; currency?: string }, history?: ChatHistoryMessage[]): Observable<AiChatResponse> {
+    return this.api.post<any>(environment.AI_CHAT, { message, ...context, history }).pipe(
       map(response => ({
         content: response.content || response.text || String(response),
         chart: response.chart,

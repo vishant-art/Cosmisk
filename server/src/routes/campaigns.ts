@@ -1,6 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/index.js';
+import { decryptToken } from '../services/token-crypto.js';
+import { MetaApiService } from '../services/meta-api.js';
+import { parseInsightMetrics } from '../services/insights-parser.js';
+import { round, fmt, setCurrency } from '../services/format-helpers.js';
+import { assessConfidence, computeTrend, qualifyMetric } from '../services/trend-analyzer.js';
+import type { MetaTokenRow } from '../types/index.js';
+
+function getUserMetaToken(userId: string): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+  if (!row) return null;
+  return decryptToken(row.encrypted_access_token);
+}
 
 interface CampaignRow {
   id: string;
@@ -215,5 +228,150 @@ export async function campaignRoutes(app: FastifyInstance) {
     ).run(campaign_id, request.user.id);
 
     return { success: true, message: `Campaign "${existing.name}" marked as launched` };
+  });
+
+  // GET /campaigns/suggest — AI suggestion based on real account data
+  app.get('/suggest', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { account_id } = request.query as { account_id?: string };
+
+    if (!account_id) {
+      return { success: true, suggestion: 'Select an ad account to get a data-driven campaign recommendation.' };
+    }
+
+    try {
+      const token = getUserMetaToken(request.user.id);
+      if (!token) {
+        return { success: true, suggestion: 'Connect your Meta account to get personalized campaign suggestions.' };
+      }
+      const meta = new MetaApiService(token);
+
+      // Detect currency
+      try {
+        const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
+        if (accInfo?.currency) setCurrency(accInfo.currency);
+      } catch { /* keep default */ }
+
+      // Fetch 30d aggregate + 7d daily for trend analysis (2 calls in parallel)
+      const [campaignData, recentDailyData] = await Promise.all([
+        meta.get<any>(`/${account_id}/insights`, {
+          fields: 'campaign_name,campaign_id,spend,impressions,clicks,actions,action_values,purchase_roas,objective',
+          level: 'campaign',
+          date_preset: 'last_30d',
+          limit: '50',
+        }),
+        meta.get<any>(`/${account_id}/insights`, {
+          fields: 'campaign_name,spend,actions,action_values,purchase_roas',
+          level: 'campaign',
+          date_preset: 'last_7d',
+          time_increment: '1',
+          limit: '200',
+        }),
+      ]);
+
+      const campaigns = (campaignData.data || []).map((c: any) => {
+        const m = parseInsightMetrics(c);
+        return { name: c.campaign_name, objective: c.objective || 'CONVERSIONS', ...m };
+      });
+
+      if (campaigns.length === 0) {
+        return { success: true, suggestion: 'No active campaign data found. Start with a Conversions campaign using CBO at your average daily budget to establish baseline performance.' };
+      }
+
+      const totalAccountSpend = campaigns.reduce((s: number, c: any) => s + c.spend, 0);
+
+      // Build daily ROAS map for trend detection
+      const dailyRoasMap = new Map<string, number[]>();
+      for (const row of (recentDailyData.data || [])) {
+        const name = row.campaign_name;
+        if (!dailyRoasMap.has(name)) dailyRoasMap.set(name, []);
+        const m = parseInsightMetrics(row);
+        dailyRoasMap.get(name)!.push(m.roas);
+      }
+
+      // Assess confidence and trend for each campaign
+      const assessed = campaigns.map((c: any) => {
+        const conf = assessConfidence({
+          spend: c.spend,
+          totalAccountSpend,
+          conversions: c.conversions,
+          impressions: c.impressions,
+        });
+        const dailyRoas = dailyRoasMap.get(c.name) || [];
+        const trend = computeTrend(dailyRoas);
+        return { ...c, confidence: conf, trend };
+      });
+
+      // Group by objective — only count campaigns with enough data for objective recommendation
+      const byObjective = new Map<string, { spend: number; revenue: number; count: number }>();
+      for (const c of assessed) {
+        if (c.confidence.level === 'insufficient') continue; // skip noise
+        const obj = c.objective;
+        const current = byObjective.get(obj) || { spend: 0, revenue: 0, count: 0 };
+        current.spend += c.spend;
+        current.revenue += c.revenue;
+        current.count++;
+        byObjective.set(obj, current);
+      }
+
+      let bestObjective = 'OUTCOME_SALES';
+      let bestRoas = 0;
+      for (const [obj, data] of byObjective) {
+        const roas = data.spend > 0 ? data.revenue / data.spend : 0;
+        if (roas > bestRoas) { bestRoas = roas; bestObjective = obj; }
+      }
+
+      // Find top campaign — prefer campaigns the system can confidently recommend
+      const credible = assessed.filter((c: any) => c.confidence.shouldRecommendAction);
+      const bestPool = credible.length > 0 ? credible : assessed;
+      const sorted = [...bestPool].sort((a: any, b: any) => b.roas - a.roas);
+      const topCampaign = sorted[0];
+
+      // Compute recommended budget from profitable campaigns with reasonable data
+      const profitable = assessed.filter((c: any) => c.roas >= 1 && c.spend > 0 && c.confidence.level !== 'insufficient');
+      const spends = profitable.map((c: any) => c.spend / 30).sort((a: number, b: number) => a - b);
+      const medianDailySpend = spends.length > 0 ? spends[Math.floor(spends.length / 2)] : 1000;
+      const recommendedBudget = round(medianDailySpend * 1.2, 0);
+
+      const objNames: Record<string, string> = {
+        OUTCOME_SALES: 'Conversions', OUTCOME_TRAFFIC: 'Traffic', OUTCOME_AWARENESS: 'Awareness',
+        OUTCOME_ENGAGEMENT: 'Engagement', OUTCOME_LEADS: 'Leads', CONVERSIONS: 'Conversions',
+      };
+      const objName = objNames[bestObjective] || bestObjective;
+
+      // Build suggestion with contextual reasoning
+      let suggestion = '';
+      if (topCampaign) {
+        const conf = topCampaign.confidence;
+        const trendNote = topCampaign.trend.direction !== 'stable'
+          ? ` Trend: ${topCampaign.trend.label} over the last 7 days.`
+          : '';
+
+        if (conf.shouldRecommendAction) {
+          suggestion = `Your best performer '${topCampaign.name}' runs at ${topCampaign.roas.toFixed(2)}x ROAS on ${fmt(topCampaign.spend)} spend (${topCampaign.conversions} conversions).${trendNote} Launch a new ${objName} campaign with CBO at ${fmt(recommendedBudget)}/day — modeled on your profitable campaigns' median spend. Use similar targeting and creative DNA from '${topCampaign.name}'.`;
+        } else {
+          // Data exists but isn't conclusive — acknowledge it honestly
+          const qualifier = qualifyMetric({
+            metricName: 'ROAS', metricValue: `${topCampaign.roas.toFixed(2)}x`,
+            spend: topCampaign.spend, totalAccountSpend, conversions: topCampaign.conversions, fmtFn: fmt,
+          });
+          suggestion = `'${topCampaign.name}' shows ${topCampaign.roas.toFixed(2)}x ROAS. ${qualifier}${trendNote} Start a ${objName} campaign with CBO at ${fmt(recommendedBudget)}/day to gather more data. Keep daily budgets moderate until you have 20+ conversions to validate performance.`;
+        }
+      } else {
+        suggestion = `Start with a ${objName} campaign using CBO at ${fmt(recommendedBudget)}/day.`;
+      }
+
+      return {
+        success: true,
+        suggestion,
+        recommended: {
+          objective: bestObjective === 'OUTCOME_SALES' ? 'conversions' : bestObjective.toLowerCase().replace('outcome_', ''),
+          budget: recommendedBudget,
+          campaign_type: 'cbo',
+          reference_campaign: topCampaign?.name || null,
+        },
+      };
+    } catch (err: any) {
+      return { success: true, suggestion: 'Could not analyze account data. Try "Conversions" with CBO for best results.' };
+    }
   });
 }

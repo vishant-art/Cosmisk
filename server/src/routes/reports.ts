@@ -4,7 +4,13 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown, parseAudienceBreakdown } from '../services/insights-parser.js';
-import type { MetaTokenRow, ReportRow } from '../types/index.js';
+import { round, fmt, fmtInt, setCurrency } from '../services/format-helpers.js';
+import { assessConfidence } from '../services/trend-analyzer.js';
+import type { MetaTokenRow, ReportRow, UserRow } from '../types/index.js';
+import Anthropic from '@anthropic-ai/sdk';
+import cron from 'node-cron';
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -16,9 +22,144 @@ function getUserMetaToken(userId: string): string | null {
   return decryptToken(row.encrypted_access_token);
 }
 
-function round(value: number, decimals: number): number {
-  const factor = Math.pow(10, decimals);
-  return Math.round(value * factor) / factor;
+/* ------------------------------------------------------------------ */
+/*  Narrative generation per report type                               */
+/* ------------------------------------------------------------------ */
+function datePresetLabel(preset: string): string {
+  const map: Record<string, string> = {
+    last_7d: 'this week', last_14d: 'last 14 days', last_30d: 'last 30 days',
+    this_month: 'this month', last_month: 'last month',
+  };
+  return map[preset] || preset.replace(/_/g, ' ');
+}
+
+function generatePerformanceNarrative(kpis: any, campaigns: any[], datePreset: string): any {
+  const period = datePresetLabel(datePreset);
+  const totalAccountSpend = kpis.spend || 0;
+
+  // Assess confidence for each campaign
+  const assessed = campaigns.map((c: any) => ({
+    ...c,
+    confidence: assessConfidence({
+      spend: c.spend || 0,
+      totalAccountSpend,
+      conversions: c.conversions || 0,
+      impressions: c.impressions || 0,
+    }),
+  }));
+
+  const sorted = [...assessed].sort((a, b) => (b.roas || 0) - (a.roas || 0));
+  const topCampaign = sorted[0];
+  const worstCampaign = sorted[sorted.length - 1];
+  const totalCampaigns = campaigns.length;
+
+  let topAdvice = '';
+  if (topCampaign) {
+    if (topCampaign.confidence.shouldRecommendAction) {
+      topAdvice = ` Top performer '${topCampaign.label}' at ${(topCampaign.roas || 0).toFixed(2)}x — scale this by 15-20%.`;
+    } else {
+      topAdvice = ` '${topCampaign.label}' leads at ${(topCampaign.roas || 0).toFixed(2)}x but with limited data (${topCampaign.conversions || 0} conversions) — let it run longer before scaling.`;
+    }
+  }
+
+  const executive_summary = `${period.charAt(0).toUpperCase() + period.slice(1)} you invested ${fmt(kpis.spend)} across ${totalCampaigns} campaign${totalCampaigns !== 1 ? 's' : ''}, generating ${fmt(kpis.revenue)} at ${kpis.roas.toFixed(2)}x ROAS.${topAdvice}`;
+
+  const key_takeaways: string[] = [];
+  if (topCampaign && topCampaign.roas > 3 && topCampaign.confidence.shouldRecommendAction) {
+    key_takeaways.push(`Scale '${topCampaign.label}' — at ${topCampaign.roas.toFixed(2)}x ROAS with ${topCampaign.conversions || 0} conversions, it's reliably profitable. Increase budget by 15-20%.`);
+  } else if (topCampaign && topCampaign.roas > 3 && !topCampaign.confidence.shouldRecommendAction) {
+    key_takeaways.push(`'${topCampaign.label}' shows ${topCampaign.roas.toFixed(2)}x ROAS — promising but based on ${topCampaign.conversions || 0} conversions. Wait for 20+ conversions before scaling.`);
+  }
+  if (worstCampaign && worstCampaign.roas < 1 && worstCampaign.spend > 0 && worstCampaign.confidence.shouldRecommendAction) {
+    key_takeaways.push(`Pause or restructure '${worstCampaign.label}' — at ${worstCampaign.roas.toFixed(2)}x ROAS it's losing money (${fmt(worstCampaign.spend)} spent, ${worstCampaign.conversions || 0} conversions).`);
+  }
+  if (kpis.ctr < 1 && kpis.impressions > 1000) {
+    key_takeaways.push(`Overall CTR is ${kpis.ctr.toFixed(2)}% — below the 1% benchmark. Refresh creatives across campaigns.`);
+  }
+  if (kpis.roas >= 3) {
+    key_takeaways.push(`Strong ${kpis.roas.toFixed(2)}x overall ROAS — you're profitable. Focus on scaling top performers.`);
+  }
+  if (key_takeaways.length === 0) {
+    key_takeaways.push(`Monitor performance closely. Current ROAS of ${kpis.roas.toFixed(2)}x ${kpis.roas >= 1 ? 'is above breakeven' : 'is below breakeven — review targeting and creatives'}.`);
+  }
+
+  const campaign_narratives = assessed.slice(0, 5).map((c: any) => {
+    let verdict: string;
+    if (!c.confidence.shouldRecommendAction) {
+      verdict = `${(c.roas || 0).toFixed(2)}x ROAS on ${c.conversions || 0} conversions — insufficient data to judge`;
+    } else if ((c.roas || 0) >= 3) {
+      verdict = 'Top performer — scale';
+    } else if ((c.roas || 0) >= 1) {
+      verdict = 'Profitable — maintain';
+    } else {
+      verdict = 'Below breakeven — review';
+    }
+    return {
+      name: c.label,
+      spend: fmt(c.spend || 0),
+      roas: (c.roas || 0).toFixed(2) + 'x',
+      cpa: fmt(c.cpa || 0),
+      conversions: c.conversions || 0,
+      verdict,
+    };
+  });
+
+  return { executive_summary, campaign_narratives, key_takeaways };
+}
+
+function generateCreativeNarrative(topAds: any[]): any {
+  const sorted = [...topAds].sort((a, b) => (b.metrics?.roas || 0) - (a.metrics?.roas || 0));
+  const winner = sorted[0];
+  const totalAds = topAds.length;
+  const videoCount = topAds.filter(a => a.object_type === 'VIDEO').length;
+
+  const executive_summary = winner
+    ? `Analyzed ${totalAds} creatives. Top performer '${winner.name}' drives ${winner.metrics.roas.toFixed(2)}x ROAS at ${winner.metrics.ctr.toFixed(2)}% CTR. ${videoCount > 0 ? `${videoCount} video vs ${totalAds - videoCount} static ads active.` : 'All static ads — consider adding video.'}`
+    : `No creative performance data available.`;
+
+  const key_takeaways: string[] = [];
+  if (winner) {
+    key_takeaways.push(`Create 3-5 variations of '${winner.name}' — it has your highest ROAS at ${winner.metrics.roas.toFixed(2)}x.`);
+  }
+  const fatigued = topAds.filter(a => (a.metrics?.ctr || 0) < 0.5 && (a.metrics?.spend || 0) > 100);
+  if (fatigued.length > 0) {
+    key_takeaways.push(`${fatigued.length} creatives showing fatigue (CTR < 0.5%). Consider pausing: ${fatigued.slice(0, 3).map((a: any) => `'${a.name}'`).join(', ')}.`);
+  }
+  if (key_takeaways.length === 0) {
+    key_takeaways.push('Creative performance is adequate. Test new hook styles and formats to find breakthrough winners.');
+  }
+
+  return { executive_summary, key_takeaways };
+}
+
+function generateAudienceNarrative(breakdown: any[]): any {
+  if (!breakdown || breakdown.length === 0) {
+    return {
+      executive_summary: 'No audience breakdown data available for this period.',
+      key_takeaways: ['Ensure the Meta pixel is properly installed to capture audience data.'],
+    };
+  }
+
+  const sorted = [...breakdown].sort((a, b) => (b.spend || 0) - (a.spend || 0));
+  const topSegment = sorted[0];
+  const totalSpend = breakdown.reduce((s, a) => s + (a.spend || 0), 0);
+  const topShare = totalSpend > 0 ? ((topSegment.spend || 0) / totalSpend * 100).toFixed(0) : '0';
+
+  const executive_summary = `${breakdown.length} audience segments analyzed. Top segment '${topSegment.label}' accounts for ${topShare}% of spend (${fmt(topSegment.spend || 0)}).`;
+
+  const key_takeaways: string[] = [];
+  if (Number(topShare) > 60) {
+    key_takeaways.push(`'${topSegment.label}' consumes ${topShare}% of budget — diversify targeting to reduce concentration risk.`);
+  }
+  const lowPerformers = breakdown.filter(a => (a.roas || 0) < 1 && (a.spend || 0) > 0);
+  if (lowPerformers.length > 0) {
+    key_takeaways.push(`${lowPerformers.length} segments below breakeven ROAS. Consider excluding: ${lowPerformers.slice(0, 3).map((a: any) => `'${a.label}'`).join(', ')}.`);
+  }
+  if (key_takeaways.length === 0) {
+    key_takeaways.push('Audience targeting appears balanced. Test expanding top-performing segments with lookalikes.');
+  }
+
+  return { executive_summary, key_takeaways };
 }
 
 /* ------------------------------------------------------------------ */
@@ -168,6 +309,8 @@ function ensureReportTypeColumn(): void {
 export async function reportRoutes(app: FastifyInstance) {
   // Run migration on startup
   ensureReportTypeColumn();
+  // Start weekly report cron
+  startWeeklyReportCron();
 
   // GET /reports/templates
   app.get('/templates', { preHandler: [app.authenticate] }, async () => {
@@ -198,6 +341,42 @@ export async function reportRoutes(app: FastifyInstance) {
         };
       }),
     };
+  });
+
+  // POST /reports/generate-weekly — manually trigger weekly strategy report
+  app.post('/generate-weekly', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { account_id } = request.body as { account_id?: string };
+    if (!account_id) {
+      return reply.status(400).send({ success: false, error: 'account_id required' });
+    }
+
+    const token = getUserMetaToken(request.user.id);
+    if (!token) {
+      return reply.status(200).send({ success: false, error: 'Meta account not connected' });
+    }
+
+    const reportContent = await generateWeeklyStrategyReport(request.user.id, account_id, token);
+    if (!reportContent) {
+      return reply.status(500).send({ success: false, error: 'Failed to generate weekly report' });
+    }
+
+    const db = getDb();
+    const id = uuidv4();
+    const title = `Weekly Strategy Report — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+    const reportData = JSON.stringify({
+      type: 'weekly-strategy',
+      account_id,
+      generated_at: new Date().toISOString(),
+      strategy_report: reportContent,
+      auto_generated: false,
+    });
+
+    db.prepare(
+      'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, request.user.id, title, 'weekly-strategy', account_id, 'last_7d', 'Ready', reportData);
+
+    return { success: true, report_id: id, strategy_report: reportContent };
   });
 
   // POST /reports/generate
@@ -250,21 +429,30 @@ export async function reportRoutes(app: FastifyInstance) {
         generated_at: new Date().toISOString(),
       };
 
-      // Fetch real data based on report type
+      // Detect account currency from account metadata
+      try {
+        const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
+        if (accInfo?.currency) setCurrency(accInfo.currency);
+      } catch { /* keep default */ }
+
+      // Fetch real data based on report type and generate narratives
       switch (type) {
         case 'performance': {
           const perfData = await fetchPerformanceData(meta, account_id, date_range);
-          reportData = { ...reportData, ...perfData };
+          const narrative = generatePerformanceNarrative(perfData.kpis, perfData.campaigns, date_range);
+          reportData = { ...reportData, ...perfData, narrative };
           break;
         }
         case 'creative': {
           const creativeData = await fetchCreativeData(meta, account_id, date_range);
-          reportData = { ...reportData, ...creativeData };
+          const narrative = generateCreativeNarrative(creativeData.top_ads);
+          reportData = { ...reportData, ...creativeData, narrative };
           break;
         }
         case 'audience': {
           const audienceData = await fetchAudienceData(meta, account_id, date_range);
-          reportData = { ...reportData, ...audienceData };
+          const narrative = generateAudienceNarrative(audienceData.audience_breakdown);
+          reportData = { ...reportData, ...audienceData, narrative };
           break;
         }
         case 'full': {
@@ -274,13 +462,19 @@ export async function reportRoutes(app: FastifyInstance) {
             fetchCreativeData(meta, account_id, date_range),
             fetchAudienceData(meta, account_id, date_range),
           ]);
-          reportData = { ...reportData, ...perfData, ...creativeData, ...audienceData };
+          const narrative = {
+            performance: generatePerformanceNarrative(perfData.kpis, perfData.campaigns, date_range),
+            creative: generateCreativeNarrative(creativeData.top_ads),
+            audience: generateAudienceNarrative(audienceData.audience_breakdown),
+          };
+          reportData = { ...reportData, ...perfData, ...creativeData, ...audienceData, narrative };
           break;
         }
         default: {
           // Default to performance
           const defaultData = await fetchPerformanceData(meta, account_id, date_range);
-          reportData = { ...reportData, ...defaultData };
+          const narrative = generatePerformanceNarrative(defaultData.kpis, defaultData.campaigns, date_range);
+          reportData = { ...reportData, ...defaultData, narrative };
         }
       }
 
@@ -301,6 +495,177 @@ export async function reportRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Weekly strategy report — auto-generated via Claude                 */
+/* ------------------------------------------------------------------ */
+
+async function generateWeeklyStrategyReport(userId: string, accountId: string, token: string): Promise<string | null> {
+  try {
+    const meta = new MetaApiService(token);
+
+    // Detect currency
+    try {
+      const accInfo = await meta.get<any>(`/${accountId}`, { fields: 'currency' });
+      if (accInfo?.currency) setCurrency(accInfo.currency);
+    } catch { /* keep default */ }
+
+    // Fetch this week + last week for comparison
+    const [thisWeekData, lastWeekData, campaignData, dailyData] = await Promise.all([
+      meta.get<any>(`/${accountId}/insights`, {
+        fields: 'spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas',
+        date_preset: 'last_7d',
+        level: 'account',
+      }),
+      meta.get<any>(`/${accountId}/insights`, {
+        fields: 'spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas',
+        date_preset: 'last_14d',
+        level: 'account',
+      }),
+      meta.get<any>(`/${accountId}/insights`, {
+        fields: 'campaign_name,spend,impressions,clicks,ctr,actions,action_values,purchase_roas',
+        level: 'campaign',
+        date_preset: 'last_7d',
+        limit: '50',
+      }),
+      meta.get<any>(`/${accountId}/insights`, {
+        fields: 'spend,purchase_roas,actions,action_values,ctr',
+        date_preset: 'last_7d',
+        time_increment: '1',
+        level: 'account',
+      }),
+    ]);
+
+    const thisWeek = parseInsightMetrics(thisWeekData.data?.[0] || {});
+    const lastWeekRaw = parseInsightMetrics(lastWeekData.data?.[0] || {});
+    const campaigns = parseCampaignBreakdown(campaignData.data || []);
+    const dailyRows = (dailyData.data || []).map((d: any) => ({ date: d.date_start, ...parseInsightMetrics(d) }));
+
+    const sorted = [...campaigns].sort((a, b) => b.roas - a.roas);
+    const totalSpend = campaigns.reduce((s, c) => s + c.spend, 0);
+    const profitable = campaigns.filter(c => c.roas >= 1 && c.spend > 0);
+    const unprofitable = campaigns.filter(c => c.roas < 1 && c.spend > 0);
+    const wastedSpend = unprofitable.reduce((s, c) => s + c.spend, 0);
+
+    const dataContext = {
+      this_week: { spend: thisWeek.spend, revenue: thisWeek.revenue, roas: thisWeek.roas, cpa: thisWeek.cpa, ctr: thisWeek.ctr, conversions: thisWeek.conversions, impressions: thisWeek.impressions },
+      comparison: {
+        spend_change: thisWeek.spend - lastWeekRaw.spend,
+        roas_change: thisWeek.roas - lastWeekRaw.roas,
+        cpa_change: thisWeek.cpa - lastWeekRaw.cpa,
+      },
+      top_campaigns: sorted.slice(0, 5).map(c => ({
+        name: c.label, roas: c.roas, spend: c.spend, cpa: c.cpa, conversions: c.conversions,
+        confidence: assessConfidence({ spend: c.spend, totalAccountSpend: totalSpend, conversions: c.conversions, impressions: c.impressions }),
+      })),
+      worst_campaigns: [...unprofitable].sort((a, b) => a.roas - b.roas).slice(0, 3).map(c => ({
+        name: c.label, roas: c.roas, spend: c.spend,
+      })),
+      summary: {
+        total_campaigns: campaigns.filter(c => c.spend > 0).length,
+        profitable: profitable.length, unprofitable: unprofitable.length,
+        wasted_spend: wastedSpend, total_spend: totalSpend,
+      },
+      daily_trend: dailyRows.map((d: any) => ({ date: d.date, roas: round(d.roas, 2), spend: round(d.spend, 2) })),
+    };
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      temperature: 0.5,
+      system: `You are Cosmisk's AI strategist writing a weekly strategy report for a Meta Ads manager. Write a professional but conversational report.
+
+Structure:
+1. **Executive Summary** (2-3 sentences: what happened this week, overall health)
+2. **What Worked** (campaigns/segments that performed well, with specific numbers)
+3. **What Didn't Work** (underperformers, wasted spend, with amounts)
+4. **Key Trends** (improving/declining metrics, directional insights)
+5. **Action Items for This Week** (3-5 specific things to do, prioritized)
+
+Rules:
+- Use actual campaign names and computed amounts
+- Assess data confidence for recommendations
+- Be specific, not generic
+- Write like a strategist talking to a client
+- Use currency consistent with the data`,
+      messages: [{ role: 'user', content: `Generate weekly strategy report:\n${JSON.stringify(dataContext, null, 2)}` }],
+    });
+
+    const text = response.content.find((b: any) => b.type === 'text');
+    return text ? (text as any).text : null;
+  } catch (err: any) {
+    console.error(`Weekly report generation failed for account ${accountId}:`, err.message);
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Weekly report cron — every Monday at 7 AM UTC                      */
+/* ------------------------------------------------------------------ */
+
+let weeklyReportCronStarted = false;
+
+function startWeeklyReportCron() {
+  if (weeklyReportCronStarted) return;
+  weeklyReportCronStarted = true;
+
+  cron.schedule('0 7 * * 1', async () => {
+    console.log('[Weekly Reports] Starting generation...');
+    const db = getDb();
+
+    const users = db.prepare(`
+      SELECT u.id, u.name, u.email FROM users u
+      WHERE u.onboarding_complete = 1
+      AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
+    `).all() as Pick<UserRow, 'id' | 'name' | 'email'>[];
+
+    let generated = 0;
+
+    for (const user of users) {
+      try {
+        const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+        if (!tokenRow) continue;
+
+        const token = decryptToken(tokenRow.encrypted_access_token);
+        const meta = new MetaApiService(token);
+
+        // Get first active ad account
+        const accountsResp = await meta.get<any>('/me/adaccounts', { fields: 'id,name', limit: '5' });
+        const accounts = accountsResp.data || [];
+        if (accounts.length === 0) continue;
+
+        for (const account of accounts.slice(0, 3)) { // Max 3 accounts per user
+          const reportContent = await generateWeeklyStrategyReport(user.id, account.id, token);
+          if (!reportContent) continue;
+
+          const id = uuidv4();
+          const title = `Weekly Strategy Report — ${account.name || account.id} — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+          const reportData = JSON.stringify({
+            type: 'weekly-strategy',
+            account_id: account.id,
+            account_name: account.name,
+            generated_at: new Date().toISOString(),
+            strategy_report: reportContent,
+            auto_generated: true,
+          });
+
+          db.prepare(
+            'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+          ).run(id, user.id, title, 'weekly-strategy', account.id, 'last_7d', 'Ready', reportData);
+
+          generated++;
+        }
+      } catch (err: any) {
+        console.error(`Weekly report failed for user ${user.id}:`, err.message);
+      }
+    }
+
+    console.log(`[Weekly Reports] Generated ${generated} reports.`);
+  });
+
+  console.log('[Weekly Reports] Cron scheduled for Monday 7:00 AM UTC');
 }
 
 /* ------------------------------------------------------------------ */

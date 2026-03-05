@@ -1,73 +1,52 @@
 import { Injectable, inject } from '@angular/core';
 import { ApiService } from './api.service';
+import { AdAccountService } from './ad-account.service';
 import { environment } from '../../../environments/environment';
 import { Observable } from 'rxjs';
 
 export interface UgcProjectSummary {
   id: string;
-  client_code: string;
+  name: string;
   brand_name: string;
   status: string;
-  num_scripts: number;
   created_at: string;
-  pm_email?: string;
 }
 
 export interface UgcConcept {
   id: string;
   title: string;
-  concept_name?: string;
-  angle: string;
-  concept_pitch?: string;
-  hook_type: string;
-  hook_text?: string;
-  framework?: string;
-  format?: string;
-  funnel_stage?: string;
+  description: string;
   status: string;
-  pm_status?: string;
-  client_status?: string;
-  virality_score?: number;
-  platform?: string;
+  feedback?: string;
+  created_at: string;
 }
 
 export interface UgcScript {
   id: string;
+  concept_id: string;
   title: string;
-  overall_status: string;
-  google_doc_id?: string;
-  google_doc_url?: string;
+  content: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UgcProjectDetail {
-  project: {
-    id: string;
-    client_code: string;
-    brand_name: string;
-    status: string;
-    num_scripts: number;
-    target_audience: string;
-    product_feature: string;
-    created_at: string;
-    concepts: UgcConcept[];
-    scripts: UgcScript[];
-  };
-}
-
-export interface DashboardKpis {
-  projects: { total: number; by_status: Record<string, number> };
-  concepts: { total: number; approved: number; pending: number; rejected: number };
-  scripts: { total: number; delivered: number; in_review: number; draft: number };
-  recent_projects: UgcProjectSummary[];
+  id: string;
+  name: string;
+  brand_name: string;
+  status: string;
+  brief: any;
+  concepts: UgcConcept[];
+  scripts: UgcScript[];
+  created_at: string;
+  updated_at: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class UgcService {
   private api = inject(ApiService);
-
-  getDashboardKpis(): Observable<DashboardKpis> {
-    return this.api.get<DashboardKpis>(environment.DASHBOARD_KPI);
-  }
+  private adAccountService = inject(AdAccountService);
 
   getProjects(): Observable<{ projects: UgcProjectSummary[] }> {
     return this.api.get<{ projects: UgcProjectSummary[] }>(environment.UGC_PROJECTS);
@@ -86,7 +65,32 @@ export class UgcService {
   }
 
   onboardProject(brief: Record<string, unknown>) {
-    return this.api.post(environment.UGC_ONBOARD, brief);
+    const acc = this.adAccountService.currentAccount();
+    return this.api.post(environment.UGC_ONBOARD, {
+      ...brief,
+      name: brief['brand_name'] || 'New Project',
+      brand_name: brief['brand_name'],
+      brief: {
+        product_description: brief['product_feature'],
+        target_audience: brief['target_user'],
+        brand_name: brief['brand_name'],
+        website_url: brief['website_url'],
+        competitors: brief['competitors'],
+      },
+      account_id: acc?.id,
+      credential_group: acc?.credential_group,
+      currency: acc?.currency || 'INR',
+      num_concepts: brief['num_scripts'] || 6,
+    });
+  }
+
+  writeScripts(projectId: string) {
+    const acc = this.adAccountService.currentAccount();
+    return this.api.post(environment.UGC_WRITE_SCRIPTS, {
+      project_id: projectId,
+      account_id: acc?.id,
+      currency: acc?.currency || 'INR',
+    });
   }
 
   approveConcepts(projectId: string, conceptIds: string[], notes?: string) {

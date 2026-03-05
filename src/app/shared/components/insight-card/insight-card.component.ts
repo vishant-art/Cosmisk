@@ -10,7 +10,7 @@ import { AiInsight } from '../../../core/models/insight.model';
   imports: [CommonModule, RouterLink, LucideAngularModule],
   template: `
     <div
-      class="rounded-card p-4 border-l-4 transition-all duration-200 hover:shadow-card-hover cursor-pointer"
+      class="rounded-card p-4 border-l-4 card-lift cursor-pointer"
       [ngClass]="cardClasses">
       <div class="flex items-start gap-3">
         <lucide-icon [name]="iconName" [size]="18" [class]="iconClass" class="mt-0.5 shrink-0"></lucide-icon>

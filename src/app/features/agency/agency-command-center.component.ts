@@ -100,7 +100,7 @@ import { BrandService } from '../../core/services/brand.service';
       <!-- Quick Actions -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         @for (action of quickActions; track action.label) {
-          <a [routerLink]="action.route" class="bg-white rounded-card shadow-card p-4 hover:shadow-card-hover hover:-translate-y-0.5 transition-all cursor-pointer no-underline group flex items-center gap-3">
+          <a [routerLink]="action.route" class="bg-white rounded-card shadow-card p-4 card-lift glow-on-hover cursor-pointer no-underline group flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" [ngClass]="action.bgClass">
               <lucide-icon [name]="action.icon" [size]="18" [class]="action.iconClass"></lucide-icon>
             </div>
@@ -129,7 +129,7 @@ import { BrandService } from '../../core/services/brand.service';
         </div>
         <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           @for (brand of filteredBrands(); track brand.id) {
-            <div class="bg-white rounded-card shadow-card p-5 hover:shadow-card-hover transition-all cursor-pointer group"
+            <div class="bg-white rounded-card shadow-card p-5 card-lift cursor-pointer group"
               (click)="switchToBrand(brand.id)">
               <!-- Brand Header -->
               <div class="flex items-start justify-between mb-4">

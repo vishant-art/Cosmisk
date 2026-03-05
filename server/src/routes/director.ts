@@ -3,6 +3,8 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
+import { config } from '../config.js';
+import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 
 function getUserMetaToken(userId: string): string | null {
@@ -298,5 +300,199 @@ export async function directorRoutes(app: FastifyInstance) {
     };
 
     return { success: true, brief, variations };
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Auto-publish: Create campaign + ad set + ad on Meta              */
+  /* ---------------------------------------------------------------- */
+
+  // POST /director/auto-publish — create a full campaign on Meta
+  app.post('/auto-publish', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const body = request.body as {
+      account_id: string;
+      campaign_name: string;
+      objective?: string;
+      daily_budget?: number;  // in cents
+      targeting?: {
+        age_min?: number;
+        age_max?: number;
+        genders?: number[];  // 1=male, 2=female
+        geo_locations?: { countries: string[] };
+        interests?: { id: string; name: string }[];
+      };
+      creative?: {
+        title: string;
+        body: string;
+        link_url: string;
+        image_url?: string;
+        call_to_action_type?: string;
+      };
+      status?: string;  // PAUSED or ACTIVE
+    };
+
+    if (!body.account_id || !body.campaign_name) {
+      return reply.status(400).send({ success: false, error: 'account_id and campaign_name required' });
+    }
+
+    const token = getUserMetaToken(request.user.id);
+    if (!token) {
+      return reply.status(400).send({ success: false, error: 'Meta account not connected' });
+    }
+
+    const meta = new MetaApiService(token);
+    const publishStatus = body.status || 'PAUSED'; // Default to PAUSED for safety
+
+    try {
+      // Step 1: Create Campaign
+      const campaignResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_token: token,
+          name: body.campaign_name,
+          objective: body.objective || 'OUTCOME_SALES',
+          status: publishStatus,
+          special_ad_categories: [],
+        }),
+        service: 'Meta Marketing API',
+      });
+
+      if (!campaignResp.ok) {
+        const err = await safeJson(campaignResp);
+        throw new Error(err?.error?.message || 'Failed to create campaign');
+      }
+
+      const campaign = await safeJson(campaignResp);
+      const campaignId = campaign.id;
+
+      // Step 2: Create Ad Set
+      const targeting = body.targeting || {};
+      const adSetResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/adsets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_token: token,
+          campaign_id: campaignId,
+          name: `${body.campaign_name} — Ad Set`,
+          optimization_goal: 'OFFSITE_CONVERSIONS',
+          billing_event: 'IMPRESSIONS',
+          daily_budget: body.daily_budget || 5000, // $50 default in cents
+          bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+          targeting: {
+            age_min: targeting.age_min || 18,
+            age_max: targeting.age_max || 65,
+            genders: targeting.genders || [],
+            geo_locations: targeting.geo_locations || { countries: ['IN'] },
+            ...(targeting.interests?.length ? { flexible_spec: [{ interests: targeting.interests }] } : {}),
+          },
+          status: publishStatus,
+        }),
+        service: 'Meta Marketing API',
+      });
+
+      if (!adSetResp.ok) {
+        const err = await safeJson(adSetResp);
+        throw new Error(err?.error?.message || 'Failed to create ad set');
+      }
+
+      const adSet = await safeJson(adSetResp);
+      const adSetId = adSet.id;
+
+      // Step 3: Create Ad Creative (if creative data provided)
+      let adId: string | null = null;
+      if (body.creative) {
+        const creativeResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/adcreatives`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: token,
+            name: `${body.campaign_name} — Creative`,
+            object_story_spec: {
+              page_id: '', // Would need page_id — left for user to fill
+              link_data: {
+                link: body.creative.link_url,
+                message: body.creative.body,
+                name: body.creative.title,
+                ...(body.creative.image_url ? { image_url: body.creative.image_url } : {}),
+                call_to_action: {
+                  type: body.creative.call_to_action_type || 'SHOP_NOW',
+                },
+              },
+            },
+          }),
+          service: 'Meta Marketing API',
+        });
+
+        if (creativeResp.ok) {
+          const creative = await safeJson(creativeResp);
+
+          // Step 4: Create Ad
+          const adResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/ads`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_token: token,
+              adset_id: adSetId,
+              creative: { creative_id: creative?.id },
+              name: `${body.campaign_name} — Ad`,
+              status: publishStatus,
+            }),
+            service: 'Meta Marketing API',
+          });
+
+          if (adResp.ok) {
+            const ad = await safeJson(adResp);
+            adId = ad?.id || null;
+          }
+        }
+      }
+
+      return {
+        success: true,
+        published: {
+          campaign_id: campaignId,
+          adset_id: adSetId,
+          ad_id: adId,
+          status: publishStatus,
+        },
+        message: publishStatus === 'PAUSED'
+          ? 'Campaign created in PAUSED state. Review and activate when ready.'
+          : 'Campaign is now ACTIVE and delivering.',
+      };
+    } catch (err: any) {
+      return reply.status(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // POST /director/update-status — pause/activate a campaign
+  app.post('/update-status', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { campaign_id, status } = request.body as { campaign_id: string; status: 'ACTIVE' | 'PAUSED' };
+
+    if (!campaign_id || !status) {
+      return reply.status(400).send({ success: false, error: 'campaign_id and status required' });
+    }
+
+    const token = getUserMetaToken(request.user.id);
+    if (!token) {
+      return reply.status(400).send({ success: false, error: 'Meta account not connected' });
+    }
+
+    try {
+      const resp = await safeFetch(`${config.graphApiBase}/${campaign_id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: token, status }),
+        service: 'Meta Marketing API',
+      });
+
+      if (!resp.ok) {
+        const err = await safeJson(resp);
+        throw new Error(err?.error?.message || 'Failed to update campaign status');
+      }
+
+      return { success: true, campaign_id, status };
+    } catch (err: any) {
+      return reply.status(500).send({ success: false, error: err.message });
+    }
   });
 }

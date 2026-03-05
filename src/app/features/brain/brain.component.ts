@@ -69,7 +69,7 @@ interface Competitor {
         } @else {
           <div class="grid md:grid-cols-2 gap-4">
             @for (pattern of patterns(); track pattern.id) {
-              <div class="bg-white rounded-card shadow-card p-5 border-l-4 transition-all hover:shadow-card-hover"
+              <div class="bg-white rounded-card shadow-card p-5 border-l-4 card-lift"
                 [ngClass]="{
                   'border-amber-500': pattern.type === 'hook',
                   'border-blue-500': pattern.type === 'visual',
@@ -149,7 +149,7 @@ interface Competitor {
             </select>
           </div>
         </div>
-        <!-- Bar chart placeholder -->
+        <!-- Brand comparison chart -->
         <div class="h-56 border border-gray-100 rounded-lg p-4 flex items-end gap-6 justify-center">
           @for (brand of selectedBrands(); track brand) {
             <div class="flex flex-col items-center gap-2">

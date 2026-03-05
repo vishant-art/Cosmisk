@@ -111,11 +111,11 @@ interface AuditCategory {
               <h2 class="text-lg font-display text-navy m-0 mb-1">Overall Health Score</h2>
               <p class="text-sm text-gray-500 font-body mb-3">
                 @if (overallScore >= 80) {
-                  Your account is in good health. A few optimizations could push performance higher.
+                  Your account is in good health with {{ passCount }} categories passing. Focus on the {{ warningCount + failCount }} remaining area{{ warningCount + failCount !== 1 ? 's' : '' }} to maximize returns.
                 } @else if (overallScore >= 60) {
-                  Your account has some areas that need attention. Addressing warnings could improve ROAS by 15-25%.
+                  {{ warningCount }} warning{{ warningCount !== 1 ? 's' : '' }} and {{ failCount }} failure{{ failCount !== 1 ? 's' : '' }} detected. Addressing these could improve ROAS significantly.
                 } @else {
-                  Your account needs significant attention. Multiple issues are impacting performance.
+                  {{ failCount }} critical issue{{ failCount !== 1 ? 's' : '' }} impacting performance. Prioritize the failing categories for immediate improvement.
                 }
               </p>
               <div class="flex gap-6 text-xs font-body">
@@ -139,7 +139,7 @@ interface AuditCategory {
         <!-- Audit Categories -->
         <div class="grid md:grid-cols-2 gap-4">
           @for (cat of categories; track cat.name) {
-            <div class="bg-white rounded-card shadow-card p-5 hover:shadow-card-hover transition-all cursor-pointer"
+            <div class="bg-white rounded-card shadow-card p-5 card-lift cursor-pointer"
               (click)="toggleExpand(cat.name)">
               <div class="flex items-start gap-3">
                 <!-- Status icon -->
@@ -336,6 +336,10 @@ export default class AuditComponent implements OnInit {
     if (totalCampaigns >= 3 && totalCampaigns <= 15) details.push('Campaign count is within recommended range');
     if (totalCampaigns > 15) details.push('High campaign count may cause audience fragmentation');
 
+    // Find specific campaigns for recommendations
+    const pausedNames = campaigns.filter(c => (c.spend || 0) === 0).slice(0, 3).map(c => `'${c.label}'`);
+    const activeNames = campaigns.filter(c => (c.spend || 0) > 0).slice(0, 3).map(c => `'${c.label}'`);
+
     const status = this.scoreToStatus(score);
     return {
       name: 'Account Structure',
@@ -346,10 +350,10 @@ export default class AuditComponent implements OnInit {
         ? 'No campaign data available. Connect an ad account to audit structure.'
         : `${activeCampaigns} active campaigns out of ${totalCampaigns} total. ${activeRatio >= 0.7 ? 'Good organization.' : 'Consider cleaning up inactive campaigns.'}`,
       recommendation: score >= 80
-        ? 'Structure looks solid. Consider consolidating any overlapping ad sets to reduce audience fragmentation.'
+        ? `Structure looks solid with ${activeCampaigns} active campaigns${activeNames.length > 0 ? ` including ${activeNames.join(', ')}` : ''}. Review for any overlapping audiences between campaigns.`
         : score >= 60
-          ? `Clean up ${pausedCampaigns} inactive campaigns. Consolidate overlapping audiences across campaigns.`
-          : 'Major restructuring needed. Reduce campaign count and consolidate audiences for better delivery.',
+          ? `Archive ${pausedCampaigns} inactive campaign${pausedCampaigns !== 1 ? 's' : ''}${pausedNames.length > 0 ? ` (${pausedNames.join(', ')})` : ''}. Consolidate overlapping audiences to improve delivery.`
+          : `Major restructuring needed. ${pausedNames.length > 0 ? `Archive ${pausedNames.join(', ')}. ` : ''}Reduce to 5-10 focused campaigns for better budget distribution.`,
       details,
     };
   }
@@ -386,6 +390,11 @@ export default class AuditComponent implements OnInit {
     details.push(`Format mix: ${videoRatio}% video, ${100 - videoRatio}% static`);
     if (totalAds < 20) details.push(`Only ${totalAds} creatives vs 20+ recommended`);
 
+    // Find specific winners and losers
+    const sortedByCtr = [...ads].sort((a, b) => (b.metrics?.ctr || 0) - (a.metrics?.ctr || 0));
+    const topCreative = sortedByCtr[0];
+    const fatiguedNames = ads.filter(a => (a.metrics?.ctr || 0) < 0.8).slice(0, 3).map((a: any) => `'${a.name}'`);
+
     const status = this.scoreToStatus(score);
     return {
       name: 'Creative Health',
@@ -396,10 +405,10 @@ export default class AuditComponent implements OnInit {
         ? 'No creative data available.'
         : `${fatigueSignals > 0 ? fatigueSignals + ' creatives showing fatigue signals. ' : ''}${totalAds < 20 ? 'Ad variety is below recommended threshold.' : 'Good creative volume.'}`,
       recommendation: score >= 80
-        ? 'Creative health looks good. Continue refreshing creatives every 14 days to stay ahead of fatigue.'
+        ? `Creative health looks good.${topCreative ? ` Your top creative '${topCreative.name}' has ${(topCreative.metrics?.ctr || 0).toFixed(1)}% CTR — create 5 variations of this winner.` : ' Continue refreshing every 14 days.'}`
         : score >= 60
-          ? `Use Director Lab to generate ${Math.max(5, 20 - totalAds)} new creative variations. Focus on winning DNA patterns. ${fatigueSignals > 0 ? 'Pause fatiguing creatives.' : ''}`
-          : `Urgently create new creatives. ${fatigueSignals} ads are fatiguing. Add ${videoRatio < 40 ? 'more video content' : 'more static/carousel formats'} for better mix.`,
+          ? `${topCreative ? `Your '${topCreative.name}' has ${(topCreative.metrics?.ctr || 0).toFixed(1)}% CTR — create 5 variations of this DNA. ` : ''}Generate ${Math.max(5, 20 - totalAds)} new variations.${fatiguedNames.length > 0 ? ` Pause fatiguing: ${fatiguedNames.join(', ')}.` : ''}`
+          : `Urgently create new creatives.${fatiguedNames.length > 0 ? ` Pause ${fatiguedNames.join(', ')} (fatiguing).` : ''} Add ${videoRatio < 40 ? 'more video content' : 'more static/carousel formats'} for better mix.`,
       details,
     };
   }
@@ -437,6 +446,11 @@ export default class AuditComponent implements OnInit {
       details.push('No audience data available');
     }
 
+    // Find top spending audience segment
+    const topAudience = audienceBreakdown.length > 0
+      ? [...audienceBreakdown].sort((a, b) => (b.spend || 0) - (a.spend || 0))[0]
+      : null;
+
     const status = this.scoreToStatus(score);
     return {
       name: 'Audience Targeting',
@@ -447,10 +461,10 @@ export default class AuditComponent implements OnInit {
         ? 'Audience breakdown data not available. Connect more data sources for deeper analysis.'
         : `Audience targeting is ${score >= 80 ? 'well-segmented' : 'showing concentration risks'}. ${totalAudiences} segments active.`,
       recommendation: score >= 80
-        ? 'Audience targeting looks healthy. Test expanding lookalike audiences from 1% to 2-3% for scale.'
+        ? `Audience targeting looks healthy.${topAudience ? ` Top segment '${topAudience.label}' is performing well — test expanding with 2-3% lookalike.` : ' Test expanding lookalike audiences for scale.'}`
         : score >= 60
-          ? 'Diversify audience targeting. Add more lookalike segments and test interest-based exclusions.'
-          : 'Major audience restructuring needed. Create distinct prospecting vs retargeting segments.',
+          ? `${topAudience ? `'${topAudience.label}' dominates spend — ` : ''}Diversify targeting with additional lookalike and interest segments. Test exclusions to reduce overlap.`
+          : `Major restructuring needed.${topAudience ? ` '${topAudience.label}' has too much concentration — ` : ' '}Create distinct prospecting vs retargeting segments.`,
       details,
     };
   }
@@ -503,6 +517,10 @@ export default class AuditComponent implements OnInit {
       details.push(`Top performer "${topPerformer.label}" only gets ${(topPerformer.spendShare * 100).toFixed(0)}% of budget`);
     }
 
+    // Compute projected impact of reallocation
+    const shiftAmount = worstPerformer ? Math.round(worstPerformer.spend * 0.3) : 0;
+    const projectedRevenue = topPerformer ? Math.round(shiftAmount * topPerformer.roas) : 0;
+
     const status = this.scoreToStatus(score);
     return {
       name: 'Budget Allocation',
@@ -511,9 +529,9 @@ export default class AuditComponent implements OnInit {
       status,
       description: `Budget distribution ${score >= 80 ? 'aligns well with' : 'doesn\'t fully align with'} ROAS performance. ${score < 80 ? 'Some misallocation detected.' : ''}`,
       recommendation: score >= 80
-        ? 'Budget allocation is efficient. Consider enabling automated rules for dynamic reallocation.'
+        ? `Budget allocation is efficient.${topPerformer ? ` '${topPerformer.label}' gets ${(topPerformer.spendShare * 100).toFixed(0)}% at ${topPerformer.roas.toFixed(1)}x ROAS — well aligned.` : ''} Consider automated rules for dynamic reallocation.`
         : topPerformer && worstPerformer
-          ? `Reallocate budget from "${worstPerformer.label}" (${worstPerformer.roas.toFixed(1)}x ROAS) to "${topPerformer.label}" (${topPerformer.roas.toFixed(1)}x ROAS). Consider CBO migration.`
+          ? `Shift \u20B9${shiftAmount.toLocaleString()} from '${worstPerformer.label}' (${worstPerformer.roas.toFixed(1)}x) to '${topPerformer.label}' (${topPerformer.roas.toFixed(1)}x) — projected ~\u20B9${projectedRevenue.toLocaleString()} additional revenue. Consider CBO migration.`
           : 'Review budget distribution across campaigns and align with ROAS performance.',
       details,
     };
@@ -553,18 +571,28 @@ export default class AuditComponent implements OnInit {
     if (campaignsWithHighCpa > 0) details.push(`${campaignsWithHighCpa} campaigns with CPA >1.5x account average`);
     details.push('Consider testing cost cap bidding for high-spend campaigns');
 
+    // Find specific high-CPA campaigns
+    const highCpaCampaigns = campaigns
+      .filter(c => (c.cpa || 0) > avgCpa * 1.5 && (c.cpa || 0) > 0)
+      .sort((a, b) => (b.cpa || 0) - (a.cpa || 0))
+      .slice(0, 3);
+    const highCpaNames = highCpaCampaigns.map(c => `'${c.label}' (\u20B9${Math.round(c.cpa || 0)})`);
+
+    // Find top 2 campaigns for cost cap testing
+    const topByCpa = [...campaigns].filter(c => (c.cpa || 0) > 0).sort((a, b) => (a.cpa || 0) - (b.cpa || 0)).slice(0, 2);
+
     const status = this.scoreToStatus(score);
     return {
       name: 'Bidding Strategy',
       score,
       icon: '',
       status,
-      description: `Bidding strategies are ${score >= 80 ? 'appropriate for campaign objectives' : 'showing room for optimization'}. ${campaignsWithHighCpa > 0 ? 'Some campaigns have high CPA.' : ''}`,
+      description: `Bidding strategies are ${score >= 80 ? 'appropriate for campaign objectives' : 'showing room for optimization'}. ${campaignsWithHighCpa > 0 ? `${campaignsWithHighCpa} campaigns have CPA above \u20B9${Math.round(avgCpa * 1.5)}.` : ''}`,
       recommendation: score >= 80
-        ? 'Bidding efficiency is good. Test cost cap bidding on your top 2 campaigns for further optimization.'
+        ? `Bidding efficiency is good.${topByCpa.length >= 2 ? ` Test cost cap at \u20B9${Math.round(avgCpa * 0.9)} on '${topByCpa[0].label}' and '${topByCpa[1].label}'.` : ' Test cost cap on your top campaigns.'}`
         : score >= 60
-          ? `Switch high-CPA campaigns to cost cap bidding. Target CPA of \u20B9${Math.round(avgCpa * 0.85)} for better efficiency.`
-          : 'Major bid strategy overhaul needed. Switch to cost cap or minimum ROAS bidding across all campaigns.',
+          ? `${highCpaNames.length > 0 ? `Switch ${highCpaNames.join(', ')} to cost cap bidding. ` : ''}Target CPA of \u20B9${Math.round(avgCpa * 0.85)} — 15% below your \u20B9${Math.round(avgCpa)} average.`
+          : `Major bid strategy overhaul needed.${highCpaNames.length > 0 ? ` Worst offenders: ${highCpaNames.join(', ')}.` : ''} Switch to cost cap at \u20B9${Math.round(avgCpa * 0.75)} or minimum ROAS bidding.`,
       details,
     };
   }

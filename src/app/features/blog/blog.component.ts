@@ -72,7 +72,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
       <div class="max-w-5xl mx-auto px-6">
         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           @for (post of filteredPosts(); track post.title; let i = $index) {
-            <article appAnimateOnScroll [aosDelay]="i * 80" class="bg-white rounded-2xl shadow-card border border-divider overflow-hidden hover:shadow-card-hover hover:-translate-y-1 transition-all duration-300 cursor-pointer">
+            <article appAnimateOnScroll [aosDelay]="i * 80" class="bg-white rounded-2xl shadow-card border border-divider overflow-hidden card-lift cursor-pointer">
               <div class="aspect-[16/10] flex items-center justify-center p-6" [ngClass]="post.bgClass">
                 <lucide-icon [name]="post.icon" [size]="36" class="text-white/60"></lucide-icon>
               </div>

@@ -38,7 +38,7 @@ import { LucideAngularModule } from 'lucide-angular';
       <div class="max-w-5xl mx-auto px-6 grid md:grid-cols-3 gap-6 mb-20">
         @for (plan of plans; track plan.name) {
           <div
-            class="card !p-8 transition-transform hover:-translate-y-1"
+            class="card card-lift !p-8"
             [class.ring-2]="plan.featured"
             [class.ring-accent]="plan.featured">
             @if (plan.featured) {
@@ -71,6 +71,41 @@ import { LucideAngularModule } from 'lucide-angular';
         }
       </div>
 
+      <!-- Competitor Comparison -->
+      <div class="max-w-5xl mx-auto px-6 mb-20">
+        <h2 class="text-page-title font-display text-navy text-center mb-4">See How Cosmisk Compares</h2>
+        <p class="text-sm text-gray-500 font-body text-center mb-10">Feature-by-feature comparison with leading ad intelligence tools.</p>
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse bg-white rounded-xl shadow-card overflow-hidden text-sm font-body">
+            <thead>
+              <tr class="border-b border-divider">
+                <th class="text-left py-4 px-5 text-navy font-semibold">Feature</th>
+                <th class="text-center py-4 px-4 text-accent font-semibold">Cosmisk Pro ($49)</th>
+                <th class="text-center py-4 px-4 text-gray-600 font-medium">Madgicx ($44+)</th>
+                <th class="text-center py-4 px-4 text-gray-600 font-medium">Adden AI ($60)</th>
+                <th class="text-center py-4 px-4 text-gray-600 font-medium">Triple Whale ($129+)</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of comparisonRows; track row.feature) {
+                <tr class="border-b border-divider last:border-0">
+                  <td class="py-3.5 px-5 text-navy font-medium">{{ row.feature }}</td>
+                  @for (val of [row.cosmisk, row.madgicx, row.adden, row.tripleWhale]; track $index) {
+                    <td class="text-center py-3.5 px-4">
+                      @if (val) {
+                        <lucide-icon name="check" [size]="18" class="text-green-500 inline-block"></lucide-icon>
+                      } @else {
+                        <lucide-icon name="x" [size]="18" class="text-gray-300 inline-block"></lucide-icon>
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- FAQ -->
       <div class="max-w-3xl mx-auto px-6">
         <h2 class="text-page-title font-display text-navy text-center mb-12">Frequently Asked Questions</h2>
@@ -101,28 +136,39 @@ export default class PricingComponent {
 
   plans = [
     {
-      name: 'Starter', monthlyPrice: '₹4,999', annualPrice: '₹3,999', featured: false,
-      features: ['1 brand', '5 ad accounts', 'Creative Cockpit', 'Basic DNA analysis (Hook only)', '10 AI Oracle queries/day', 'Email support', '1 team member'],
+      name: 'Free', monthlyPrice: '$0', annualPrice: '$0', featured: false,
+      features: ['1 ad account', '20 AI chats/day', 'Dashboard & Analytics', 'Basic Reports', 'No image/video generation'],
     },
     {
-      name: 'Growth', monthlyPrice: '₹14,999', annualPrice: '₹11,999', featured: true,
-      features: ['3 brands', 'Unlimited ad accounts', 'Advanced DNA (Hook+Visual+Audio)', 'Director Lab + Creative Studio (50/mo)', '50 AI Oracle queries/day', 'Lighthouse budget pacing', 'Branded reports', '5 team members', 'Priority support'],
+      name: 'Pro', monthlyPrice: '$49', annualPrice: '$39', featured: true,
+      features: ['5 ad accounts', 'Unlimited AI chat', '50 images/month', '10 videos/month', 'Autopilot Alerts', 'Competitor Spy', 'Weekly Strategy Reports', 'Priority Support'],
     },
     {
-      name: 'Scale', monthlyPrice: '₹29,999', annualPrice: '₹23,999', featured: false,
-      features: ['Unlimited brands', 'Agency Command Center', 'Cross-brand Brain intelligence', 'Creative Studio (200/mo)', 'Unlimited AI queries', 'White-label reports', 'Advanced attribution', 'Unlimited team members', 'Dedicated CSM', 'API access'],
+      name: 'Agency', monthlyPrice: '$149', annualPrice: '$119', featured: false,
+      features: ['Unlimited ad accounts', 'Unlimited everything', 'Client reporting', 'White-label reports', 'Agency Command Center', 'Dedicated CSM', 'API Access'],
     },
   ];
 
+  comparisonRows = [
+    { feature: 'AI Strategy Chat',     cosmisk: true,  madgicx: false, adden: true,  tripleWhale: false },
+    { feature: 'Creative Generation',   cosmisk: true,  madgicx: true,  adden: true,  tripleWhale: false },
+    { feature: 'Video Generation',      cosmisk: true,  madgicx: false, adden: false, tripleWhale: false },
+    { feature: 'UGC Scripts',           cosmisk: true,  madgicx: false, adden: false, tripleWhale: false },
+    { feature: 'Autopilot Alerts',      cosmisk: true,  madgicx: true,  adden: false, tripleWhale: true  },
+    { feature: 'Competitor Spy',        cosmisk: true,  madgicx: true,  adden: false, tripleWhale: false },
+    { feature: 'Weekly Reports',        cosmisk: true,  madgicx: false, adden: false, tripleWhale: true  },
+    { feature: 'Forecasting',           cosmisk: true,  madgicx: false, adden: false, tripleWhale: true  },
+  ];
+
   faqs = [
-    { q: 'Is there a free trial?', a: 'Yes! 14 days free, no credit card required. You get full access to the Growth plan during your trial.' },
+    { q: 'Is there a free plan?', a: 'Yes! The Free plan includes 1 ad account, 20 AI chats per day, and full dashboard access. No credit card required.' },
     { q: 'Can I switch plans anytime?', a: 'Yes, pro-rated billing. Upgrade instantly, downgrade at the end of your billing cycle.' },
-    { q: 'What happens when my trial ends?', a: 'You\'ll be downgraded to the Starter plan. No data is lost. Upgrade anytime to restore full access.' },
+    { q: 'What happens when my trial ends?', a: 'You\'ll be downgraded to the Free plan. No data is lost. Upgrade anytime to restore full access.' },
     { q: 'Do you support platforms other than Meta?', a: 'Meta is our primary platform. Google Ads and TikTok support are in beta, planned for Q2 2026.' },
-    { q: 'How does the agency plan work?', a: 'The Scale plan includes the Agency Command Center. One login, all brands. White-label reports with your agency branding.' },
-    { q: 'What payment methods do you accept?', a: 'Credit/debit cards, UPI, and net banking. All payments are processed in INR.' },
+    { q: 'How does the agency plan work?', a: 'The Agency plan ($149/mo) includes the Agency Command Center. One login, unlimited ad accounts. White-label reports with your agency branding and a dedicated CSM.' },
+    { q: 'What payment methods do you accept?', a: 'We accept all major credit and debit cards. Payments are securely processed via Stripe.' },
     { q: 'Is my data secure?', a: 'SOC 2 compliance in progress. All data is encrypted at rest and in transit. We request read-only access to your Meta account.' },
-    { q: 'Can I get a custom plan?', a: 'Yes! Contact our sales team for 50+ brands or enterprise needs. Custom pricing and dedicated infrastructure available.' },
+    { q: 'Can I get a custom plan?', a: 'Yes! Contact our sales team for enterprise needs. Custom pricing and dedicated infrastructure available.' },
   ];
 
   toggleFaq(i: number) {

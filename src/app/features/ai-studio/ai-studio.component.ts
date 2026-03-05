@@ -17,12 +17,12 @@ interface ChatMessage {
 }
 
 const SUGGESTED_QUESTIONS = [
-  { icon: '📈', text: 'What\'s my best performing hook this month?' },
-  { icon: '💰', text: 'Which creatives have the highest ROAS?' },
-  { icon: '⚠️', text: 'Are any creatives fatiguing soon?' },
+  { icon: '📊', text: 'How is my account doing?' },
+  { icon: '💰', text: 'Where is my budget going?' },
   { icon: '🎯', text: 'What audience segments convert best?' },
-  { icon: '🔮', text: 'Predict next week\'s spend at current pace' },
-  { icon: '🧬', text: 'What DNA patterns work for skincare?' },
+  { icon: '🎬', text: 'Which ads are performing best?' },
+  { icon: '📉', text: 'What\'s my CPA across campaigns?' },
+  { icon: '🔮', text: 'Predict next week\'s performance' },
 ];
 
 
@@ -87,7 +87,7 @@ const SUGGESTED_QUESTIONS = [
                           <div class="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
                             <div class="bg-accent/70 h-full rounded-full flex items-center justify-end px-2 transition-all"
                               [style.width.%]="(item.value / getMaxValue(msg.chart!.data)) * 100">
-                              <span class="text-[10px] font-body font-bold text-white">{{ item.value }}x</span>
+                              <span class="text-[10px] font-body font-bold text-white">{{ formatChartValue(item.value, msg.chart!.type) }}</span>
                             </div>
                           </div>
                         </div>
@@ -214,7 +214,13 @@ export default class AiStudioComponent {
       currency: acc.currency || 'USD',
     } : undefined;
 
-    this.aiService.chat(text, context).subscribe({
+    // Send last few messages as conversation context for follow-ups
+    const history = this.messages().slice(-6).map(m => ({
+      role: m.role as 'user' | 'ai',
+      content: m.content,
+    }));
+
+    this.aiService.chat(text, context, history).subscribe({
       next: (response) => {
         const aiMsg: ChatMessage = {
           id: 'msg-' + Date.now() + '-ai',
@@ -243,7 +249,18 @@ export default class AiStudioComponent {
   }
 
   formatMessage(content: string): string {
-    return content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^---$/gm, '<hr class="my-2 border-gray-200">')
+      .replace(/_([^_]+)_/g, '<em>$1</em>');
+  }
+
+  formatChartValue(value: number, chartType: string): string {
+    // For line charts (daily spend), show currency-style
+    if (chartType === 'line') return value.toLocaleString();
+    // For bar charts, check if values look like ROAS (typically < 20) or currency (typically > 20)
+    if (value > 20) return value.toLocaleString();
+    return `${value}x`;
   }
 
   getMaxValue(data: { label: string; value: number }[]): number {

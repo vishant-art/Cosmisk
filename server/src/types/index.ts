@@ -176,6 +176,42 @@ export interface PatternItem {
   sampleSize: number;
   avgRoas: number;
   type: string;
+  insights?: string[];
+}
+
+export interface SubscriptionRow {
+  id: string;
+  user_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan: string;
+  status: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserUsageRow {
+  id: number;
+  user_id: string;
+  period: string;
+  chat_count: number;
+  image_count: number;
+  video_count: number;
+}
+
+export interface AutopilotAlertRow {
+  id: string;
+  user_id: string;
+  account_id: string | null;
+  type: string;
+  title: string;
+  content: string;
+  severity: string;
+  read: number;
+  created_at: string;
 }
 
 export interface AutomationRow {

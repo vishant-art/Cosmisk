@@ -28,7 +28,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
           @for (format of creativeFormats; track format.id) {
             <button
               (click)="startGeneration(format.id)"
-              class="card !p-5 text-left hover:-translate-y-1 transition-all border-2 border-transparent hover:border-accent/30 cursor-pointer bg-white group"
+              class="card card-lift glow-on-hover !p-5 text-left border-2 border-transparent cursor-pointer bg-white group"
               [ngClass]="{'!border-accent ring-2 ring-accent/10': selectedFormat() === format.id}">
               <div class="flex items-start gap-4">
                 <div class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" [ngClass]="format.bgClass">
@@ -281,28 +281,25 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
                       <lucide-icon name="video" [size]="18" class="text-accent"></lucide-icon>
                     </div>
                     <div>
-                      <p class="text-sm font-semibold text-navy m-0">{{ project.brand_name }}</p>
-                      <p class="text-xs text-gray-500 font-body m-0">{{ project.num_scripts }} scripts generated</p>
+                      <p class="text-sm font-semibold text-navy m-0">{{ project.brand_name || project.name }}</p>
+                      <p class="text-xs text-gray-500 font-body m-0">Created {{ project.created_at | date:'mediumDate' }}</p>
                     </div>
                   </div>
                   <div class="flex items-center gap-3">
-                    <span class="px-2.5 py-1 rounded-lg text-xs font-body font-medium"
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-body font-medium capitalize"
                       [ngClass]="{
-                        'bg-green-50 text-green-700': project.status === 'Delivered' || project.status === 'Complete' || project.status === 'Client Review',
-                        'bg-blue-50 text-blue-700': project.status === 'Scripting' || project.status === 'Script Review',
-                        'bg-amber-50 text-amber-700': project.status === 'Research' || project.status === 'Concept Review',
-                        'bg-violet-50 text-violet-700': project.status === 'Onboarding',
-                        'bg-gray-100 text-gray-600': !['Delivered','Complete','Client Review','Scripting','Script Review','Research','Concept Review','Onboarding'].includes(project.status)
+                        'bg-green-50 text-green-700': project.status === 'delivered',
+                        'bg-blue-50 text-blue-700': project.status === 'scripting',
+                        'bg-amber-50 text-amber-700': project.status === 'concepts',
+                        'bg-violet-50 text-violet-700': project.status === 'onboarding' || project.status === 'research',
+                        'bg-gray-100 text-gray-600': !['delivered','scripting','concepts','onboarding','research'].includes(project.status)
                       }">
                       @switch (project.status) {
-                        @case ('Onboarding') { Analyzing... }
-                        @case ('Research') { Researching }
-                        @case ('Concept Review') { Concepts Ready }
-                        @case ('Scripting') { Writing Scripts }
-                        @case ('Script Review') { In Review }
-                        @case ('Delivered') { Ready }
-                        @case ('Complete') { Complete }
-                        @case ('Client Review') { Ready }
+                        @case ('onboarding') { Generating... }
+                        @case ('research') { Analyzing }
+                        @case ('concepts') { Concepts Ready }
+                        @case ('scripting') { Scripts Ready }
+                        @case ('delivered') { Complete }
                         @default { {{ project.status }} }
                       }
                     </span>
