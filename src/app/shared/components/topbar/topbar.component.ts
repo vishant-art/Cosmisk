@@ -91,7 +91,7 @@ import { LucideAngularModule } from 'lucide-angular';
                   <div
                     class="flex gap-3 px-4 py-3 border-b border-divider hover:bg-cream transition-colors cursor-pointer"
                     [class.bg-cream]="!notif.read"
-                    (click)="handleNotifClick(notif.actionRoute)">
+                    (click)="handleNotifClick(notif.id, notif.actionRoute)">
                     <span class="shrink-0 mt-0.5">
                       @if (notif.type === 'alert') {
                         <lucide-icon name="alert-circle" [size]="16" class="text-red-500"></lucide-icon>
@@ -108,7 +108,7 @@ import { LucideAngularModule } from 'lucide-angular';
                   </div>
                 }
               </div>
-              <a routerLink="/app/settings" class="block text-center text-xs text-accent font-body font-semibold py-2.5 hover:bg-cream transition-colors no-underline border-t border-divider">
+              <a routerLink="/app/autopilot" class="block text-center text-xs text-accent font-body font-semibold py-2.5 hover:bg-cream transition-colors no-underline border-t border-divider">
                 View All Notifications
               </a>
             </div>
@@ -187,6 +187,10 @@ export class TopbarComponent implements OnInit, OnDestroy {
     '/app/attribution': { title: 'Attribution', breadcrumb: 'Optimize' },
     '/app/audit': { title: 'Account Audit', breadcrumb: 'Optimize' },
     '/app/automations': { title: 'Automations', breadcrumb: 'Optimize' },
+    '/app/creative-engine': { title: 'Creative Engine', breadcrumb: 'Command' },
+    '/app/autopilot': { title: 'Autopilot', breadcrumb: 'Intelligence' },
+    '/app/competitor-spy': { title: 'Competitor Spy', breadcrumb: 'Intelligence' },
+    '/app/content-bank': { title: 'Content Bank', breadcrumb: 'Create' },
     '/app/settings': { title: 'Settings' },
     '/app/agency': { title: 'Agency Command Center' },
   };
@@ -196,10 +200,14 @@ export class TopbarComponent implements OnInit, OnDestroy {
     this.routerSub = this.router.events
       .pipe(filter(e => e instanceof NavigationEnd))
       .subscribe((e: any) => this.updateTitle(e.urlAfterRedirects || e.url));
+
+    // Start polling real autopilot alerts
+    this.notificationService.startPolling();
   }
 
   ngOnDestroy() {
     this.routerSub?.unsubscribe();
+    this.notificationService.stopPolling();
   }
 
   private updateTitle(url: string) {
@@ -222,7 +230,8 @@ export class TopbarComponent implements OnInit, OnDestroy {
     return name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
   }
 
-  handleNotifClick(route?: string) {
+  handleNotifClick(id: string, route?: string) {
+    this.notificationService.markAsRead(id);
     this.notifOpen.set(false);
     if (route) this.router.navigate([route]);
   }
