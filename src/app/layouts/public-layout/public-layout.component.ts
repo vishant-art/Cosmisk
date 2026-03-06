@@ -32,7 +32,7 @@ import { LucideAngularModule } from 'lucide-angular';
         <!-- Auth buttons (desktop) + Hamburger (mobile) -->
         <div class="flex items-center gap-3">
           <a routerLink="/login" class="btn-ghost !text-sm !text-gray-400 hover:!text-white no-underline hidden sm:inline-flex">Log In</a>
-          <a routerLink="/signup" class="btn-primary !text-sm no-underline hidden sm:inline-flex">Start Free Trial</a>
+          <a routerLink="/waitlist" class="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-white text-sm font-body font-semibold rounded-xl no-underline hover:bg-accent-hover transition-colors shadow-sm">Join Waitlist</a>
           <button
             (click)="mobileMenuOpen.set(!mobileMenuOpen())"
             class="md:hidden p-2 text-white bg-transparent border-0 cursor-pointer"
@@ -60,7 +60,7 @@ import { LucideAngularModule } from 'lucide-angular';
             <a routerLink="/blog" (click)="mobileMenuOpen.set(false)" class="text-base font-body font-medium text-gray-300 hover:text-white no-underline transition-colors py-2">Blog</a>
             <div class="flex flex-col gap-3 pt-4 border-t border-white/[0.06]">
               <a routerLink="/login" (click)="mobileMenuOpen.set(false)" class="text-center py-2.5 text-sm font-body font-medium text-gray-300 hover:text-white no-underline transition-colors">Log In</a>
-              <a routerLink="/signup" (click)="mobileMenuOpen.set(false)" class="btn-primary text-center no-underline">Start Free Trial</a>
+              <a routerLink="/waitlist" (click)="mobileMenuOpen.set(false)" class="text-center py-2.5 bg-accent text-white text-sm font-body font-semibold rounded-xl no-underline hover:bg-accent-hover transition-colors">Join Waitlist</a>
             </div>
           </nav>
         </div>

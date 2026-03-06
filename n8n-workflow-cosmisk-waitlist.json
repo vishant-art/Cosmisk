@@ -1,0 +1,246 @@
+{
+  "name": "Cosmisk Waitlist Signup",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "waitlist/join",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://cosmisk.com,https://www.cosmisk.com,http://localhost:4200"
+        }
+      },
+      "id": "webhook-waitlist",
+      "name": "Webhook - Waitlist Join",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "cosmisk-waitlist"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "application": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "filterByFormula": "={email}='{{ $json.body.email }}'",
+        "options": {}
+      },
+      "id": "airtable-check-dupe",
+      "name": "Check Existing Email",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Token"
+        }
+      },
+      "notes": "Search WAITLIST_LEADS for existing email to avoid duplicates. Configure your Airtable base and WAITLIST_LEADS table."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-empty",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-new-email",
+      "name": "Is New Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "application": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "airtable-count",
+      "name": "Count All Records",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [880, 200],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Token"
+        }
+      },
+      "notes": "Fetch all records to count for position number. Configure your Airtable base and WAITLIST_LEADS table."
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "application": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $('Webhook - Waitlist Join').item.json.body.email }}",
+            "name": "={{ $('Webhook - Waitlist Join').item.json.body.name }}",
+            "company": "={{ $('Webhook - Waitlist Join').item.json.body.company }}",
+            "role": "={{ $('Webhook - Waitlist Join').item.json.body.role }}",
+            "ad_spend": "={{ $('Webhook - Waitlist Join').item.json.body.ad_spend }}",
+            "team_size": "={{ $('Webhook - Waitlist Join').item.json.body.team_size }}",
+            "pain_points": "={{ JSON.stringify($('Webhook - Waitlist Join').item.json.body.pain_points) }}",
+            "interested_features": "={{ JSON.stringify($('Webhook - Waitlist Join').item.json.body.interested_features) }}",
+            "source": "={{ $('Webhook - Waitlist Join').item.json.body.source }}",
+            "referrer": "={{ $('Webhook - Waitlist Join').item.json.body.referrer }}",
+            "position": "={{ $('Count All Records').first().json.length + 1 }}",
+            "signed_up_at": "={{ $('Webhook - Waitlist Join').item.json.body.signed_up_at }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "airtable-create",
+      "name": "Create Waitlist Record",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1100, 200],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "",
+          "name": "Airtable Token"
+        }
+      },
+      "notes": "Creates new row in WAITLIST_LEADS table. Configure your Airtable base and WAITLIST_LEADS table."
+    },
+    {
+      "parameters": {
+        "channel": "#cosmisk-leads",
+        "text": "=:rocket: *New Waitlist Signup #{{ $('Count All Records').first().json.length + 1 }}*\n\n*Email:* {{ $('Webhook - Waitlist Join').item.json.body.email }}\n*Name:* {{ $('Webhook - Waitlist Join').item.json.body.name || 'Not provided' }}\n*Company:* {{ $('Webhook - Waitlist Join').item.json.body.company || 'Not provided' }}\n*Role:* {{ $('Webhook - Waitlist Join').item.json.body.role || 'Not provided' }}\n*Ad Spend:* {{ $('Webhook - Waitlist Join').item.json.body.ad_spend || 'Not provided' }}\n*Team Size:* {{ $('Webhook - Waitlist Join').item.json.body.team_size || 'Not provided' }}\n*Pain Points:* {{ ($('Webhook - Waitlist Join').item.json.body.pain_points || []).join(', ') || 'None selected' }}\n*Features:* {{ ($('Webhook - Waitlist Join').item.json.body.interested_features || []).join(', ') || 'None selected' }}\n*Source:* {{ $('Webhook - Waitlist Join').item.json.body.source }}",
+        "otherOptions": {}
+      },
+      "id": "slack-notify",
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1320, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "",
+          "name": "Slack"
+        }
+      },
+      "notes": "Sends notification to #cosmisk-leads channel. Configure your Slack credentials."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ position: $('Count All Records').first().json.length + 1, success: true }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-success",
+      "name": "Respond - Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1540, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ position: $('Check Existing Email').first().json.fields.position || 1, success: true, existing: true }) }}",
+        "options": {}
+      },
+      "id": "respond-existing",
+      "name": "Respond - Already Exists",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [880, 420]
+    }
+  ],
+  "connections": {
+    "Webhook - Waitlist Join": {
+      "main": [
+        [{ "node": "Check Existing Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Existing Email": {
+      "main": [
+        [{ "node": "Is New Email?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Is New Email?": {
+      "main": [
+        [{ "node": "Count All Records", "type": "main", "index": 0 }],
+        [{ "node": "Respond - Already Exists", "type": "main", "index": 0 }]
+      ]
+    },
+    "Count All Records": {
+      "main": [
+        [{ "node": "Create Waitlist Record", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Waitlist Record": {
+      "main": [
+        [{ "node": "Slack Notification", "type": "main", "index": 0 }]
+      ]
+    },
+    "Slack Notification": {
+      "main": [
+        [{ "node": "Respond - Success", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    { "name": "cosmisk" },
+    { "name": "waitlist" },
+    { "name": "leads" }
+  ]
+}

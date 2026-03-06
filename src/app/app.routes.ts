@@ -19,6 +19,7 @@ export const routes: Routes = [
       { path: 'blog', loadComponent: () => import('./features/blog/blog.component') },
       { path: 'pitch-deck', loadComponent: () => import('./features/pitch-deck/pitch-deck.component') },
       { path: 'score', loadComponent: () => import('./features/score/score.component') },
+      { path: 'waitlist', loadComponent: () => import('./features/waitlist/waitlist.component') },
       { path: 'privacy-policy', loadComponent: () => import('./features/legal/privacy-policy.component') },
       { path: 'data-deletion', loadComponent: () => import('./features/legal/data-deletion.component') },
     ]
