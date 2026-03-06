@@ -1,5 +1,6 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scroll.directive';
@@ -163,6 +164,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
   `
 })
 export default class ContactComponent {
+  private http = inject(HttpClient);
   submitted = signal(false);
 
   form = {
@@ -176,6 +178,10 @@ export default class ContactComponent {
   submitForm() {
     if (this.form.name && this.form.email.includes('@') && this.form.message) {
       this.submitted.set(true);
+      this.http.post('leads/capture', {
+        email: this.form.email,
+        source: 'contact',
+      }).subscribe();
     }
   }
 }

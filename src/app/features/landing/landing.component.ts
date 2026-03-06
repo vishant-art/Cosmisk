@@ -1,5 +1,6 @@
 import { Component, signal, OnInit, OnDestroy, AfterViewInit, ElementRef, NgZone, inject, ViewChild, ViewChildren, QueryList } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
@@ -1731,15 +1732,19 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
     }, 2200));
   }
 
+  private http = inject(HttpClient);
+
   submitHeroEmail() {
     if (this.heroEmail.includes('@')) {
       this.heroSubmitted.set(true);
+      this.http.post('leads/capture', { email: this.heroEmail, source: 'hero' }).subscribe();
     }
   }
 
   submitDemoEmail() {
     if (this.demoEmail.includes('@')) {
       this.demoSubmitted.set(true);
+      this.http.post('leads/capture', { email: this.demoEmail, source: 'demo' }).subscribe();
     }
   }
 

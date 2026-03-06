@@ -243,6 +243,17 @@ export function createTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_content_bank_user ON content_bank(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_content_bank_platform ON content_bank(user_id, platform);
+
+    CREATE TABLE IF NOT EXISTS leads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'hero',
+      ip TEXT,
+      user_agent TEXT,
+      referrer TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
   `);
 
   // --- Safe migrations ---

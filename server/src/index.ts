@@ -68,6 +68,21 @@ await app.register(usageLimiterPlugin);
 // Health check
 app.get('/health', async () => ({ status: 'ok' }));
 
+// Public: Lead capture (no auth)
+app.post('/leads/capture', async (request, reply) => {
+  const { email, source = 'hero' } = request.body as { email?: string; source?: string };
+  if (!email || !email.includes('@')) {
+    return reply.status(400).send({ success: false, error: 'Valid email required' });
+  }
+  const db = getDb();
+  const ip = request.ip;
+  const ua = request.headers['user-agent'] || '';
+  const referrer = request.headers['referer'] || '';
+  db.prepare('INSERT INTO leads (email, source, ip, user_agent, referrer) VALUES (?, ?, ?, ?, ?)')
+    .run(email.toLowerCase().trim(), source, ip, ua, referrer);
+  return { success: true };
+});
+
 // Register routes
 await app.register(authRoutes, { prefix: '/auth' });
 await app.register(adAccountRoutes, { prefix: '/ad-accounts' });
