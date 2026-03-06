@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { LucideAngularModule } from 'lucide-angular';
-import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scroll.directive';
 import { environment } from '../../../environments/environment';
 
 interface WaitlistForm {
@@ -20,7 +19,7 @@ interface WaitlistForm {
 @Component({
   selector: 'app-waitlist',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, AnimateOnScrollDirective],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <!-- Hero -->
     <section class="relative overflow-hidden bg-dark-mesh py-24 -mt-[72px] pt-[calc(6rem+72px)]">
@@ -66,7 +65,7 @@ interface WaitlistForm {
         }
 
         <!-- Form Card -->
-        <div appAnimateOnScroll class="bg-white rounded-2xl shadow-card border border-divider overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-card border border-divider overflow-hidden">
 
           <!-- Step 1: Identity -->
           @if (step() === 1) {
