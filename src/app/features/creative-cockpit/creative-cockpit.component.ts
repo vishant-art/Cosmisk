@@ -13,6 +13,7 @@ import { LakhCrorePipe } from '../../shared/pipes/lakh-crore.pipe';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
 import { DateRangeService } from '../../core/services/date-range.service';
+import { CreativeEngineService } from '../../core/services/creative-engine.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -129,7 +130,7 @@ import { environment } from '../../../environments/environment';
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
         @for (creative of filteredCreatives(); track creative.id) {
           <div (click)="openDetail(creative)">
-            <app-creative-card [creative]="creative" />
+            <app-creative-card [creative]="creative" [source]="creative.source === 'engine' ? 'Engine' : ''" />
           </div>
         }
       </div>
@@ -525,10 +526,12 @@ export default class CreativeCockpitComponent {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
   private dateRangeService = inject(DateRangeService);
+  private engineService = inject(CreativeEngineService);
   private router = inject(Router);
 
   loading = signal(true);
   allCreatives = signal<Creative[]>([]);
+  engineAssets = signal<Creative[]>([]);
 
   private adsEffect = effect(() => {
     const acc = this.adAccountService.currentAccount();
@@ -538,6 +541,7 @@ export default class CreativeCockpitComponent {
     } else {
       this.loading.set(false);
     }
+    this.loadEngineAssets();
   }, { allowSignalWrites: true });
 
   private loadTopAds(accountId: string, credentialGroup: string, datePreset: string) {
@@ -611,6 +615,60 @@ export default class CreativeCockpitComponent {
       },
     });
   }
+
+  private loadEngineAssets() {
+    this.engineService.loadSprints();
+    // Load all sprints and merge completed/published assets
+    this.api.get<any>(environment.ENGINE_SPRINTS).subscribe({
+      next: (res) => {
+        if (!res.success || !res.sprints?.length) return;
+        const engineCreatives: Creative[] = [];
+
+        for (const sprint of res.sprints) {
+          if (sprint.status !== 'reviewing' && sprint.status !== 'published') continue;
+
+          // Fetch sprint detail for completed jobs
+          this.api.get<any>(`${environment.ENGINE_SPRINT}/${sprint.id}`).subscribe({
+            next: (detail) => {
+              if (!detail.success) return;
+              const completedJobs = (detail.jobs || []).filter((j: any) => j.status === 'completed' && j.output_url);
+              for (const job of completedJobs) {
+                const isVideo = ['ugc_talking_head', 'podcast_clip', 'skit', 'before_after',
+                  'product_demo', 'testimonial_mashup'].includes(job.format) || job.format.includes('video');
+
+                engineCreatives.push({
+                  id: `engine-${job.id}`,
+                  name: `${job.format} — ${sprint.name}`,
+                  brandId: 'engine',
+                  format: (isVideo ? 'video' : 'static') as CreativeFormat,
+                  thumbnailUrl: job.output_thumbnail || job.output_url || '',
+                  videoSourceUrl: isVideo ? job.output_url : undefined,
+                  status: 'new' as CreativeStatus,
+                  dna: {
+                    hook: job.dna_tags?.hook || [],
+                    visual: job.dna_tags?.visual || [],
+                    audio: job.dna_tags?.audio || [],
+                  },
+                  metrics: { roas: 0, cpa: 0, ctr: 0, spend: 0, impressions: 0, clicks: 0, conversions: 0 },
+                  trend: { direction: 'flat' as const, percentage: 0, period: 'engine' },
+                  daysActive: 0,
+                  createdAt: job.created_at || new Date().toISOString(),
+                  adSetId: '',
+                  campaignId: '',
+                  source: 'engine',
+                } satisfies Creative);
+              }
+
+              if (engineCreatives.length > 0) {
+                this.allCreatives.update(existing => [...existing, ...engineCreatives]);
+              }
+            },
+          });
+        }
+      },
+    });
+  }
+
   selectedCreative = signal<Creative | null>(null);
   videoUrl = signal<string | null>(null);
   videoLoading = signal(false);

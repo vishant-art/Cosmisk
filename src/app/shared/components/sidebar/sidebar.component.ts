@@ -222,6 +222,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
         { label: 'Creative Cockpit', icon: 'palette', route: '/app/creative-cockpit' },
         { label: 'Director Lab', icon: 'clapperboard', route: '/app/director-lab' },
         { label: 'Creative Studio', icon: 'video', route: '/app/ugc-studio' },
+        { label: 'Creative Engine', icon: 'rocket', route: '/app/creative-engine' },
       ]
     },
     {
@@ -241,6 +242,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
         { label: 'Campaign Builder', icon: 'megaphone', route: '/app/campaigns' },
         { label: 'Graphic Studio', icon: 'image', route: '/app/graphic-studio' },
         { label: 'Assets Vault', icon: 'folder-open', route: '/app/assets' },
+        { label: 'Content Bank', icon: 'notebook-pen', route: '/app/content-bank' },
         { label: 'Swipe File', icon: 'bookmark', route: '/app/swipe-file' },
       ]
     },

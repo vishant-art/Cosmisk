@@ -50,6 +50,7 @@ export interface Creative {
   createdAt: string;
   adSetId: string;
   campaignId: string;
+  source?: 'meta' | 'engine';
 }
 
 export interface CreativeDetail extends Creative {

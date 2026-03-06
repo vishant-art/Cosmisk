@@ -278,15 +278,15 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
       <div class="relative z-10 max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16 items-center">
         <div>
           <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/[0.06] border border-white/[0.1] rounded-pill text-indigo-300 text-sm font-body font-semibold mb-6">
-            <lucide-icon name="zap" [size]="14"></lucide-icon> THE ANTI-DASHBOARD
+            <lucide-icon name="zap" [size]="14"></lucide-icon> AI-POWERED CREATIVE INTELLIGENCE
           </div>
           <h1 class="text-hero font-display text-white mb-6">
-            The AI Creative Strategist That Knows
-            <span class="text-gradient">Why Your Ads Work</span>
+            Decode Why Ads Work.
+            <span class="text-gradient">Generate What Works Next.</span>
           </h1>
           <p class="text-lg text-gray-400 font-body mb-8 max-w-lg leading-relaxed">
-            Cosmisk decodes your Creative DNA, powers your entire UGC pipeline, and manages multiple brands from one cockpit
-            -- so you stop guessing and start scaling what actually converts.
+            Cosmisk extracts Creative DNA from your best ads, spies on competitor strategies, understands platform algorithms,
+            and batch-generates 100+ winning creatives per sprint -- all from one cockpit.
           </p>
           <div class="flex flex-wrap gap-4 mb-6">
             <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline hover:shadow-glow hover:scale-[1.02] transition-all duration-300">Start Free Trial</a>
@@ -321,7 +321,7 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
           }
 
           <p class="text-sm text-gray-500 font-body">
-            Trusted by <strong class="text-white">500+</strong> e-commerce brands &nbsp;&middot;&nbsp; &#8377;250Cr+ ad spend analyzed
+            Trusted by <strong class="text-white">500+</strong> D2C brands &nbsp;&middot;&nbsp; &#8377;250Cr+ ad spend analyzed &nbsp;&middot;&nbsp; 12,000+ creatives decoded
           </p>
         </div>
 
@@ -464,22 +464,20 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <section class="py-20 bg-white">
       <div appAnimateOnScroll class="max-w-7xl mx-auto px-6 text-center mb-16">
         <h2 class="text-page-title font-display text-navy mb-4">How It Works</h2>
-        <p class="text-lg text-gray-600 font-body">Three steps to creative intelligence</p>
+        <p class="text-lg text-gray-600 font-body">Five steps from data to 100+ winning creatives</p>
       </div>
-      <div class="max-w-5xl mx-auto px-6 grid md:grid-cols-3 gap-8">
+      <div class="max-w-6xl mx-auto px-6 grid grid-cols-2 md:grid-cols-5 gap-6">
         @for (step of howItWorksSteps; track step.num; let i = $index) {
-          <div appAnimateOnScroll [aosDelay]="i * 150" class="relative text-center p-8">
-            <!-- Large background step number -->
+          <div appAnimateOnScroll [aosDelay]="i * 100" class="relative text-center p-6">
             <div class="absolute inset-0 flex items-start justify-center pointer-events-none">
-              <span class="text-7xl font-mono font-bold text-accent/[0.06] leading-none mt-2">{{ step.num }}</span>
+              <span class="text-6xl font-mono font-bold text-accent/[0.06] leading-none mt-2">{{ step.num }}</span>
             </div>
-            <!-- Foreground content -->
             <div class="relative z-10 flex flex-col items-center">
-              <div class="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mb-5">
-                <lucide-icon [name]="step.icon" [size]="26" class="text-accent"></lucide-icon>
+              <div class="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center mb-4">
+                <lucide-icon [name]="step.icon" [size]="22" class="text-accent"></lucide-icon>
               </div>
               <h3 class="text-card-title font-display text-navy mb-2">{{ step.title }}</h3>
-              <p class="text-sm text-gray-600 font-body leading-relaxed max-w-[260px]">{{ step.desc }}</p>
+              <p class="text-xs text-gray-600 font-body leading-relaxed max-w-[200px]">{{ step.desc }}</p>
             </div>
           </div>
         }
@@ -559,39 +557,34 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <!-- SECTIONS 6-9: Pinned Feature Showcase (Desktop)               -->
     <!-- ============================================================ -->
     <section class="hidden lg:block bg-[#F7F8FA]">
-      <div #featureShowcase class="feature-showcase" style="height: 400vh">
+      <div #featureShowcase class="feature-showcase" style="height: 600vh">
         <div class="feature-showcase-inner sticky top-0 h-screen flex items-center overflow-hidden">
           <div class="max-w-7xl mx-auto px-6 w-full">
-            <div class="grid lg:grid-cols-2 gap-12 items-center relative">
-
-              <!-- Progress Indicator (left edge) -->
-              <div class="absolute -left-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0 z-10">
-                <div class="relative flex flex-col items-center">
-                  <!-- Track line background -->
-                  <div class="absolute top-2 bottom-2 w-0.5 bg-gray-200 rounded-full"></div>
-                  <!-- Track line fill -->
-                  <div #progressFill class="absolute top-2 w-0.5 bg-accent rounded-full transition-none" style="height: 0%"></div>
-                  @for (feat of showcaseFeatures; track feat.key; let i = $index) {
-                    <div class="relative flex items-center gap-3 py-6">
-                      <div #progressDot
-                        class="w-3 h-3 rounded-full border-2 transition-all duration-300 z-10"
-                        [class]="activeShowcaseIndex() === i ? 'bg-accent border-accent scale-125' : 'bg-white border-gray-300'">
-                      </div>
-                      <span
-                        class="text-[10px] font-mono font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-300"
-                        [class]="activeShowcaseIndex() === i ? 'text-accent opacity-100' : 'text-gray-400 opacity-0'">
-                        {{ feat.label }}
-                      </span>
+            <!-- Progress Indicator (fixed left edge) -->
+            <div class="absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center z-20">
+              <div class="relative flex flex-col items-center">
+                <!-- Track line background -->
+                <div class="absolute top-2 bottom-2 w-0.5 bg-gray-200 rounded-full"></div>
+                <!-- Track line fill -->
+                <div #progressFill class="absolute top-2 w-0.5 bg-accent rounded-full transition-none" style="height: 0%"></div>
+                @for (feat of showcaseFeatures; track feat.key; let i = $index) {
+                  <div class="relative flex items-center gap-2 py-5">
+                    <div #progressDot
+                      class="w-2.5 h-2.5 rounded-full border-2 transition-all duration-300 z-10 flex-shrink-0"
+                      [class]="activeShowcaseIndex() === i ? 'bg-accent border-accent scale-150' : 'bg-white border-gray-300'">
                     </div>
-                  }
-                </div>
+                  </div>
+                }
               </div>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
 
               <!-- Text Panel (left col) -->
-              <div class="relative min-h-[320px] pl-12">
+              <div class="relative min-h-[320px]">
                 @for (feat of showcaseFeatures; track feat.key; let i = $index) {
                   <div #showcaseText
-                    class="absolute inset-0 pl-12 flex flex-col justify-center"
+                    class="absolute inset-0 flex flex-col justify-center"
                     [style.opacity]="activeShowcaseIndex() === i ? 1 : 0"
                     [style.transform]="activeShowcaseIndex() === i ? 'translateY(0)' : (activeShowcaseIndex() > i ? 'translateY(-30px)' : 'translateY(30px)')">
                     <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">{{ feat.label }}</span>
@@ -611,6 +604,44 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
 
               <!-- Mockup Panel (right col) -->
               <div class="relative min-h-[380px]">
+                <!-- Creative Engine Mockup -->
+                <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
+                  <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
+                    <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-[10px] font-mono font-bold text-accent">SPRINT #4 — GENERATING</span>
+                        <span class="px-2 py-0.5 bg-green-100 text-green-700 text-[8px] font-medium rounded-pill">78/120 done</span>
+                      </div>
+                      <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div class="h-full bg-accent rounded-full" style="width: 65%"></div>
+                      </div>
+                      <div class="grid grid-cols-3 gap-2">
+                        <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100 text-center">
+                          <span class="text-[8px] text-gray-400 font-body block">UGC Videos</span>
+                          <span class="text-sm font-mono font-bold text-accent">30</span>
+                        </div>
+                        <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100 text-center">
+                          <span class="text-[8px] text-gray-400 font-body block">Static Ads</span>
+                          <span class="text-sm font-mono font-bold text-accent">45</span>
+                        </div>
+                        <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100 text-center">
+                          <span class="text-[8px] text-gray-400 font-body block">Carousels</span>
+                          <span class="text-sm font-mono font-bold text-accent">15</span>
+                        </div>
+                      </div>
+                      <div class="bg-white rounded-lg p-2 shadow-sm border border-gray-100">
+                        <div class="flex items-center gap-2">
+                          <span class="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-[8px]">92</span>
+                          <div class="flex-1">
+                            <span class="text-[9px] font-body text-navy block">UGC: Hindi Shock Statement + Macro Texture</span>
+                            <span class="text-[8px] text-gray-400">Win probability: 92%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Cockpit Mockup -->
                 <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
                   <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
@@ -641,6 +672,40 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
                             </div>
                           </div>
                         }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Competitor Intelligence Mockup -->
+                <div #showcaseMockup class="absolute inset-0 flex items-center justify-center transition-none" style="opacity: 0">
+                  <div class="bg-white rounded-2xl p-6 shadow-card border border-divider w-full">
+                    <div class="bg-[#F7F8FA] rounded-xl p-4 space-y-3">
+                      <div class="flex items-center justify-between mb-1">
+                        <span class="text-[10px] font-mono font-bold text-red-500">COMPETITOR SPY</span>
+                        <span class="text-[8px] text-gray-400">Meta Ad Library</span>
+                      </div>
+                      <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="text-[10px] font-body font-semibold text-navy">Mamaearth</span>
+                          <span class="text-[8px] text-gray-400">42 active ads</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1 mb-2">
+                          <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-medium rounded">Price Hook 68%</span>
+                          <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[7px] font-medium rounded">UGC Style 45%</span>
+                          <span class="px-1.5 py-0.5 bg-green-100 text-green-700 text-[7px] font-medium rounded">Hindi VO 52%</span>
+                        </div>
+                        <div class="text-[8px] text-gray-500">Top hook: "Sirf 3 din mein results" running 45 days</div>
+                      </div>
+                      <div class="bg-white rounded-lg p-3 shadow-sm border border-gray-100">
+                        <div class="flex items-center justify-between mb-2">
+                          <span class="text-[10px] font-body font-semibold text-navy">WOW Skin Science</span>
+                          <span class="text-[8px] text-gray-400">28 active ads</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1">
+                          <span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-medium rounded">Authority 55%</span>
+                          <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[7px] font-medium rounded">Before/After 40%</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -727,8 +792,26 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
       </div>
     </section>
 
-    <!-- Mobile: Original stacked sections (unchanged) -->
+    <!-- Mobile: Original stacked sections -->
     <div class="lg:hidden">
+      <!-- Creative Engine -->
+      <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+          <div appAnimateOnScroll class="grid gap-8 items-center">
+            <div>
+              <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">CREATIVE ENGINE</span>
+              <h2 class="text-page-title font-display text-navy mb-4">Generate 100+ winning creatives per sprint</h2>
+              <p class="text-gray-600 font-body mb-6 leading-relaxed">The full creative workflow: Learn from your data, plan with AI, batch-generate across 10 formats, review with predicted scores, publish to Meta.</p>
+              <ul class="space-y-3 list-none p-0">
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>AI plans your sprint from actual ad performance data</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>UGC, statics, carousels, podcasts, skits, demos</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Win probability scoring before you spend a rupee</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Every creative is data-backed, never random</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
       <!-- Section 6: Cockpit -->
       <section class="py-20 bg-[#F7F8FA]">
         <div class="max-w-7xl mx-auto px-6">
@@ -747,8 +830,26 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
           </div>
         </div>
       </section>
-      <!-- Section 7: Director Lab -->
+      <!-- Competitor Intelligence -->
       <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+          <div appAnimateOnScroll class="grid gap-8 items-center">
+            <div>
+              <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">COMPETITOR INTELLIGENCE</span>
+              <h2 class="text-page-title font-display text-navy mb-4">See what your competitors are running</h2>
+              <p class="text-gray-600 font-body mb-6 leading-relaxed">Automatically pull competitor ads from Meta Ad Library. AI analyzes their hooks, spend patterns, and creative strategies so you stay ahead.</p>
+              <ul class="space-y-3 list-none p-0">
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Auto-fetch competitor ads from Meta Ad Library</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>AI analyzes messaging patterns and CTAs</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Long-running ads flagged as likely profitable</li>
+                <li class="flex items-start gap-2 text-sm font-body text-navy"><lucide-icon name="check" [size]="14" class="text-green-500 mt-0.5"></lucide-icon>Competitor insights feed into your sprint plan</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+      <!-- Section 7: Director Lab -->
+      <section class="py-20 bg-[#F7F8FA]">
         <div class="max-w-7xl mx-auto px-6">
           <div appAnimateOnScroll class="grid gap-8 items-center">
             <div>
@@ -809,8 +910,8 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <section class="py-20 bg-[#F7F8FA]">
       <div appAnimateOnScroll class="max-w-4xl mx-auto px-6">
         <div class="text-center mb-12">
-          <h2 class="text-page-title font-display text-navy mb-4">Cosmisk vs. Doing It Manually</h2>
-          <p class="text-lg text-gray-600 font-body">See why teams switch from spreadsheets and gut feeling.</p>
+          <h2 class="text-page-title font-display text-navy mb-4">Cosmisk vs. The Old Way</h2>
+          <p class="text-lg text-gray-600 font-body">See why performance marketers switch from spreadsheets and gut feeling.</p>
         </div>
 
         <div class="bg-white rounded-2xl shadow-card border border-divider overflow-hidden">
@@ -1234,11 +1335,25 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
 
   showcaseFeatures = [
     {
+      key: 'engine',
+      label: 'CREATIVE ENGINE',
+      heading: 'Generate 100+ winning creatives per sprint',
+      desc: 'The full creative workflow: Learn from your data, plan with AI, batch-generate across 10 formats, review with predicted scores, publish to Meta.',
+      bullets: ['AI plans your sprint from actual ad performance data', 'UGC, statics, carousels, podcasts, skits, demos', 'Win probability scoring before you spend a rupee', 'Every creative is data-backed, never random'],
+    },
+    {
       key: 'cockpit',
       label: 'CREATIVE COCKPIT',
       heading: 'See all your creatives with their DNA',
       desc: 'Every creative tagged with its unique DNA fingerprint. Filter, sort, and spot winning patterns at a glance.',
       bullets: ['Grid view with DNA badges on every creative', 'Filter by Hook, Visual, Audio DNA types', 'Instant ROAS/CTR/CPA metrics', 'Frame-by-frame DNA analysis for videos'],
+    },
+    {
+      key: 'spy',
+      label: 'COMPETITOR INTELLIGENCE',
+      heading: 'See what your competitors are running',
+      desc: 'Automatically pull competitor ads from Meta Ad Library. AI analyzes their hooks, spend patterns, and creative strategies so you stay ahead.',
+      bullets: ['Auto-fetch competitor ads from Meta Ad Library', 'AI analyzes messaging patterns and CTAs', 'Long-running ads flagged as likely profitable', 'Competitor insights feed into your sprint plan'],
     },
     {
       key: 'director',
@@ -1634,9 +1749,11 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
 
   // How It Works steps
   howItWorksSteps = [
-    { num: '01', icon: 'zap', title: 'Connect', desc: 'Link your Meta ad accounts in one click. Read-only access, full insights.' },
-    { num: '02', icon: 'brain', title: 'Analyze', desc: 'AI scans every creative, extracting Hook, Visual, and Audio DNA patterns.' },
-    { num: '03', icon: 'sparkles', title: 'Create', desc: 'Generate winning creatives from proven DNA. Brief to ad in minutes.' },
+    { num: '01', icon: 'zap', title: 'Learn', desc: 'Connect ad accounts. AI extracts Creative DNA and benchmarks from every ad.' },
+    { num: '02', icon: 'brain', title: 'Strategize', desc: 'AI plans your sprint: 40% remake winners, 30% proven DNA combos, 30% fresh angles.' },
+    { num: '03', icon: 'sparkles', title: 'Generate', desc: 'Batch-generate 100+ creatives: UGC videos, statics, carousels, podcast clips.' },
+    { num: '04', icon: 'check-circle', title: 'Review', desc: 'AI scores every creative before launch. Approve winners, reject the rest.' },
+    { num: '05', icon: 'trending-up', title: 'Learn Again', desc: 'Track performance. Results feed the next sprint. Every cycle gets smarter.' },
   ];
 
   // Case studies
@@ -1715,25 +1832,27 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
   comparisonRows = [
     { feature: 'Creative analysis time', manual: '2-4 hours', cosmisk: 'Under 30 seconds' },
     { feature: 'Pattern detection', manual: 'Gut feeling', cosmisk: 'AI-powered DNA' },
-    { feature: 'Brief generation', manual: '45 min per brief', cosmisk: '1-click from DNA' },
+    { feature: 'Batch creative generation', manual: '1-2 ads/day', cosmisk: '100+ per sprint' },
+    { feature: 'Competitor monitoring', manual: 'Manual Ad Library browsing', cosmisk: 'Auto-fetch + AI analysis' },
+    { feature: 'Algorithm awareness', manual: 'None', cosmisk: 'Andromeda, PMax, TikTok' },
     { feature: 'UGC production', manual: '5-7 day turnaround', cosmisk: 'Script to video in <1 min' },
+    { feature: 'Pre-launch scoring', manual: 'Launch and pray', cosmisk: 'Win probability per creative' },
     { feature: 'Multi-brand management', manual: 'Separate logins', cosmisk: 'One cockpit' },
     { feature: 'Creative fatigue alerts', manual: 'Missed until ROAS drops', cosmisk: 'Real-time AI alerts' },
-    { feature: 'Cross-brand intelligence', manual: 'Not possible', cosmisk: 'Brain auto-syncs patterns' },
   ];
 
   plans = [
     {
       name: 'Starter', price: '\u20B94,999', annualPrice: '\u20B93,999', featured: false,
-      features: ['1 brand', '5 ad accounts', 'Creative Cockpit', 'Basic DNA (Hook only)', '10 AI queries/day'],
+      features: ['1 brand', '5 ad accounts', 'Creative Cockpit', 'Basic DNA (Hook only)', '10 AI queries/day', '1 sprint/month (20 creatives)'],
     },
     {
       name: 'Growth', price: '\u20B914,999', annualPrice: '\u20B911,999', featured: true,
-      features: ['3 brands', 'Unlimited accounts', 'Full DNA analysis', 'Director Lab + Creative Studio', '50 AI queries/day', 'Lighthouse pacing'],
+      features: ['3 brands', 'Unlimited accounts', 'Full DNA analysis', 'Creative Engine (100+ per sprint)', 'Competitor Intelligence', 'Director Lab + Creative Studio', '50 AI queries/day'],
     },
     {
       name: 'Scale', price: '\u20B929,999', annualPrice: '\u20B923,999', featured: false,
-      features: ['Unlimited brands', 'Agency Command Center', 'Cross-brand Brain', 'White-label reports', 'Unlimited AI queries', 'Dedicated CSM'],
+      features: ['Unlimited brands', 'Unlimited sprints + creatives', 'Agency Command Center', 'Cross-brand Brain', 'Algorithm-aware planning', 'White-label reports', 'Dedicated CSM'],
     },
   ];
 

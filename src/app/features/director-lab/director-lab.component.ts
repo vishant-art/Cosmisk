@@ -2,7 +2,7 @@ const _BUILD_VER = '2026-03-04-v1';
 import { Component, signal, inject, effect, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { ModalComponent } from '../../shared/components/modal/modal.component';
@@ -14,7 +14,7 @@ import { environment } from '../../../environments/environment';
 @Component({
   selector: 'app-director-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, DnaBadgeComponent, ModalComponent, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, DnaBadgeComponent, ModalComponent, LucideAngularModule],
   template: `
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-page-title font-display text-navy m-0">Director Lab</h1>
@@ -233,9 +233,15 @@ import { environment } from '../../../environments/environment';
                   Approve Selected ({{ approvedCount() }})
                 </button>
               </div>
-              <button (click)="publishModalOpen.set(true)" class="btn-primary !py-2 !px-5 !text-sm">
-                Publish to Meta <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon>
-              </button>
+              <div class="flex gap-2">
+                <button (click)="sendToEngine()" class="btn-secondary !py-2 !px-4 !text-sm flex items-center gap-1.5">
+                  <lucide-icon name="rocket" [size]="14"></lucide-icon>
+                  Send to Engine
+                </button>
+                <button (click)="publishModalOpen.set(true)" class="btn-primary !py-2 !px-5 !text-sm">
+                  Publish to Meta <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon>
+                </button>
+              </div>
             </div>
           </div>
         }
@@ -297,6 +303,7 @@ export default class DirectorLabComponent implements OnInit {
   private api = inject(ApiService);
   private adAccountService = inject(AdAccountService);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
 
   creatives: any[] = [];
   baseCreativeId = '';
@@ -518,5 +525,17 @@ export default class DirectorLabComponent implements OnInit {
         this.toast.error('Publish Failed', 'Could not publish to Meta. Please check your account connection and try again.');
       },
     });
+  }
+
+  sendToEngine() {
+    const params: Record<string, string> = {};
+    if (this.brief?.conceptName) params['briefName'] = this.brief.conceptName;
+    if (this.brief?.hookDna) params['hookDna'] = this.brief.hookDna;
+    if (this.brief?.visualDna) params['visualDna'] = this.brief.visualDna;
+    if (this.selectedFormat) params['format'] = this.selectedFormat;
+    if (this.targetAudience) params['audience'] = this.targetAudience;
+    if (this.productFocus) params['product'] = this.productFocus;
+    if (this.brief?.hookScript) params['hook'] = this.brief.hookScript;
+    this.router.navigate(['/app/creative-engine'], { queryParams: params });
   }
 }

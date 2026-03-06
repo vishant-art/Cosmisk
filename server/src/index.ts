@@ -25,6 +25,9 @@ import { autopilotRoutes } from './routes/autopilot.js';
 import { competitorSpyRoutes } from './routes/competitor-spy.js';
 import { googleAdsRoutes } from './routes/google-ads.js';
 import { tiktokAdsRoutes } from './routes/tiktok-ads.js';
+import { creativeEngineRoutes } from './routes/creative-engine.js';
+import { contentRoutes } from './routes/content.js';
+import { scoreRoutes } from './routes/score.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import { MetaApiService } from './services/meta-api.js';
@@ -86,6 +89,9 @@ await app.register(autopilotRoutes, { prefix: '/autopilot' });
 await app.register(competitorSpyRoutes, { prefix: '/competitor-spy' });
 await app.register(googleAdsRoutes, { prefix: '/google-ads' });
 await app.register(tiktokAdsRoutes, { prefix: '/tiktok-ads' });
+await app.register(creativeEngineRoutes, { prefix: '/creative-engine' });
+await app.register(contentRoutes, { prefix: '/content' });
+await app.register(scoreRoutes, { prefix: '/score' });
 
 // --- Creatives & Dashboard Top-Creatives: real Meta-backed implementations ---
 
@@ -625,12 +631,15 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
   };
 });
 
-// POST /settings/profile — update user name/email
+// POST /settings/profile — update user profile fields
 app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const { name, email } = request.body as { name?: string; email?: string };
+  const { name, email, competitors, brand_name, website_url, goals } = request.body as {
+    name?: string; email?: string; competitors?: string[];
+    brand_name?: string; website_url?: string; goals?: string[];
+  };
 
-  if (!name && !email) {
-    return reply.status(400).send({ success: false, error: 'Provide at least name or email to update' });
+  if (!name && !email && !competitors && !brand_name && !website_url && !goals) {
+    return reply.status(400).send({ success: false, error: 'Provide at least one field to update' });
   }
 
   const db = getDb();
@@ -651,6 +660,22 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
     }
     updates.push('email = ?');
     values.push(email);
+  }
+  if (competitors) {
+    updates.push('competitors = ?');
+    values.push(JSON.stringify(competitors));
+  }
+  if (brand_name) {
+    updates.push('brand_name = ?');
+    values.push(brand_name);
+  }
+  if (website_url) {
+    updates.push('website_url = ?');
+    values.push(website_url);
+  }
+  if (goals) {
+    updates.push('goals = ?');
+    values.push(JSON.stringify(goals));
   }
 
   values.push(request.user.id);

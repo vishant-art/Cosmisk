@@ -119,6 +119,7 @@ export function createTables(db: Database.Database): void {
       chat_count INTEGER NOT NULL DEFAULT 0,
       image_count INTEGER NOT NULL DEFAULT 0,
       video_count INTEGER NOT NULL DEFAULT 0,
+      creative_count INTEGER NOT NULL DEFAULT 0,
       UNIQUE(user_id, period)
     );
 
@@ -147,9 +148,105 @@ export function createTables(db: Database.Database): void {
       last_triggered TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS creative_sprints (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_id TEXT,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'analyzing',
+      plan TEXT,
+      learn_snapshot TEXT,
+      total_creatives INTEGER DEFAULT 0,
+      completed_creatives INTEGER DEFAULT 0,
+      failed_creatives INTEGER DEFAULT 0,
+      estimated_cost_cents INTEGER DEFAULT 0,
+      actual_cost_cents INTEGER DEFAULT 0,
+      currency TEXT DEFAULT 'USD',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS creative_jobs (
+      id TEXT PRIMARY KEY,
+      sprint_id TEXT NOT NULL REFERENCES creative_sprints(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      format TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      priority INTEGER DEFAULT 0,
+      script TEXT,
+      api_provider TEXT,
+      api_job_id TEXT,
+      output_url TEXT,
+      output_thumbnail TEXT,
+      predicted_score REAL,
+      dna_tags TEXT,
+      cost_cents INTEGER DEFAULT 0,
+      error_message TEXT,
+      retry_count INTEGER DEFAULT 0,
+      started_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_sprint ON creative_jobs(sprint_id);
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON creative_jobs(status, priority DESC);
+
+    CREATE TABLE IF NOT EXISTS creative_assets (
+      id TEXT PRIMARY KEY,
+      job_id TEXT REFERENCES creative_jobs(id),
+      sprint_id TEXT,
+      user_id TEXT NOT NULL,
+      account_id TEXT,
+      format TEXT NOT NULL,
+      name TEXT NOT NULL,
+      asset_url TEXT NOT NULL,
+      thumbnail_url TEXT,
+      meta_ad_id TEXT,
+      meta_campaign_id TEXT,
+      dna_tags TEXT,
+      predicted_score REAL,
+      actual_metrics TEXT,
+      metrics_fetched_at TEXT,
+      status TEXT DEFAULT 'draft',
+      published_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS cost_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      sprint_id TEXT,
+      job_id TEXT,
+      api_provider TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      cost_cents INTEGER NOT NULL,
+      metadata TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS content_bank (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL,
+      content_type TEXT NOT NULL DEFAULT 'post',
+      title TEXT,
+      body TEXT NOT NULL,
+      hashtags TEXT,
+      media_notes TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      scheduled_for TEXT,
+      posted_at TEXT,
+      source TEXT DEFAULT 'ai',
+      generation_context TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_content_bank_user ON content_bank(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_content_bank_platform ON content_bank(user_id, platform);
   `);
 
-  // --- Safe migrations for users table ---
+  // --- Safe migrations ---
+  ensureColumn(db, 'user_usage', 'creative_count', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'users', 'brand_name', 'TEXT');
   ensureColumn(db, 'users', 'website_url', 'TEXT');
   ensureColumn(db, 'users', 'goals', 'TEXT');          // JSON array

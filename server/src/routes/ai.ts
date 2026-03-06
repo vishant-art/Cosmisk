@@ -8,7 +8,7 @@ import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */

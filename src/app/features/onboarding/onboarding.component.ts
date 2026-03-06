@@ -6,6 +6,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { UgcService } from '../../core/services/ugc.service';
 import { MetaOAuthService } from '../../core/services/meta-oauth.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
+import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { LucideAngularModule } from 'lucide-angular';
 
@@ -42,11 +43,11 @@ import { LucideAngularModule } from 'lucide-angular';
   template: `
     <div class="w-full max-w-2xl mx-auto">
       <!-- Progress Bar -->
-      @if (currentStep() <= 2) {
+      @if (currentStep() <= 3) {
         <div class="mb-8">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-sm font-body font-medium text-gray-500">Step {{ currentStep() }} of 2</span>
-            @if (currentStep() === 2) {
+            <span class="text-sm font-body font-medium text-gray-500">Step {{ currentStep() }} of 3</span>
+            @if (currentStep() > 1) {
               <button (click)="prevStep()" class="text-sm text-accent hover:underline font-body border-0 bg-transparent cursor-pointer">
                 ← Back
               </button>
@@ -55,7 +56,7 @@ import { LucideAngularModule } from 'lucide-angular';
           <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
             <div
               class="h-full bg-accent rounded-full transition-all duration-500"
-              [style.width.%]="currentStep() * 50">
+              [style.width.%]="(currentStep() / 3) * 100">
             </div>
           </div>
         </div>
@@ -197,10 +198,10 @@ import { LucideAngularModule } from 'lucide-angular';
           </div>
 
           <div class="text-center mt-8 space-y-3">
-            <button (click)="completeOnboarding()"
+            <button (click)="currentStep.set(3)"
               class="btn-primary !py-3 !px-8">
               @if (metaOAuth.isConnected()) {
-                Go to Dashboard →
+                Continue →
               } @else {
                 Skip for Now →
               }
@@ -212,8 +213,55 @@ import { LucideAngularModule } from 'lucide-angular';
         </div>
       }
 
-      <!-- Step 3: Success -->
+      <!-- Step 3: Add Competitors -->
       @if (currentStep() === 3) {
+        <div class="animate-fade-in">
+          <div class="text-center mb-8">
+            <div class="w-20 h-20 mx-auto mb-6 bg-accent/10 rounded-full flex items-center justify-center">
+              <lucide-icon name="search" [size]="32" class="text-accent"></lucide-icon>
+            </div>
+            <h2 class="text-page-title font-display text-navy mb-3">Who are your competitors?</h2>
+            <p class="text-gray-600 font-body">We'll spy on their Meta ads and use their patterns to make your creatives smarter.</p>
+          </div>
+
+          <div class="space-y-3 max-w-sm mx-auto">
+            @for (i of [0, 1, 2]; track i) {
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-400 font-mono w-5">{{ i + 1 }}.</span>
+                <input
+                  type="text"
+                  [value]="competitors[i] || ''"
+                  (input)="updateCompetitor(i, $event)"
+                  class="input flex-1"
+                  [placeholder]="i === 0 ? 'e.g. Mamaearth' : i === 1 ? 'e.g. mCaffeine' : 'e.g. Plum Goodness'">
+              </div>
+            }
+            <p class="text-xs text-gray-400 font-body mt-2 text-center">
+              Use the brand name as it appears on their Facebook page
+            </p>
+          </div>
+
+          <div class="text-center mt-8 space-y-3">
+            <button (click)="saveCompetitorsAndComplete()"
+              [disabled]="savingCompetitors()"
+              class="btn-primary !py-3 !px-8 disabled:opacity-50">
+              @if (savingCompetitors()) {
+                <span class="inline-flex items-center gap-2">
+                  <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  Saving...
+                </span>
+              } @else if (hasCompetitors()) {
+                Save & Continue →
+              } @else {
+                Skip for Now →
+              }
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Step 4: Success -->
+      @if (currentStep() === 4) {
         <div class="text-center animate-fade-in py-12 relative">
           <div class="confetti-piece"></div>
           <div class="confetti-piece"></div>
@@ -246,18 +294,23 @@ export default class OnboardingComponent {
   private router = inject(Router);
   private auth = inject(AuthService);
   private ugc = inject(UgcService);
+  private api = inject(ApiService);
   private adAccounts = inject(AdAccountService);
   private toast = inject(ToastService);
   metaOAuth = inject(MetaOAuthService);
 
   currentStep = signal(1);
   submitting = signal(false);
+  savingCompetitors = signal(false);
 
   // Step 1: Brand Basics
   brand_name = '';
   website_url = '';
   industry = '';
   product_feature = '';
+
+  // Step 3: Competitors
+  competitors: string[] = ['', '', ''];
 
   prevStep() {
     this.currentStep.update(s => Math.max(1, s - 1));
@@ -306,12 +359,44 @@ export default class OnboardingComponent {
     this.metaOAuth.openOAuthPopup();
   }
 
+  hasCompetitors(): boolean {
+    return this.competitors.some(c => c.length > 0);
+  }
+
+  updateCompetitor(index: number, event: Event) {
+    const value = (event.target as HTMLInputElement).value;
+    this.competitors[index] = value.trim();
+  }
+
+  saveCompetitorsAndComplete() {
+    const validCompetitors = this.competitors.filter(c => c.length > 0);
+
+    if (validCompetitors.length > 0) {
+      this.savingCompetitors.set(true);
+      this.api.post<any>('settings/profile', {
+        competitors: validCompetitors,
+      }).subscribe({
+        next: () => {
+          this.savingCompetitors.set(false);
+          this.completeOnboarding();
+        },
+        error: () => {
+          this.savingCompetitors.set(false);
+          // Still complete even if save fails
+          this.completeOnboarding();
+        },
+      });
+    } else {
+      this.completeOnboarding();
+    }
+  }
+
   completeOnboarding() {
     this.auth.setOnboardingComplete();
     if (this.metaOAuth.isConnected()) {
       this.adAccounts.loadAccounts();
     }
-    this.currentStep.set(3);
+    this.currentStep.set(4);
   }
 
   goToDashboard() {

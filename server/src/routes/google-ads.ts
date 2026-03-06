@@ -6,7 +6,7 @@ import {
 } from '../services/google-ads-api.js';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
 /* ------------------------------------------------------------------ */
 /*  Date range mapping                                                 */

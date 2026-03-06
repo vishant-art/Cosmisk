@@ -251,7 +251,13 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
         <div class="card">
           <div class="p-4 border-b border-gray-100 flex items-center justify-between">
             <h3 class="text-sm font-display text-navy m-0">Your Creations</h3>
-            <span class="text-xs text-gray-400 font-body">{{ projects().length }} batches</span>
+            <div class="flex items-center gap-3">
+              <a routerLink="/app/creative-engine" class="text-xs text-accent font-body font-semibold hover:underline no-underline flex items-center gap-1">
+                <lucide-icon name="rocket" [size]="12"></lucide-icon>
+                Batch Generate in Engine
+              </a>
+              <span class="text-xs text-gray-400 font-body">{{ projects().length }} batches</span>
+            </div>
           </div>
 
           @if (loading()) {

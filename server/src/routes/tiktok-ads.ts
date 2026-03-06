@@ -5,7 +5,7 @@ import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
 const TIKTOK_AUTH_URL = 'https://business-api.tiktok.com/portal/auth';
 const TIKTOK_API_URL = 'https://business-api.tiktok.com/open_api/v1.3';

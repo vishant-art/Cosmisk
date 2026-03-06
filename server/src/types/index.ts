@@ -200,6 +200,7 @@ export interface UserUsageRow {
   chat_count: number;
   image_count: number;
   video_count: number;
+  creative_count: number;
 }
 
 export interface AutopilotAlertRow {
@@ -225,5 +226,85 @@ export interface AutomationRow {
   action_value: string | null;
   is_active: number;
   last_triggered: string | null;
+  created_at: string;
+}
+
+export type SprintStatus = 'analyzing' | 'planning' | 'approved' | 'generating' | 'reviewing' | 'published' | 'archived';
+export type JobStatus = 'pending' | 'script_ready' | 'generating' | 'polling' | 'completed' | 'failed' | 'cancelled';
+// Common presets, but format is a free-form string so Claude can recommend any format
+export type JobFormat = string;
+export type AssetStatus = 'draft' | 'approved' | 'rejected' | 'published' | 'tracking' | 'analyzed';
+export type ApiProvider = 'heygen' | 'flux' | 'kling' | 'creatify' | 'elevenlabs' | 'nanobanana' | 'veo3';
+
+export interface SprintRow {
+  id: string;
+  user_id: string;
+  account_id: string | null;
+  name: string;
+  status: SprintStatus;
+  plan: string | null;
+  learn_snapshot: string | null;
+  total_creatives: number;
+  completed_creatives: number;
+  failed_creatives: number;
+  estimated_cost_cents: number;
+  actual_cost_cents: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobRow {
+  id: string;
+  sprint_id: string;
+  user_id: string;
+  format: string;
+  status: JobStatus;
+  priority: number;
+  script: string | null;
+  api_provider: string | null;
+  api_job_id: string | null;
+  output_url: string | null;
+  output_thumbnail: string | null;
+  predicted_score: number | null;
+  dna_tags: string | null;
+  cost_cents: number;
+  error_message: string | null;
+  retry_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface AssetRow {
+  id: string;
+  job_id: string | null;
+  sprint_id: string | null;
+  user_id: string;
+  account_id: string | null;
+  format: string;
+  name: string;
+  asset_url: string;
+  thumbnail_url: string | null;
+  meta_ad_id: string | null;
+  meta_campaign_id: string | null;
+  dna_tags: string | null;
+  predicted_score: number | null;
+  actual_metrics: string | null;
+  metrics_fetched_at: string | null;
+  status: AssetStatus;
+  published_at: string | null;
+  created_at: string;
+}
+
+export interface CostLedgerRow {
+  id: number;
+  user_id: string;
+  sprint_id: string | null;
+  job_id: string | null;
+  api_provider: string;
+  operation: string;
+  cost_cents: number;
+  metadata: string | null;
   created_at: string;
 }

@@ -10,7 +10,7 @@ import type { MetaTokenRow, ReportRow, UserRow } from '../types/index.js';
 import Anthropic from '@anthropic-ai/sdk';
 import cron from 'node-cron';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */

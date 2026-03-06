@@ -10,9 +10,9 @@ import type { SubscriptionRow, UserRow, UserUsageRow } from '../types/index.js';
 /* ------------------------------------------------------------------ */
 
 export const PLAN_LIMITS = {
-  free: { ad_accounts: 1, chats_per_day: 20, images_per_month: 0, videos_per_month: 0 },
-  pro: { ad_accounts: 5, chats_per_day: -1, images_per_month: 50, videos_per_month: 10 },
-  agency: { ad_accounts: -1, chats_per_day: -1, images_per_month: -1, videos_per_month: -1 },
+  free: { ad_accounts: 1, chats_per_day: 20, images_per_month: 0, videos_per_month: 0, creatives_per_month: 10 },
+  pro: { ad_accounts: 5, chats_per_day: -1, images_per_month: 50, videos_per_month: 10, creatives_per_month: 500 },
+  agency: { ad_accounts: -1, chats_per_day: -1, images_per_month: -1, videos_per_month: -1, creatives_per_month: -1 },
 } as const;
 
 export type PlanName = keyof typeof PLAN_LIMITS;
@@ -60,22 +60,25 @@ export function getUsage(userId: string): UserUsageRow {
   return row;
 }
 
-export function incrementUsage(userId: string, field: 'chat_count' | 'image_count' | 'video_count'): void {
+export type UsageField = 'chat_count' | 'image_count' | 'video_count' | 'creative_count';
+
+export function incrementUsage(userId: string, field: UsageField, amount = 1): void {
   const db = getDb();
   const period = getCurrentPeriod();
   db.prepare('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)').run(userId, period);
-  db.prepare(`UPDATE user_usage SET ${field} = ${field} + 1 WHERE user_id = ? AND period = ?`).run(userId, period);
+  db.prepare(`UPDATE user_usage SET ${field} = ${field} + ? WHERE user_id = ? AND period = ?`).run(amount, userId, period);
 }
 
-export function checkLimit(userId: string, field: 'chat_count' | 'image_count' | 'video_count'): { allowed: boolean; current: number; limit: number } {
+export function checkLimit(userId: string, field: UsageField): { allowed: boolean; current: number; limit: number } {
   const plan = getUserPlan(userId);
   const limits = PLAN_LIMITS[plan];
   const usage = getUsage(userId);
 
-  const limitMap = {
+  const limitMap: Record<UsageField, number> = {
     chat_count: limits.chats_per_day,
     image_count: limits.images_per_month,
     video_count: limits.videos_per_month,
+    creative_count: limits.creatives_per_month,
   };
 
   const limit = limitMap[field];
@@ -255,8 +258,8 @@ export async function billingRoutes(app: FastifyInstance) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.metadata?.user_id;
-        const plan = session.metadata?.plan || 'pro';
+        const userId = session.metadata?.['user_id'];
+        const plan = session.metadata?.['plan'] || 'pro';
         if (!userId) break;
 
         const subId = session.subscription as string;

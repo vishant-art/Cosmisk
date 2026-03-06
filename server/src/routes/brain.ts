@@ -315,7 +315,7 @@ export async function brainRoutes(app: FastifyInstance) {
       if (patterns.length === 0) {
         const totalAccounts = accounts.length;
         const activeBrands = brands.length;
-        const anyMetrics = Object.values(brandMetrics).find(m => m.spend > 0);
+        const anyMetrics = Object.values(brandMetrics).find(m => m['spend'] > 0);
         if (anyMetrics) {
           patterns.push({
             id: 'account-overview',

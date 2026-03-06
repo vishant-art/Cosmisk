@@ -18,6 +18,7 @@ export const routes: Routes = [
       { path: 'contact', loadComponent: () => import('./features/contact/contact.component') },
       { path: 'blog', loadComponent: () => import('./features/blog/blog.component') },
       { path: 'pitch-deck', loadComponent: () => import('./features/pitch-deck/pitch-deck.component') },
+      { path: 'score', loadComponent: () => import('./features/score/score.component') },
       { path: 'privacy-policy', loadComponent: () => import('./features/legal/privacy-policy.component') },
       { path: 'data-deletion', loadComponent: () => import('./features/legal/data-deletion.component') },
     ]
@@ -65,6 +66,8 @@ export const routes: Routes = [
       { path: 'creative-cockpit', loadChildren: () => import('./features/creative-cockpit/creative-cockpit.routes') },
       { path: 'director-lab', loadComponent: () => import('./features/director-lab/director-lab.component') },
       { path: 'ugc-studio', loadComponent: () => import('./features/ugc-studio/ugc-studio.component') },
+      { path: 'creative-engine', loadComponent: () => import('./features/creative-engine/creative-engine.component') },
+      { path: 'creative-engine/:id', loadComponent: () => import('./features/creative-engine/sprint-detail/sprint-detail.component') },
       { path: 'ugc-studio/:id', loadComponent: () => import('./features/ugc-studio/project-detail/project-detail.component') },
       { path: 'brain', loadComponent: () => import('./features/brain/brain.component') },
       { path: 'analytics', loadComponent: () => import('./features/analytics/analytics.component') },
@@ -79,6 +82,7 @@ export const routes: Routes = [
       { path: 'audit', loadComponent: () => import('./features/audit/audit.component') },
       { path: 'automations', loadComponent: () => import('./features/automations/automations.component') },
       { path: 'autopilot', loadComponent: () => import('./features/autopilot/autopilot.component') },
+      { path: 'content-bank', loadComponent: () => import('./features/content-bank/content-bank.component') },
       { path: 'competitor-spy', loadComponent: () => import('./features/competitor-spy/competitor-spy.component') },
       { path: 'settings', loadComponent: () => import('./features/settings/settings.component') },
       { path: 'settings/meta-callback', loadComponent: () => import('./features/settings/meta-callback/meta-callback.component') },
@@ -86,6 +90,6 @@ export const routes: Routes = [
     ]
   },
 
-  // Wildcard
-  { path: '**', redirectTo: '' }
+  // 404
+  { path: '**', loadComponent: () => import('./features/not-found/not-found.component') }
 ];

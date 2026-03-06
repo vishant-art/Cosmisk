@@ -13,6 +13,7 @@ import { AiInsight } from '../../core/models/insight.model';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
+import { CreativeEngineService } from '../../core/services/creative-engine.service';
 import { DateRangeService } from '../../core/services/date-range.service';
 import { environment } from '../../../environments/environment';
 
@@ -35,8 +36,13 @@ import { environment } from '../../../environments/environment';
           </p>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
-          <a routerLink="/app/ugc-studio"
+          <a routerLink="/app/creative-engine"
             class="px-6 py-3 bg-white text-[#312e81] rounded-xl text-sm font-body font-bold hover:bg-indigo-50 transition-all no-underline flex items-center gap-2 shadow-lg">
+            <lucide-icon name="rocket" [size]="18"></lucide-icon>
+            Creative Engine
+          </a>
+          <a routerLink="/app/ugc-studio"
+            class="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-body font-semibold hover:bg-white/20 transition-all no-underline flex items-center gap-2 backdrop-blur-sm">
             <lucide-icon name="sparkles" [size]="18"></lucide-icon>
             Generate Ads
           </a>
@@ -48,6 +54,78 @@ import { environment } from '../../../environments/environment';
         </div>
       </div>
     </div>
+
+    <!-- Active Sprints Widget -->
+    @if (activeSprints().length > 0) {
+      <div class="mb-8">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <lucide-icon name="rocket" [size]="16" class="text-accent"></lucide-icon>
+            <h3 class="text-sm font-display font-semibold text-navy m-0">Active Sprints</h3>
+          </div>
+          <a routerLink="/app/creative-engine" class="text-xs text-accent font-body hover:underline no-underline">View All</a>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          @for (sprint of activeSprints(); track sprint.id) {
+            <a [routerLink]="'/app/creative-engine/' + sprint.id" class="no-underline">
+              <div class="bg-white rounded-xl shadow-card p-4 hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-body font-semibold text-navy truncate max-w-[180px]">{{ sprint.name }}</span>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-body font-medium"
+                    [ngClass]="{
+                      'bg-blue-100 text-blue-700': sprint.status === 'generating',
+                      'bg-amber-100 text-amber-700': sprint.status === 'planning' || sprint.status === 'approved',
+                      'bg-green-100 text-green-700': sprint.status === 'reviewing',
+                      'bg-gray-100 text-gray-600': sprint.status === 'analyzing'
+                    }">
+                    {{ sprint.status }}
+                  </span>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-1.5 mb-2">
+                  <div class="bg-accent rounded-full h-1.5 transition-all"
+                    [style.width.%]="sprint.total_creatives > 0 ? (sprint.completed_creatives / sprint.total_creatives * 100) : 0">
+                  </div>
+                </div>
+                <div class="flex items-center justify-between text-xs text-gray-500 font-body">
+                  <span>{{ sprint.completed_creatives }}/{{ sprint.total_creatives }} done</span>
+                  @if (sprint.actual_cost_cents > 0) {
+                    <span>{{ '$' + (sprint.actual_cost_cents / 100).toFixed(2) }}</span>
+                  }
+                </div>
+              </div>
+            </a>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Smart Action Cards -->
+    @if (!loading() && smartActions().length > 0) {
+      <div class="mb-8">
+        <div class="flex items-center gap-2 mb-3">
+          <lucide-icon name="lightbulb" [size]="16" class="text-amber-500"></lucide-icon>
+          <h3 class="text-sm font-display font-semibold text-navy m-0">Recommended Actions</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          @for (action of smartActions(); track action.id) {
+            <a [routerLink]="action.route" class="no-underline">
+              <div class="bg-white rounded-xl border-l-4 shadow-card p-4 hover:shadow-md transition-shadow"
+                [style.border-left-color]="action.color">
+                <div class="flex items-start gap-3">
+                  <div class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" [style.background-color]="action.color + '15'">
+                    <lucide-icon [name]="action.icon" [size]="18" [style.color]="action.color"></lucide-icon>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-sm font-body font-semibold text-navy m-0 mb-0.5">{{ action.title }}</p>
+                    <p class="text-xs text-gray-500 font-body m-0 leading-relaxed">{{ action.description }}</p>
+                  </div>
+                </div>
+              </div>
+            </a>
+          }
+        </div>
+      </div>
+    }
 
     <!-- Performance KPIs -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -202,36 +280,46 @@ import { environment } from '../../../environments/environment';
             </tr>
           </thead>
           <tbody>
-            @for (creative of topCreatives; track creative.id; let i = $index) {
-              <tr
-                class="border-b border-divider row-hover transition-colors cursor-pointer"
-                (click)="onCreativeClick(creative)">
-                <td class="py-3 px-2 text-gray-400 font-mono text-xs">{{ i + 1 }}</td>
-                <td class="py-3 px-2">
-                  <div class="flex items-center gap-3">
-                    <img [src]="creative.thumbnailUrl" [alt]="creative.name" class="w-10 h-10 rounded-lg object-cover bg-gray-100">
-                    <span class="font-medium text-navy truncate max-w-[160px]">{{ creative.name }}</span>
-                  </div>
-                </td>
-                <td class="py-3 px-2">
-                  @for (hook of creative.dna.hook; track hook) {
-                    <app-dna-badge [label]="hook" type="hook" />
-                  }
-                </td>
-                <td class="py-3 px-2">
-                  @for (visual of creative.dna.visual.slice(0, 1); track visual) {
-                    <app-dna-badge [label]="visual" type="visual" />
-                  }
-                </td>
-                <td class="py-3 px-2 text-right font-mono font-bold" [ngClass]="creative.metrics.roas >= 3 ? 'text-green-600' : creative.metrics.roas >= 2 ? 'text-yellow-600' : 'text-red-600'">
-                  {{ creative.metrics.roas }}x
-                </td>
-                <td class="py-3 px-2 text-right font-mono text-gray-600">{{ creative.metrics.spend | lakhCrore }}</td>
-                <td class="py-3 px-2 text-right font-mono text-gray-600">{{ creative.metrics.ctr }}%</td>
-                <td class="py-3 px-2">
-                  <app-status-badge [status]="creative.status" />
+            @if (topCreatives.length === 0) {
+              <tr>
+                <td colspan="8" class="py-12 text-center">
+                  <lucide-icon name="image" [size]="32" class="text-gray-300 mx-auto mb-3"></lucide-icon>
+                  <p class="text-sm text-gray-500 font-medium mb-1">No creatives found</p>
+                  <p class="text-xs text-gray-400">Connect an ad account and run campaigns to see your top-performing creatives here.</p>
                 </td>
               </tr>
+            } @else {
+              @for (creative of topCreatives; track creative.id; let i = $index) {
+                <tr
+                  class="border-b border-divider row-hover transition-colors cursor-pointer"
+                  (click)="onCreativeClick(creative)">
+                  <td class="py-3 px-2 text-gray-400 font-mono text-xs">{{ i + 1 }}</td>
+                  <td class="py-3 px-2">
+                    <div class="flex items-center gap-3">
+                      <img [src]="creative.thumbnailUrl" [alt]="creative.name" class="w-10 h-10 rounded-lg object-cover bg-gray-100">
+                      <span class="font-medium text-navy truncate max-w-[160px]">{{ creative.name }}</span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-2">
+                    @for (hook of creative.dna.hook; track hook) {
+                      <app-dna-badge [label]="hook" type="hook" />
+                    }
+                  </td>
+                  <td class="py-3 px-2">
+                    @for (visual of creative.dna.visual.slice(0, 1); track visual) {
+                      <app-dna-badge [label]="visual" type="visual" />
+                    }
+                  </td>
+                  <td class="py-3 px-2 text-right font-mono font-bold" [ngClass]="creative.metrics.roas >= 3 ? 'text-green-600' : creative.metrics.roas >= 2 ? 'text-yellow-600' : 'text-red-600'">
+                    {{ creative.metrics.roas }}x
+                  </td>
+                  <td class="py-3 px-2 text-right font-mono text-gray-600">{{ creative.metrics.spend | lakhCrore }}</td>
+                  <td class="py-3 px-2 text-right font-mono text-gray-600">{{ creative.metrics.ctr }}%</td>
+                  <td class="py-3 px-2">
+                    <app-status-badge [status]="creative.status" />
+                  </td>
+                </tr>
+              }
             }
           </tbody>
         </table>
@@ -256,11 +344,13 @@ import { environment } from '../../../environments/environment';
 export default class DashboardComponent implements OnInit {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
+  private engineService = inject(CreativeEngineService);
   private dateRangeService = inject(DateRangeService);
   private router = inject(Router);
 
   loading = signal(true);
   insightsLoading = signal(true);
+  activeSprints = signal<any[]>([]);
 
   kpi = signal({
     spend: { value: 0, change: 0, sparkline: [] as number[] },
@@ -294,11 +384,119 @@ export default class DashboardComponent implements OnInit {
   }, { allowSignalWrites: true });
 
   quickActions = [
+    { icon: 'rocket', title: 'Creative Engine', description: 'Batch generate 100+ creatives', route: '/app/creative-engine', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
     { icon: 'video', title: 'UGC Scripts', description: 'AI-powered ad scripts', route: '/app/ugc-studio', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
     { icon: 'image', title: 'Static Ads', description: 'Graphics & carousels', route: '/app/graphic-studio', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
     { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-studio', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
-    { icon: 'search', title: 'Swipe File', description: 'Competitor ads & inspiration', route: '/app/swipe-file', bgClass: 'bg-emerald-100', iconClass: 'text-emerald-600' },
   ];
+
+  smartActions = computed(() => {
+    const actions: { id: string; title: string; description: string; icon: string; color: string; route: string; priority: number }[] = [];
+    const k = this.kpi();
+    const creatives = this.allCreatives();
+    const sprints = this.activeSprints();
+
+    // 1. Fatiguing ads need replacement
+    if (k.activeCreatives.fatiguing > 0) {
+      actions.push({
+        id: 'fatigue',
+        title: `${k.activeCreatives.fatiguing} ad${k.activeCreatives.fatiguing > 1 ? 's' : ''} fatiguing`,
+        description: `Create fresh creatives to replace underperformers before CPA rises.`,
+        icon: 'alert-triangle',
+        color: '#F59E0B',
+        route: '/app/creative-engine',
+        priority: 10,
+      });
+    }
+
+    // 2. Winning format to double down on
+    if (creatives.length >= 3) {
+      const formatMap = new Map<string, { count: number; totalRoas: number }>();
+      for (const c of creatives) {
+        const fmt = c.format || 'unknown';
+        const existing = formatMap.get(fmt) || { count: 0, totalRoas: 0 };
+        existing.count++;
+        existing.totalRoas += c.metrics.roas;
+        formatMap.set(fmt, existing);
+      }
+      let bestFormat = '';
+      let bestAvgRoas = 0;
+      for (const [fmt, data] of formatMap) {
+        const avg = data.totalRoas / data.count;
+        if (avg > bestAvgRoas && data.count >= 2) {
+          bestFormat = fmt;
+          bestAvgRoas = avg;
+        }
+      }
+      if (bestFormat && bestAvgRoas > k.roas.value) {
+        actions.push({
+          id: 'scale-format',
+          title: `Scale ${bestFormat} ads`,
+          description: `${bestFormat} format averages ${bestAvgRoas.toFixed(1)}x ROAS — above your account average. Create more.`,
+          icon: 'trending-up',
+          color: '#10B981',
+          route: '/app/creative-engine',
+          priority: 8,
+        });
+      }
+    }
+
+    // 3. ROAS dropping
+    if (k.roas.change < -10) {
+      actions.push({
+        id: 'roas-drop',
+        title: 'ROAS declined ' + Math.abs(k.roas.change).toFixed(0) + '%',
+        description: 'Review your creative mix and consider testing new angles. Check Brain for pattern insights.',
+        icon: 'arrow-down-right',
+        color: '#EF4444',
+        route: '/app/brain',
+        priority: 9,
+      });
+    }
+
+    // 4. No active sprints — suggest starting one
+    if (sprints.length === 0 && creatives.length > 0) {
+      actions.push({
+        id: 'start-sprint',
+        title: 'Start a Creative Sprint',
+        description: 'You have ad data but no active sprints. Let Cosmisk analyze your account and generate optimized creatives.',
+        icon: 'rocket',
+        color: '#6366F1',
+        route: '/app/creative-engine',
+        priority: 5,
+      });
+    }
+
+    // 5. Content bank empty
+    if (creatives.length >= 0) {
+      actions.push({
+        id: 'content',
+        title: 'Generate weekly content',
+        description: '21 pieces of platform-specific content in one click — Instagram, LinkedIn, Twitter.',
+        icon: 'notebook-pen',
+        color: '#8B5CF6',
+        route: '/app/content-bank',
+        priority: 2,
+      });
+    }
+
+    // 6. High ROAS + low spend = opportunity
+    const underSpentWinners = creatives.filter(c => c.metrics.roas >= 3 && c.metrics.spend < k.spend.value * 0.1);
+    if (underSpentWinners.length > 0) {
+      actions.push({
+        id: 'scale-winner',
+        title: `${underSpentWinners.length} hidden gem${underSpentWinners.length > 1 ? 's' : ''}`,
+        description: `High-ROAS ads with low spend — scale these before competitors catch on.`,
+        icon: 'gem',
+        color: '#0EA5E9',
+        route: '/app/creative-cockpit',
+        priority: 7,
+      });
+    }
+
+    // Sort by priority, take top 3
+    return actions.sort((a, b) => b.priority - a.priority).slice(0, 3);
+  });
 
   chartLabels = computed(() => this.chartData().map(d => {
     const parts = d.date.split('-');
@@ -327,7 +525,23 @@ export default class DashboardComponent implements OnInit {
     return suffixes[this.activeChartMetric()] || '';
   });
 
-  ngOnInit() {}
+  ngOnInit() {
+    this.loadActiveSprints();
+  }
+
+  private loadActiveSprints() {
+    this.engineService.getSprints().subscribe({
+      next: (res: any) => {
+        if (res.success && res.sprints) {
+          const active = res.sprints.filter((s: any) =>
+            ['analyzing', 'planning', 'approved', 'generating', 'reviewing'].includes(s.status)
+          ).slice(0, 3);
+          this.activeSprints.set(active);
+        }
+      },
+      error: () => {},
+    });
+  }
 
   formatChange(change: number, suffix: string): string {
     return (change >= 0 ? '+' : '') + change.toFixed(1) + suffix;

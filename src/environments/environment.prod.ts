@@ -116,4 +116,25 @@ export const environment = {
   DIRECTOR_UPDATE_STATUS: 'director/update-status',
 
   REPORTS_GENERATE_WEEKLY: 'reports/generate-weekly',
+
+  // Creative Engine
+  ENGINE_ANALYZE: 'creative-engine/analyze',
+  ENGINE_PLAN: 'creative-engine/plan',
+  ENGINE_SPRINTS: 'creative-engine/sprints',
+  ENGINE_SPRINT: 'creative-engine/sprint',
+  ENGINE_ASSET: 'creative-engine/asset',
+  ENGINE_JOB: 'creative-engine/job',
+  ENGINE_COSTS: 'creative-engine/costs',
+  ENGINE_USAGE: 'creative-engine/usage',
+  ENGINE_TEMPLATES: 'creative-engine/templates',
+  ENGINE_ANALYTICS: 'creative-engine/analytics',
+
+  SCORE_ANALYZE: 'score/analyze',
+  SCORE_BATCH: 'score/batch',
+  CONTENT_GENERATE: 'content/generate',
+  CONTENT_WEEKLY_STATS: 'content/weekly-stats',
+  CONTENT_SAVE: 'content/save',
+  CONTENT_SAVE_BATCH: 'content/save-batch',
+  CONTENT_BANK: 'content/bank',
+  CONTENT_TRIGGER_WEEKLY: 'content/trigger-weekly',
 };

@@ -38,6 +38,13 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
           }
         </span>
 
+        <!-- Source Badge -->
+        @if (source) {
+          <span class="absolute top-3 right-10 px-1.5 py-0.5 bg-indigo-500/80 text-white text-[9px] font-bold rounded backdrop-blur-sm uppercase">
+            {{ source }}
+          </span>
+        }
+
         <!-- Status Dot -->
         <span
           class="absolute top-3 right-3 w-3 h-3 rounded-full border-2 border-white"
@@ -88,6 +95,7 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
 })
 export class CreativeCardComponent {
   @Input({ required: true }) creative!: Creative;
+  @Input() source?: string;
 
   onImgError(event: Event) {
     const img = event.target as HTMLImageElement;

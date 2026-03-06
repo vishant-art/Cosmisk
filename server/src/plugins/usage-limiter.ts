@@ -7,9 +7,11 @@ declare module 'fastify' {
     checkChatLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     checkImageLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     checkVideoLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    checkCreativeLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     trackChatUsage: (request: FastifyRequest, reply: FastifyReply) => void;
     trackImageUsage: (request: FastifyRequest, reply: FastifyReply) => void;
     trackVideoUsage: (request: FastifyRequest, reply: FastifyReply) => void;
+    trackCreativeUsage: (request: FastifyRequest, amount?: number) => void;
   }
 }
 
@@ -50,6 +52,18 @@ async function usageLimiter(app: FastifyInstance) {
     }
   });
 
+  app.decorate('checkCreativeLimit', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { allowed, current, limit } = checkLimit(request.user.id, 'creative_count');
+    if (!allowed) {
+      reply.status(429).send({
+        success: false,
+        error: 'Creative generation limit reached for your plan',
+        usage: { current, limit },
+        upgrade_url: '/app/settings?tab=billing',
+      });
+    }
+  });
+
   // Track usage hooks (call after successful response)
   app.decorate('trackChatUsage', (request: FastifyRequest) => {
     incrementUsage(request.user.id, 'chat_count');
@@ -61,6 +75,10 @@ async function usageLimiter(app: FastifyInstance) {
 
   app.decorate('trackVideoUsage', (request: FastifyRequest) => {
     incrementUsage(request.user.id, 'video_count');
+  });
+
+  app.decorate('trackCreativeUsage', (request: FastifyRequest, amount = 1) => {
+    incrementUsage(request.user.id, 'creative_count', amount);
   });
 }
 

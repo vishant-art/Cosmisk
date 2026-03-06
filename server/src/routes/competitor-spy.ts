@@ -3,13 +3,13 @@ import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
 /* ------------------------------------------------------------------ */
 /*  Meta Ad Library API (public, no auth required)                     */
 /* ------------------------------------------------------------------ */
 
-interface AdLibraryAd {
+export interface AdLibraryAd {
   id: string;
   ad_creation_time: string;
   ad_creative_bodies?: string[];
@@ -27,7 +27,7 @@ interface AdLibraryAd {
   publisher_platforms?: string[];
 }
 
-async function searchAdLibrary(query: string, country: string = 'IN', limit: number = 25): Promise<AdLibraryAd[]> {
+export async function searchAdLibrary(query: string, country: string = 'IN', limit: number = 25): Promise<AdLibraryAd[]> {
   const params = new URLSearchParams({
     search_terms: query,
     ad_type: 'ALL',

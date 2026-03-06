@@ -7,8 +7,8 @@ import type { FastifyInstance } from 'fastify';
 /*  GET  /media/video-status    — Poll video generation status          */
 /* ------------------------------------------------------------------ */
 
-const NANO_BANANA_API_KEY = process.env.NANO_BANANA_API_KEY || '';
-const N8N_VIDEO_WEBHOOK = process.env.N8N_VIDEO_WEBHOOK || '';
+const NANO_BANANA_API_KEY = process.env['NANO_BANANA_API_KEY'] || '';
+const N8N_VIDEO_WEBHOOK = process.env['N8N_VIDEO_WEBHOOK'] || '';
 
 export async function mediaGenRoutes(app: FastifyInstance) {
 
