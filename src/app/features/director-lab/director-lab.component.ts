@@ -254,25 +254,23 @@ import { environment } from '../../../environments/environment';
         <div>
           <label class="block text-sm font-body font-medium text-navy mb-1">Ad Account</label>
           <select [(ngModel)]="publishAdAccount" class="input">
-            <option value="acc-1">Nectar Supplements — Main</option>
-            <option value="acc-2">Nectar Supplements — Retargeting</option>
-            <option value="acc-3">Nectar Supplements — Testing</option>
+            <option value="">Select an account</option>
+            @for (acc of adAccountService.allAccounts(); track acc.id) {
+              <option [value]="acc.id">{{ acc.name }}</option>
+            }
           </select>
         </div>
         <div>
-          <label class="block text-sm font-body font-medium text-navy mb-1">Campaign</label>
-          <select [(ngModel)]="publishCampaign" class="input">
-            <option value="camp-1">Collagen — Prospecting</option>
-            <option value="camp-2">Collagen — Retargeting</option>
-            <option value="camp-3">Summer Sale 2026</option>
-          </select>
+          <label class="block text-sm font-body font-medium text-navy mb-1">Campaign Name</label>
+          <input type="text" [(ngModel)]="publishCampaign" class="input" placeholder="e.g. Summer Sale 2026 — Prospecting">
         </div>
         <div>
-          <label class="block text-sm font-body font-medium text-navy mb-1">Ad Set</label>
-          <select [(ngModel)]="publishAdSet" class="input">
-            <option value="as-1">Women 25-45 — Interest</option>
-            <option value="as-2">Women 25-45 — Lookalike</option>
-            <option value="as-3">Broad — Auto</option>
+          <label class="block text-sm font-body font-medium text-navy mb-1">Objective</label>
+          <select [(ngModel)]="publishObjective" class="input">
+            <option value="OUTCOME_SALES">Sales (Conversions)</option>
+            <option value="OUTCOME_LEADS">Lead Generation</option>
+            <option value="OUTCOME_TRAFFIC">Traffic</option>
+            <option value="OUTCOME_AWARENESS">Awareness</option>
           </select>
         </div>
         <div>
@@ -301,7 +299,7 @@ import { environment } from '../../../environments/environment';
 export default class DirectorLabComponent implements OnInit {
   private toast = inject(ToastService);
   private api = inject(ApiService);
-  private adAccountService = inject(AdAccountService);
+  adAccountService = inject(AdAccountService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
@@ -337,7 +335,7 @@ export default class DirectorLabComponent implements OnInit {
   publishing = signal(false);
   publishAdAccount = '';
   publishCampaign = '';
-  publishAdSet = '';
+  publishObjective = 'OUTCOME_SALES';
   publishBudget = '10,000';
 
   approvedCount = signal(0);
@@ -501,15 +499,21 @@ export default class DirectorLabComponent implements OnInit {
     const approvedVariations = this.variations.filter((v: any) => v.approved);
     const acc = this.adAccountService.currentAccount();
 
+    const budgetCents = Math.round(parseFloat(this.publishBudget.replace(/,/g, '')) * 100) || 1000000;
+    const firstVariation = approvedVariations[0];
+
     this.api.post<any>(environment.DIRECTOR_PUBLISH, {
-      account_id: acc?.id || '',
-      credential_group: acc?.credential_group || 'system',
-      brief_id: this.brief?.id || '',
-      variations: approvedVariations.map((v: any) => v.id),
-      ad_account: this.publishAdAccount,
-      campaign: this.publishCampaign,
-      ad_set: this.publishAdSet,
-      daily_budget: this.publishBudget,
+      account_id: this.publishAdAccount || acc?.id || '',
+      campaign_name: this.publishCampaign || 'Cosmisk Brief',
+      objective: this.publishObjective,
+      daily_budget: budgetCents,
+      creative: firstVariation ? {
+        title: firstVariation.name || this.brief?.concept_name || 'Ad Creative',
+        body: firstVariation.description || this.brief?.hook_scripts?.[0] || '',
+        link_url: 'https://example.com',
+        call_to_action_type: 'SHOP_NOW',
+      } : undefined,
+      status: 'PAUSED',
     }).subscribe({
       next: (res) => {
         this.publishing.set(false);

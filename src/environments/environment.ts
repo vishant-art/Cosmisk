@@ -27,7 +27,7 @@ export const environment = {
   CREATIVES_RECOMMENDATIONS: 'creatives/recommendations',
 
   DIRECTOR_GENERATE_BRIEF: 'director/generate-brief',
-  DIRECTOR_PUBLISH: 'director/publish',
+  DIRECTOR_PUBLISH: 'director/auto-publish',
 
   UGC_PROJECTS: 'ugc/projects',
   UGC_PROJECT_DETAIL: 'ugc/project-detail',

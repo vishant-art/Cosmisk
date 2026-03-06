@@ -16,7 +16,8 @@ interface DnaPattern {
   confidence: number;
   sampleSize: number;
   avgRoas: number;
-  type: 'hook' | 'visual' | 'audio';
+  type: 'performance' | 'efficiency' | 'spend' | 'info';
+  insights?: string[];
 }
 
 interface Competitor {
@@ -71,17 +72,19 @@ interface Competitor {
             @for (pattern of patterns(); track pattern.id) {
               <div class="bg-white rounded-card shadow-card p-5 border-l-4 card-lift"
                 [ngClass]="{
-                  'border-amber-500': pattern.type === 'hook',
-                  'border-blue-500': pattern.type === 'visual',
-                  'border-green-500': pattern.type === 'audio'
+                  'border-amber-500': pattern.type === 'performance',
+                  'border-blue-500': pattern.type === 'efficiency',
+                  'border-red-500': pattern.type === 'spend',
+                  'border-green-500': pattern.type === 'info'
                 }">
                 <div class="flex items-start justify-between mb-2">
                   <div>
                     <span class="text-[10px] font-body font-semibold uppercase px-1.5 py-0.5 rounded"
                       [ngClass]="{
-                        'bg-amber-100 text-amber-700': pattern.type === 'hook',
-                        'bg-blue-100 text-blue-700': pattern.type === 'visual',
-                        'bg-green-100 text-green-700': pattern.type === 'audio'
+                        'bg-amber-100 text-amber-700': pattern.type === 'performance',
+                        'bg-blue-100 text-blue-700': pattern.type === 'efficiency',
+                        'bg-red-100 text-red-700': pattern.type === 'spend',
+                        'bg-green-100 text-green-700': pattern.type === 'info'
                       }">
                       {{ pattern.type }}
                     </span>
@@ -92,7 +95,17 @@ interface Competitor {
                     <span class="text-[10px] text-gray-400 font-body block">confidence</span>
                   </div>
                 </div>
-                <p class="text-xs text-gray-600 font-body mb-3 leading-relaxed">{{ pattern.description }}</p>
+                <p class="text-xs text-gray-600 font-body mb-2 leading-relaxed">{{ pattern.description }}</p>
+                @if (pattern.insights?.length) {
+                  <ul class="list-none p-0 m-0 mb-3 space-y-1">
+                    @for (insight of pattern.insights!.slice(0, 3); track insight) {
+                      <li class="flex items-start gap-1.5 text-[11px] text-gray-500 font-body">
+                        <lucide-icon name="arrow-right" [size]="10" class="text-accent mt-0.5 flex-shrink-0"></lucide-icon>
+                        {{ insight }}
+                      </li>
+                    }
+                  </ul>
+                }
                 <div class="flex items-center gap-2 mb-3">
                   <span class="text-[10px] text-gray-400 font-body">Brands:</span>
                   @for (brand of pattern.brands; track brand) {
