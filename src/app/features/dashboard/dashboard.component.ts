@@ -631,8 +631,6 @@ export default class DashboardComponent implements OnInit {
     }).subscribe({
       next: (res) => {
         if (res.success && res.ads?.length) {
-          const hookTypes: HookDnaType[] = ['Shock Statement', 'Price Anchor', 'Authority', 'Personal Story', 'Curiosity', 'Social Proof'];
-          const visualTypes: VisualDnaType[] = ['Macro Texture', 'UGC Style', 'Product Focus', 'Lifestyle', 'Text-Heavy', 'Before/After'];
           const creatives = res.ads.map((ad: any, i: number) => {
             const roas = ad.metrics?.roas || 0;
             return {
@@ -646,8 +644,8 @@ export default class DashboardComponent implements OnInit {
               videoSourceUrl: ad.video_url || ad.source || ad.effective_video_url || undefined,
               status: (roas >= 3 ? 'winning' : roas >= 2 ? 'stable' : roas > 0 ? 'fatiguing' : 'new') as CreativeStatus,
               dna: {
-                hook: [hookTypes[i % hookTypes.length]],
-                visual: [visualTypes[i % visualTypes.length]],
+                hook: [] as HookDnaType[],
+                visual: [] as VisualDnaType[],
                 audio: [],
               },
               metrics: { roas, cpa: ad.metrics?.cpa || 0, ctr: ad.metrics?.ctr || 0, spend: ad.metrics?.spend || 0, impressions: ad.metrics?.impressions || 0, clicks: ad.metrics?.clicks || 0, conversions: ad.metrics?.conversions || 0 },
@@ -660,6 +658,8 @@ export default class DashboardComponent implements OnInit {
           });
           this.allCreatives.set(creatives);
           this.topCreatives = this.sortCreatives(this.activeTableTab);
+          // Fetch real DNA from Claude batch analysis
+          this.loadDna(accountId, creatives);
           // Update active creatives count in KPIs
           const winning = creatives.filter((c: Creative) => c.status === 'winning').length;
           const stable = creatives.filter((c: Creative) => c.status === 'stable').length;
@@ -689,8 +689,30 @@ export default class DashboardComponent implements OnInit {
     return sorted.slice(0, 5);
   }
 
+  private loadDna(accountId: string, creatives: Creative[]) {
+    const ads = creatives.map(c => ({
+      id: c.id, name: c.name, format: c.format,
+      roas: c.metrics.roas, ctr: c.metrics.ctr, cpa: c.metrics.cpa,
+      spend: c.metrics.spend, conversions: c.metrics.conversions,
+    }));
+    this.api.post<any>(environment.CREATIVES_BATCH_DNA, { account_id: accountId, ads }).subscribe({
+      next: (res) => {
+        if (res.success && res.dna) {
+          this.allCreatives.update(current =>
+            current.map(c => {
+              const dna = res.dna[c.id];
+              if (!dna) return c;
+              return { ...c, dna: { hook: (dna.hook || []) as HookDnaType[], visual: (dna.visual || []) as VisualDnaType[], audio: dna.audio || [] } };
+            })
+          );
+          this.topCreatives = this.sortCreatives(this.activeTableTab);
+        }
+      },
+    });
+  }
+
   onCreativeClick(creative: Creative) {
-    this.router.navigate(['/app/creative-cockpit']);
+    this.router.navigate(['/app/creative-cockpit'], { queryParams: { ad: creative.id } });
   }
 
 }

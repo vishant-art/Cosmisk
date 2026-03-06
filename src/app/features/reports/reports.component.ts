@@ -16,6 +16,7 @@ interface Report {
   status: 'Ready' | 'Generating' | 'Scheduled';
   createdAt: string;
   size: string;
+  data?: any;
 }
 
 @Component({
@@ -317,11 +318,72 @@ export default class ReportsComponent implements OnInit {
   }
 
   scheduleReport() {
-    this.toast.info('Report Scheduled', 'Weekly report will be generated every Monday');
-    this.showGenerator.set(false);
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) {
+      this.toast.error('Error', 'Select an ad account to schedule weekly reports');
+      return;
+    }
+    // Trigger an immediate weekly report generation to confirm setup
+    this.api.post<any>(environment.REPORTS_GENERATE_WEEKLY, {
+      account_id: acc.id,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Weekly Report Scheduled', 'Reports will auto-generate every Monday at 7 AM UTC. First report generated now.');
+          this.showGenerator.set(false);
+          this.loadReports();
+        }
+      },
+      error: () => {
+        this.toast.error('Error', 'Could not schedule weekly reports');
+      },
+    });
   }
 
   downloadReport(report: Report) {
-    this.toast.success('Downloading...', `${report.name} (${report.size})`);
+    if (!report.data) {
+      this.toast.error('No Data', 'Report data not available');
+      return;
+    }
+
+    // Build readable text from report data
+    const data = report.data;
+    let content = `# ${report.name}\n`;
+    content += `Type: ${report.type} | Period: ${report.dateRange} | Generated: ${report.createdAt}\n\n`;
+
+    if (data.summary) content += `## Summary\n${data.summary}\n\n`;
+    if (data.narrative) content += `## Analysis\n${data.narrative}\n\n`;
+    if (data.kpis) {
+      content += `## Key Metrics\n`;
+      for (const [key, val] of Object.entries(data.kpis || {})) {
+        content += `- ${key}: ${val}\n`;
+      }
+      content += '\n';
+    }
+    if (data.recommendations?.length) {
+      content += `## Recommendations\n`;
+      for (const rec of data.recommendations) {
+        content += `- ${typeof rec === 'string' ? rec : rec.title || rec.message || JSON.stringify(rec)}\n`;
+      }
+      content += '\n';
+    }
+    if (data.sections) {
+      for (const [section, value] of Object.entries(data.sections || {})) {
+        content += `## ${section}\n${typeof value === 'string' ? value : JSON.stringify(value, null, 2)}\n\n`;
+      }
+    }
+
+    // Fallback: dump entire data as formatted JSON
+    if (content.length < 200) {
+      content += JSON.stringify(data, null, 2);
+    }
+
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${report.name.replace(/\s+/g, '-').toLowerCase()}-${report.createdAt?.split(',')[0]?.trim() || 'report'}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 }

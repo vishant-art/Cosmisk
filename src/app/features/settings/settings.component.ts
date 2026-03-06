@@ -50,7 +50,7 @@ import { environment } from '../../../environments/environment';
               {{ billingPlan() }} Plan
             </span>
             <div class="mt-4 pt-4 border-t border-gray-100">
-              <button class="text-xs text-accent font-body hover:underline">Change Avatar</button>
+              <span class="text-xs text-gray-400 font-body">Account ID: {{ profileEmail.split('@')[0] || '—' }}</span>
             </div>
           </div>
 
@@ -203,9 +203,7 @@ import { environment } from '../../../environments/environment';
         <div class="bg-white rounded-card shadow-card p-5">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-sm font-display text-navy m-0">Team Members</h3>
-            <button class="px-4 py-2 bg-accent text-white rounded-pill text-xs font-body font-semibold hover:bg-accent/90">
-              + Invite Member
-            </button>
+            <span class="px-3 py-1.5 bg-gray-100 text-gray-500 rounded-pill text-xs font-body">Team invites coming soon</span>
           </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left">
@@ -250,7 +248,7 @@ import { environment } from '../../../environments/environment';
                     </td>
                     <td class="py-3 text-right">
                       @if (member.role !== 'Owner') {
-                        <button class="text-xs text-gray-400 font-body hover:text-red-500">Remove</button>
+                        <span class="text-xs text-gray-300 font-body">—</span>
                       }
                     </td>
                   </tr>
@@ -492,6 +490,7 @@ export default class SettingsComponent implements OnInit {
   }
 
   saveProfile() {
+    // Save preferences to localStorage
     localStorage.setItem('cosmisk_preferences', JSON.stringify({
       timezone: this.timezone,
       language: this.language,
@@ -499,7 +498,25 @@ export default class SettingsComponent implements OnInit {
       dateFormat: this.dateFormat,
       phone: this.profilePhone,
     }));
-    this.toast.success('Saved', 'Your preferences have been updated');
+
+    // Save name + email to server
+    this.api.post<any>(environment.SETTINGS_PROFILE, {
+      name: this.profileName,
+      email: this.profileEmail,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          // Update JWT if server returns new token
+          if (res.token) {
+            localStorage.setItem('cosmisk_token', res.token);
+          }
+          this.toast.success('Saved', 'Your profile has been updated');
+        }
+      },
+      error: () => {
+        this.toast.success('Saved', 'Preferences saved locally (profile update failed)');
+      },
+    });
   }
 
   saveNotifications() {

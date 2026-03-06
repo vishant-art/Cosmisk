@@ -264,6 +264,54 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Recover sprints that were interrupted by a server restart.
+ * - Jobs stuck in 'generating' or 'polling' → reset to 'pending' for retry
+ * - Sprints still in 'generating' → restart their processor loop
+ * Call this once at server startup after DB is ready.
+ */
+export function recoverInterruptedSprints(): void {
+  const db = getDb();
+
+  // Reset jobs that were mid-flight when the server died
+  const resetResult = db.prepare(`
+    UPDATE creative_jobs SET status = 'pending', retry_count = retry_count + 1
+    WHERE status IN ('generating', 'polling')
+  `).run();
+
+  if (resetResult.changes > 0) {
+    console.log(`[JobQueue] Recovery: reset ${resetResult.changes} interrupted jobs to pending`);
+  }
+
+  // Find sprints that are still in 'generating' state
+  const stuckSprints = db.prepare(
+    "SELECT id FROM creative_sprints WHERE status = 'generating'"
+  ).all() as { id: string }[];
+
+  for (const sprint of stuckSprints) {
+    // Check if there are still jobs to process
+    const remaining = (db.prepare(
+      "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')"
+    ).get(sprint.id) as any).c;
+
+    if (remaining > 0) {
+      console.log(`[JobQueue] Recovery: resuming sprint ${sprint.id} (${remaining} jobs remaining)`);
+      startSprintGeneration(sprint.id);
+    } else {
+      // All jobs are done but sprint wasn't updated — finalize it
+      updateSprintProgress(sprint.id);
+      db.prepare(
+        "UPDATE creative_sprints SET status = 'reviewing', updated_at = datetime('now') WHERE id = ?"
+      ).run(sprint.id);
+      console.log(`[JobQueue] Recovery: sprint ${sprint.id} was already complete, moved to reviewing`);
+    }
+  }
+
+  if (stuckSprints.length === 0 && resetResult.changes === 0) {
+    console.log('[JobQueue] Recovery: no interrupted sprints found');
+  }
+}
+
+/**
  * Check if a sprint is currently being processed.
  */
 export function isSprintActive(sprintId: string): boolean {

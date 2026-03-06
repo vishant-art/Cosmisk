@@ -486,8 +486,20 @@ export default class ContentBankComponent implements OnInit {
       next: (res) => {
         this.generating.set(false);
         const platform = this.composerPlatform();
-        const content = res.content?.[platform];
+        let content = res.content?.[platform];
         if (content) {
+          // Twitter returns { thread: [...], single_tweets: [...] } — flatten to string
+          if (typeof content === 'object') {
+            if (content.thread?.length) {
+              content = content.thread.map((t: string, i: number) => `${i + 1}/ ${t}`).join('\n\n');
+            } else if (content.single_tweets?.length) {
+              content = content.single_tweets.join('\n\n---\n\n');
+            } else if (content.body) {
+              content = content.body;
+            } else {
+              content = JSON.stringify(content, null, 2);
+            }
+          }
           this.composerBody = content;
           this.composerHashtags = res.hashtags?.[platform]?.join(' ') || '';
         }

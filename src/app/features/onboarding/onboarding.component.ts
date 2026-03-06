@@ -9,6 +9,7 @@ import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { LucideAngularModule } from 'lucide-angular';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-onboarding',
@@ -347,6 +348,11 @@ export default class OnboardingComponent {
       next: () => {
         this.submitting.set(false);
         this.currentStep.set(2);
+        // Also save brand info to user profile
+        this.api.post<any>(environment.SETTINGS_PROFILE, {
+          brand_name: this.brand_name,
+          website_url: this.website_url,
+        }).subscribe();
       },
       error: (err) => {
         this.submitting.set(false);
