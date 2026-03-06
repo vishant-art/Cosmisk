@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
-import { Creative, CreativeStatus, CreativeFormat, HookDnaType, VisualDnaType } from '../../core/models/creative.model';
+import { Creative, CreativeStatus, CreativeFormat, HookDnaType, VisualDnaType, AudioDnaType } from '../../core/models/creative.model';
 import { CreativeCardComponent } from '../../shared/components/creative-card/creative-card.component';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
@@ -283,42 +283,60 @@ import { environment } from '../../../environments/environment';
 
           <!-- Section 3: DNA Analysis -->
           <div class="p-6 space-y-4">
-            <div class="p-4 bg-amber-50 rounded-card border border-amber-200">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-sm font-body font-semibold text-dna-hook-text">HOOK DNA</span>
-                @for (hook of creative.dna.hook; track hook) {
-                  <app-dna-badge [label]="hook" type="hook" />
-                }
+            @if (analyzingDna() && creative.dna.hook.length === 0) {
+              <div class="flex items-center gap-3 p-4 bg-gray-50 rounded-card border border-gray-200">
+                <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-sm text-gray-600 font-body">Analyzing creative DNA with AI...</span>
               </div>
-              <p class="text-xs text-gray-600 font-body m-0 leading-relaxed italic bg-white/60 rounded-lg p-3">
-                "{{ getHookExplanation(creative.dna.hook[0]) }}"
-              </p>
-            </div>
-
-            <div class="p-4 bg-blue-50 rounded-card border border-blue-200">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="text-sm font-body font-semibold text-dna-visual-text">VISUAL DNA</span>
-                @for (visual of creative.dna.visual; track visual) {
-                  <app-dna-badge [label]="visual" type="visual" />
-                }
+            } @else if (creative.dna.hook.length === 0 && creative.dna.visual.length === 0) {
+              <div class="p-4 bg-gray-50 rounded-card border border-gray-200 text-center">
+                <p class="text-xs text-gray-400 font-body m-0">DNA analysis unavailable</p>
               </div>
-              <p class="text-xs text-gray-600 font-body m-0 leading-relaxed italic bg-white/60 rounded-lg p-3">
-                "{{ getVisualExplanation(creative.dna.visual) }}"
-              </p>
-            </div>
-
-            @if (creative.dna.audio.length > 0) {
-              <div class="p-4 bg-green-50 rounded-card border border-green-200">
+            } @else {
+              @if (creative.dnaReasoning) {
+                <div class="p-3 bg-accent/5 rounded-lg border border-accent/20">
+                  <p class="text-[11px] text-gray-600 font-body m-0 leading-relaxed">
+                    <span class="font-semibold text-accent">AI Analysis:</span> {{ creative.dnaReasoning }}
+                  </p>
+                </div>
+              }
+              <div class="p-4 bg-amber-50 rounded-card border border-amber-200">
                 <div class="flex items-center gap-2 mb-2">
-                  <span class="text-sm font-body font-semibold text-dna-audio-text">AUDIO DNA</span>
-                  @for (audio of creative.dna.audio; track audio) {
-                    <app-dna-badge [label]="audio" type="audio" />
+                  <span class="text-sm font-body font-semibold text-dna-hook-text">HOOK DNA</span>
+                  @for (hook of creative.dna.hook; track hook) {
+                    <app-dna-badge [label]="hook" type="hook" />
                   }
                 </div>
                 <p class="text-xs text-gray-600 font-body m-0 leading-relaxed italic bg-white/60 rounded-lg p-3">
-                  "{{ getAudioExplanation(creative.dna.audio) }}"
+                  "{{ getHookExplanation(creative.dna.hook[0]) }}"
                 </p>
               </div>
+
+              <div class="p-4 bg-blue-50 rounded-card border border-blue-200">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-sm font-body font-semibold text-dna-visual-text">VISUAL DNA</span>
+                  @for (visual of creative.dna.visual; track visual) {
+                    <app-dna-badge [label]="visual" type="visual" />
+                  }
+                </div>
+                <p class="text-xs text-gray-600 font-body m-0 leading-relaxed italic bg-white/60 rounded-lg p-3">
+                  "{{ getVisualExplanation(creative.dna.visual) }}"
+                </p>
+              </div>
+
+              @if (creative.dna.audio.length > 0) {
+                <div class="p-4 bg-green-50 rounded-card border border-green-200">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-sm font-body font-semibold text-dna-audio-text">AUDIO DNA</span>
+                    @for (audio of creative.dna.audio; track audio) {
+                      <app-dna-badge [label]="audio" type="audio" />
+                    }
+                  </div>
+                  <p class="text-xs text-gray-600 font-body m-0 leading-relaxed italic bg-white/60 rounded-lg p-3">
+                    "{{ getAudioExplanation(creative.dna.audio) }}"
+                  </p>
+                </div>
+              }
             }
           </div>
 
@@ -544,6 +562,8 @@ export default class CreativeCockpitComponent {
     this.loadEngineAssets();
   }, { allowSignalWrites: true });
 
+  analyzingDna = signal(false);
+
   private loadTopAds(accountId: string, credentialGroup: string, datePreset: string) {
     this.loading.set(true);
     this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
@@ -554,27 +574,11 @@ export default class CreativeCockpitComponent {
     }).subscribe({
       next: (res) => {
         if (res.success && res.ads?.length) {
-          this.allCreatives.set(res.ads.map((ad: any, i: number) => {
+          const creatives = res.ads.map((ad: any, i: number) => {
             const roas = ad.metrics?.roas || 0;
             const ctr = ad.metrics?.ctr || 0;
             const conversions = ad.metrics?.conversions || 0;
             const isVideo = ad.object_type === 'VIDEO';
-
-            // Derive hook DNA from actual performance metrics
-            const hooks: HookDnaType[] = [];
-            if (roas >= 3) hooks.push('Shock Statement');
-            else if (ctr >= 2) hooks.push('Curiosity');
-            else if (conversions >= 50) hooks.push('Social Proof');
-            else if (roas >= 2) hooks.push('Price Anchor');
-            else if (ctr >= 1) hooks.push('Curiosity');
-            else hooks.push('Education');
-
-            // Derive visual DNA from format and performance
-            const visuals: VisualDnaType[] = [];
-            if (isVideo) visuals.push('UGC Style');
-            else if (roas >= 3) visuals.push('Product Focus');
-            else if (ctr >= 2) visuals.push('Before/After');
-            else visuals.push('Lifestyle');
 
             return {
               id: ad.id || `ad-${i}`,
@@ -587,9 +591,9 @@ export default class CreativeCockpitComponent {
               videoSourceUrl: ad.video_url || ad.source || ad.effective_video_url || undefined,
               status: (roas >= 3 ? 'winning' : roas >= 2 ? 'stable' : roas > 0 ? 'fatiguing' : 'new') as CreativeStatus,
               dna: {
-                hook: hooks,
-                visual: visuals,
-                audio: [],
+                hook: [] as HookDnaType[],
+                visual: [] as VisualDnaType[],
+                audio: [] as AudioDnaType[],
               },
               metrics: {
                 roas,
@@ -606,12 +610,53 @@ export default class CreativeCockpitComponent {
               adSetId: '',
               campaignId: '',
             } satisfies Creative;
-          }));
+          });
+          this.allCreatives.set(creatives);
+          this.loadDna(accountId, creatives);
         }
         this.loading.set(false);
       },
       error: () => {
         this.loading.set(false);
+      },
+    });
+  }
+
+  private loadDna(accountId: string, creatives: Creative[]) {
+    this.analyzingDna.set(true);
+    const ads = creatives.map(c => ({
+      id: c.id,
+      name: c.name,
+      format: c.format,
+      roas: c.metrics.roas,
+      ctr: c.metrics.ctr,
+      cpa: c.metrics.cpa,
+      spend: c.metrics.spend,
+      conversions: c.metrics.conversions,
+    }));
+    this.api.post<any>(environment.CREATIVES_BATCH_DNA, { account_id: accountId, ads }).subscribe({
+      next: (res) => {
+        if (res.success && res.dna) {
+          this.allCreatives.update(current =>
+            current.map(c => {
+              const dna = res.dna[c.id];
+              if (!dna) return c;
+              return {
+                ...c,
+                dna: {
+                  hook: (dna.hook || []) as HookDnaType[],
+                  visual: (dna.visual || []) as VisualDnaType[],
+                  audio: dna.audio || [],
+                },
+                dnaReasoning: dna.reasoning,
+              };
+            })
+          );
+        }
+        this.analyzingDna.set(false);
+      },
+      error: () => {
+        this.analyzingDna.set(false);
       },
     });
   }

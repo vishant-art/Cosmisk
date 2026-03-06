@@ -6,11 +6,13 @@ export type HookDnaType =
 export type VisualDnaType =
   | 'Macro Texture' | 'Warm Palette' | 'Cool Palette' | 'UGC Style'
   | 'Product Focus' | 'Text-Heavy' | 'Lifestyle' | 'Before/After'
-  | 'Flat Lay' | 'Minimal' | 'Dark Mood' | 'Split Screen';
+  | 'Flat Lay' | 'Minimal' | 'Dark Mood' | 'Split Screen' | 'Cinematic';
 
 export type AudioDnaType =
   | 'Hindi VO' | 'English VO' | 'Music-Only' | 'ASMR' | 'Upbeat'
-  | 'Emotional' | 'Trending Audio' | 'Original Score' | 'Silent' | 'Sound Effects';
+  | 'Emotional' | 'Trending Audio' | 'Original Score' | 'Silent' | 'Sound Effects'
+  | 'Hindi Female VO' | 'Hindi Male VO' | 'English Female VO' | 'English Male VO'
+  | 'Upbeat Music' | 'Emotional Music' | 'No Audio';
 
 export type CreativeStatus = 'winning' | 'stable' | 'fatiguing' | 'new';
 export type CreativeFormat = 'video' | 'static' | 'carousel';
@@ -51,6 +53,7 @@ export interface Creative {
   adSetId: string;
   campaignId: string;
   source?: 'meta' | 'engine';
+  dnaReasoning?: string;
 }
 
 export interface CreativeDetail extends Creative {

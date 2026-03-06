@@ -24,6 +24,7 @@ export const environment = {
   CREATIVES_LIST: 'creatives/list',
   CREATIVES_DETAIL: 'creatives/detail',
   CREATIVES_DNA_ANALYZE: 'creatives/analyze',
+  CREATIVES_BATCH_DNA: 'creatives/batch-dna',
   CREATIVES_RECOMMENDATIONS: 'creatives/recommendations',
 
   DIRECTOR_GENERATE_BRIEF: 'director/generate-brief',

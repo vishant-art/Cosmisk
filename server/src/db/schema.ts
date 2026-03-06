@@ -254,6 +254,18 @@ export function createTables(db: Database.Database): void {
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+
+    CREATE TABLE IF NOT EXISTS dna_cache (
+      ad_id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      ad_name TEXT,
+      hook TEXT NOT NULL DEFAULT '[]',
+      visual TEXT NOT NULL DEFAULT '[]',
+      audio TEXT NOT NULL DEFAULT '[]',
+      reasoning TEXT,
+      analyzed_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_dna_cache_account ON dna_cache(account_id);
   `);
 
   // --- Safe migrations ---

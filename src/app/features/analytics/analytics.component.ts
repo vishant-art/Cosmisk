@@ -48,7 +48,8 @@ interface BreakdownRow {
             <option value="this_month">Month to Date</option>
             <option value="last_month">Last Month</option>
           </select>
-          <button class="px-4 py-2 border border-gray-200 rounded-lg text-xs font-body text-gray-600 hover:bg-gray-50">
+          <button (click)="exportCsv()" class="px-4 py-2 border border-gray-200 rounded-lg text-xs font-body text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+            <lucide-icon name="download" [size]="14"></lucide-icon>
             Export CSV
           </button>
         </div>
@@ -125,6 +126,12 @@ interface BreakdownRow {
         </div>
         @if (loading()) {
           <div class="h-52 animate-pulse bg-gray-100 rounded-lg"></div>
+        } @else if (chartUnavailable() || chartData().length === 0) {
+          <div class="h-52 flex flex-col items-center justify-center bg-gray-50 rounded-lg border border-gray-100">
+            <lucide-icon name="bar-chart-3" [size]="32" class="text-gray-300 mb-2"></lucide-icon>
+            <p class="text-sm text-gray-500 font-body m-0 mb-1">Daily trend data not available</p>
+            <p class="text-[10px] text-gray-400 font-body m-0">Aggregate KPIs are shown above. Daily breakdowns require the Meta Insights API to return per-day data.</p>
+          </div>
         } @else {
           <app-area-chart
             [labels]="analyticsChartLabels()"
@@ -469,41 +476,46 @@ export default class AnalyticsComponent {
     });
   }
 
-  private generateChartFromKpis(datePreset: string) {
-    const k = this.kpis();
-    if (!k.length) return;
-    const spendKpi = k.find(kp => kp.label === 'Total Spend');
-    const roasKpi = k.find(kp => kp.label === 'Blended ROAS');
-    const ctrKpi = k.find(kp => kp.label === 'Avg CTR');
-    const cpaKpi = k.find(kp => kp.label === 'Avg CPA');
-    const spendVal = parseFloat(spendKpi?.value?.replace(/[₹,LKCr]/g, '') || '0') * (spendKpi?.value?.includes('L') ? 100000 : spendKpi?.value?.includes('K') ? 1000 : 1);
-    const roasVal = parseFloat(roasKpi?.value || '0');
-    const ctrVal = parseFloat(ctrKpi?.value || '0');
-    const cpaVal = parseFloat(cpaKpi?.value || '0');
-    if (!spendVal) return;
+  chartUnavailable = signal(false);
 
-    const days = datePreset.includes('7') ? 7 : datePreset.includes('14') ? 14 : 30;
-    const dailySpend = spendVal / days;
-    const today = new Date();
-    const chart: { label: string; values: Record<string, number> }[] = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const seed = ((i * 31 + 7) * 13) % 100;
-      const variance = 0.7 + (seed / 100) * 0.6;
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      chart.push({
-        label: `${mm}/${dd}`,
-        values: {
-          ROAS: Math.round(roasVal * variance * 10) / 10,
-          CTR: Math.round(ctrVal * variance * 10) / 10,
-          CPA: Math.round(cpaVal * (2 - variance)),
-          Spend: Math.round((dailySpend * variance) / 1000),
-        },
-      });
+  private generateChartFromKpis(_datePreset: string) {
+    // Don't fake daily trends from aggregate KPIs — show empty state instead
+    this.chartUnavailable.set(true);
+  }
+
+  exportCsv() {
+    const rows: string[][] = [];
+    // Header
+    const kpiLabels = [...this.kpis(), ...this.kpis2()].map(k => k.label);
+    const breakdown = this.breakdownData();
+
+    if (breakdown.length) {
+      const cols = Object.keys(breakdown[0]);
+      rows.push(cols);
+      for (const row of breakdown) {
+        rows.push(cols.map(c => String((row as any)[c] ?? '')));
+      }
+    } else if (this.chartData().length) {
+      const metricKeys = Object.keys(this.chartData()[0]?.values || {});
+      rows.push(['Date', ...metricKeys]);
+      for (const d of this.chartData()) {
+        rows.push([d.label, ...metricKeys.map(k => String(d.values[k] ?? ''))]);
+      }
+    } else {
+      rows.push(['Metric', 'Value', 'Change %']);
+      for (const kpi of [...this.kpis(), ...this.kpis2()]) {
+        rows.push([kpi.label, `${kpi.prefix ?? ''}${kpi.value}${kpi.suffix ?? ''}`, String(kpi.change)]);
+      }
     }
-    this.chartData.set(chart);
+
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cosmisk-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   private buildBreakdownFromTopAds(accountId: string, credentialGroup: string, datePreset: string) {

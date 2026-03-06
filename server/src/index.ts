@@ -30,6 +30,7 @@ import { contentRoutes } from './routes/content.js';
 import { scoreRoutes } from './routes/score.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
+import Anthropic from '@anthropic-ai/sdk';
 import { MetaApiService } from './services/meta-api.js';
 import { parseInsightMetrics } from './services/insights-parser.js';
 import type { MetaTokenRow, UserRow } from './types/index.js';
@@ -415,6 +416,119 @@ app.post('/creatives/analyze', { preHandler: [app.authenticate] }, async (reques
         recommendations,
       },
     };
+  } catch (err: any) {
+    return reply.status(500).send({ success: false, error: err.message });
+  }
+});
+
+// POST /creatives/batch-dna — Claude-powered DNA analysis for a batch of ads
+app.post('/creatives/batch-dna', { preHandler: [app.authenticate] }, async (request, reply) => {
+  const { account_id, ads } = request.body as {
+    account_id: string;
+    ads: { id: string; name: string; format: string; roas: number; ctr: number; cpa: number; spend: number; conversions: number }[];
+  };
+
+  if (!account_id || !ads?.length) {
+    return reply.status(400).send({ success: false, error: 'account_id and ads[] required' });
+  }
+
+  const db = getDb();
+
+  // Check cache first
+  const cached = db.prepare('SELECT ad_id, hook, visual, audio, reasoning FROM dna_cache WHERE account_id = ? AND ad_id IN (' + ads.map(() => '?').join(',') + ')')
+    .all(account_id, ...ads.map(a => a.id)) as { ad_id: string; hook: string; visual: string; audio: string; reasoning: string }[];
+
+  const cachedMap = new Map(cached.map(c => [c.ad_id, {
+    hook: JSON.parse(c.hook),
+    visual: JSON.parse(c.visual),
+    audio: JSON.parse(c.audio),
+    reasoning: c.reasoning,
+  }]));
+
+  const uncached = ads.filter(a => !cachedMap.has(a.id));
+
+  if (uncached.length === 0) {
+    // All cached
+    const results: Record<string, any> = {};
+    for (const ad of ads) results[ad.id] = cachedMap.get(ad.id);
+    return { success: true, dna: results, cached: true };
+  }
+
+  // Claude analysis for uncached ads
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+
+    // Compute account benchmarks from the batch
+    const totalSpend = ads.reduce((s, a) => s + a.spend, 0);
+    const avgRoas = ads.filter(a => a.spend > 0).reduce((s, a) => s + a.roas, 0) / Math.max(1, ads.filter(a => a.spend > 0).length);
+    const avgCtr = ads.filter(a => a.spend > 0).reduce((s, a) => s + a.ctr, 0) / Math.max(1, ads.filter(a => a.spend > 0).length);
+
+    const adList = uncached.map((a, i) => `${i + 1}. ID: ${a.id} | Name: "${a.name}" | Format: ${a.format} | ROAS: ${a.roas}x | CTR: ${a.ctr}% | CPA: ${a.cpa} | Spend: ${a.spend} | Conversions: ${a.conversions}`).join('\n');
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `You are an ad creative DNA analyst. Analyze these ads and classify each one's creative DNA.
+
+Account benchmarks: Avg ROAS ${avgRoas.toFixed(2)}x, Avg CTR ${avgCtr.toFixed(2)}%, Total spend ${totalSpend.toFixed(0)}
+
+Ads to analyze:
+${adList}
+
+For each ad, infer the creative DNA from its NAME (ad names often encode the creative strategy, e.g. "UGC - Hindi - Problem/Solution" or "Static - Price Anchor - Product Shot") and its PERFORMANCE relative to benchmarks.
+
+Hook types: Shock Statement, Price Anchor, Curiosity, Authority, Personal Story, Social Proof, Urgency, Transformation, Education, Direct Interrogation
+Visual types: Macro Texture, UGC Style, Text-Heavy, Before/After, Product Focus, Lifestyle, Cinematic, Split Screen
+Audio types: Hindi Female VO, Hindi Male VO, English Female VO, English Male VO, ASMR, Upbeat Music, Emotional Music, No Audio
+
+Rules:
+- Each ad gets 1-2 hooks, 1-2 visuals, 0-2 audio tags
+- Infer from the ad NAME first (most reliable signal), then format, then metrics
+- VIDEO format likely has audio; IMAGE/CAROUSEL likely has no audio
+- High ROAS relative to benchmark suggests the DNA combo is winning
+- Low spend means low confidence — still tag but note uncertainty
+- Add a short reasoning sentence for each
+
+Return ONLY valid JSON array (no markdown):
+[{"id":"ad_id","hook":["type"],"visual":["type"],"audio":["type"],"reasoning":"brief explanation"}]`
+      }],
+    });
+
+    const text = (msg.content[0] as any).text || '';
+    let analyzed: { id: string; hook: string[]; visual: string[]; audio: string[]; reasoning: string }[] = [];
+    try {
+      const jsonStr = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+      analyzed = JSON.parse(jsonStr);
+    } catch {
+      return reply.status(500).send({ success: false, error: 'Failed to parse DNA analysis' });
+    }
+
+    // Cache results
+    const upsert = db.prepare('INSERT OR REPLACE INTO dna_cache (ad_id, account_id, ad_name, hook, visual, audio, reasoning, analyzed_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))');
+    const tx = db.transaction(() => {
+      for (const item of analyzed) {
+        const ad = uncached.find(a => a.id === item.id);
+        upsert.run(item.id, account_id, ad?.name || '', JSON.stringify(item.hook || []), JSON.stringify(item.visual || []), JSON.stringify(item.audio || []), item.reasoning || '');
+      }
+    });
+    tx();
+
+    // Merge cached + newly analyzed
+    const results: Record<string, any> = {};
+    for (const ad of ads) {
+      if (cachedMap.has(ad.id)) {
+        results[ad.id] = cachedMap.get(ad.id);
+      } else {
+        const item = analyzed.find(a => a.id === ad.id);
+        if (item) {
+          results[ad.id] = { hook: item.hook, visual: item.visual, audio: item.audio, reasoning: item.reasoning };
+        }
+      }
+    }
+
+    return { success: true, dna: results, cached: false, analyzed: analyzed.length };
   } catch (err: any) {
     return reply.status(500).send({ success: false, error: err.message });
   }
