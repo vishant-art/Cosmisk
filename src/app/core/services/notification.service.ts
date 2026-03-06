@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { ApiService } from './api.service';
 import { environment } from '../../../environments/environment';
 
 export interface Notification {
@@ -30,7 +30,7 @@ const TYPE_TO_ROUTE: Record<string, string> = {
 
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
-  private http = inject(HttpClient);
+  private api = inject(ApiService);
   private notifications = signal<Notification[]>([]);
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -39,7 +39,7 @@ export class NotificationService {
 
   /** Fetch alerts from backend. Call on app init and periodically. */
   loadAlerts() {
-    this.http.get<any>(`${environment.AUTOPILOT_ALERTS}?limit=30`).subscribe({
+    this.api.get<any>(environment.AUTOPILOT_ALERTS, { limit: 30 }).subscribe({
       next: (res) => {
         if (res.success && res.alerts) {
           this.notifications.set(res.alerts.map((a: any) => ({
@@ -80,11 +80,11 @@ export class NotificationService {
     this.notifications.update(list =>
       list.map(n => n.id === id ? { ...n, read: true } : n)
     );
-    this.http.post(environment.AUTOPILOT_MARK_READ, { alert_ids: [id] }).subscribe();
+    this.api.post(environment.AUTOPILOT_MARK_READ, { alert_ids: [id] }).subscribe();
   }
 
   markAllAsRead() {
     this.notifications.update(list => list.map(n => ({ ...n, read: true })));
-    this.http.post(environment.AUTOPILOT_MARK_READ, { mark_all: true }).subscribe();
+    this.api.post(environment.AUTOPILOT_MARK_READ, { mark_all: true }).subscribe();
   }
 }
