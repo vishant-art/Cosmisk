@@ -6,6 +6,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { Subscription } from 'rxjs';
 import { CreativeEngineService } from '../../../core/services/creative-engine.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { AdAccountService } from '../../../core/services/ad-account.service';
 import type {
   Sprint, CreativeJob, SprintProgress, SprintPlanItem, ScoringResult,
 } from '../../../core/models/creative-engine.model';
@@ -484,7 +485,7 @@ import { getFormatMeta } from '../../../core/models/creative-engine.model';
                   Publishing...
                 } @else {
                   <lucide-icon name="send" [size]="16"></lucide-icon>
-                  Publish Approved Creatives (PAUSED)
+                  Publish to Meta (as PAUSED)
                 }
               </button>
             }
@@ -613,6 +614,7 @@ export default class SprintDetailComponent implements OnInit, OnDestroy {
   private toast = inject(ToastService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private adAccountService = inject(AdAccountService);
 
   sprint = signal<Sprint | null>(null);
   jobs = signal<CreativeJob[]>([]);
@@ -635,6 +637,8 @@ export default class SprintDetailComponent implements OnInit, OnDestroy {
   private pollSub: Subscription | null = null;
 
   ngOnInit() {
+    const acc = this.adAccountService.currentAccount();
+    if (acc) this.publishAccountId = acc.id;
     const id = this.route.snapshot.paramMap.get('id');
     if (id) this.loadSprint(id);
   }

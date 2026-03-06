@@ -74,6 +74,7 @@ export const environment = {
   AUTOMATIONS_UPDATE: 'automations/update',
   AUTOMATIONS_DELETE: 'automations/delete',
   AUTOMATIONS_ACTIVITY: 'automations/activity',
+  AUTOMATIONS_RUN: 'automations/run',
 
   SETTINGS_PROFILE: 'settings/profile',
   SETTINGS_TEAM: 'settings/team',

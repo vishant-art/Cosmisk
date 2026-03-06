@@ -21,6 +21,8 @@ interface ActivityLogEntry {
   type: string;
   message: string;
   time: string;
+  context?: string;
+  suggestedAction?: string;
 }
 
 @Component({
@@ -246,6 +248,12 @@ interface ActivityLogEntry {
                 </span>
                 <div class="flex-1 min-w-0">
                   <p class="text-xs font-body text-navy m-0">{{ log.message }}</p>
+                  @if (log.context) {
+                    <p class="text-[10px] text-gray-500 font-body m-0 mt-0.5">{{ log.context }}</p>
+                  }
+                  @if (log.suggestedAction) {
+                    <p class="text-[10px] text-accent font-body font-semibold m-0 mt-0.5">{{ log.suggestedAction }}</p>
+                  }
                   <span class="text-[10px] text-gray-400 font-body">{{ log.time }}</span>
                 </div>
               </div>

@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
+import cron from 'node-cron';
 import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import { fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend, trendCaveat } from '../services/trend-analyzer.js';
+import { runAutomations } from '../services/automation-engine.js';
 import type { MetaTokenRow } from '../types/index.js';
 
 /* ------------------------------------------------------------------ */
@@ -80,8 +82,8 @@ export async function automationRoutes(app: FastifyInstance) {
       status: row.is_active ? 'active' as const : 'paused' as const,
       condition: formatCondition(row.trigger_type, row.trigger_value),
       action: formatAction(row.action_type, row.action_value),
-      lastTriggered: row.last_triggered || 'Never',
-      triggerCount: 0, // Could be tracked in a separate table
+      lastTriggered: row.last_triggered ? new Date(row.last_triggered + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never',
+      triggerCount: row.last_triggered ? 1 : 0,
       triggerType: row.trigger_type,
       triggerValue: row.trigger_value ? JSON.parse(row.trigger_value) : null,
       actionType: row.action_type,
@@ -450,4 +452,29 @@ export async function automationRoutes(app: FastifyInstance) {
       return { success: true, activity: [] };
     }
   });
+
+  // POST /automations/run — Manual trigger for automation rules (admin/testing)
+  app.post('/run', { preHandler: [app.authenticate] }, async (_request, reply) => {
+    try {
+      const count = await runAutomations();
+      return { success: true, executed: count, message: `${count} automation actions executed` };
+    } catch (err: any) {
+      return reply.status(500).send({ success: false, error: err.message });
+    }
+  });
+
+  // Start automation cron — every 4 hours
+  let automationCronStarted = false;
+  if (!automationCronStarted) {
+    automationCronStarted = true;
+    cron.schedule('0 */4 * * *', async () => {
+      try {
+        const count = await runAutomations();
+        console.log(`[Automations] Cron complete: ${count} actions executed`);
+      } catch (err: any) {
+        console.error('[Automations] Cron failed:', err.message);
+      }
+    });
+    console.log('[Automations] Cron scheduled every 4 hours');
+  }
 }

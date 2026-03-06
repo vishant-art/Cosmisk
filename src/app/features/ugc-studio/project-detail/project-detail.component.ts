@@ -146,7 +146,7 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
           <div class="card">
             <div class="flex items-center justify-between mb-4">
               <h3 class="text-card-title font-display text-navy m-0">Generate Visuals</h3>
-              <span class="px-2 py-0.5 bg-amber-50 text-amber-600 text-[10px] font-body font-semibold rounded-pill">API Required</span>
+              <span class="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-body font-semibold rounded-pill">via Creative Engine</span>
             </div>
             <div class="grid md:grid-cols-2 gap-3">
               <button (click)="requestImageGen()"
@@ -154,16 +154,16 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
                 <div class="w-12 h-12 mx-auto mb-3 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-accent/10 transition-colors">
                   <lucide-icon name="image-plus" [size]="24" class="text-blue-500 group-hover:text-accent"></lucide-icon>
                 </div>
-                <h4 class="text-sm font-body font-semibold text-navy m-0 mb-1">Generate Static Images</h4>
-                <p class="text-xs text-gray-500 font-body m-0">AI-generated ad images based on your scripts</p>
+                <h4 class="text-sm font-body font-semibold text-navy m-0 mb-1">Generate Static Ads</h4>
+                <p class="text-xs text-gray-500 font-body m-0">Create a Creative Sprint to batch-generate static ad images</p>
               </button>
               <button (click)="requestVideoGen()"
                 class="p-5 border-2 border-dashed border-gray-200 rounded-xl text-center hover:border-accent/40 hover:bg-accent/5 transition-all group">
                 <div class="w-12 h-12 mx-auto mb-3 bg-violet-50 rounded-xl flex items-center justify-center group-hover:bg-accent/10 transition-colors">
                   <lucide-icon name="video" [size]="24" class="text-violet-500 group-hover:text-accent"></lucide-icon>
                 </div>
-                <h4 class="text-sm font-body font-semibold text-navy m-0 mb-1">Generate AI Video</h4>
-                <p class="text-xs text-gray-500 font-body m-0">AI avatar delivers your script as a video ad</p>
+                <h4 class="text-sm font-body font-semibold text-navy m-0 mb-1">Generate AI Videos</h4>
+                <p class="text-xs text-gray-500 font-body m-0">Create a Creative Sprint to generate avatar videos from scripts</p>
               </button>
             </div>
           </div>
@@ -279,11 +279,13 @@ export default class ProjectDetailComponent implements OnInit {
   }
 
   requestImageGen() {
-    this.toast.info('Coming Soon', 'Connect an image generation API (Stability AI, DALL-E) in Settings to enable this feature');
+    this.toast.success('Opening Creative Engine', 'Use a Creative Sprint to generate static ad images from your scripts');
+    this.router.navigate(['/app/creative-engine']);
   }
 
   requestVideoGen() {
-    this.toast.info('Coming Soon', 'Connect a video generation API (HeyGen, Synthesia, Runway) in Settings to enable this feature');
+    this.toast.success('Opening Creative Engine', 'Use a Creative Sprint to generate AI avatar videos from your scripts');
+    this.router.navigate(['/app/creative-engine']);
   }
 
   goBack() {

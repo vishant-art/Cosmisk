@@ -6,6 +6,8 @@ import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import { round, fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend, qualifyMetric } from '../services/trend-analyzer.js';
+import { config } from '../config.js';
+import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 
 function getUserMetaToken(userId: string): string | null {
@@ -205,7 +207,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     return { success: true };
   });
 
-  // POST /campaigns/launch — Mark campaign as launched
+  // POST /campaigns/launch — Create real Meta campaign + ad set, then mark launched
   app.post('/launch', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { campaign_id } = request.body as { campaign_id: string };
 
@@ -215,19 +217,109 @@ export async function campaignRoutes(app: FastifyInstance) {
 
     const db = getDb();
 
-    const existing = db.prepare(
-      'SELECT id, name FROM campaigns WHERE id = ? AND user_id = ?'
+    const campaign = db.prepare(
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
     ).get(campaign_id, request.user.id) as CampaignRow | undefined;
 
-    if (!existing) {
+    if (!campaign) {
       return reply.status(404).send({ success: false, error: 'Campaign not found' });
     }
 
-    db.prepare(
-      "UPDATE campaigns SET status = 'launched', updated_at = datetime('now') WHERE id = ? AND user_id = ?"
-    ).run(campaign_id, request.user.id);
+    if (!campaign.account_id) {
+      return reply.status(400).send({ success: false, error: 'No ad account linked to this campaign' });
+    }
 
-    return { success: true, message: `Campaign "${existing.name}" marked as launched` };
+    const token = getUserMetaToken(request.user.id);
+    if (!token) {
+      return reply.status(400).send({ success: false, error: 'Meta account not connected' });
+    }
+
+    const audience = campaign.audience ? JSON.parse(campaign.audience) : {};
+    const budgetCents = campaign.budget ? Math.round(parseFloat(campaign.budget) * 100) : 500000; // default ₹5000/day
+
+    // Map objective to Meta API format
+    const objectiveMap: Record<string, string> = {
+      'Conversions': 'OUTCOME_SALES',
+      'Traffic': 'OUTCOME_TRAFFIC',
+      'Leads': 'OUTCOME_LEADS',
+      'Awareness': 'OUTCOME_AWARENESS',
+      'App Installs': 'OUTCOME_APP_PROMOTION',
+    };
+    const metaObjective = objectiveMap[campaign.objective || ''] || campaign.objective || 'OUTCOME_SALES';
+
+    // Map gender
+    const genderMap: Record<string, number[]> = { 'Male': [1], 'Female': [2], 'All': [] };
+    const genders = genderMap[audience.gender || 'All'] || [];
+
+    try {
+      // Step 1: Create Campaign on Meta
+      const campaignResp = await safeFetch(`${config.graphApiBase}/${campaign.account_id}/campaigns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_token: token,
+          name: campaign.name,
+          objective: metaObjective,
+          status: 'PAUSED',
+          special_ad_categories: [],
+        }),
+        service: 'Meta Marketing API',
+      });
+
+      if (!campaignResp.ok) {
+        const err = await safeJson(campaignResp);
+        throw new Error(err?.error?.message || 'Failed to create Meta campaign');
+      }
+
+      const metaCampaign = await safeJson(campaignResp);
+      const metaCampaignId = metaCampaign.id;
+
+      // Step 2: Create Ad Set
+      const adSetResp = await safeFetch(`${config.graphApiBase}/${campaign.account_id}/adsets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_token: token,
+          campaign_id: metaCampaignId,
+          name: `${campaign.name} — Ad Set`,
+          optimization_goal: metaObjective === 'OUTCOME_TRAFFIC' ? 'LINK_CLICKS' : 'OFFSITE_CONVERSIONS',
+          billing_event: 'IMPRESSIONS',
+          daily_budget: budgetCents,
+          bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
+          targeting: {
+            age_min: audience.age_min || 18,
+            age_max: audience.age_max || 65,
+            genders,
+            geo_locations: { countries: [audience.location === 'India' ? 'IN' : 'US'] },
+          },
+          status: 'PAUSED',
+        }),
+        service: 'Meta Marketing API',
+      });
+
+      if (!adSetResp.ok) {
+        const err = await safeJson(adSetResp);
+        throw new Error(err?.error?.message || 'Failed to create Ad Set');
+      }
+
+      const metaAdSet = await safeJson(adSetResp);
+
+      // Update campaign in DB with Meta IDs and mark as launched
+      db.prepare(
+        "UPDATE campaigns SET status = 'launched', placements = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+      ).run(JSON.stringify({ meta_campaign_id: metaCampaignId, meta_adset_id: metaAdSet.id }), campaign_id, request.user.id);
+
+      return {
+        success: true,
+        message: `Campaign "${campaign.name}" created on Meta (PAUSED). Review in Ads Manager and activate when ready.`,
+        meta: {
+          campaign_id: metaCampaignId,
+          adset_id: metaAdSet.id,
+        },
+      };
+    } catch (err: any) {
+      return reply.status(500).send({ success: false, error: err.message });
+    }
   });
 
   // GET /campaigns/suggest — AI suggestion based on real account data

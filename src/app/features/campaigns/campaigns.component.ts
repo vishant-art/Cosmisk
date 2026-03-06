@@ -522,9 +522,9 @@ export default class CampaignsComponent implements OnInit {
           this.loadCampaigns();
         }
       },
-      error: () => {
+      error: (err) => {
         this.launching.set(false);
-        this.toast.error('Launch Failed', 'Could not launch campaign. Please try again.');
+        this.toast.error('Launch Failed', err?.error?.error || 'Could not create campaign on Meta. Check your ad account permissions.');
       },
     });
   }
