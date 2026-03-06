@@ -84,6 +84,57 @@ app.post('/leads/capture', async (request, reply) => {
   return { success: true };
 });
 
+// Public: Waitlist join (no auth)
+app.post('/waitlist/join', async (request, reply) => {
+  const body = request.body as Record<string, unknown>;
+  const email = (body.email as string || '').toLowerCase().trim();
+  if (!email || !email.includes('@')) {
+    return reply.status(400).send({ success: false, error: 'Valid email required' });
+  }
+  const db = getDb();
+
+  // Ensure table exists
+  db.exec(`CREATE TABLE IF NOT EXISTS waitlist_leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    company TEXT,
+    role TEXT,
+    ad_spend TEXT,
+    team_size TEXT,
+    pain_points TEXT,
+    interested_features TEXT,
+    source TEXT DEFAULT 'waitlist',
+    referrer TEXT,
+    signed_up_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // Check for existing
+  const existing = db.prepare('SELECT id FROM waitlist_leads WHERE email = ?').get(email) as { id: number } | undefined;
+  if (existing) {
+    return { success: true, existing: true, position: existing.id };
+  }
+
+  const result = db.prepare(`INSERT INTO waitlist_leads (email, name, company, role, ad_spend, team_size, pain_points, interested_features, source, referrer, signed_up_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    email,
+    body.name || '',
+    body.company || '',
+    body.role || '',
+    body.ad_spend || '',
+    body.team_size || '',
+    JSON.stringify(body.pain_points || []),
+    JSON.stringify(body.interested_features || []),
+    body.source || 'waitlist',
+    body.referrer || '',
+    body.signed_up_at || new Date().toISOString()
+  );
+
+  const position = Number(result.lastInsertRowid);
+  return { success: true, position };
+});
+
 // Register routes
 await app.register(authRoutes, { prefix: '/auth' });
 await app.register(adAccountRoutes, { prefix: '/ad-accounts' });
@@ -762,12 +813,13 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
 
 // POST /settings/profile — update user profile fields
 app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const { name, email, competitors, brand_name, website_url, goals } = request.body as {
+  const { name, email, competitors, brand_name, website_url, goals, onboarding_complete } = request.body as {
     name?: string; email?: string; competitors?: string[];
     brand_name?: string; website_url?: string; goals?: string[];
+    onboarding_complete?: boolean;
   };
 
-  if (!name && !email && !competitors && !brand_name && !website_url && !goals) {
+  if (!name && !email && !competitors && !brand_name && !website_url && !goals && onboarding_complete === undefined) {
     return reply.status(400).send({ success: false, error: 'Provide at least one field to update' });
   }
 
@@ -805,6 +857,10 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   if (goals) {
     updates.push('goals = ?');
     values.push(JSON.stringify(goals));
+  }
+  if (onboarding_complete !== undefined) {
+    updates.push('onboarding_complete = ?');
+    values.push(onboarding_complete ? 1 : 0);
   }
 
   values.push(request.user.id);

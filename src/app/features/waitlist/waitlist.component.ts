@@ -316,7 +316,7 @@ interface WaitlistForm {
                 <p class="text-sm font-body font-semibold text-navy mb-3">Follow Vishant for early access updates</p>
                 <div class="flex items-center justify-center gap-3">
                   <a
-                    href="https://linkedin.com/in/vishatjain"
+                    href="https://www.linkedin.com/in/vishant-jain-facebook-ads-specialist-roi-driven-ads/"
                     target="_blank"
                     rel="noopener"
                     class="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0A66C2] text-white text-sm font-body font-medium rounded-xl no-underline hover:bg-[#004182] transition-colors">
@@ -324,7 +324,7 @@ interface WaitlistForm {
                     LinkedIn
                   </a>
                   <a
-                    href="https://instagram.com/vishatjain"
+                    href="https://www.instagram.com/vishant.jain06/"
                     target="_blank"
                     rel="noopener"
                     class="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F77737] text-white text-sm font-body font-medium rounded-xl no-underline hover:opacity-90 transition-opacity">
