@@ -132,6 +132,16 @@ app.post('/waitlist/join', async (request, reply) => {
   );
 
   const position = Number(result.lastInsertRowid);
+
+  // Forward to n8n webhook for Airtable sync (fire-and-forget)
+  try {
+    fetch('http://n8n-jeet.duckdns.org:5678/webhook/waitlist/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...body, email }),
+    }).catch(() => {});
+  } catch {}
+
   return { success: true, position };
 });
 
