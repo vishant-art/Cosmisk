@@ -28,6 +28,10 @@ export async function brandRoutes(app: FastifyInstance) {
         return { brands: [] };
       }
 
+      // Get user's display name for fallback
+      const userRow = db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name: string } | undefined;
+      const fallbackName = userRow?.name || 'Personal';
+
       const token = decryptToken(row.encrypted_access_token);
       const meta = new MetaApiService(token);
 
@@ -39,7 +43,7 @@ export async function brandRoutes(app: FastifyInstance) {
       // Group by business_name
       const brandMap = new Map<string, { count: number; statuses: string[] }>();
       for (const acc of accounts) {
-        const name = acc.business_name || 'Unknown';
+        const name = acc.business_name || fallbackName;
         if (!brandMap.has(name)) {
           brandMap.set(name, { count: 0, statuses: [] });
         }

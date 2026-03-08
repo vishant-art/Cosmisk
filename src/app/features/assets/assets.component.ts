@@ -197,8 +197,9 @@ export default class AssetsComponent {
     }
   }, { allowSignalWrites: true });
 
-  storageUsed = signal('-- / 10 GB');
+  storageUsed = signal('0 / 10 GB');
   storagePercent = signal(0);
+  private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   getFilteredFiles(): AssetFile[] {
     const all = this.files();
@@ -208,6 +209,16 @@ export default class AssetsComponent {
 
   private loadAssets(accountId: string) {
     this.loading.set(true);
+    if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+    this.loadingTimeout = setTimeout(() => {
+      if (this.loading()) this.loading.set(false);
+    }, 8000);
+
+    let filesLoaded = false;
+    let foldersLoaded = false;
+    const checkDone = () => {
+      if (filesLoaded && foldersLoaded) this.loading.set(false);
+    };
 
     // Load files
     this.api.get<any>(environment.ASSETS_LIST, {
@@ -216,16 +227,20 @@ export default class AssetsComponent {
       next: (res) => {
         if (res.success && res.files) {
           this.files.set(res.files);
-          // Estimate storage from file count
           const totalFiles = res.files.length;
-          const estimatedGB = Math.round(totalFiles * 0.15 * 10) / 10; // ~150 MB avg per creative
+          const estimatedGB = Math.round(totalFiles * 0.15 * 10) / 10;
           this.storageUsed.set(`${estimatedGB} / 10 GB`);
           this.storagePercent.set(Math.min(100, Math.round((estimatedGB / 10) * 100)));
+        } else {
+          this.storageUsed.set('0 / 10 GB');
         }
-        this.loading.set(false);
+        filesLoaded = true;
+        checkDone();
       },
       error: () => {
-        this.loading.set(false);
+        this.storageUsed.set('0 / 10 GB');
+        filesLoaded = true;
+        checkDone();
       },
     });
 
@@ -236,15 +251,17 @@ export default class AssetsComponent {
       next: (res) => {
         if (res.success && res.folders) {
           this.folders.set(res.folders);
-          // Reset active folder if the current one no longer exists
           const folderNames = res.folders.map((f: AssetFolder) => f.name);
           if (!folderNames.includes(this.activeFolder())) {
             this.activeFolder.set('All Files');
           }
         }
+        foldersLoaded = true;
+        checkDone();
       },
       error: () => {
-        // Keep the default folder on error
+        foldersLoaded = true;
+        checkDone();
       },
     });
   }

@@ -550,6 +550,7 @@ export default class CreativeCockpitComponent {
   loading = signal(true);
   allCreatives = signal<Creative[]>([]);
   engineAssets = signal<Creative[]>([]);
+  private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private adsEffect = effect(() => {
     const acc = this.adAccountService.currentAccount();
@@ -566,6 +567,10 @@ export default class CreativeCockpitComponent {
 
   private loadTopAds(accountId: string, credentialGroup: string, datePreset: string) {
     this.loading.set(true);
+    if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+    this.loadingTimeout = setTimeout(() => {
+      if (this.loading()) this.loading.set(false);
+    }, 8000);
     this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
       account_id: accountId,
       credential_group: credentialGroup,

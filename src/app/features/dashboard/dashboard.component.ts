@@ -353,6 +353,7 @@ export default class DashboardComponent implements OnInit {
   loading = signal(true);
   insightsLoading = signal(true);
   activeSprints = signal<any[]>([]);
+  private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   kpi = signal({
     spend: { value: 0, change: 0, sparkline: [] as number[] },
@@ -551,6 +552,11 @@ export default class DashboardComponent implements OnInit {
 
   private loadKpis(accountId: string, credentialGroup: string, datePreset: string) {
     this.loading.set(true);
+    if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+    this.loadingTimeout = setTimeout(() => {
+      if (this.loading()) this.loading.set(false);
+      if (this.insightsLoading()) this.insightsLoading.set(false);
+    }, 8000);
     this.api.get<any>(environment.AD_ACCOUNT_KPIS, {
       account_id: accountId,
       credential_group: credentialGroup,

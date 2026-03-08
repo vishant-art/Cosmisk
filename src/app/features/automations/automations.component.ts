@@ -322,6 +322,7 @@ export default class AutomationsComponent {
 
   private loadActivity(accountId: string) {
     this.activityLoading.set(true);
+    setTimeout(() => { if (this.activityLoading()) this.activityLoading.set(false); }, 8000);
     this.api.get<any>(environment.AUTOMATIONS_ACTIVITY, {
       account_id: accountId,
     }).subscribe({

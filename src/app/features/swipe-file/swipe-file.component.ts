@@ -133,6 +133,8 @@ export default class SwipeFileComponent implements OnInit {
   loading = signal(true);
   savedAds = signal<SwipeAd[]>([]);
 
+  private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
+
   private accountEffect = effect(() => {
     const acc = this.adAccountService.currentAccount();
     if (acc) {
@@ -144,8 +146,16 @@ export default class SwipeFileComponent implements OnInit {
 
   ngOnInit() {}
 
+  private startLoadingTimeout() {
+    if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
+    this.loadingTimeout = setTimeout(() => {
+      if (this.loading()) this.loading.set(false);
+    }, 8000);
+  }
+
   private loadTopAds(accountId: string, credentialGroup: string) {
     this.loading.set(true);
+    this.startLoadingTimeout();
     this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
       account_id: accountId,
       credential_group: credentialGroup,
