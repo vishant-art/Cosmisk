@@ -263,6 +263,10 @@ export async function runAutopilot(): Promise<number> {
     try {
       const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
+      if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+        console.warn(`[autopilot] Skipping user ${user.id}: Meta token expired at ${tokenRow.expires_at}`);
+        continue;
+      }
 
       const token = decryptToken(tokenRow.encrypted_access_token);
       const meta = new MetaApiService(token);

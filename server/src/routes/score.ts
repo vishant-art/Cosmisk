@@ -12,6 +12,7 @@ export async function scoreRoutes(app: FastifyInstance) {
 
   /* ---- POST /analyze — Analyze an ad creative ---- */
   app.post('/analyze', {
+    preHandler: [app.authenticate],
     config: {
       rateLimit: {
         max: 10,
@@ -161,6 +162,7 @@ Provide a detailed Cosmisk Score analysis.`;
 
   /* ---- POST /batch — Analyze multiple creatives at once ---- */
   app.post('/batch', {
+    preHandler: [app.authenticate],
     config: {
       rateLimit: {
         max: 3,

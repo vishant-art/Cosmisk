@@ -18,8 +18,10 @@ function getUserMetaToken(userId: string): string | null {
 /*  Helper: estimate file size from thumbnail URL                     */
 /* ------------------------------------------------------------------ */
 function estimateSize(objectType: string): string {
-  if (objectType === 'VIDEO') return `${(Math.random() * 30 + 5).toFixed(1)} MB`;
-  return `${(Math.random() * 4 + 0.5).toFixed(1)} MB`;
+  // Deterministic estimates based on format type
+  if (objectType === 'VIDEO') return '15.0 MB';
+  if (objectType === 'CAROUSEL') return '3.5 MB';
+  return '1.5 MB';
 }
 
 /* ------------------------------------------------------------------ */

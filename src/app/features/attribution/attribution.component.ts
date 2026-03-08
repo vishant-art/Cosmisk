@@ -37,14 +37,14 @@ interface AttributionRow {
           <p class="text-sm text-gray-500 font-body mt-1 mb-0">Multi-touch attribution analysis across creatives</p>
         </div>
         <div class="flex gap-3">
-          <select class="px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none">
-            <option>Last 30 days</option>
-            <option>Last 14 days</option>
-            <option>Last 7 days</option>
-            <option>Last 90 days</option>
+          <select (change)="onDateRangeChange($event)" class="px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none">
+            <option value="last_30d">Last 30 days</option>
+            <option value="last_14d">Last 14 days</option>
+            <option value="last_7d">Last 7 days</option>
+            <option value="last_90d">Last 90 days</option>
           </select>
-          <button class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
-            Export Report
+          <button (click)="exportCsv()" class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
+            Export CSV
           </button>
         </div>
       </div>
@@ -65,6 +65,9 @@ interface AttributionRow {
           }
         </div>
         <p class="text-xs text-gray-500 font-body mt-3 mb-0">{{ getActiveModelDescription() }}</p>
+        @if (activeModel() !== 'last') {
+          <p class="text-xs text-amber-600 font-body mt-2 mb-0">Note: Multi-touch attribution models shown are approximations based on campaign-level spend/conversion data. Pixel-level path data is required for true multi-touch attribution.</p>
+        }
       </div>
 
       <!-- KPI Summary -->
@@ -191,6 +194,7 @@ export default class AttributionComponent {
 
   activeModel = signal('data');
   loading = signal(true);
+  datePreset = 'last_30d';
 
   models = [
     { id: 'first', name: 'First Touch', description: 'Gives 100% credit to the first interaction a customer has before converting.' },
@@ -217,6 +221,31 @@ export default class AttributionComponent {
     return this.models.find(m => m.id === this.activeModel())?.description ?? '';
   }
 
+  onDateRangeChange(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    this.datePreset = select.value;
+    const acc = this.adAccountService.currentAccount();
+    if (acc) {
+      this.loadAttributionData(acc.id, acc.credential_group);
+    }
+  }
+
+  exportCsv() {
+    const rows = this.attributionData();
+    if (rows.length === 0) return;
+    const header = 'Creative,First Touch %,Last Touch %,Linear %,Time Decay %,Data-Driven %,Conversions,Revenue';
+    const csv = [header, ...rows.map(r =>
+      `"${r.creative}",${r.firstTouch},${r.lastTouch},${r.linear},${r.timeDecay},${r.dataDriven},${r.conversions},"${r.revenue}"`
+    )].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attribution-${this.datePreset}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   private formatIndian(n: number): string {
     if (n >= 10000000) return '\u20B9' + (n / 10000000).toFixed(1) + 'Cr';
     if (n >= 100000) return '\u20B9' + (n / 100000).toFixed(1) + 'L';
@@ -236,7 +265,7 @@ export default class AttributionComponent {
     this.api.get<any>(environment.ANALYTICS_FULL, {
       account_id: accountId,
       credential_group: credentialGroup,
-      date_preset: 'last_30d',
+      date_preset: this.datePreset,
     }).subscribe({
       next: (res) => {
         if (res.success && res.campaignBreakdown?.length) {
@@ -251,73 +280,35 @@ export default class AttributionComponent {
           }, 0);
 
           // Build KPIs from real data
+          const avgRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
           this.kpis.set([
-            { label: 'Total Conversions', value: this.formatCount(totalConversions), trend: totalConversions > 0 ? '+' + Math.round(totalConversions * 0.12) + '%' : '0%' },
-            { label: 'Attributed Revenue', value: this.formatIndian(totalRevenue), trend: totalRevenue > 0 ? '+' + Math.round(totalRevenue / totalSpend * 10) / 10 + '%' : '0%' },
-            { label: 'Avg. Touchpoints', value: String(Math.max(1, Math.round(campaigns.length * 0.6 * 10) / 10)), trend: campaigns.length > 3 ? '-0.2' : '+0.1' },
-            { label: 'Avg. Time to Convert', value: campaigns.length > 5 ? '4.2 days' : '2.1 days', trend: campaigns.length > 5 ? '-0.8 days' : '-0.3 days' },
+            { label: 'Total Conversions', value: this.formatCount(totalConversions), trend: totalConversions > 0 ? 'Last 30d' : '—' },
+            { label: 'Attributed Revenue', value: this.formatIndian(totalRevenue), trend: avgRoas > 0 ? avgRoas.toFixed(1) + 'x ROAS' : '—' },
+            { label: 'Total Spend', value: this.formatIndian(totalSpend), trend: campaigns.length + ' campaigns' },
+            { label: 'Campaigns Tracked', value: String(campaigns.length), trend: campaigns.filter((c: any) => (c.conversions || 0) > 0).length + ' converting' },
           ]);
 
-          // Build conversion paths from campaign data
-          // Since Meta doesn't provide actual multi-touch paths, we approximate
-          // using campaign structure as proxy touchpoints
+          // Conversion paths: show top campaigns ranked by conversions (last-click model)
+          // Multi-touch path reconstruction requires pixel-level data not available from Meta API
           const sortedByConv = [...campaigns].sort((a: any, b: any) => (b.conversions || 0) - (a.conversions || 0));
           const topCampaigns = sortedByConv.slice(0, 5);
           const maxConversions = topCampaigns[0]?.conversions || 1;
 
-          const paths: ConversionPath[] = [];
-
-          // Path 1: Top campaign as direct conversion path
-          if (topCampaigns[0]) {
-            const c = topCampaigns[0];
-            const campRevenue = c.roas && c.spend ? c.roas * c.spend : 0;
-            paths.push({
-              id: 'p-1',
-              steps: [
-                { channel: this.shortenName(c.label), icon: '\uD83D\uDCF1' },
-                { channel: 'Website Visit', icon: '\uD83C\uDF10' },
-                { channel: 'Retarget', icon: '\uD83D\uDD04' },
-                { channel: 'Purchase', icon: '\uD83D\uDED2' },
-              ],
-              conversions: Math.round(c.conversions || 0),
-              revenue: this.formatIndian(campRevenue),
-              percentage: 100,
+          const paths: ConversionPath[] = topCampaigns
+            .filter((c: any) => (c.conversions || 0) > 0)
+            .map((c: any, i: number) => {
+              const campRevenue = c.roas && c.spend ? c.roas * c.spend : 0;
+              return {
+                id: 'p-' + (i + 1),
+                steps: [
+                  { channel: this.shortenName(c.label), icon: '\uD83D\uDCF1' },
+                  { channel: 'Last Click', icon: '\uD83D\uDED2' },
+                ],
+                conversions: Math.round(c.conversions || 0),
+                revenue: this.formatIndian(campRevenue),
+                percentage: Math.round(((c.conversions || 0) / maxConversions) * 100),
+              };
             });
-          }
-
-          // Path 2: Second campaign as shorter path
-          if (topCampaigns[1]) {
-            const c = topCampaigns[1];
-            const campRevenue = c.roas && c.spend ? c.roas * c.spend : 0;
-            paths.push({
-              id: 'p-2',
-              steps: [
-                { channel: this.shortenName(c.label), icon: '\uD83D\uDCF1' },
-                { channel: 'Direct Purchase', icon: '\uD83D\uDED2' },
-              ],
-              conversions: Math.round(c.conversions || 0),
-              revenue: this.formatIndian(campRevenue),
-              percentage: Math.round(((c.conversions || 0) / maxConversions) * 100),
-            });
-          }
-
-          // Path 3: Third campaign
-          if (topCampaigns[2]) {
-            const c = topCampaigns[2];
-            const campRevenue = c.roas && c.spend ? c.roas * c.spend : 0;
-            paths.push({
-              id: 'p-3',
-              steps: [
-                { channel: this.shortenName(c.label), icon: '\uD83C\uDFAC' },
-                { channel: 'Profile Visit', icon: '\uD83D\uDC64' },
-                { channel: 'Website', icon: '\uD83C\uDF10' },
-                { channel: 'Purchase', icon: '\uD83D\uDED2' },
-              ],
-              conversions: Math.round(c.conversions || 0),
-              revenue: this.formatIndian(campRevenue),
-              percentage: Math.round(((c.conversions || 0) / maxConversions) * 100),
-            });
-          }
 
           this.conversionPaths.set(paths);
 

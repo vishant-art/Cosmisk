@@ -273,18 +273,27 @@ interface Campaign {
         @if (activeStep() === 3) {
           <div class="bg-white rounded-card shadow-card p-6">
             <h3 class="text-base font-display text-navy mb-4 mt-0">Select Creatives</h3>
-            <p class="text-xs text-gray-500 font-body mb-4">Choose from your winning creatives or create new ones</p>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-              @for (i of [1,2,3,4,5,6]; track i) {
-                <div class="border-2 rounded-lg p-3 cursor-pointer hover:border-accent transition-colors"
-                  (click)="toggleCreative(i)"
-                  [ngClass]="selectedCreatives().includes(i) ? 'border-accent bg-accent/5' : 'border-gray-200'">
-                  <div class="aspect-square bg-gray-100 rounded mb-2 flex items-center justify-center"><lucide-icon name="clapperboard" [size]="24"></lucide-icon></div>
-                  <p class="text-xs font-body font-semibold text-navy m-0 truncate">Creative {{ i }}</p>
-                  <p class="text-[10px] text-gray-400 font-body m-0">@if (selectedCreatives().includes(i)) { <lucide-icon name="check" [size]="10" class="text-green-500 inline-block"></lucide-icon> Selected } @else { Click to select }</p>
-                </div>
-              }
-            </div>
+            <p class="text-xs text-gray-500 font-body mb-4">Choose from your ad creatives</p>
+            @if (availableCreatives().length === 0) {
+              <div class="text-center py-8">
+                <lucide-icon name="image" [size]="32" class="text-gray-300 mx-auto mb-2"></lucide-icon>
+                <p class="text-sm text-gray-400 font-body mb-0">No creatives found. Connect an ad account with active ads.</p>
+              </div>
+            } @else {
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                @for (c of availableCreatives(); track c.id) {
+                  <div class="border-2 rounded-lg p-3 cursor-pointer hover:border-accent transition-colors"
+                    (click)="toggleCreative(c.id)"
+                    [ngClass]="selectedCreatives().includes(c.id) ? 'border-accent bg-accent/5' : 'border-gray-200'">
+                    <div class="aspect-square bg-gray-100 rounded mb-2 flex items-center justify-center">
+                      @if (c.type === 'video') { <lucide-icon name="clapperboard" [size]="24"></lucide-icon> } @else { <lucide-icon name="image" [size]="24"></lucide-icon> }
+                    </div>
+                    <p class="text-xs font-body font-semibold text-navy m-0 truncate">{{ c.name }}</p>
+                    <p class="text-[10px] text-gray-400 font-body m-0">@if (selectedCreatives().includes(c.id)) { <lucide-icon name="check" [size]="10" class="text-green-500 inline-block"></lucide-icon> Selected } @else { Click to select }</p>
+                  </div>
+                }
+              </div>
+            }
             <div class="flex justify-between mt-6">
               <button (click)="activeStep.set(2)" class="px-4 py-2 text-gray-500 text-sm font-body"><lucide-icon name="arrow-left" [size]="14" class="inline-block"></lucide-icon> Back</button>
               <button (click)="goToStep(4)" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold">Review Campaign <lucide-icon name="arrow-right" [size]="14" class="inline-block"></lucide-icon></button>
@@ -357,7 +366,8 @@ export default class CampaignsComponent implements OnInit {
   aiSuggestionLoading = signal(false);
   aiSuggestion = signal('Loading suggestion...');
   campaigns = signal<Campaign[]>([]);
-  selectedCreatives = signal<number[]>([1, 2, 3]);
+  selectedCreatives = signal<string[]>([]);
+  availableCreatives = signal<{ id: string; name: string; type: string }[]>([]);
   currentCampaignId = signal<string | null>(null);
 
   steps = [
@@ -384,6 +394,28 @@ export default class CampaignsComponent implements OnInit {
   ngOnInit() {
     this.loadCampaigns();
     this.fetchSuggestion();
+    this.loadCreatives();
+  }
+
+  private loadCreatives() {
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) return;
+    this.api.get<any>(environment.CREATIVES_LIST, {
+      account_id: acc.id,
+      credential_group: acc.credential_group,
+      limit: '50',
+    }).subscribe({
+      next: (res) => {
+        if (res.success && res.creatives?.length) {
+          this.availableCreatives.set(res.creatives.map((c: any) => ({
+            id: c.id,
+            name: c.name || 'Unnamed Creative',
+            type: c.object_type === 'VIDEO' ? 'video' : 'image',
+          })));
+        }
+      },
+      error: () => {},
+    });
   }
 
   private loadCampaigns() {
@@ -401,6 +433,7 @@ export default class CampaignsComponent implements OnInit {
       },
       error: () => {
         this.loadingCampaigns.set(false);
+        this.toast.error('Error', 'Failed to load campaigns. Please try again.');
       },
     });
   }
@@ -432,7 +465,7 @@ export default class CampaignsComponent implements OnInit {
       this.audienceType = c.audience.type || 'Lookalike — Purchasers 1%';
     }
     if (c.creative_ids?.length) {
-      this.selectedCreatives.set(c.creative_ids.map(Number).filter(n => !isNaN(n)));
+      this.selectedCreatives.set(c.creative_ids);
     }
     this.showBuilder.set(true);
     this.activeStep.set(1);
@@ -447,7 +480,7 @@ export default class CampaignsComponent implements OnInit {
     });
   }
 
-  toggleCreative(id: number) {
+  toggleCreative(id: string) {
     const current = this.selectedCreatives();
     if (current.includes(id)) {
       this.selectedCreatives.set(current.filter(c => c !== id));
@@ -471,7 +504,7 @@ export default class CampaignsComponent implements OnInit {
         gender: this.audienceGender,
         type: this.audienceType,
       },
-      creative_ids: this.selectedCreatives().map(String),
+      creative_ids: this.selectedCreatives(),
       account_id: acc?.id || null,
       status: 'draft',
     };
@@ -573,7 +606,7 @@ export default class CampaignsComponent implements OnInit {
     this.audienceAgeMax = 45;
     this.audienceGender = 'All';
     this.audienceType = 'Lookalike — Purchasers 1%';
-    this.selectedCreatives.set([1, 2, 3]);
+    this.selectedCreatives.set([]);
     this.currentCampaignId.set(null);
     this.activeStep.set(1);
     this.aiSuggestion.set('Loading suggestion...');

@@ -67,6 +67,8 @@ function formatAction(actionType: string, actionValue: string | null): string {
 /* ------------------------------------------------------------------ */
 /*  Routes                                                             */
 /* ------------------------------------------------------------------ */
+let automationCronStartedModule = false;
+
 export async function automationRoutes(app: FastifyInstance) {
 
   // GET /automations/list — Get user's automation rules
@@ -453,8 +455,11 @@ export async function automationRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST /automations/run — Manual trigger for automation rules (admin/testing)
-  app.post('/run', { preHandler: [app.authenticate] }, async (_request, reply) => {
+  // POST /automations/run — Manual trigger for automation rules (admin only)
+  app.post('/run', { preHandler: [app.authenticate] }, async (request, reply) => {
+    if ((request.user as any).role !== 'admin') {
+      return reply.status(403).send({ success: false, error: 'Admin access required' });
+    }
     try {
       const count = await runAutomations();
       return { success: true, executed: count, message: `${count} automation actions executed` };
@@ -464,9 +469,8 @@ export async function automationRoutes(app: FastifyInstance) {
   });
 
   // Start automation cron — every 4 hours
-  let automationCronStarted = false;
-  if (!automationCronStarted) {
-    automationCronStarted = true;
+  if (!automationCronStartedModule) {
+    automationCronStartedModule = true;
     cron.schedule('0 */4 * * *', async () => {
       try {
         const count = await runAutomations();

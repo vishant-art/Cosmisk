@@ -1,9 +1,11 @@
 const _BUILD_VER = '2026-03-04-v1';
 import { Component, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { environment } from '../../../environments/environment';
 
 interface AssetFile {
@@ -25,7 +27,7 @@ interface AssetFolder {
 @Component({
   selector: 'app-assets',
   standalone: true,
-  imports: [CommonModule, LucideAngularModule],
+  imports: [CommonModule, LucideAngularModule, FormsModule],
   template: `
     <div class="space-y-6">
       <div class="flex items-center justify-between">
@@ -33,9 +35,10 @@ interface AssetFolder {
           <h1 class="text-page-title font-display text-navy m-0">Assets Vault</h1>
           <p class="text-sm text-gray-500 font-body mt-1 mb-0">Central file management for all creatives</p>
         </div>
-        <button class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
+        <button (click)="fileInput.click()" class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
           + Upload Files
         </button>
+        <input #fileInput type="file" multiple accept="image/*,video/*" class="hidden" (change)="onFileSelected($event)">
       </div>
 
       <div class="flex gap-6">
@@ -82,8 +85,10 @@ interface AssetFolder {
           <div class="flex items-center justify-between mb-4">
             <span class="text-sm font-body text-gray-500">{{ activeFolder() }} · {{ getFilteredFiles().length }} files</span>
             <div class="flex gap-2">
-              <button class="px-3 py-1 text-xs font-body border border-gray-200 rounded-lg hover:bg-gray-50">Grid</button>
-              <button class="px-3 py-1 text-xs font-body border border-gray-200 rounded-lg hover:bg-gray-50">List</button>
+              <button (click)="viewMode.set('grid')" class="px-3 py-1 text-xs font-body border rounded-lg"
+                [ngClass]="viewMode() === 'grid' ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 hover:bg-gray-50'">Grid</button>
+              <button (click)="viewMode.set('list')" class="px-3 py-1 text-xs font-body border rounded-lg"
+                [ngClass]="viewMode() === 'list' ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 hover:bg-gray-50'">List</button>
             </div>
           </div>
           @if (loading()) {
@@ -100,6 +105,34 @@ interface AssetFolder {
                   </div>
                 </div>
               }
+            </div>
+          } @else if (viewMode() === 'list') {
+            <div class="bg-white rounded-card shadow-card overflow-hidden">
+              <table class="w-full text-xs font-body">
+                <thead>
+                  <tr class="bg-gray-50 text-gray-500">
+                    <th class="px-4 py-3 text-left font-semibold">Name</th>
+                    <th class="px-4 py-3 text-left font-semibold">Type</th>
+                    <th class="px-4 py-3 text-left font-semibold">Folder</th>
+                    <th class="px-4 py-3 text-left font-semibold">Size</th>
+                    <th class="px-4 py-3 text-left font-semibold">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (file of getFilteredFiles(); track file.id) {
+                    <tr class="border-t border-gray-50 hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium text-navy truncate max-w-[200px]">{{ file.name }}</td>
+                      <td class="px-4 py-3 text-gray-600 capitalize">{{ file.type }}</td>
+                      <td class="px-4 py-3 text-gray-600">{{ file.folder }}</td>
+                      <td class="px-4 py-3 text-gray-500">{{ file.size }}</td>
+                      <td class="px-4 py-3 text-gray-500">{{ file.date }}</td>
+                    </tr>
+                  }
+                  @if (getFilteredFiles().length === 0) {
+                    <tr><td colspan="5" class="px-4 py-12 text-center text-gray-400">No files found in this folder</td></tr>
+                  }
+                </tbody>
+              </table>
             </div>
           } @else {
             <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -145,9 +178,11 @@ interface AssetFolder {
 export default class AssetsComponent {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
+  private toast = inject(ToastService);
 
   loading = signal(true);
   activeFolder = signal('All Files');
+  viewMode = signal<'grid' | 'list'>('grid');
   files = signal<AssetFile[]>([]);
   folders = signal<AssetFolder[]>([
     { name: 'All Files', icon: 'folder-open', count: 0 },
@@ -212,5 +247,34 @@ export default class AssetsComponent {
         // Keep the default folder on error
       },
     });
+  }
+
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) {
+      this.toast.error('No Account', 'Select an ad account before uploading');
+      return;
+    }
+
+    const files = Array.from(input.files);
+    for (const file of files) {
+      const isVideo = file.type.startsWith('video');
+      const newFile: AssetFile = {
+        id: 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        name: file.name,
+        type: isVideo ? 'video' : 'image',
+        folder: this.activeFolder() === 'All Files' ? 'Uploads' : this.activeFolder(),
+        size: file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(0) + ' KB',
+        date: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+        thumbnail: isVideo ? '' : URL.createObjectURL(file),
+      };
+      this.files.update(f => [newFile, ...f]);
+    }
+
+    this.toast.success('Uploaded', `${files.length} file${files.length > 1 ? 's' : ''} added to vault`);
+    input.value = '';
   }
 }

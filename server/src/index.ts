@@ -87,7 +87,7 @@ app.post('/leads/capture', async (request, reply) => {
 // Public: Waitlist join (no auth)
 app.post('/waitlist/join', async (request, reply) => {
   const body = request.body as Record<string, unknown>;
-  const email = (body.email as string || '').toLowerCase().trim();
+  const email = (body['email'] as string || '').toLowerCase().trim();
   if (!email || !email.includes('@')) {
     return reply.status(400).send({ success: false, error: 'Valid email required' });
   }
@@ -119,16 +119,16 @@ app.post('/waitlist/join', async (request, reply) => {
   const result = db.prepare(`INSERT INTO waitlist_leads (email, name, company, role, ad_spend, team_size, pain_points, interested_features, source, referrer, signed_up_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
     email,
-    body.name || '',
-    body.company || '',
-    body.role || '',
-    body.ad_spend || '',
-    body.team_size || '',
-    JSON.stringify(body.pain_points || []),
-    JSON.stringify(body.interested_features || []),
-    body.source || 'waitlist',
-    body.referrer || '',
-    body.signed_up_at || new Date().toISOString()
+    body['name'] || '',
+    body['company'] || '',
+    body['role'] || '',
+    body['ad_spend'] || '',
+    body['team_size'] || '',
+    JSON.stringify(body['pain_points'] || []),
+    JSON.stringify(body['interested_features'] || []),
+    body['source'] || 'waitlist',
+    body['referrer'] || '',
+    body['signed_up_at'] || new Date().toISOString()
   );
 
   const position = Number(result.lastInsertRowid);

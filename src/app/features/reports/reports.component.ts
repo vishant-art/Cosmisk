@@ -72,9 +72,9 @@ interface Report {
               <label class="text-xs font-body font-semibold text-gray-700 block mb-1">Brand</label>
               <select [(ngModel)]="reportBrand" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none">
                 <option value="all">All Brands</option>
-                <option value="oziva">OZiva</option>
-                <option value="wow">WOW Skin Science</option>
-                <option value="plum">Plum Goodness</option>
+                @for (brand of brands; track brand.id) {
+                  <option [value]="brand.id">{{ brand.name }}</option>
+                }
               </select>
             </div>
           </div>
@@ -237,9 +237,22 @@ export default class ReportsComponent implements OnInit {
   ];
 
   reports: Report[] = [];
+  brands: { id: string; name: string }[] = [];
 
   ngOnInit() {
     this.loadReports();
+    this.loadBrands();
+  }
+
+  private loadBrands() {
+    this.api.get<any>(environment.BRANDS_LIST).subscribe({
+      next: (res) => {
+        if (res.success && res.brands?.length) {
+          this.brands = res.brands;
+        }
+      },
+      error: () => {},
+    });
   }
 
   loadReports() {

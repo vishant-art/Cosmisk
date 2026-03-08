@@ -14,7 +14,7 @@ export class MetaApiService {
       url.searchParams.set(key, value);
     }
 
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(30000) });
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
       throw new MetaApiError(
@@ -26,13 +26,15 @@ export class MetaApiService {
     return res.json().catch(() => ({} as T)) as Promise<T>;
   }
 
-  async getAllPages<T = any>(path: string, params: Record<string, string> = {}): Promise<T[]> {
+  async getAllPages<T = any>(path: string, params: Record<string, string> = {}, maxPages = 20): Promise<T[]> {
     const allData: T[] = [];
     let url: string | null = `${config.graphApiBase}${path}`;
     let queryParams: Record<string, string> = { ...params, access_token: this.accessToken };
     let isFirstRequest = true;
+    let pageCount = 0;
 
-    while (url) {
+    while (url && pageCount < maxPages) {
+      pageCount++;
       let fetchUrl: string;
       if (isFirstRequest) {
         const u = new URL(url);
@@ -45,7 +47,7 @@ export class MetaApiService {
         fetchUrl = url;
       }
 
-      const res = await fetch(fetchUrl);
+      const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(30000) });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new MetaApiError(

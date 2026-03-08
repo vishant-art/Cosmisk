@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { environment } from '../../../environments/environment';
 
 interface AutomationRule {
@@ -270,6 +271,7 @@ interface ActivityLogEntry {
 export default class AutomationsComponent {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
+  private toast = inject(ToastService);
 
   loading = signal(true);
   activityLoading = signal(true);
@@ -313,6 +315,7 @@ export default class AutomationsComponent {
       },
       error: () => {
         this.loading.set(false);
+        this.toast.error('Error', 'Failed to load automation rules. Please try again.');
       },
     });
   }
@@ -330,6 +333,7 @@ export default class AutomationsComponent {
       },
       error: () => {
         this.activityLoading.set(false);
+        this.toast.error('Error', 'Failed to load activity log. Please try again.');
       },
     });
   }
@@ -363,6 +367,7 @@ export default class AutomationsComponent {
       },
       error: () => {
         this.saving.set(false);
+        this.toast.error('Error', 'Failed to create rule. Please try again.');
       },
     });
   }
@@ -381,7 +386,9 @@ export default class AutomationsComponent {
           );
         }
       },
-      error: () => {},
+      error: () => {
+        this.toast.error('Error', 'Failed to update rule. Please try again.');
+      },
     });
   }
 
@@ -392,7 +399,9 @@ export default class AutomationsComponent {
           this.rules.set(this.rules().filter(r => r.id !== id));
         }
       },
-      error: () => {},
+      error: () => {
+        this.toast.error('Error', 'Failed to delete rule. Please try again.');
+      },
     });
   }
 

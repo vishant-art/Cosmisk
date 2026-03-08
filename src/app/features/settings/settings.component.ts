@@ -514,7 +514,7 @@ export default class SettingsComponent implements OnInit {
         }
       },
       error: () => {
-        this.toast.success('Saved', 'Preferences saved locally (profile update failed)');
+        this.toast.error('Save Failed', 'Could not save profile to server. Preferences saved locally only.');
       },
     });
   }

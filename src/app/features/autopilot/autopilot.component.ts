@@ -40,10 +40,10 @@ type FilterTab = 'all' | 'unread' | 'critical' | 'warning' | 'success';
         }
         <button
           (click)="markAllRead()"
-          [disabled]="unreadCount() === 0"
+          [disabled]="unreadCount() === 0 || markingAllRead()"
           class="px-4 py-2 text-sm font-body font-semibold rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer">
           <lucide-icon name="check-check" [size]="16"></lucide-icon>
-          Mark all read
+          {{ markingAllRead() ? 'Marking...' : 'Mark all read' }}
         </button>
       </div>
     </div>
@@ -176,6 +176,7 @@ export default class AutopilotComponent implements OnInit {
 
   alerts = signal<AutopilotAlert[]>([]);
   loading = signal(true);
+  markingAllRead = signal(false);
   error = signal<string | null>(null);
   activeTab = signal<FilterTab>('all');
 
@@ -223,11 +224,16 @@ export default class AutopilotComponent implements OnInit {
   }
 
   markAllRead() {
+    this.markingAllRead.set(true);
     this.api.post(environment.AUTOPILOT_MARK_READ, { all: true }).subscribe({
       next: () => {
         this.alerts.update(alerts => alerts.map(a => ({ ...a, read: true })));
         this.badgeService.refresh();
-      }
+        this.markingAllRead.set(false);
+      },
+      error: () => {
+        this.markingAllRead.set(false);
+      },
     });
   }
 

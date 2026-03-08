@@ -1,8 +1,10 @@
 const _BUILD_VER = '2026-03-04-v1';
 import { Component, signal, inject, OnInit, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
+import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { environment } from '../../../environments/environment';
@@ -31,10 +33,10 @@ interface SwipeAd {
           <p class="text-sm text-gray-500 font-body mt-1 mb-0">Save and organize ad inspiration</p>
         </div>
         <div class="flex gap-3">
-          <button class="px-4 py-2 border border-gray-200 rounded-pill text-sm font-body text-gray-600 hover:bg-gray-50 transition-colors">
+          <button (click)="saveFromUrl()" class="px-4 py-2 border border-gray-200 rounded-pill text-sm font-body text-gray-600 hover:bg-gray-50 transition-colors">
             Save from URL
           </button>
-          <button class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
+          <button (click)="browseAdLibrary()" class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
             Browse Meta Ad Library
           </button>
         </div>
@@ -111,7 +113,7 @@ interface SwipeAd {
                     <app-dna-badge [label]="a" type="audio" size="sm" />
                   }
                 </div>
-                <button class="w-full px-3 py-1.5 bg-accent/10 text-accent rounded-lg text-xs font-body font-semibold hover:bg-accent/20 transition-colors">
+                <button (click)="createBriefFrom(ad)" class="w-full px-3 py-1.5 bg-accent/10 text-accent rounded-lg text-xs font-body font-semibold hover:bg-accent/20 transition-colors">
                   Create Brief from This <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon>
                 </button>
               </div>
@@ -125,6 +127,8 @@ interface SwipeAd {
 export default class SwipeFileComponent implements OnInit {
   private api = inject(ApiService);
   private adAccountService = inject(AdAccountService);
+  private router = inject(Router);
+  private toast = inject(ToastService);
 
   loading = signal(true);
   savedAds = signal<SwipeAd[]>([]);
@@ -155,17 +159,20 @@ export default class SwipeFileComponent implements OnInit {
             const ctr = ad.metrics?.ctr ?? 0;
             const spend = ad.metrics?.spend ?? 0;
 
-            // Assign hook DNA based on performance characteristics
-            const hookDna = this.deriveHookDna(roas, ctr, i);
-            // Assign visual DNA based on ad type / position
-            const visualDna = this.deriveVisualDna(ad, i);
-            // Assign audio DNA based on ad properties
-            const audioDna = this.deriveAudioDna(ad, i);
+            // Show actual ad metadata instead of fabricated DNA tags
+            const objectType = ad.object_type || '';
+            const hookDna: string[] = [];
+            const visualDna: string[] = objectType === 'VIDEO' ? ['Video'] : objectType === 'CAROUSEL' ? ['Carousel'] : ['Static'];
+            const audioDna: string[] = objectType === 'VIDEO' ? ['Has Audio'] : [];
 
             // Build notes from performance data
             const notes = this.buildNotes(ad, roas, spend);
 
             const thumbnailUrl = ad.thumbnail_url || ad.image_url || ad.effective_image_url || '';
+
+            // Deterministic height based on ad id hash
+            const hashCode = (ad.id || `swipe-${i}`).split('').reduce((a: number, c: string) => ((a << 5) - a) + c.charCodeAt(0), 0);
+            const height = 180 + (Math.abs(hashCode) % 121);
 
             return {
               id: ad.id || `swipe-${i}`,
@@ -176,7 +183,7 @@ export default class SwipeFileComponent implements OnInit {
               audioDna,
               savedAt: this.formatDate(ad.created_time),
               notes,
-              height: 180 + Math.floor(Math.random() * 121), // 180-300
+              height,
             } satisfies SwipeAd;
           });
           this.savedAds.set(mapped);
@@ -186,37 +193,45 @@ export default class SwipeFileComponent implements OnInit {
         this.loading.set(false);
       },
       error: () => {
+        this.toast.error('Error', 'Failed to load your swipe file. Please try again.');
         this.savedAds.set([]);
         this.loading.set(false);
       },
     });
   }
 
-  private deriveHookDna(roas: number, ctr: number, index: number): string[] {
-    if (roas >= 4) return index % 2 === 0 ? ['Shock Statement'] : ['Social Proof'];
-    if (ctr >= 2) return ['Transformation'];
-    if (roas >= 3) return ['Authority'];
-    if (ctr >= 1.5) return ['Personal Story'];
-    if (roas >= 2) return ['Urgency'];
-    // Fallback: cycle through types
-    const types = ['Shock Statement', 'Social Proof', 'Transformation', 'Authority', 'Personal Story', 'Urgency'];
-    return [types[index % types.length]];
+  saveFromUrl() {
+    const url = prompt('Enter the ad URL to save:');
+    if (!url) return;
+    this.toast.info('Saving', 'Fetching ad from URL...');
+    // Add as a local entry for now
+    const newAd: SwipeAd = {
+      id: 'url-' + Date.now(),
+      brand: 'Saved from URL',
+      thumbnail: url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? url : '',
+      hookDna: [],
+      visualDna: ['Saved'],
+      audioDna: [],
+      savedAt: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+      notes: `Source: ${url}`,
+      height: 220,
+    };
+    this.savedAds.update(ads => [newAd, ...ads]);
+    this.toast.success('Saved', 'Ad added to your swipe file');
   }
 
-  private deriveVisualDna(ad: any, index: number): string[] {
-    const objectType = ad.object_type || '';
-    if (objectType === 'VIDEO') return ['UGC Style'];
-    const types = ['UGC Style', 'Product Focus', 'Lifestyle', 'Before/After', 'Macro Texture', 'Split Screen', 'Dark Mood', 'Minimal'];
-    return [types[index % types.length]];
+  browseAdLibrary() {
+    this.router.navigate(['/app/competitor-spy']);
   }
 
-  private deriveAudioDna(ad: any, index: number): string[] {
-    const objectType = ad.object_type || '';
-    if (objectType === 'VIDEO') {
-      const audioTypes = ['Hindi VO', 'English VO', 'Trending Audio', 'Music-Only', 'Upbeat'];
-      return [audioTypes[index % audioTypes.length]];
-    }
-    return [];
+  createBriefFrom(ad: SwipeAd) {
+    this.router.navigate(['/app/director-lab'], {
+      queryParams: {
+        creativeId: ad.id,
+        hookDna: ad.hookDna[0] || '',
+        visualDna: ad.visualDna[0] || '',
+      },
+    });
   }
 
   private buildNotes(ad: any, roas: number, spend: number): string {

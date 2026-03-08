@@ -3,7 +3,7 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown, parseAudienceBreakdown } from '../services/insights-parser.js';
-import { round, fmt, fmtNum, fmtInt, setCurrency, avgVal } from '../services/format-helpers.js';
+import { round, fmt, fmtNum, fmtInt, setCurrency, getCurrency, avgVal, CURRENCY_SYMBOLS } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -35,7 +35,7 @@ Rules:
 - Assess data confidence — if a campaign has high ROAS but tiny spend (e.g. <$50) or few conversions (<5), mention the data is thin
 - Always identify trends (improving/declining/stable) when daily data is available
 - End every response with a specific next action the user should take
-- Use currency formatting consistent with the data
+- Use the currency symbol ${CURRENCY_SYMBOLS[getCurrency()] || getCurrency()} (${getCurrency()}) for all monetary values — never use $ unless the account currency is USD
 - Never use bullet points or numbered lists unless specifically generating hooks/scripts
 - Keep responses focused and under 400 words`;
 }
@@ -119,7 +119,7 @@ function detectIntentRegex(message: string): Intent {
   if (lower.includes('predict') || lower.includes('forecast') || lower.includes('next week') || lower.includes('project')) return 'forecast';
   if (lower.includes('compar') || lower.includes('vs') || lower.includes('versus') || lower.includes('last week vs')) return 'comparison';
   if (lower.includes('audience') || lower.includes('who') || lower.includes('demographic') || lower.includes('age') || lower.includes('gender') || lower.includes('segment')) return 'audience';
-  if (lower.includes('creative') || lower.includes('which ads') || lower.includes('top ads') || lower.includes('best ads') || (lower.includes('performing') && lower.includes('ads'))) return 'creative';
+  if (lower.includes('creative') || lower.includes('which ads') || lower.includes('top ads') || /top \d+ ads/.test(lower) || lower.includes('best ads') || (lower.includes('performing') && lower.includes('ads')) || (lower.includes('my') && lower.includes('ads') && !lower.includes('how are'))) return 'creative';
   if (lower.includes('cpa') || lower.includes('cost per') || lower.includes('acquisition')) return 'cpa';
   if (lower.includes('roas') || lower.includes('return on') || lower.includes('best performing') || lower.includes('best campaign')) return 'roas';
   if (lower.includes('spend') || lower.includes('budget') || lower.includes('spending') || lower.includes('where is my money')) return 'spend';

@@ -356,17 +356,26 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
   });
 
   // POST /ugc-concept-approval
-  app.post('/ugc-concept-approval', { preHandler: [app.authenticate] }, async (request) => {
+  app.post('/ugc-concept-approval', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { project_id, action, concept_ids, notes } = request.body as {
       project_id: string; action: string; concept_ids?: string[]; notes?: string;
     };
     const db = getDb();
+
+    // Verify ownership
+    const project = db.prepare('SELECT id FROM ugc_projects WHERE id = ? AND user_id = ?')
+      .get(project_id, request.user.id) as any;
+    if (!project) {
+      return reply.status(403).send({ success: false, error: 'Not authorized to modify this project' });
+    }
+
     const newStatus = action === 'pm_approve' || action === 'client_approve' ? 'approved' : 'rejected';
 
     if (concept_ids?.length) {
-      const stmt = db.prepare('UPDATE ugc_concepts SET status = ?, feedback = ? WHERE id = ?');
+      // Only update concepts belonging to this project
+      const stmt = db.prepare('UPDATE ugc_concepts SET status = ?, feedback = ? WHERE id = ? AND project_id = ?');
       for (const cid of concept_ids) {
-        stmt.run(newStatus, notes || null, cid);
+        stmt.run(newStatus, notes || null, cid, project_id);
       }
     }
 
@@ -439,9 +448,21 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
   });
 
   // POST /ugc-script-revision
-  app.post('/ugc-script-revision', { preHandler: [app.authenticate] }, async (request) => {
+  app.post('/ugc-script-revision', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { script_id, content } = request.body as { script_id: string; content?: string };
     const db = getDb();
+
+    // Verify ownership: script must belong to a project owned by this user
+    const script = db.prepare(
+      `SELECT s.id FROM ugc_scripts s
+       JOIN ugc_projects p ON s.project_id = p.id
+       WHERE s.id = ? AND p.user_id = ?`
+    ).get(script_id, request.user.id) as any;
+
+    if (!script) {
+      return reply.status(403).send({ success: false, error: 'Not authorized to edit this script' });
+    }
+
     if (content) {
       db.prepare("UPDATE ugc_scripts SET content = ?, status = 'in_review', updated_at = datetime('now') WHERE id = ?")
         .run(content, script_id);

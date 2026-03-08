@@ -217,6 +217,10 @@ export async function runAutomations(): Promise<number> {
     try {
       const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
+      if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+        console.warn(`[automations] Skipping user ${userId}: Meta token expired at ${tokenRow.expires_at}`);
+        continue;
+      }
       const token = decryptToken(tokenRow.encrypted_access_token);
       const meta = new MetaApiService(token);
 

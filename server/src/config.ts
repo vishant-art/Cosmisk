@@ -45,3 +45,17 @@ export const config = {
     env['FRONTEND_URL'] || '',
   ].filter(Boolean) as string[],
 } as const;
+
+// Refuse to start in production with default secrets
+if (config.nodeEnv === 'production') {
+  const defaults: [string, string][] = [
+    ['jwtSecret', 'dev-secret-change-me'],
+    ['tokenEncryptionKey', 'dev-encryption-key-change-me-now!'],
+  ];
+  for (const [key, defaultVal] of defaults) {
+    if ((config as any)[key] === defaultVal) {
+      console.error(`FATAL: ${key} is set to the default value. Set a secure value in production.`);
+      process.exit(1);
+    }
+  }
+}

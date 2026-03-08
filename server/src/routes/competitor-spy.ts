@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { getDb } from '../db/index.js';
+import { decryptToken } from '../services/token-crypto.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -27,27 +29,41 @@ export interface AdLibraryAd {
   publisher_platforms?: string[];
 }
 
-export async function searchAdLibrary(query: string, country: string = 'IN', limit: number = 25): Promise<AdLibraryAd[]> {
-  const params = new URLSearchParams({
+export async function searchAdLibrary(query: string, country: string = 'IN', limit: number = 25, userToken?: string): Promise<AdLibraryAd[]> {
+  const fields = 'id,ad_creation_time,ad_creative_bodies,ad_creative_link_captions,ad_creative_link_titles,ad_delivery_start_time,ad_delivery_stop_time,ad_snapshot_url,byline,currency,impressions,spend,page_id,page_name,publisher_platforms';
+
+  const baseParams = {
     search_terms: query,
     ad_type: 'ALL',
     ad_reached_countries: `["${country}"]`,
     ad_active_status: 'ACTIVE',
-    fields: 'id,ad_creation_time,ad_creative_bodies,ad_creative_link_captions,ad_creative_link_titles,ad_delivery_start_time,ad_delivery_stop_time,ad_snapshot_url,byline,currency,impressions,spend,page_id,page_name,publisher_platforms',
+    fields,
     limit: String(limit),
-    access_token: config.metaAppId + '|' + config.metaAppSecret,
-  });
+  };
 
-  const url = `${config.graphApiBase}/ads_archive?${params.toString()}`;
+  // Try app token first, fall back to user token
+  const appToken = config.metaAppId + '|' + config.metaAppSecret;
+  const tokens = userToken ? [appToken, userToken] : [appToken];
 
-  const response = await safeFetch(url, { service: 'Meta Ad Library' });
-  if (!response.ok) {
-    const error = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Ad Library API error: ${response.status} - ${error}`);
+  for (const token of tokens) {
+    const params = new URLSearchParams({ ...baseParams, access_token: token });
+    const url = `${config.graphApiBase}/ads_archive?${params.toString()}`;
+    const response = await safeFetch(url, { service: 'Meta Ad Library' });
+
+    if (response.ok) {
+      const data = await safeJson(response);
+      return data?.data || [];
+    }
+
+    // If this was the last token, throw
+    if (token === tokens[tokens.length - 1]) {
+      const error = await response.text().catch(() => 'Unknown error');
+      throw new Error(`Ad Library API error: ${response.status} - ${error}`);
+    }
+    // Otherwise try next token
   }
 
-  const data = await safeJson(response);
-  return data?.data || [];
+  return [];
 }
 
 /* ------------------------------------------------------------------ */
@@ -102,6 +118,17 @@ Rules:
 /*  Routes                                                            */
 /* ------------------------------------------------------------------ */
 
+function getUserMetaToken(userId: string): string | undefined {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+    if (!row) return undefined;
+    return decryptToken(row.encrypted_access_token);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function competitorSpyRoutes(app: FastifyInstance) {
 
   // GET /competitor-spy/search — search Meta Ad Library
@@ -115,7 +142,8 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
     }
 
     try {
-      const ads = await searchAdLibrary(query, country, parseInt(limit, 10) || 25);
+      const userToken = getUserMetaToken(request.user.id);
+      const ads = await searchAdLibrary(query, country, parseInt(limit, 10) || 25, userToken);
 
       // Group by page
       const pageMap = new Map<string, { page_name: string; page_id: string; ads: any[] }>();
@@ -156,7 +184,8 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
     }
 
     try {
-      const ads = await searchAdLibrary(query, country, 25);
+      const userToken = getUserMetaToken(request.user.id);
+      const ads = await searchAdLibrary(query, country, 25, userToken);
       const analysis = await analyzeCompetitorAds(query, ads);
 
       // Build summary stats

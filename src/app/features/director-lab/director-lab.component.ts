@@ -18,7 +18,7 @@ import { environment } from '../../../environments/environment';
   template: `
     <div class="flex items-center justify-between mb-6">
       <h1 class="text-page-title font-display text-navy m-0">Director Lab</h1>
-      <span class="text-xs text-gray-400 font-mono">Briefs generated: 246</span>
+      <span class="text-xs text-gray-400 font-mono">Briefs generated: {{ briefCount() }}</span>
     </div>
 
     <div class="grid lg:grid-cols-5 gap-6">
@@ -145,7 +145,7 @@ import { environment } from '../../../environments/environment';
             <div class="card">
               <div class="flex items-center justify-between mb-4">
                 <div>
-                  <span class="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Brief #CB-0247</span>
+                  <span class="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Brief #CB-{{ String(briefCount()).padStart(4, '0') }}</span>
                   <h3 class="text-section-title font-display text-navy m-0 mt-0.5">{{ brief.conceptName }}</h3>
                 </div>
                 <div class="flex gap-1.5">
@@ -216,8 +216,10 @@ import { environment } from '../../../environments/environment';
                         </label>
                       </div>
                       <div class="flex gap-1.5">
-                        <button class="flex-1 py-1.5 text-[11px] font-body font-medium rounded-lg border border-border bg-white text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Edit</button>
-                        <button class="flex-1 py-1.5 text-[11px] font-body font-medium rounded-lg border border-border bg-white text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Regen</button>
+                        <button (click)="editVariation(variation)" class="flex-1 py-1.5 text-[11px] font-body font-medium rounded-lg border border-border bg-white text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer">Edit</button>
+                        <button (click)="regenVariation(variation)" [disabled]="variation.regenerating" class="flex-1 py-1.5 text-[11px] font-body font-medium rounded-lg border border-border bg-white text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-40">
+                          @if (variation.regenerating) { ... } @else { Regen }
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -274,6 +276,10 @@ import { environment } from '../../../environments/environment';
           </select>
         </div>
         <div>
+          <label class="block text-sm font-body font-medium text-navy mb-1">Landing Page URL</label>
+          <input type="url" [(ngModel)]="publishLinkUrl" class="input" placeholder="https://your-store.com/product">
+        </div>
+        <div>
           <label class="block text-sm font-body font-medium text-navy mb-1">Daily Budget</label>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">&#8377;</span>
@@ -297,6 +303,7 @@ import { environment } from '../../../environments/environment';
   `
 })
 export default class DirectorLabComponent implements OnInit {
+  protected String = String;
   private toast = inject(ToastService);
   private api = inject(ApiService);
   adAccountService = inject(AdAccountService);
@@ -339,6 +346,8 @@ export default class DirectorLabComponent implements OnInit {
   publishBudget = '10,000';
 
   approvedCount = signal(0);
+  briefCount = signal(0);
+  publishLinkUrl = '';
 
   private accountEffect = effect(() => {
     const acc = this.adAccountService.currentAccount();
@@ -478,6 +487,7 @@ export default class DirectorLabComponent implements OnInit {
           this.variations = [];
         }
         this.briefGenerated.set(true);
+        this.briefCount.update(c => c + 1);
         this.updateApprovedCount();
       },
       error: () => {
@@ -492,8 +502,58 @@ export default class DirectorLabComponent implements OnInit {
     this.approvedCount.set(this.variations.filter((v: any) => v.approved).length);
   }
 
+  editVariation(variation: any) {
+    const newName = prompt('Edit variation name:', variation.name);
+    if (newName !== null) {
+      variation.name = newName;
+      this.toast.success('Updated', 'Variation name updated');
+    }
+  }
+
+  regenVariation(variation: any) {
+    variation.regenerating = true;
+    const selectedPatterns = this.winningPatterns.filter(p => p.checked).map(p => p.label);
+    const selectedTones = this.tones.filter(t => t.selected).map(t => t.label);
+    const acc = this.adAccountService.currentAccount();
+
+    this.api.post<any>(environment.DIRECTOR_GENERATE_BRIEF, {
+      base_creative: this.baseCreativeId || '',
+      patterns: selectedPatterns,
+      format: this.selectedFormat,
+      target_audience: this.targetAudience,
+      product_focus: this.productFocus,
+      tones: selectedTones,
+      account_id: acc?.id || '',
+      credential_group: acc?.credential_group || '',
+      regenerate_variation: variation.id,
+    }).subscribe({
+      next: (res) => {
+        variation.regenerating = false;
+        if (res.success && res.variations?.length) {
+          const regen = res.variations[0];
+          variation.name = regen.name || variation.name;
+          variation.description = regen.description || variation.description;
+          variation.format = regen.format || variation.format;
+          this.toast.success('Regenerated', 'New variation created');
+        } else {
+          this.toast.error('Failed', 'Could not regenerate variation');
+        }
+      },
+      error: () => {
+        variation.regenerating = false;
+        this.toast.error('Failed', 'Could not regenerate variation');
+      },
+    });
+  }
+
   publishToMeta() {
     this.updateApprovedCount();
+
+    if (!this.publishLinkUrl) {
+      this.toast.error('Missing URL', 'Please enter your landing page URL before publishing.');
+      return;
+    }
+
     this.publishing.set(true);
 
     const approvedVariations = this.variations.filter((v: any) => v.approved);
@@ -510,7 +570,7 @@ export default class DirectorLabComponent implements OnInit {
       creative: firstVariation ? {
         title: firstVariation.name || this.brief?.concept_name || 'Ad Creative',
         body: firstVariation.description || this.brief?.hook_scripts?.[0] || '',
-        link_url: 'https://example.com',
+        link_url: this.publishLinkUrl,
         call_to_action_type: 'SHOP_NOW',
       } : undefined,
       status: 'PAUSED',

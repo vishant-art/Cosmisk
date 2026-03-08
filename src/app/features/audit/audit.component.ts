@@ -252,11 +252,44 @@ export default class AuditComponent implements OnInit {
   }
 
   fixIssues() {
+    const issueCount = this.failCount + this.warningCount;
+    if (issueCount === 0) {
+      this.toast.info('All Good', 'No issues to fix');
+      return;
+    }
+
     this.fixing.set(true);
-    setTimeout(() => {
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) {
       this.fixing.set(false);
-      this.toast.success('Issues Fixed', `${this.failCount + this.warningCount} automatic optimizations applied: paused fatiguing creatives, adjusted budgets, updated bid strategies`);
-    }, 3000);
+      this.toast.error('No Account', 'Select an ad account first');
+      return;
+    }
+
+    // Build actionable fix list from audit categories
+    const fixes: string[] = [];
+    for (const cat of this.categories) {
+      if (cat.status === 'fail' || cat.status === 'warning') {
+        fixes.push(`${cat.name}: ${cat.recommendation}`);
+      }
+    }
+
+    this.api.post<any>(environment.AUTOMATIONS_RUN, {
+      account_id: acc.id,
+    }).subscribe({
+      next: (res) => {
+        this.fixing.set(false);
+        if (res.success) {
+          this.toast.success('Fixes Applied', `${res.executed || 0} automation actions executed. Review recommendations below for manual actions.`);
+        } else {
+          this.toast.info('Review Required', 'Automated fixes could not be applied. Follow the recommendations below for each category.');
+        }
+      },
+      error: () => {
+        this.fixing.set(false);
+        this.toast.info('Review Required', 'Automated fixes unavailable. Follow the recommendations in each category for manual actions.');
+      },
+    });
   }
 
   private loadAuditData(accountId: string, credentialGroup: string) {

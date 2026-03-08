@@ -2,6 +2,7 @@ const _BUILD_VER = '2026-03-03-v1';
 import { Component, signal, inject, OnInit, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
@@ -243,6 +244,7 @@ export default class BrainComponent implements OnInit {
       },
       error: () => {
         this.loading.set(false);
+        this.toast.error('Error', 'Failed to load brain patterns. Please try again.');
       },
     });
   }
@@ -258,7 +260,14 @@ export default class BrainComponent implements OnInit {
     return this.brandMetrics[brand]?.[this.compareMetric] ?? 0;
   }
 
+  private router = inject(Router);
+
   applyPattern(pattern: DnaPattern) {
-    this.toast.success('Pattern Applied', `"${pattern.name}" added to your next brief in Director Lab`);
+    this.router.navigate(['/app/director-lab'], {
+      queryParams: {
+        patternName: pattern.name,
+        patternType: pattern.type,
+      },
+    });
   }
 }
