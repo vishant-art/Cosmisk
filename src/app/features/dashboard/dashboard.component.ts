@@ -13,6 +13,7 @@ import { AiInsight } from '../../core/models/insight.model';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { CreativeEngineService } from '../../core/services/creative-engine.service';
 import { DateRangeService } from '../../core/services/date-range.service';
 import { environment } from '../../../environments/environment';
@@ -344,6 +345,7 @@ import { environment } from '../../../environments/environment';
 export default class DashboardComponent implements OnInit {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
+  private toast = inject(ToastService);
   private engineService = inject(CreativeEngineService);
   private dateRangeService = inject(DateRangeService);
   private router = inject(Router);
@@ -539,7 +541,7 @@ export default class DashboardComponent implements OnInit {
           this.activeSprints.set(active);
         }
       },
-      error: () => {},
+      error: () => this.toast.error('Load Failed', 'Could not load sprints'),
     });
   }
 
@@ -670,7 +672,7 @@ export default class DashboardComponent implements OnInit {
           }));
         }
       },
-      error: () => {},
+      error: () => this.toast.error('Load Failed', 'Could not load creative DNA'),
     });
   }
 

@@ -414,7 +414,7 @@ export default class CampaignsComponent implements OnInit {
           })));
         }
       },
-      error: () => {},
+      error: () => this.toast.error('Load Failed', 'Could not load creatives'),
     });
   }
 

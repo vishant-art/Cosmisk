@@ -389,7 +389,7 @@ export default class DirectorLabComponent implements OnInit {
           }));
         }
       },
-      error: () => {},
+      error: () => this.toast.error('Load Failed', 'Could not load creatives'),
     });
   }
 

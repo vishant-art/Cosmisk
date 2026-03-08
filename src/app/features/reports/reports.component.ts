@@ -251,7 +251,7 @@ export default class ReportsComponent implements OnInit {
           this.brands = res.brands;
         }
       },
-      error: () => {},
+      error: () => this.toast.error('Load Failed', 'Could not load brands'),
     });
   }
 

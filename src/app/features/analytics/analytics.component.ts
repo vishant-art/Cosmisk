@@ -6,6 +6,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { AreaChartComponent } from '../../shared/components/area-chart/area-chart.component';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { DateRangeService } from '../../core/services/date-range.service';
 import { environment } from '../../../environments/environment';
 
@@ -297,6 +298,7 @@ interface BreakdownRow {
 export default class AnalyticsComponent {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
+  private toast = inject(ToastService);
   dateRangeService = inject(DateRangeService);
 
   loading = signal(true);
@@ -578,7 +580,7 @@ export default class AnalyticsComponent {
           }
         }
       },
-      error: () => {},
+      error: () => this.toast.error('Load Failed', 'Could not load platform breakdown'),
     });
   }
 }
