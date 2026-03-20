@@ -7,6 +7,7 @@ import { round, fmt } from './format-helpers.js';
 import { notifyAlert } from './notifications.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
+import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEpisode } from './agent-memory.js';
 import type { MetaTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -358,6 +359,26 @@ export async function checkOutcomes(): Promise<number> {
         WHERE id = ?
       `).run(outcome, decision.id);
 
+      // Reinforce or penalize related episodes based on outcome
+      const isPositive = outcome.includes('confirmed_paused') ||
+        (decision.suggested_action === 'increase_budget' && current.roas > 1.5) ||
+        (decision.suggested_action === 'reduce_budget' && current.roas > (decision as any).previousRoas);
+
+      const episodes = db.prepare(`
+        SELECT id FROM agent_episodes
+        WHERE user_id = ? AND agent_type = 'watchdog'
+        AND event LIKE ?
+        ORDER BY created_at DESC LIMIT 1
+      `).all(decision.user_id, `%${decision.target_name}%`) as Array<{ id: string }>;
+
+      for (const ep of episodes) {
+        if (isPositive) {
+          reinforceEpisode(ep.id);
+        } else {
+          penalizeEpisode(ep.id);
+        }
+      }
+
       checked++;
     } catch (err: any) {
       console.error(`[Watchdog] Outcome check failed for decision ${decision.id}:`, err.message);
@@ -413,18 +434,11 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
           // 2. Get past decisions for learning
           const pastDecisions = getPastDecisions(user.id, account.id);
 
-          // 3. Build memory context (will be enhanced in Phase 2)
-          let memoryContext = '';
-          try {
-            const coreMemories = db.prepare(
-              "SELECT key, value FROM agent_core_memory WHERE user_id = ? AND agent_type = 'watchdog'"
-            ).all(user.id) as Array<{ key: string; value: string }>;
-            if (coreMemories.length > 0) {
-              memoryContext = coreMemories.map(m => `${m.key}: ${m.value}`).join('\n');
-            }
-          } catch {
-            // Table may not exist yet
-          }
+          // 3. Build memory context from agent-memory system
+          const memoryContext = buildContextWindow(user.id, 'watchdog', {
+            maxEpisodes: 10,
+            entityTypes: ['campaign', 'adset', 'metric'],
+          });
 
           // 4. Reason about performance
           const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext);
@@ -445,7 +459,17 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
             totalDecisions++;
           }
 
-          // 6. Complete run
+          // 6. Record episodes for learning loop
+          for (const decision of decisions) {
+            recordDecisionEpisode(user.id, 'watchdog', {
+              type: decision.type,
+              targetName: decision.targetName,
+              suggestedAction: decision.suggestedAction,
+              reasoning: decision.reasoning,
+            }).catch(() => {});
+          }
+
+          // 7. Complete run
           const summary = decisions.length > 0
             ? `Found ${decisions.length} recommendations: ${decisions.map(d => d.suggestedAction).join(', ')}`
             : 'No action needed — account performing within expectations';
