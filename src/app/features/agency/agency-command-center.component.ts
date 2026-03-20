@@ -1,9 +1,10 @@
 const _BUILD_VER = '2026-03-03-v1';
 import { Component, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { RouterLink, Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { BrandService } from '../../core/services/brand.service';
+import { ToastService } from '../../core/services/toast.service';
 
 @Component({
   selector: 'app-agency-command-center',
@@ -18,11 +19,11 @@ import { BrandService } from '../../core/services/brand.service';
           <p class="text-sm text-gray-500 font-body mt-1 mb-0">Creative intelligence across all your brands</p>
         </div>
         <div class="flex gap-3">
-          <button class="px-4 py-2 border border-gray-200 rounded-pill text-sm font-body text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2">
+          <button (click)="goToReports()" class="px-4 py-2 border border-gray-200 rounded-pill text-sm font-body text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2 cursor-pointer">
             <lucide-icon name="download" [size]="14"></lucide-icon>
             Export Reports
           </button>
-          <button class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors flex items-center gap-2">
+          <button (click)="goToSettings()" class="px-5 py-2.5 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors flex items-center gap-2 cursor-pointer border-0">
             <lucide-icon name="plus" [size]="16"></lucide-icon>
             Add Brand
           </button>
@@ -293,6 +294,18 @@ export default class AgencyCommandCenterComponent {
 
   switchToBrand(id: string) {
     this.brandService.switchBrand(id);
+  }
+
+  private router = inject(Router);
+  private toast = inject(ToastService);
+
+  goToReports() {
+    this.router.navigate(['/app/reports']);
+  }
+
+  goToSettings() {
+    this.router.navigate(['/app/settings']);
+    this.toast.info('Add Brand', 'Use the brand switcher in the sidebar to manage brands.');
   }
 
   formatCurrency(value: number): string {

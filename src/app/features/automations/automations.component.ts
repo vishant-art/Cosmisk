@@ -91,7 +91,7 @@ interface ActivityLogEntry {
                   <option value="reduce_budget">Reduce budget by %</option>
                   <option value="increase_budget">Increase budget by %</option>
                   <option value="notify">Send notification</option>
-                  <option value="duplicate">Duplicate & modify</option>
+                  <!-- duplicate action not yet supported by Meta API integration -->
                 </select>
                 <select [(ngModel)]="actionScope" class="px-3 py-2 border border-green-200 rounded-lg text-sm font-body bg-white">
                   <option value="">Apply to...</option>
