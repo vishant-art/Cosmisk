@@ -268,14 +268,25 @@ import { environment } from '../../../environments/environment';
                 <h3 class="text-sm font-display text-navy m-0">Current Plan</h3>
                 <p class="text-xs text-gray-500 font-body mt-1 mb-0">You're on the <span class="capitalize font-semibold">{{ billingPlan() }}</span> plan</p>
               </div>
-              <span class="px-4 py-2 bg-accent/10 text-accent rounded-pill text-xs font-body font-semibold">
-                {{ billingStatus() }}
-              </span>
+              <div class="flex items-center gap-2">
+                @if (billingTrialEnds()) {
+                  <span class="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-pill text-xs font-body font-semibold">
+                    Trial ends {{ billingTrialEnds() }}
+                  </span>
+                }
+                <span class="px-4 py-2 bg-accent/10 text-accent rounded-pill text-xs font-body font-semibold">
+                  {{ billingStatus() }}
+                </span>
+              </div>
             </div>
-            <div class="grid md:grid-cols-2 gap-4">
+            <div class="grid md:grid-cols-3 gap-4">
               <div class="p-4 bg-gray-50 rounded-lg">
                 <span class="text-xs text-gray-500 font-body block mb-1">Plan</span>
                 <span class="text-lg font-display text-navy capitalize">{{ billingPlan() }}</span>
+              </div>
+              <div class="p-4 bg-gray-50 rounded-lg">
+                <span class="text-xs text-gray-500 font-body block mb-1">Gateway</span>
+                <span class="text-lg font-display text-navy capitalize">{{ billingGateway() }}</span>
               </div>
               <div class="p-4 bg-gray-50 rounded-lg">
                 <span class="text-xs text-gray-500 font-body block mb-1">Member Since</span>
@@ -284,37 +295,29 @@ import { environment } from '../../../environments/environment';
             </div>
           </div>
 
-          <!-- Upgrade Cards -->
+          <!-- Upgrade Cards (4 tiers) -->
           @if (billingPlan() !== 'agency') {
-            <div class="grid md:grid-cols-2 gap-4">
-              @if (billingPlan() === 'free') {
-                <div class="bg-white rounded-card shadow-card p-6 ring-2 ring-accent">
-                  <h3 class="text-sm font-display text-navy m-0 mb-1">Pro Plan</h3>
-                  <p class="text-2xl font-mono text-navy m-0">$49<span class="text-sm text-gray-500 font-body">/mo</span></p>
+            <div class="grid md:grid-cols-3 gap-4">
+              @for (card of upgradeCards(); track card.id) {
+                <div class="bg-white rounded-card shadow-card p-6" [class.ring-2]="card.featured" [class.ring-accent]="card.featured">
+                  <h3 class="text-sm font-display text-navy m-0 mb-1">{{ card.name }}</h3>
+                  <p class="text-2xl font-mono text-navy m-0">
+                    {{ currency === 'INR' ? '\u20B9' : '$' }}{{ (currency === 'INR' ? card.inr : card.usd).toLocaleString() }}
+                    <span class="text-sm text-gray-500 font-body">/mo</span>
+                  </p>
                   <ul class="text-xs text-gray-600 font-body mt-3 space-y-1 list-none p-0 mb-4">
-                    <li>5 ad accounts</li>
-                    <li>Unlimited AI chat</li>
-                    <li>50 images + 10 videos/mo</li>
-                    <li>Autopilot + Competitor Spy</li>
+                    @for (f of card.highlights; track f) {
+                      <li>{{ f }}</li>
+                    }
                   </ul>
-                  <button (click)="upgradePlan('pro')" class="w-full py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
-                    Upgrade to Pro
+                  <button
+                    (click)="upgradePlan(card.id)"
+                    class="w-full py-2 rounded-pill text-sm font-body font-semibold transition-colors"
+                    [ngClass]="card.featured ? 'bg-accent text-white hover:bg-accent/90' : 'bg-navy text-white hover:bg-navy/90'">
+                    {{ billingPlan() === 'free' ? 'Start 14-Day Trial' : 'Upgrade to ' + card.name }}
                   </button>
                 </div>
               }
-              <div class="bg-white rounded-card shadow-card p-6">
-                <h3 class="text-sm font-display text-navy m-0 mb-1">Agency Plan</h3>
-                <p class="text-2xl font-mono text-navy m-0">$149<span class="text-sm text-gray-500 font-body">/mo</span></p>
-                <ul class="text-xs text-gray-600 font-body mt-3 space-y-1 list-none p-0 mb-4">
-                  <li>Unlimited everything</li>
-                  <li>White-label reports</li>
-                  <li>Agency Command Center</li>
-                  <li>Dedicated CSM</li>
-                </ul>
-                <button (click)="upgradePlan('agency')" class="w-full py-2 bg-navy text-white rounded-pill text-sm font-body font-semibold hover:bg-navy/90 transition-colors">
-                  Upgrade to Agency
-                </button>
-              </div>
             </div>
           }
 
@@ -323,9 +326,16 @@ import { environment } from '../../../environments/environment';
             <div class="bg-white rounded-card shadow-card p-6">
               <h3 class="text-sm font-display text-navy mb-3 mt-0">Manage Subscription</h3>
               <p class="text-sm text-gray-500 font-body mb-4">Update payment method, change plan, or cancel.</p>
-              <button (click)="manageSubscription()" class="px-5 py-2 border border-gray-200 text-navy rounded-pill text-sm font-body font-semibold hover:bg-gray-50 transition-colors">
-                Open Billing Portal
-              </button>
+              <div class="flex gap-3">
+                @if (billingGateway() === 'stripe') {
+                  <button (click)="manageSubscription()" class="px-5 py-2 border border-gray-200 text-navy rounded-pill text-sm font-body font-semibold hover:bg-gray-50 transition-colors">
+                    Open Billing Portal
+                  </button>
+                }
+                <button (click)="cancelSubscription()" class="px-5 py-2 border border-red-200 text-red-600 rounded-pill text-sm font-body font-semibold hover:bg-red-50 transition-colors">
+                  Cancel Subscription
+                </button>
+              </div>
             </div>
           }
         </div>
@@ -375,6 +385,8 @@ export default class SettingsComponent implements OnInit {
   billingPlan = signal('free');
   billingStatus = signal('Active');
   billingMemberSince = signal('—');
+  billingGateway = signal('—');
+  billingTrialEnds = signal('');
 
   tabs = [
     { id: 'profile', label: 'Profile' },
@@ -464,14 +476,17 @@ export default class SettingsComponent implements OnInit {
   }
 
   private loadBilling() {
-    this.api.get<any>(environment.SETTINGS_BILLING).subscribe({
+    this.api.get<any>(environment.BILLING_STATUS).subscribe({
       next: (res) => {
-        if (res.billing) {
-          this.billingPlan.set(res.billing.plan || 'free');
-          this.billingStatus.set(res.billing.status === 'active' ? 'Active' : res.billing.status || 'Active');
-          if (res.billing.member_since) {
-            const d = new Date(res.billing.member_since);
-            this.billingMemberSince.set(d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }));
+        if (res.plan) {
+          this.billingPlan.set(res.plan || 'free');
+        }
+        if (res.subscription) {
+          this.billingStatus.set(res.subscription.status === 'active' ? 'Active' : res.subscription.status === 'trialing' ? 'Trial' : res.subscription.status || 'Active');
+          this.billingGateway.set(res.subscription.gateway || '—');
+          if (res.subscription.trial_ends_at) {
+            const d = new Date(res.subscription.trial_ends_at);
+            this.billingTrialEnds.set(d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }));
           }
         }
       },
@@ -548,17 +563,72 @@ export default class SettingsComponent implements OnInit {
     });
   }
 
+  upgradeCards() {
+    const current = this.billingPlan();
+    const allCards = [
+      { id: 'solo', name: 'Solo', inr: 2499, usd: 29, featured: false, highlights: ['3 ad accounts', 'Unlimited AI chat', '30 images + 5 videos/mo', '10 autopilot rules'] },
+      { id: 'growth', name: 'Growth', inr: 5999, usd: 69, featured: true, highlights: ['10 ad accounts', '100 images + 20 videos/mo', 'Unlimited autopilot', 'Branded reports'] },
+      { id: 'agency', name: 'Agency', inr: 12999, usd: 149, featured: false, highlights: ['Unlimited everything', 'White-label reports', 'Agency Command Center', 'API Access'] },
+    ];
+    // Only show cards for plans higher than current
+    const order = ['free', 'solo', 'growth', 'agency'];
+    const currentIdx = order.indexOf(current);
+    return allCards.filter(c => order.indexOf(c.id) > currentIdx);
+  }
+
   upgradePlan(plan: string) {
-    this.api.post<any>(environment.BILLING_CREATE_CHECKOUT, { plan, interval: 'monthly' }).subscribe({
+    const gateway = this.currency === 'INR' ? 'razorpay' : 'stripe';
+
+    this.api.post<any>(environment.BILLING_CREATE_CHECKOUT, { plan, interval: 'monthly', gateway }).subscribe({
       next: (res) => {
-        if (res.url) {
+        if (res.gateway === 'razorpay' && res.subscription_id) {
+          // Open Razorpay modal
+          const rzp = new (window as any).Razorpay({
+            key: res.razorpay_key || (environment as any).RAZORPAY_KEY_ID,
+            subscription_id: res.subscription_id,
+            name: 'Cosmisk',
+            description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - Monthly`,
+            handler: (response: any) => {
+              this.verifyRazorpayPayment(response, plan);
+            },
+            modal: {
+              ondismiss: () => {
+                this.toast.info('Cancelled', 'Payment was cancelled');
+              },
+            },
+            theme: { color: '#6366F1' },
+          });
+          rzp.open();
+        } else if (res.url) {
+          // Stripe redirect
           window.location.href = res.url;
         } else {
           this.toast.error('Error', res.error || 'Could not start checkout');
         }
       },
       error: (err) => {
-        this.toast.error('Error', err.error?.error || 'Stripe checkout unavailable. Contact support@cosmisk.ai');
+        this.toast.error('Error', err.error?.error || 'Checkout unavailable. Contact support@cosmisk.ai');
+      }
+    });
+  }
+
+  private verifyRazorpayPayment(response: any, plan: string) {
+    this.api.post<any>(environment.BILLING_VERIFY_PAYMENT, {
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_subscription_id: response.razorpay_subscription_id,
+      razorpay_signature: response.razorpay_signature,
+      plan,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Upgraded', `You're now on the ${plan} plan!`);
+          this.loadBilling();
+        } else {
+          this.toast.error('Error', res.error || 'Payment verification failed');
+        }
+      },
+      error: () => {
+        this.toast.error('Error', 'Payment verification failed. Contact support@cosmisk.ai');
       }
     });
   }
@@ -566,12 +636,30 @@ export default class SettingsComponent implements OnInit {
   manageSubscription() {
     this.api.post<any>(environment.BILLING_CREATE_PORTAL, {}).subscribe({
       next: (res) => {
-        if (res.url) {
+        if (res.gateway === 'razorpay') {
+          this.toast.info('Manage In-App', 'Use the cancel button below to manage your Razorpay subscription');
+        } else if (res.url) {
           window.location.href = res.url;
         }
       },
       error: () => {
         this.toast.error('Error', 'Could not open billing portal');
+      }
+    });
+  }
+
+  cancelSubscription() {
+    if (!confirm('Are you sure you want to cancel your subscription? You will be downgraded to the Free plan.')) return;
+
+    this.api.post<any>(environment.BILLING_CANCEL, {}).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Cancelled', 'Your subscription has been cancelled');
+          this.loadBilling();
+        }
+      },
+      error: () => {
+        this.toast.error('Error', 'Could not cancel subscription');
       }
     });
   }

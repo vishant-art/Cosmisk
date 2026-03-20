@@ -3,6 +3,9 @@
  * Each provider implements the same interface for generate + status polling.
  */
 
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { fetchJson, safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
 
@@ -496,14 +499,21 @@ export class ElevenLabsProvider implements CreativeProvider {
         return { status: 'failed', cost_cents: 0, error: `HTTP ${response.status}: ${errText}` };
       }
 
-      // ElevenLabs returns audio directly as binary — we'd need to upload this somewhere
-      // For now, return the audio as a blob URL placeholder
-      // In production, you'd upload to S3/GCS and return the URL
+      // Save audio binary to local data/audio/ directory
+      const audioBuffer = Buffer.from(await response.arrayBuffer());
+      const audioDir = join(dirname(fileURLToPath(import.meta.url)), '../../data/audio');
+      if (!existsSync(audioDir)) {
+        mkdirSync(audioDir, { recursive: true });
+      }
+      const filename = `elevenlabs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+      const filePath = join(audioDir, filename);
+      writeFileSync(filePath, audioBuffer);
+
       const costCents = Math.ceil(text.length / 1000 * 12); // ~$0.12 per 1k chars
 
       return {
         status: 'completed',
-        output_url: `elevenlabs://generated/${Date.now()}`, // placeholder — needs file upload
+        output_url: `/audio/${filename}`,
         cost_cents: costCents,
       };
     } catch (err: any) {
@@ -511,9 +521,9 @@ export class ElevenLabsProvider implements CreativeProvider {
     }
   }
 
-  async checkStatus(_jobId: string): Promise<StatusResult> {
-    // ElevenLabs is synchronous
-    return { status: 'completed' };
+  async checkStatus(jobId: string): Promise<StatusResult> {
+    // ElevenLabs is synchronous — the output_url from generate() is the file path
+    return { status: 'completed', output_url: jobId };
   }
 
   private extractDialogue(script: any): string {

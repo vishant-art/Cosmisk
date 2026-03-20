@@ -14,6 +14,8 @@ import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { checkLimit, incrementUsage } from './billing.js';
 import { searchAdLibrary } from './competitor-spy.js';
+import { analyzeTopAdVisuals, buildVisualSummary, selectAdsForAnalysis } from '../services/visual-analyzer.js';
+import type { VideoDNA } from '../services/creative-patterns.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -36,6 +38,7 @@ interface AnalyzedAd {
   conversions: number;
   format: string;
   thumbnail_url: string;
+  video_id: string | null;
   days_active: number;
 }
 
@@ -48,6 +51,8 @@ async function analyzeAccount(
   benchmarks: { avgRoas: number; avgCtr: number; avgCpa: number; avgSpend: number; totalSpend: number };
   formatBreakdown: Record<string, { count: number; avgRoas: number; totalSpend: number }>;
   fatigueSignals: string[];
+  visualAnalysis: Record<string, VideoDNA>;
+  visualSummary: string;
 }> {
   setCurrency(currency);
 
@@ -86,6 +91,7 @@ async function analyzeAccount(
       conversions: m.conversions,
       format: (ad.creative?.object_type || 'IMAGE').toLowerCase() === 'video' ? 'video' : 'image',
       thumbnail_url: ad.creative?.thumbnail_url || '',
+      video_id: ad.creative?.video_id || null,
       days_active: daysActive,
     });
   }
@@ -125,6 +131,13 @@ async function analyzeAccount(
     fatigueSignals.push(`"${ad.name}" has high spend (${fmt(ad.spend)}) but below-average ROAS (${ad.roas}x vs ${round(avgRoas, 2)}x avg).`);
   }
 
+  // Visual analysis via Gemini Vision (non-blocking — empty on error/no key)
+  // Selects top 5 ads with spend >= $50, ranked by ROAS * log(spend)
+  const topForVisual = selectAdsForAnalysis(analyzedAds);
+  const visualMap = await analyzeTopAdVisuals(topForVisual, accountId, meta);
+  const visualAnalysis: Record<string, VideoDNA> = Object.fromEntries(visualMap);
+  const visualSummary = buildVisualSummary(visualMap, topForVisual);
+
   return {
     topAds: analyzedAds.slice(0, 20),
     benchmarks: {
@@ -136,6 +149,8 @@ async function analyzeAccount(
     },
     formatBreakdown,
     fatigueSignals,
+    visualAnalysis,
+    visualSummary,
   };
 }
 
@@ -242,6 +257,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         target_formats: preferences?.target_formats,
         total_creatives: preferences?.total_creatives,
         competitor_context: competitorContext,
+        visual_summary: snapshot.visualSummary,
       });
 
       // --- Plan-stage scoring (zero Claude calls) ---

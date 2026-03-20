@@ -1,14 +1,23 @@
-import { type Page, expect } from '@playwright/test';
+import { type Page, type Response, expect } from '@playwright/test';
 
-const BASE = 'https://localhost:4200';
-const API = 'http://localhost:3000';
+export const BASE = 'https://localhost:4200';
+export const API = 'http://localhost:3000';
+
+// Test user (fresh per run)
+export const TEST_EMAIL = `test_${Date.now()}@test.com`;
+export const TEST_PASSWORD = 'TestPass123!';
+export const TEST_NAME = 'Test User';
+
+// Real user with connected Meta account
+export const REAL_EMAIL = 'vishant@gmail.com';
+export const REAL_PASSWORD = 'pratapsons';
+export const REAL_NAME = 'Vishant Jain';
+export const PRATAPSONS_ACCOUNT_ID = 'act_1738503939658460';
 
 /**
- * Sign up a fresh test user via API and return the JWT.
- * Also marks onboarding as complete so the user isn't redirected.
+ * Sign up or log in via API and return JWT token.
  */
 async function getToken(email: string, password: string, name: string): Promise<string> {
-  // Try signup first
   let token: string | null = null;
 
   try {
@@ -33,13 +42,12 @@ async function getToken(email: string, password: string, name: string): Promise<
 
   if (!token) throw new Error(`Could not auth as ${email}`);
 
-  // Mark onboarding as complete so we're not blocked by the onboarding guard
   try {
     await fetch(`${API}/settings/profile`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ onboarding_complete: true }),
     });
@@ -49,16 +57,11 @@ async function getToken(email: string, password: string, name: string): Promise<
 }
 
 /**
- * Log in by injecting JWT into localStorage, then navigate to app.
+ * Inject JWT into localStorage so the app recognizes the user.
  */
 export async function loginAs(page: Page, email: string, password: string, name: string) {
   const token = await getToken(email, password, name);
-
-  // Navigate to a page on the correct origin to set localStorage
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(300);
-
-  // Inject the token and user data (with onboardingComplete = true)
   await page.evaluate((t) => {
     localStorage.setItem('cosmisk_token', t);
     try {
@@ -73,23 +76,65 @@ export async function loginAs(page: Page, email: string, password: string, name:
 }
 
 /**
- * Navigate to an app route after auth is set up.
+ * Login and navigate to a route in one call.
+ */
+export async function loginAndGo(page: Page, route: string) {
+  await loginAs(page, TEST_EMAIL, TEST_PASSWORD, TEST_NAME);
+  await goTo(page, route);
+}
+
+/**
+ * Login as the real user and set the ad account, then optionally navigate.
+ */
+export async function loginWithAccount(page: Page, route?: string) {
+  await loginAs(page, REAL_EMAIL, REAL_PASSWORD, REAL_NAME);
+  await page.evaluate((accId: string) => {
+    localStorage.setItem('cosmisk_ad_account', accId);
+  }, PRATAPSONS_ACCOUNT_ID);
+  if (route) await goTo(page, route);
+}
+
+/**
+ * Navigate to an app route. Waits for DOM content loaded.
  */
 export async function goTo(page: Page, route: string) {
   await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2000); // Give Angular time to render + API calls
 }
 
 /**
- * Check that the sidebar renders with the expected links.
+ * Wait for an API response matching a URL pattern and assert 200 status.
+ * Call BEFORE the navigation that triggers the request.
  */
-export async function expectSidebar(page: Page) {
-  await expect(page.locator('app-sidebar')).toBeVisible();
-  await expect(page.locator('text=Dashboard')).toBeVisible();
+export async function waitForApi(page: Page, urlPattern: string): Promise<Response> {
+  const response = await page.waitForResponse(
+    (resp) => resp.url().includes(urlPattern) && resp.status() === 200,
+    { timeout: 15000 },
+  );
+  return response;
 }
 
 /**
- * Take a labeled screenshot for the test report.
+ * Assert the page has no rendering errors (undefined, NaN, JS errors).
+ */
+export async function assertCleanPage(page: Page) {
+  const body = await page.locator('body').textContent() ?? '';
+  expect(body).not.toContain('undefined');
+  expect(body).not.toContain('NaN');
+  expect(body).not.toContain('[object Object]');
+  expect(body).not.toContain('TypeError');
+  expect(body).not.toContain('Cannot read');
+}
+
+/**
+ * Parse an API response JSON and assert success: true.
+ */
+export async function assertApiSuccess(response: Response) {
+  const json = await response.json();
+  expect(json.success).toBe(true);
+}
+
+/**
+ * Take a labeled screenshot.
  */
 export async function snap(page: Page, label: string) {
   await page.screenshot({ path: `e2e/screenshots/${label}.png`, fullPage: true });

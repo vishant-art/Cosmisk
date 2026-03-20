@@ -153,4 +153,9 @@ export const environment = {
   AGENT_BRIEFING: 'agent/briefing/latest',
   AGENT_WATCHDOG_RUN: 'agent/watchdog/run',
   AGENT_MEMORY: 'agent/memory',
+
+  // Swipe File
+  SWIPE_FILE_LIST: 'swipe-file/list',
+  SWIPE_FILE_SAVE: 'swipe-file/save',
+  SWIPE_FILE_DELETE: 'swipe-file',
 };

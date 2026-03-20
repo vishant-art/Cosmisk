@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { notifyAlert } from './notifications.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -166,8 +167,10 @@ async function executeAction(
     }
 
     case 'notify': {
-      // Create an autopilot alert instead of external notification
+      // Create an autopilot alert and send external notifications
       const db = getDb();
+      const alertTitle = `Automation: ${rule.name}`;
+      const alertContent = `Rule triggered on "${trigger.adName}": ${rule.trigger_type} = ${trigger.metricValue} (threshold: ${trigger.thresholdValue})`;
       db.prepare(`
         INSERT INTO autopilot_alerts (id, user_id, account_id, type, title, content, severity)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -176,10 +179,18 @@ async function executeAction(
         rule.user_id,
         accountId,
         'automation_trigger',
-        `Automation: ${rule.name}`,
-        `Rule triggered on "${trigger.adName}": ${rule.trigger_type} = ${trigger.metricValue} (threshold: ${trigger.thresholdValue})`,
+        alertTitle,
+        alertContent,
         'warning',
       );
+      // Dispatch to Slack/email (non-blocking)
+      notifyAlert(rule.user_id, {
+        type: 'automation_trigger',
+        title: alertTitle,
+        content: alertContent,
+        severity: 'warning',
+        accountId,
+      }).catch(err => console.error('[Automations] Notify dispatch error:', err));
       return { executed: true, message: `Notification created for "${trigger.adName}"` };
     }
 

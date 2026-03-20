@@ -5,6 +5,7 @@
 
 import { getDb } from '../db/index.js';
 import { getProvider } from './api-providers.js';
+import { notifyAlert } from './notifications.js';
 import type { JobRow, SprintRow } from '../types/index.js';
 
 const MAX_CONCURRENT = 5;
@@ -85,6 +86,19 @@ async function processSprintJobs(sprintId: string): Promise<void> {
           "UPDATE creative_sprints SET status = 'reviewing', updated_at = datetime('now') WHERE id = ?"
         ).run(sprintId);
         console.log(`[JobQueue] Sprint ${sprintId} generation complete, moved to reviewing`);
+
+        // Notify user of sprint completion
+        const sprint = db.prepare(
+          'SELECT user_id, name, completed_creatives, failed_creatives FROM creative_sprints WHERE id = ?'
+        ).get(sprintId) as { user_id: string; name: string; completed_creatives: number; failed_creatives: number } | undefined;
+        if (sprint) {
+          notifyAlert(sprint.user_id, {
+            type: 'sprint_complete',
+            title: `Sprint "${sprint.name}" generation complete`,
+            content: `${sprint.completed_creatives} creatives generated successfully${sprint.failed_creatives > 0 ? `, ${sprint.failed_creatives} failed` : ''}. Ready for review.`,
+            severity: 'info',
+          }).catch(err => console.error('[JobQueue] Notify dispatch error:', err));
+        }
         break;
       }
 
