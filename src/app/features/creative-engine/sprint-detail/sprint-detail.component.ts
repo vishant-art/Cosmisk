@@ -7,6 +7,8 @@ import { Subscription } from 'rxjs';
 import { CreativeEngineService } from '../../../core/services/creative-engine.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { AdAccountService } from '../../../core/services/ad-account.service';
+import { ApiService } from '../../../core/services/api.service';
+import { environment } from '../../../../environments/environment';
 import type {
   Sprint, CreativeJob, SprintProgress, SprintPlanItem, ScoringResult,
 } from '../../../core/models/creative-engine.model';
@@ -473,8 +475,25 @@ import { getFormatMeta } from '../../../core/models/creative-engine.model';
               </div>
             } @else {
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                <input [(ngModel)]="publishAccountId" placeholder="Ad Account ID (act_...)" class="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
-                <input [(ngModel)]="publishPageId" placeholder="Facebook Page ID" class="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                <div>
+                  <label class="block text-xs font-body font-semibold text-gray-600 mb-1">Ad Account</label>
+                  <input [(ngModel)]="publishAccountId" placeholder="Ad Account ID (act_...)" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" readonly />
+                </div>
+                <div>
+                  <label class="block text-xs font-body font-semibold text-gray-600 mb-1">Facebook Page</label>
+                  @if (loadingPages()) {
+                    <div class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-400">Loading pages...</div>
+                  } @else if (facebookPages().length > 0) {
+                    <select [(ngModel)]="publishPageId" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                      <option value="">Select a page</option>
+                      @for (page of facebookPages(); track page.id) {
+                        <option [value]="page.id">{{ page.name }}</option>
+                      }
+                    </select>
+                  } @else {
+                    <input [(ngModel)]="publishPageId" placeholder="Page ID (no pages found)" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+                  }
+                </div>
               </div>
               <button
                 (click)="publishSprint()"
@@ -615,6 +634,7 @@ export default class SprintDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private adAccountService = inject(AdAccountService);
+  private apiService = inject(ApiService);
 
   sprint = signal<Sprint | null>(null);
   jobs = signal<CreativeJob[]>([]);
@@ -626,6 +646,8 @@ export default class SprintDetailComponent implements OnInit, OnDestroy {
   publishing = signal(false);
   tracking = signal(false);
   showRemoved = signal(false);
+  loadingPages = signal(false);
+  facebookPages = signal<{ id: string; name: string; category: string }[]>([]);
 
   productName = '';
   targetAudience = '';
@@ -641,6 +663,26 @@ export default class SprintDetailComponent implements OnInit, OnDestroy {
     if (acc) this.publishAccountId = acc.id;
     const id = this.route.snapshot.paramMap.get('id');
     if (id) this.loadSprint(id);
+    this.fetchPages();
+  }
+
+  private fetchPages() {
+    this.loadingPages.set(true);
+    this.apiService.get<{ success: boolean; pages: { id: string; name: string; category: string }[] }>(
+      environment.AD_ACCOUNT_PAGES
+    ).subscribe({
+      next: (res) => {
+        this.loadingPages.set(false);
+        if (res.success && res.pages?.length) {
+          this.facebookPages.set(res.pages);
+          // Auto-select first page if none selected
+          if (!this.publishPageId) {
+            this.publishPageId = res.pages[0].id;
+          }
+        }
+      },
+      error: () => this.loadingPages.set(false),
+    });
   }
 
   ngOnDestroy() {

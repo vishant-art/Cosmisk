@@ -304,6 +304,33 @@ export async function adAccountRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
+
+  // GET /ad-accounts/pages — list Facebook Pages the user manages
+  app.get('/pages', { preHandler: [app.authenticate] }, async (request, reply) => {
+    try {
+      const token = getUserMetaToken(request.user.id);
+      if (!token) {
+        return reply.status(200).send({ success: true, pages: [] });
+      }
+
+      const meta = new MetaApiService(token);
+      const resp = await meta.get<any>('/me/accounts', {
+        fields: 'id,name,category,picture{url}',
+        limit: '100',
+      });
+
+      const pages = (resp.data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category || '',
+        picture_url: p.picture?.data?.url || '',
+      }));
+
+      return { success: true, pages };
+    } catch (err: any) {
+      return reply.status(500).send({ success: false, error: err.message });
+    }
+  });
 }
 
 function getPreviousPreset(preset: string): string {

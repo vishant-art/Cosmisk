@@ -64,6 +64,7 @@ export const environment = {
   AD_ACCOUNT_KPIS: 'ad-accounts/kpis',
   AD_ACCOUNT_TOP_ADS: 'ad-accounts/top-ads',
   AD_ACCOUNT_VIDEO_SOURCE: 'ad-accounts/video-source',
+  AD_ACCOUNT_PAGES: 'ad-accounts/pages',
   ANALYTICS_FULL: 'analytics/full',
 
   ASSETS_LIST: 'assets/list',

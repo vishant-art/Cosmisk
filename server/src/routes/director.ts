@@ -327,6 +327,7 @@ export async function directorRoutes(app: FastifyInstance) {
         image_url?: string;
         call_to_action_type?: string;
       };
+      page_id?: string;
       status?: string;  // PAUSED or ACTIVE
     };
 
@@ -408,7 +409,7 @@ export async function directorRoutes(app: FastifyInstance) {
             access_token: token,
             name: `${body.campaign_name} — Creative`,
             object_story_spec: {
-              page_id: '', // Would need page_id — left for user to fill
+              page_id: body.page_id || '',
               link_data: {
                 link: body.creative.link_url,
                 message: body.creative.body,
