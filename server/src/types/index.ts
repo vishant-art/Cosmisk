@@ -184,6 +184,10 @@ export interface SubscriptionRow {
   user_id: string;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  gateway: string;
+  razorpay_subscription_id: string | null;
+  razorpay_customer_id: string | null;
+  trial_ends_at: string | null;
   plan: string;
   status: string;
   current_period_start: string | null;
@@ -307,4 +311,73 @@ export interface CostLedgerRow {
   cost_cents: number;
   metadata: string | null;
   created_at: string;
+}
+
+export type AgentType = 'watchdog' | 'briefing' | 'report' | 'content' | 'sales';
+export type AgentRunStatus = 'running' | 'completed' | 'failed';
+export type DecisionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'expired';
+export type DecisionUrgency = 'low' | 'medium' | 'high' | 'critical';
+
+export interface AgentRunRow {
+  id: string;
+  agent_type: AgentType;
+  user_id: string;
+  status: AgentRunStatus;
+  started_at: string;
+  completed_at: string | null;
+  summary: string | null;
+  raw_context: string | null;
+}
+
+export interface AgentDecisionRow {
+  id: string;
+  run_id: string;
+  user_id: string;
+  account_id: string | null;
+  type: string;
+  target_id: string | null;
+  target_name: string | null;
+  reasoning: string;
+  confidence: string;
+  urgency: DecisionUrgency;
+  suggested_action: string;
+  estimated_impact: string | null;
+  status: DecisionStatus;
+  approved_at: string | null;
+  executed_at: string | null;
+  outcome_checked_at: string | null;
+  outcome: string | null;
+}
+
+export interface AgentCoreMemoryRow {
+  id: string;
+  user_id: string;
+  agent_type: AgentType;
+  key: string;
+  value: string;
+  updated_at: string;
+}
+
+export interface AgentEpisodeRow {
+  id: string;
+  user_id: string;
+  agent_type: AgentType;
+  event: string;
+  context: string | null;
+  outcome: string | null;
+  entities: string | null;
+  relevance_score: number;
+  reinforcement_count: number;
+  created_at: string;
+}
+
+export interface AgentEntityRow {
+  id: string;
+  user_id: string;
+  entity_type: string;
+  entity_name: string;
+  attributes: string | null;
+  mention_count: number;
+  first_seen: string;
+  last_seen: string;
 }

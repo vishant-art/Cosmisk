@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -28,6 +29,7 @@ import { tiktokAdsRoutes } from './routes/tiktok-ads.js';
 import { creativeEngineRoutes } from './routes/creative-engine.js';
 import { contentRoutes } from './routes/content.js';
 import { scoreRoutes } from './routes/score.js';
+import { agentRoutes } from './routes/agent.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -169,6 +171,20 @@ await app.register(tiktokAdsRoutes, { prefix: '/tiktok-ads' });
 await app.register(creativeEngineRoutes, { prefix: '/creative-engine' });
 await app.register(contentRoutes, { prefix: '/content' });
 await app.register(scoreRoutes, { prefix: '/score' });
+await app.register(agentRoutes, { prefix: '/agent' });
+
+// Serve generated audio files from data/audio/
+import { existsSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname_index = dirname(fileURLToPath(import.meta.url));
+const audioDir = join(__dirname_index, '../data/audio');
+if (!existsSync(audioDir)) mkdirSync(audioDir, { recursive: true });
+await app.register(fastifyStatic, {
+  root: audioDir,
+  prefix: '/audio/',
+  decorateReply: false,
+});
 
 // --- Creatives & Dashboard Top-Creatives: real Meta-backed implementations ---
 

@@ -266,6 +266,77 @@ export function createTables(db: Database.Database): void {
       analyzed_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_dna_cache_account ON dna_cache(account_id);
+
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id TEXT PRIMARY KEY,
+      agent_type TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'running',
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT,
+      summary TEXT,
+      raw_context TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs(user_id, agent_type);
+
+    CREATE TABLE IF NOT EXISTS agent_decisions (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_id TEXT,
+      type TEXT NOT NULL,
+      target_id TEXT,
+      target_name TEXT,
+      reasoning TEXT NOT NULL,
+      confidence TEXT NOT NULL DEFAULT 'moderate',
+      urgency TEXT NOT NULL DEFAULT 'medium',
+      suggested_action TEXT NOT NULL,
+      estimated_impact TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      approved_at TEXT,
+      executed_at TEXT,
+      outcome_checked_at TEXT,
+      outcome TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_decisions_run ON agent_decisions(run_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_decisions_user ON agent_decisions(user_id, status);
+
+    CREATE TABLE IF NOT EXISTS agent_core_memory (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      agent_type TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, agent_type, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_episodes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      agent_type TEXT NOT NULL,
+      event TEXT NOT NULL,
+      context TEXT,
+      outcome TEXT,
+      entities TEXT,
+      relevance_score REAL NOT NULL DEFAULT 1.0,
+      reinforcement_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_episodes_user ON agent_episodes(user_id, agent_type);
+
+    CREATE TABLE IF NOT EXISTS agent_entities (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      entity_type TEXT NOT NULL,
+      entity_name TEXT NOT NULL,
+      attributes TEXT,
+      mention_count INTEGER NOT NULL DEFAULT 1,
+      first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+      last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, entity_type, entity_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_entities_user ON agent_entities(user_id, entity_type);
   `);
 
   // --- Safe migrations ---
@@ -275,4 +346,12 @@ export function createTables(db: Database.Database): void {
   ensureColumn(db, 'users', 'goals', 'TEXT');          // JSON array
   ensureColumn(db, 'users', 'competitors', 'TEXT');     // JSON array
   ensureColumn(db, 'users', 'active_brand', 'TEXT');
+  ensureColumn(db, 'dna_cache', 'visual_analysis', "TEXT DEFAULT '{}'");
+  ensureColumn(db, 'users', 'notification_preferences', "TEXT DEFAULT '{}'");
+
+  // Razorpay + trial support
+  ensureColumn(db, 'subscriptions', 'gateway', "TEXT DEFAULT 'stripe'");
+  ensureColumn(db, 'subscriptions', 'razorpay_subscription_id', 'TEXT');
+  ensureColumn(db, 'subscriptions', 'razorpay_customer_id', 'TEXT');
+  ensureColumn(db, 'subscriptions', 'trial_ends_at', 'TEXT');
 }
