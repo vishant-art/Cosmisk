@@ -296,7 +296,8 @@ export function createTables(db: Database.Database): void {
       approved_at TEXT,
       executed_at TEXT,
       outcome_checked_at TEXT,
-      outcome TEXT
+      outcome TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_agent_decisions_run ON agent_decisions(run_id);
     CREATE INDEX IF NOT EXISTS idx_agent_decisions_user ON agent_decisions(user_id, status);

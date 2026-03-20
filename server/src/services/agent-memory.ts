@@ -61,23 +61,22 @@ export async function recordEpisode(
   const db = getDb();
   const episodeId = uuidv4();
 
-  // Extract entities asynchronously (non-blocking)
-  let entities: string[] = [];
-  try {
-    entities = await extractEntities(event + (context ? ` ${context}` : ''));
-  } catch {
-    // Entity extraction is best-effort
-  }
-
+  // Insert episode immediately without blocking on entity extraction (#10)
   db.prepare(`
     INSERT INTO agent_episodes (id, user_id, agent_type, event, context, outcome, entities, relevance_score)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1.0)
-  `).run(episodeId, userId, agentType, event, context || null, outcome || null, JSON.stringify(entities));
+    VALUES (?, ?, ?, ?, ?, ?, '[]', 1.0)
+  `).run(episodeId, userId, agentType, event, context || null, outcome || null);
 
-  // Update entity mention counts
-  for (const entity of entities) {
-    upsertEntity(userId, entity);
-  }
+  // Extract entities in background (fire-and-forget, no blocking Haiku call)
+  extractEntities(event + (context ? ` ${context}` : '')).then(entities => {
+    if (entities.length > 0) {
+      db.prepare('UPDATE agent_episodes SET entities = ? WHERE id = ?')
+        .run(JSON.stringify(entities), episodeId);
+      for (const entity of entities) {
+        upsertEntity(userId, entity);
+      }
+    }
+  }).catch(() => {});
 
   return episodeId;
 }

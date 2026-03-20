@@ -13,6 +13,7 @@ import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js
 /* ------------------------------------------------------------------ */
 
 let cronStarted = false;
+let watchdogRunning = false;
 
 function startAgentCrons() {
   if (cronStarted) return;
@@ -21,11 +22,36 @@ function startAgentCrons() {
   // Watchdog: daily at 1:30 AM UTC (7:00 AM IST)
   cron.schedule('30 1 * * *', async () => {
     console.log('[Brain] Starting daily watchdog...');
+    watchdogRunning = true;
     try {
       const result = await runWatchdog();
       console.log(`[Brain] Watchdog completed: ${result.runs} runs, ${result.decisions} decisions`);
     } catch (err: any) {
       console.error('[Brain] Watchdog failed:', err.message);
+    } finally {
+      watchdogRunning = false;
+    }
+  });
+
+  // Morning briefing: daily at 1:35 AM UTC (7:05 AM IST, after watchdog)
+  // Waits for watchdog to finish before starting (#4)
+  cron.schedule('35 1 * * *', async () => {
+    // Wait up to 30 minutes for watchdog to finish
+    const maxWait = 30 * 60 * 1000;
+    const start = Date.now();
+    while (watchdogRunning && Date.now() - start < maxWait) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+    if (watchdogRunning) {
+      console.warn('[Brain] Morning briefing starting despite watchdog still running (timeout)');
+    }
+
+    console.log('[Brain] Starting morning briefing...');
+    try {
+      const sent = await runMorningBriefing();
+      console.log(`[Brain] Morning briefing sent to ${sent} user(s)`);
+    } catch (err: any) {
+      console.error('[Brain] Morning briefing failed:', err.message);
     }
   });
 
@@ -37,17 +63,6 @@ function startAgentCrons() {
       console.log(`[Brain] Outcome checker: ${checked} decisions checked`);
     } catch (err: any) {
       console.error('[Brain] Outcome checker failed:', err.message);
-    }
-  });
-
-  // Morning briefing: daily at 1:35 AM UTC (7:05 AM IST, after watchdog)
-  cron.schedule('35 1 * * *', async () => {
-    console.log('[Brain] Starting morning briefing...');
-    try {
-      const sent = await runMorningBriefing();
-      console.log(`[Brain] Morning briefing sent to ${sent} user(s)`);
-    } catch (err: any) {
-      console.error('[Brain] Morning briefing failed:', err.message);
     }
   });
 
@@ -66,6 +81,18 @@ function startAgentCrons() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_LIMIT = 100;
+
+function clampLimit(raw: string | undefined, defaultVal: number): number {
+  const parsed = parseInt(raw || String(defaultVal), 10);
+  return Math.min(Math.max(1, parsed || defaultVal), MAX_LIMIT);
+}
+
+/* ------------------------------------------------------------------ */
 /*  Routes                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -73,23 +100,50 @@ export async function agentRoutes(app: FastifyInstance) {
   startAgentCrons();
 
   // --- Slack interactivity (no auth, signature-verified) ---
+  // Register raw body parsing for Slack signature verification (#17)
+  app.addContentTypeParser(
+    'application/x-www-form-urlencoded',
+    { parseAs: 'string' },
+    (req, body, done) => {
+      done(null, body);
+    }
+  );
 
   app.post('/slack-action', async (request, reply) => {
-    // Verify Slack signature if signing secret is configured
-    if (config.slackSigningSecret) {
-      const timestamp = (request.headers['x-slack-request-timestamp'] as string) || '';
-      const signature = (request.headers['x-slack-signature'] as string) || '';
-      const rawBody = JSON.stringify(request.body);
+    const rawBody = typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
 
-      if (!verifySlackSignature(config.slackSigningSecret, timestamp, rawBody, signature)) {
-        return reply.status(401).send({ error: 'Invalid signature' });
-      }
+    // ALWAYS verify signature — reject if no signing secret configured (#5)
+    if (!config.slackSigningSecret) {
+      console.warn('[Brain] Slack action rejected: SLACK_SIGNING_SECRET not configured');
+      return reply.status(403).send({ error: 'Slack signing secret not configured' });
+    }
+
+    const timestamp = (request.headers['x-slack-request-timestamp'] as string) || '';
+    const signature = (request.headers['x-slack-signature'] as string) || '';
+
+    if (!verifySlackSignature(config.slackSigningSecret, timestamp, rawBody, signature)) {
+      return reply.status(401).send({ error: 'Invalid signature' });
     }
 
     try {
-      const body = request.body as any;
-      // Slack sends payload as form-encoded with a "payload" field
-      const payload = body.payload ? JSON.parse(body.payload) : body;
+      // Parse Slack's form-encoded payload (#17)
+      let payload: any;
+      if (typeof request.body === 'string') {
+        const params = new URLSearchParams(request.body);
+        const payloadStr = params.get('payload');
+        if (!payloadStr) return reply.status(400).send({ error: 'Missing payload' });
+        payload = JSON.parse(payloadStr);
+      } else {
+        const body = request.body as any;
+        payload = body.payload ? JSON.parse(body.payload) : body;
+      }
+
+      // Validate action value is a UUID (#7)
+      const actionValue = payload?.actions?.[0]?.value;
+      if (actionValue && !UUID_RE.test(actionValue)) {
+        return reply.status(400).send({ error: 'Invalid decision ID format' });
+      }
+
       const result = await handleSlackAction(payload);
       return result;
     } catch (err: any) {
@@ -100,9 +154,9 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // --- Authenticated routes ---
 
-  // GET /agent/runs — list past agent runs
+  // GET /agent/runs
   app.get('/runs', { preHandler: [app.authenticate] }, async (request) => {
-    const { agent_type, limit = '20' } = request.query as { agent_type?: string; limit?: string };
+    const { agent_type, limit } = request.query as { agent_type?: string; limit?: string };
     const db = getDb();
 
     let query = 'SELECT * FROM agent_runs WHERE user_id = ?';
@@ -114,7 +168,7 @@ export async function agentRoutes(app: FastifyInstance) {
     }
 
     query += ' ORDER BY started_at DESC LIMIT ?';
-    params.push(parseInt(limit, 10) || 20);
+    params.push(clampLimit(limit, 20));
 
     const runs = db.prepare(query).all(...params) as AgentRunRow[];
 
@@ -131,9 +185,9 @@ export async function agentRoutes(app: FastifyInstance) {
     };
   });
 
-  // GET /agent/decisions — list decisions
+  // GET /agent/decisions
   app.get('/decisions', { preHandler: [app.authenticate] }, async (request) => {
-    const { status, limit = '50' } = request.query as { status?: string; limit?: string };
+    const { status, limit } = request.query as { status?: string; limit?: string };
     const db = getDb();
 
     let query = 'SELECT * FROM agent_decisions WHERE user_id = ?';
@@ -145,7 +199,7 @@ export async function agentRoutes(app: FastifyInstance) {
     }
 
     query += ' ORDER BY rowid DESC LIMIT ?';
-    params.push(parseInt(limit, 10) || 50);
+    params.push(clampLimit(limit, 50));
 
     const decisions = db.prepare(query).all(...params) as AgentDecisionRow[];
 
@@ -172,50 +226,44 @@ export async function agentRoutes(app: FastifyInstance) {
     };
   });
 
-  // POST /agent/decisions/:id/approve — approve a pending decision
+  // POST /agent/decisions/:id/approve
   app.post('/decisions/:id/approve', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid decision ID' });
 
+    const db = getDb();
     const decision = db.prepare(
       'SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?'
     ).get(id, request.user.id) as AgentDecisionRow | undefined;
 
-    if (!decision) {
-      return reply.status(404).send({ success: false, error: 'Decision not found' });
-    }
+    if (!decision) return reply.status(404).send({ success: false, error: 'Decision not found' });
     if (decision.status !== 'pending') {
       return reply.status(400).send({ success: false, error: `Decision is ${decision.status}, not pending` });
     }
 
-    db.prepare(`
-      UPDATE agent_decisions SET status = 'approved', approved_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
+    db.prepare("UPDATE agent_decisions SET status = 'approved', approved_at = datetime('now') WHERE id = ?").run(id);
 
-    const result = await executeDecision(id);
-
+    // Execute with user-scoping (#6)
+    const result = await executeDecision(id, request.user.id);
     return { success: result.success, message: result.message };
   });
 
-  // POST /agent/decisions/:id/reject — reject a pending decision
+  // POST /agent/decisions/:id/reject
   app.post('/decisions/:id/reject', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid decision ID' });
 
+    const db = getDb();
     const decision = db.prepare(
       'SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?'
     ).get(id, request.user.id) as AgentDecisionRow | undefined;
 
-    if (!decision) {
-      return reply.status(404).send({ success: false, error: 'Decision not found' });
-    }
+    if (!decision) return reply.status(404).send({ success: false, error: 'Decision not found' });
     if (decision.status !== 'pending') {
       return reply.status(400).send({ success: false, error: `Decision is ${decision.status}, not pending` });
     }
 
     db.prepare("UPDATE agent_decisions SET status = 'rejected' WHERE id = ?").run(id);
-
     return { success: true, message: `Rejected: ${decision.suggested_action} on "${decision.target_name}"` };
   });
 
@@ -231,14 +279,14 @@ export async function agentRoutes(app: FastifyInstance) {
     return { success: true, ...result };
   });
 
-  // GET /agent/memory/:agentType — debug: view memory context
+  // GET /agent/memory/:agentType
   app.get('/memory/:agentType', { preHandler: [app.authenticate] }, async (request) => {
     const { agentType } = request.params as { agentType: AgentType };
     const context = buildContextWindow(request.user.id, agentType);
     return { success: true, context };
   });
 
-  // GET /agent/briefing/latest — get latest morning briefing run
+  // GET /agent/briefing/latest
   app.get('/briefing/latest', { preHandler: [app.authenticate] }, async (request) => {
     const db = getDb();
     const run = db.prepare(`
@@ -247,9 +295,7 @@ export async function agentRoutes(app: FastifyInstance) {
       ORDER BY started_at DESC LIMIT 1
     `).get(request.user.id) as AgentRunRow | undefined;
 
-    if (!run) {
-      return { success: true, briefing: null };
-    }
+    if (!run) return { success: true, briefing: null };
 
     let rawContext = null;
     try {

@@ -347,6 +347,7 @@ export interface AgentDecisionRow {
   executed_at: string | null;
   outcome_checked_at: string | null;
   outcome: string | null;
+  created_at: string;
 }
 
 export interface AgentCoreMemoryRow {

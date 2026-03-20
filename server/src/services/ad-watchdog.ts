@@ -5,6 +5,8 @@ import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.j
 import { assessConfidence, computeTrend } from './trend-analyzer.js';
 import { round, fmt } from './format-helpers.js';
 import { notifyAlert } from './notifications.js';
+import { safeFetch, safeJson } from '../utils/safe-fetch.js';
+import { config } from '../config.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { v4 as uuidv4 } from 'uuid';
 import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEpisode } from './agent-memory.js';
@@ -46,6 +48,31 @@ interface WatchdogDecision {
   urgency: 'low' | 'medium' | 'high' | 'critical';
   suggestedAction: string;
   estimatedImpact: string;
+}
+
+const VALID_ACTIONS = new Set(['pause', 'reduce_budget', 'increase_budget', 'new_creative', 'monitor']);
+const VALID_CONFIDENCES = new Set(['high', 'moderate', 'low']);
+const VALID_URGENCIES = new Set(['low', 'medium', 'high', 'critical']);
+
+/* ------------------------------------------------------------------ */
+/*  Validate Claude's decision output (#9)                             */
+/* ------------------------------------------------------------------ */
+
+function validateDecision(d: any): WatchdogDecision | null {
+  if (!d || typeof d !== 'object') return null;
+  if (!d.reasoning || typeof d.reasoning !== 'string') return null;
+  if (!d.suggestedAction || !VALID_ACTIONS.has(d.suggestedAction)) return null;
+
+  return {
+    type: String(d.type || 'unknown'),
+    targetId: String(d.targetId || ''),
+    targetName: String(d.targetName || 'Unknown'),
+    reasoning: String(d.reasoning),
+    confidence: VALID_CONFIDENCES.has(d.confidence) ? d.confidence : 'low',
+    urgency: VALID_URGENCIES.has(d.urgency) ? d.urgency : 'medium',
+    suggestedAction: d.suggestedAction,
+    estimatedImpact: String(d.estimatedImpact || ''),
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -224,11 +251,21 @@ Return ONLY the JSON array, no other text.`;
     if (!text) return [];
 
     const jsonStr = (text as any).text.trim();
-    // Extract JSON array from response (handle markdown code blocks)
-    const match = jsonStr.match(/\[[\s\S]*\]/);
-    if (!match) return [];
 
-    return JSON.parse(match[0]) as WatchdogDecision[];
+    // Try direct parse first, then regex extraction (#8)
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const match = jsonStr.match(/\[[\s\S]*?\]/);
+      if (!match) return [];
+      parsed = JSON.parse(match[0]);
+    }
+
+    if (!Array.isArray(parsed)) return [];
+
+    // Validate each decision (#9)
+    return parsed.map(validateDecision).filter((d): d is WatchdogDecision => d !== null);
   } catch (err: any) {
     console.error('[Watchdog] Claude reasoning failed:', err.message);
     return [];
@@ -236,12 +273,17 @@ Return ONLY the JSON array, no other text.`;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Execute approved decision                                          */
+/*  Execute approved decision (with user-scoping #6)                   */
 /* ------------------------------------------------------------------ */
 
-export async function executeDecision(decisionId: string): Promise<{ success: boolean; message: string }> {
+export async function executeDecision(decisionId: string, userId?: string): Promise<{ success: boolean; message: string }> {
   const db = getDb();
-  const decision = db.prepare('SELECT * FROM agent_decisions WHERE id = ?').get(decisionId) as AgentDecisionRow | undefined;
+
+  // User-scoped query when userId provided (#6)
+  const decision = userId
+    ? db.prepare('SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?').get(decisionId, userId) as AgentDecisionRow | undefined
+    : db.prepare('SELECT * FROM agent_decisions WHERE id = ?').get(decisionId) as AgentDecisionRow | undefined;
+
   if (!decision) return { success: false, message: 'Decision not found' };
   if (decision.status !== 'approved') return { success: false, message: `Decision status is ${decision.status}, expected approved` };
 
@@ -249,27 +291,27 @@ export async function executeDecision(decisionId: string): Promise<{ success: bo
   if (!tokenRow) return { success: false, message: 'No Meta token found' };
 
   const token = decryptToken(tokenRow.encrypted_access_token);
+  const meta = new MetaApiService(token);
 
   try {
     switch (decision.suggested_action) {
       case 'pause': {
-        // Find the campaign's ads and pause them
-        const resp = await fetch(`https://graph.facebook.com/v22.0/${decision.target_id}`, {
+        // Use MetaApiService instead of raw fetch (#2)
+        const resp = await safeFetch(`${config.graphApiBase}/${decision.target_id}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ access_token: token, status: 'PAUSED' }),
+          service: 'Meta Marketing API',
         });
         if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          return { success: false, message: `Meta API error: ${(err as any)?.error?.message || 'Unknown'}` };
+          const err = await safeJson(resp);
+          return { success: false, message: `Meta API error: ${err?.error?.message || 'Unknown'}` };
         }
         break;
       }
 
       case 'reduce_budget':
       case 'increase_budget': {
-        const meta = new MetaApiService(token);
-        // Get campaign's adsets
         const adsetsResp = await meta.get<any>(`/${decision.target_id}/adsets`, {
           fields: 'id,daily_budget',
           limit: '10',
@@ -277,22 +319,38 @@ export async function executeDecision(decisionId: string): Promise<{ success: bo
         const adsets = adsetsResp.data || [];
         const pct = decision.suggested_action === 'reduce_budget' ? 0.8 : 1.2;
 
-        for (const adset of adsets) {
-          const currentBudget = parseInt(adset.daily_budget || '0', 10);
-          if (!currentBudget) continue;
-          const newBudget = Math.max(100, Math.round(currentBudget * pct));
-          await fetch(`https://graph.facebook.com/v22.0/${adset.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ access_token: token, daily_budget: newBudget }),
-          });
+        // Parallel budget adjustments with error checking (#3, #12)
+        const results = await Promise.allSettled(
+          adsets.map(async (adset: any) => {
+            const currentBudget = parseInt(adset.daily_budget || '0', 10);
+            if (!currentBudget) return { skipped: true };
+            const newBudget = Math.max(100, Math.round(currentBudget * pct));
+            const resp = await safeFetch(`${config.graphApiBase}/${adset.id}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ access_token: token, daily_budget: newBudget }),
+              service: 'Meta Marketing API',
+            });
+            if (!resp.ok) {
+              const err = await safeJson(resp);
+              throw new Error(`Adset ${adset.id}: ${err?.error?.message || 'Unknown error'}`);
+            }
+            return { adsetId: adset.id, newBudget };
+          })
+        );
+
+        const failures = results.filter(r => r.status === 'rejected');
+        if (failures.length > 0 && failures.length === adsets.length) {
+          return { success: false, message: `All budget changes failed: ${(failures[0] as PromiseRejectedResult).reason}` };
+        }
+        if (failures.length > 0) {
+          console.warn(`[Watchdog] ${failures.length}/${adsets.length} budget changes failed for ${decision.target_name}`);
         }
         break;
       }
 
       case 'new_creative':
       case 'monitor':
-        // These don't require Meta API actions
         break;
 
       default:
@@ -317,12 +375,12 @@ export async function executeDecision(decisionId: string): Promise<{ success: bo
 export async function checkOutcomes(): Promise<number> {
   const db = getDb();
   const decisions = db.prepare(`
-    SELECT d.*, r.user_id as run_user_id FROM agent_decisions d
-    JOIN agent_runs r ON d.run_id = r.id
-    WHERE d.status = 'executed'
-    AND d.outcome_checked_at IS NULL
-    AND d.executed_at < datetime('now', '-7 days')
-  `).all() as (AgentDecisionRow & { run_user_id: string })[];
+    SELECT * FROM agent_decisions
+    WHERE status = 'executed'
+    AND outcome_checked_at IS NULL
+    AND executed_at < datetime('now', '-7 days')
+    LIMIT 50
+  `).all() as AgentDecisionRow[];
 
   let checked = 0;
 
@@ -334,7 +392,6 @@ export async function checkOutcomes(): Promise<number> {
       const token = decryptToken(tokenRow.encrypted_access_token);
       const meta = new MetaApiService(token);
 
-      // Get current metrics for the target
       const currentData = await meta.get<any>(`/${decision.target_id}/insights`, {
         fields: 'spend,impressions,clicks,ctr,actions,action_values,purchase_roas',
         date_preset: 'last_7d',
@@ -343,14 +400,21 @@ export async function checkOutcomes(): Promise<number> {
       const current = parseInsightMetrics(currentData.data?.[0] || {});
 
       let outcome = 'unknown';
+      let isPositive = false;
+
       if (decision.suggested_action === 'pause') {
-        outcome = current.spend === 0 ? 'confirmed_paused' : 'still_spending';
+        outcome = current.spend === 0 ? 'positive: confirmed_paused' : 'neutral: still_spending';
+        isPositive = current.spend === 0;
       } else if (decision.suggested_action === 'reduce_budget') {
+        // Positive if ROAS improved post-reduction (#1 — fixed: compare to breakeven, not phantom field)
         outcome = `post_reduction: ${round(current.roas, 2)}x ROAS, ${fmt(current.spend)} spend`;
+        isPositive = current.roas > 1.0; // profitable after reduction = good decision
       } else if (decision.suggested_action === 'increase_budget') {
         outcome = `post_increase: ${round(current.roas, 2)}x ROAS, ${fmt(current.spend)} spend`;
+        isPositive = current.roas > 1.5; // still strong after scaling
       } else {
         outcome = `current: ${round(current.roas, 2)}x ROAS, ${round(current.ctr, 2)}% CTR`;
+        isPositive = current.roas > 1.0;
       }
 
       db.prepare(`
@@ -359,11 +423,7 @@ export async function checkOutcomes(): Promise<number> {
         WHERE id = ?
       `).run(outcome, decision.id);
 
-      // Reinforce or penalize related episodes based on outcome
-      const isPositive = outcome.includes('confirmed_paused') ||
-        (decision.suggested_action === 'increase_budget' && current.roas > 1.5) ||
-        (decision.suggested_action === 'reduce_budget' && current.roas > (decision as any).previousRoas);
-
+      // Reinforce or penalize related episodes
       const episodes = db.prepare(`
         SELECT id FROM agent_episodes
         WHERE user_id = ? AND agent_type = 'watchdog'
@@ -415,93 +475,97 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
       const token = decryptToken(tokenRow.encrypted_access_token);
       const meta = new MetaApiService(token);
 
-      // Get ad accounts
       const accountsResp = await meta.get<any>('/me/adaccounts', { fields: 'id,name', limit: '50' });
       const accounts = accountsResp.data || [];
 
-      for (const account of accounts) {
-        const runId = uuidv4();
+      // Process accounts with bounded concurrency (#11)
+      const ACCOUNT_CONCURRENCY = 3;
+      for (let i = 0; i < accounts.length; i += ACCOUNT_CONCURRENCY) {
+        const batch = accounts.slice(i, i + ACCOUNT_CONCURRENCY);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (account: any) => {
+            const runId = uuidv4();
 
-        db.prepare(`
-          INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
-          VALUES (?, 'watchdog', ?, 'running', datetime('now'))
-        `).run(runId, user.id);
-
-        try {
-          // 1. Gather snapshot
-          const snapshot = await gatherAccountSnapshot(meta, account.id);
-
-          // 2. Get past decisions for learning
-          const pastDecisions = getPastDecisions(user.id, account.id);
-
-          // 3. Build memory context from agent-memory system
-          const memoryContext = buildContextWindow(user.id, 'watchdog', {
-            maxEpisodes: 10,
-            entityTypes: ['campaign', 'adset', 'metric'],
-          });
-
-          // 4. Reason about performance
-          const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext);
-
-          // 5. Store decisions
-          for (const decision of decisions) {
-            const decisionId = uuidv4();
             db.prepare(`
-              INSERT INTO agent_decisions (id, run_id, user_id, account_id, type, target_id, target_name,
-                reasoning, confidence, urgency, suggested_action, estimated_impact, status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-            `).run(
-              decisionId, runId, user.id, account.id,
-              decision.type, decision.targetId, decision.targetName,
-              decision.reasoning, decision.confidence, decision.urgency,
-              decision.suggestedAction, decision.estimatedImpact,
-            );
-            totalDecisions++;
+              INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
+              VALUES (?, 'watchdog', ?, 'running', datetime('now'))
+            `).run(runId, user.id);
+
+            try {
+              const snapshot = await gatherAccountSnapshot(meta, account.id);
+              const pastDecisions = getPastDecisions(user.id, account.id);
+              const memoryContext = buildContextWindow(user.id, 'watchdog', {
+                maxEpisodes: 10,
+                entityTypes: ['campaign', 'adset', 'metric'],
+              });
+
+              const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext);
+
+              for (const decision of decisions) {
+                const decisionId = uuidv4();
+                db.prepare(`
+                  INSERT INTO agent_decisions (id, run_id, user_id, account_id, type, target_id, target_name,
+                    reasoning, confidence, urgency, suggested_action, estimated_impact, status)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                `).run(
+                  decisionId, runId, user.id, account.id,
+                  decision.type, decision.targetId, decision.targetName,
+                  decision.reasoning, decision.confidence, decision.urgency,
+                  decision.suggestedAction, decision.estimatedImpact,
+                );
+              }
+
+              // Record episodes (fire-and-forget, no blocking Haiku calls)
+              for (const decision of decisions) {
+                recordDecisionEpisode(user.id, 'watchdog', {
+                  type: decision.type,
+                  targetName: decision.targetName,
+                  suggestedAction: decision.suggestedAction,
+                  reasoning: decision.reasoning,
+                }).catch(() => {});
+              }
+
+              const summary = decisions.length > 0
+                ? `Found ${decisions.length} recommendations: ${decisions.map(d => d.suggestedAction).join(', ')}`
+                : 'No action needed — account performing within expectations';
+
+              db.prepare(`
+                UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
+                summary = ?, raw_context = ?
+                WHERE id = ?
+              `).run(summary, JSON.stringify(snapshot), runId);
+
+              if (decisions.length > 0) {
+                const briefingContent = decisions.map(d =>
+                  `*${d.type}* — ${d.targetName}\n${d.reasoning}\nAction: ${d.suggestedAction} | Urgency: ${d.urgency}`
+                ).join('\n\n');
+
+                notifyAlert(user.id, {
+                  type: 'watchdog_briefing',
+                  title: `Ad Watchdog: ${decisions.length} recommendation${decisions.length > 1 ? 's' : ''} for ${snapshot.accountName}`,
+                  content: briefingContent,
+                  severity: decisions.some(d => d.urgency === 'critical') ? 'critical' : 'warning',
+                  accountId: account.id,
+                }).catch(err => console.error('[Watchdog] Notification failed:', err.message));
+              }
+
+              return { decisions: decisions.length };
+            } catch (err: any) {
+              db.prepare(`
+                UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
+                summary = ? WHERE id = ?
+              `).run(`Error: ${err.message}`, runId);
+              console.error(`[Watchdog] Failed for account ${account.id}:`, err.message);
+              return { decisions: 0 };
+            }
+          })
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled') {
+            totalRuns++;
+            totalDecisions += result.value.decisions;
           }
-
-          // 6. Record episodes for learning loop
-          for (const decision of decisions) {
-            recordDecisionEpisode(user.id, 'watchdog', {
-              type: decision.type,
-              targetName: decision.targetName,
-              suggestedAction: decision.suggestedAction,
-              reasoning: decision.reasoning,
-            }).catch(() => {});
-          }
-
-          // 7. Complete run
-          const summary = decisions.length > 0
-            ? `Found ${decisions.length} recommendations: ${decisions.map(d => d.suggestedAction).join(', ')}`
-            : 'No action needed — account performing within expectations';
-
-          db.prepare(`
-            UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
-            summary = ?, raw_context = ?
-            WHERE id = ?
-          `).run(summary, JSON.stringify(snapshot), runId);
-
-          // 7. Send notification if there are decisions
-          if (decisions.length > 0) {
-            const briefingContent = decisions.map(d =>
-              `*${d.type}* — ${d.targetName}\n${d.reasoning}\nAction: ${d.suggestedAction} | Urgency: ${d.urgency}`
-            ).join('\n\n');
-
-            notifyAlert(user.id, {
-              type: 'watchdog_briefing',
-              title: `Ad Watchdog: ${decisions.length} recommendation${decisions.length > 1 ? 's' : ''} for ${snapshot.accountName}`,
-              content: briefingContent,
-              severity: decisions.some(d => d.urgency === 'critical') ? 'critical' : 'warning',
-              accountId: account.id,
-            }).catch(err => console.error('[Watchdog] Notification failed:', err.message));
-          }
-
-          totalRuns++;
-        } catch (err: any) {
-          db.prepare(`
-            UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
-            summary = ? WHERE id = ?
-          `).run(`Error: ${err.message}`, runId);
-          console.error(`[Watchdog] Failed for account ${account.id}:`, err.message);
         }
       }
     } catch (err: any) {
@@ -509,7 +573,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
     }
   }
 
-  // Also check outcomes of past decisions
+  // Check outcomes of past decisions
   try {
     const outcomeCount = await checkOutcomes();
     if (outcomeCount > 0) {

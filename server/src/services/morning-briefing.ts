@@ -123,27 +123,34 @@ async function gatherAdPerformance(userId: string): Promise<BriefingSource['adPe
     let todaySpend = 0, todayRevenue = 0;
     let weekSpend = 0, weekRevenue = 0;
 
-    for (const account of accounts.slice(0, 5)) {
-      const [todayData, weekData] = await Promise.all([
-        meta.get<any>(`/${account.id}/insights`, {
-          fields: 'spend,actions,action_values,purchase_roas',
-          date_preset: 'today',
-          level: 'account',
-        }).catch(() => ({ data: [] })),
-        meta.get<any>(`/${account.id}/insights`, {
-          fields: 'spend,actions,action_values,purchase_roas',
-          date_preset: 'last_7d',
-          level: 'account',
-        }).catch(() => ({ data: [] })),
-      ]);
+    // Parallel account fetches (#13)
+    const accountResults = await Promise.allSettled(
+      accounts.slice(0, 5).map(async (account: any) => {
+        const [todayData, weekData] = await Promise.all([
+          meta.get<any>(`/${account.id}/insights`, {
+            fields: 'spend,actions,action_values,purchase_roas',
+            date_preset: 'today',
+            level: 'account',
+          }).catch(() => ({ data: [] })),
+          meta.get<any>(`/${account.id}/insights`, {
+            fields: 'spend,actions,action_values,purchase_roas',
+            date_preset: 'last_7d',
+            level: 'account',
+          }).catch(() => ({ data: [] })),
+        ]);
+        return {
+          today: parseInsightMetrics(todayData.data?.[0] || {}),
+          week: parseInsightMetrics(weekData.data?.[0] || {}),
+        };
+      })
+    );
 
-      const today = parseInsightMetrics(todayData.data?.[0] || {});
-      const week = parseInsightMetrics(weekData.data?.[0] || {});
-
-      todaySpend += today.spend;
-      todayRevenue += today.revenue;
-      weekSpend += week.spend;
-      weekRevenue += week.revenue;
+    for (const result of accountResults) {
+      if (result.status !== 'fulfilled') continue;
+      todaySpend += result.value.today.spend;
+      todayRevenue += result.value.today.revenue;
+      weekSpend += result.value.week.spend;
+      weekRevenue += result.value.week.revenue;
     }
 
     return {
@@ -172,7 +179,13 @@ async function fetchN8nBriefingData(): Promise<any | null> {
       signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) return null;
-    return await resp.json();
+    const text = await resp.text();
+    // Cap n8n data to 4KB to avoid blowing up Claude's context (#20)
+    if (text.length > 4096) {
+      console.warn(`[Briefing] n8n data truncated: ${text.length} bytes -> 4096`);
+      return JSON.parse(text.slice(0, 4096));
+    }
+    return JSON.parse(text);
   } catch {
     return null;
   }
