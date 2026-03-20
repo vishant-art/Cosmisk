@@ -122,7 +122,7 @@ export async function sendWatchdogBriefing(
       timeoutMs: 10_000,
     });
     return resp.ok;
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[SlackInteractive] Send failed:', err);
     return false;
   }
@@ -262,7 +262,7 @@ export async function sendMorningBriefing(
       timeoutMs: 10_000,
     });
     return resp.ok;
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[SlackInteractive] Morning briefing send failed:', err);
     return false;
   }

@@ -1101,7 +1101,7 @@ try {
   // Recover any sprints interrupted by previous server restart
   const { recoverInterruptedSprints } = await import('./services/job-queue.js');
   recoverInterruptedSprints();
-} catch (err) {
+} catch (err: unknown) {
   app.log.error(err);
   process.exit(1);
 }

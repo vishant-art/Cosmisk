@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { round, fmt, setCurrency } from './format-helpers.js';
+import type { VideoDNA } from './creative-patterns.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -18,6 +19,7 @@ interface AnalyzedAd {
   conversions: number;
   format: string;
   thumbnail_url: string;
+  video_id: string | null;
   days_active: number;
 }
 
@@ -109,6 +111,7 @@ export async function generateSprintPlan(
     target_formats?: string[];
     total_creatives?: number;
     competitor_context?: CompetitorContext;
+    visual_summary?: string;
   },
 ): Promise<SprintPlan> {
   const currency = preferences.currency || 'USD';
@@ -196,7 +199,18 @@ ${formatText || 'No format data available.'}
 
 FATIGUE SIGNALS:
 ${fatigueText}
+${preferences.visual_summary ? `
+VIDEO DNA ANALYSIS (from Gemini video/image analysis of top performers):
+${preferences.visual_summary}
 
+Use this Video DNA to:
+- Recommend formats that match winning hook patterns, visual styles, and editing rhythms
+- Suggest specific visual directions (colors, pacing, editing style, audio) in rationales
+- Replicate winning audio strategies (voiceover style, music genre, sound design)
+- Match the hook duration and pacing of top performers
+- Identify gaps — if all winners use UGC handheld, test studio lit; if all use female VO, test male VO
+- Reference specific winning elements and suggest testing the suggested variations
+` : ''}
 CONSTRAINTS:
 - Budget: ${fmt(maxBudgetCents / 100)} (${maxBudgetCents} cents)
 - Target: ~${targetCount} creatives
@@ -239,7 +253,7 @@ ${buildCompetitorSection(preferences.competitor_context)}`;
 
       return { items, totalCreatives, totalEstimatedCents };
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Sprint plan Claude error:', err);
   }
 
@@ -336,6 +350,7 @@ interface ScriptParams {
   targetAudience?: string;
   brandName?: string;
   currency?: string;
+  visualAnalysis?: VideoDNA;
 }
 
 export async function generateScript(params: ScriptParams): Promise<{
@@ -349,6 +364,7 @@ export async function generateScript(params: ScriptParams): Promise<{
     targetAudience = 'the target audience',
     brandName = 'the brand',
     currency = 'INR',
+    visualAnalysis,
   } = params;
 
   setCurrency(currency);
@@ -394,6 +410,15 @@ PRODUCT: ${productName}
 BRAND: ${brandName}
 TARGET AUDIENCE: ${targetAudience}
 ${topAd ? `TOP PERFORMER REFERENCE: "${topAd.name}" — ${topAd.roas}x ROAS, ${fmt(topAd.spend)} spend, ${topAd.ctr}% CTR` : ''}
+${visualAnalysis ? `MATCH THIS CREATIVE DNA:
+  Hook: ${visualAnalysis.hook_patterns?.join(', ') || 'N/A'} (${visualAnalysis.hook_duration_seconds}s hook)
+  Visual: ${visualAnalysis.visual_style?.join(', ') || 'N/A'}
+  Editing: ${visualAnalysis.editing_style?.join(', ') || 'N/A'} (${visualAnalysis.pacing} pacing, ${visualAnalysis.cuts_per_second} cuts/s)
+  Audio: ${visualAnalysis.audio_style?.join(', ') || 'N/A'}${visualAnalysis.music_genre !== 'unknown' ? ` [${visualAnalysis.music_genre}]` : ''}
+  Color: ${visualAnalysis.color_mood?.join(', ') || 'N/A'}
+  Text: ${visualAnalysis.text_overlay_style?.join(', ') || 'N/A'}
+  CTA: ${visualAnalysis.cta_style?.join(', ') || 'N/A'}
+  Winning: ${visualAnalysis.winning_elements?.join('; ') || 'N/A'}` : ''}
 ACCOUNT AVG ROAS: ${snapshot.benchmarks.avgRoas}x
 ACCOUNT AVG CTR: ${snapshot.benchmarks.avgCtr}%
 
@@ -429,7 +454,7 @@ Generate a script that would outperform the account average. Predict a performan
         predicted_score: Math.min(100, Math.max(0, parsed.predicted_score || 50)),
       };
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Script generation Claude error:', err);
   }
 
@@ -442,9 +467,9 @@ Generate a script that would outperform the account average. Predict a performan
 /* ------------------------------------------------------------------ */
 
 export async function generateScriptsForJobs(
-  jobs: { id: string; format: string }[],
+  jobs: { id: string; format: string; source_ads?: { name: string; roas: number }[] }[],
   snapshot: AccountSnapshot,
-  preferences: { productName?: string; targetAudience?: string; brandName?: string; currency?: string },
+  preferences: { productName?: string; targetAudience?: string; brandName?: string; currency?: string; visualAnalyses?: Map<string, VideoDNA> },
 ): Promise<Map<string, { script: any; dna_tags: any; predicted_score: number }>> {
   const results = new Map<string, { script: any; dna_tags: any; predicted_score: number }>();
 
@@ -459,6 +484,11 @@ export async function generateScriptsForJobs(
         return a.format === 'video';
       }) || snapshot.topAds[0];
 
+      // Look up visual analysis for source ad if available
+      const va = sourceAd && preferences.visualAnalyses
+        ? preferences.visualAnalyses.get(sourceAd.id)
+        : undefined;
+
       const result = await generateScript({
         format: job.format,
         snapshot,
@@ -467,6 +497,7 @@ export async function generateScriptsForJobs(
         targetAudience: preferences.targetAudience,
         brandName: preferences.brandName,
         currency: preferences.currency,
+        visualAnalysis: va,
       });
       results.set(job.id, result);
     });

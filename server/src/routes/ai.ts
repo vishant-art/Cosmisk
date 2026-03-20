@@ -76,7 +76,7 @@ async function askClaude(
 
     const textBlock = response.content.find((b: any) => b.type === 'text');
     return textBlock ? (textBlock as any).text : null;
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('askClaude error:', err);
     return null;
   }
