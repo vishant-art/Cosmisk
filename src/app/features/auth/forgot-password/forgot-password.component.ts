@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ToastService } from '../../../core/services/toast.service';
+import { ApiService } from '../../../core/services/api.service';
 import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
@@ -85,6 +86,7 @@ import { LucideAngularModule } from 'lucide-angular';
 export default class ForgotPasswordComponent {
   private fb = inject(FormBuilder);
   private toast = inject(ToastService);
+  private api = inject(ApiService);
 
   step = signal(1);
   loading = signal(false);
@@ -103,15 +105,26 @@ export default class ForgotPasswordComponent {
     this.loading.set(true);
     this.submittedEmail = this.form.get('email')?.value || '';
 
-    // Demo: simulate API call
-    setTimeout(() => {
-      this.loading.set(false);
-      this.step.set(2);
-      this.toast.success('Reset link sent!', 'Check your inbox.');
-    }, 1000);
+    this.api.post<{ success: boolean }>('auth/forgot-password', {
+      email: this.submittedEmail,
+    }).subscribe({
+      next: () => {
+        this.loading.set(false);
+        this.step.set(2);
+        this.toast.success('Reset link sent!', 'Check your inbox.');
+      },
+      error: () => {
+        this.loading.set(false);
+        // Still show success to prevent email enumeration
+        this.step.set(2);
+      },
+    });
   }
 
   resend() {
-    this.toast.info('Email resent', 'Check your inbox again.');
+    this.api.post('auth/forgot-password', { email: this.submittedEmail }).subscribe({
+      next: () => this.toast.info('Email resent', 'Check your inbox again.'),
+      error: () => this.toast.info('Email resent', 'Check your inbox again.'),
+    });
   }
 }

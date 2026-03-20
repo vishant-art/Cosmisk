@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/index.js';
 import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { exchangeCodeForToken, getMetaUser, MetaApiService } from '../services/meta-api.js';
+import { sendPasswordResetEmail } from '../services/email.js';
 import type { UserRow, MetaTokenRow } from '../types/index.js';
 
 export async function authRoutes(app: FastifyInstance) {
@@ -150,6 +152,76 @@ export async function authRoutes(app: FastifyInstance) {
     } catch (err: any) {
       return reply.status(400).send({ success: false, error: err.message || 'OAuth exchange failed' });
     }
+  });
+
+  // POST /auth/forgot-password
+  app.post('/forgot-password', async (request, reply) => {
+    const { email } = request.body as { email: string };
+    if (!email) return reply.status(400).send({ success: false, error: 'Email required' });
+
+    const db = getDb();
+    const user = db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email) as Pick<UserRow, 'id' | 'name' | 'email'> | undefined;
+
+    // Always return success to prevent email enumeration
+    if (!user) return { success: true };
+
+    // Rate limit: max 3 tokens per hour per user
+    const recentCount = (db.prepare(`
+      SELECT COUNT(*) as cnt FROM password_reset_tokens
+      WHERE user_id = ? AND created_at > datetime('now', '-1 hour')
+    `).get(user.id) as { cnt: number }).cnt;
+
+    if (recentCount >= 3) return { success: true }; // Silent rate limit
+
+    // Generate a secure random token
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    db.prepare(`
+      INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(uuidv4(), user.id, tokenHash, expiresAt);
+
+    // Send email (fire-and-forget)
+    sendPasswordResetEmail(user.email, user.name, rawToken).catch(err =>
+      console.error('[Auth] Failed to send reset email:', err.message)
+    );
+
+    return { success: true };
+  });
+
+  // POST /auth/reset-password
+  app.post('/reset-password', async (request, reply) => {
+    const { token, password } = request.body as { token: string; password: string };
+    if (!token || !password) return reply.status(400).send({ success: false, error: 'Token and password required' });
+    if (password.length < 8) return reply.status(400).send({ success: false, error: 'Password must be at least 8 characters' });
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const db = getDb();
+
+    const resetRow = db.prepare(`
+      SELECT id, user_id, expires_at, used FROM password_reset_tokens
+      WHERE token_hash = ?
+    `).get(tokenHash) as { id: string; user_id: string; expires_at: string; used: number } | undefined;
+
+    if (!resetRow) return reply.status(400).send({ success: false, error: 'Invalid or expired reset link' });
+    if (resetRow.used) return reply.status(400).send({ success: false, error: 'This reset link has already been used' });
+    if (new Date(resetRow.expires_at) < new Date()) {
+      return reply.status(400).send({ success: false, error: 'This reset link has expired' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+
+    // Update password and mark token as used (transaction)
+    db.transaction(() => {
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, resetRow.user_id);
+      db.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ?').run(resetRow.id);
+      // Invalidate all other tokens for this user
+      db.prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND id != ?").run(resetRow.user_id, resetRow.id);
+    })();
+
+    return { success: true };
   });
 
   // POST /auth/meta-disconnect

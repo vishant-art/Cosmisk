@@ -338,6 +338,16 @@ export function createTables(db: Database.Database): void {
       UNIQUE(user_id, entity_type, entity_name)
     );
     CREATE INDEX IF NOT EXISTS idx_agent_entities_user ON agent_entities(user_id, entity_type);
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_reset_tokens_hash ON password_reset_tokens(token_hash);
   `);
 
   // --- Safe migrations ---
