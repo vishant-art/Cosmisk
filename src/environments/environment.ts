@@ -88,6 +88,10 @@ export const environment = {
   BILLING_STATUS: 'billing/status',
   BILLING_CREATE_CHECKOUT: 'billing/create-checkout',
   BILLING_CREATE_PORTAL: 'billing/create-portal',
+  BILLING_VERIFY_PAYMENT: 'billing/verify-payment',
+  BILLING_START_TRIAL: 'billing/start-trial',
+  BILLING_CANCEL: 'billing/cancel',
+  RAZORPAY_KEY_ID: '',
 
   AUTOPILOT_ALERTS: 'autopilot/alerts',
   AUTOPILOT_UNREAD_COUNT: 'autopilot/unread-count',
@@ -139,4 +143,13 @@ export const environment = {
   CONTENT_SAVE_BATCH: 'content/save-batch',
   CONTENT_BANK: 'content/bank',
   CONTENT_TRIGGER_WEEKLY: 'content/trigger-weekly',
+
+  // Agent / The Brain
+  AGENT_RUNS: 'agent/runs',
+  AGENT_DECISIONS: 'agent/decisions',
+  AGENT_APPROVE: 'agent/decisions',       // POST /:id/approve
+  AGENT_REJECT: 'agent/decisions',        // POST /:id/reject
+  AGENT_BRIEFING: 'agent/briefing/latest',
+  AGENT_WATCHDOG_RUN: 'agent/watchdog/run',
+  AGENT_MEMORY: 'agent/memory',           // GET /:agentType
 };

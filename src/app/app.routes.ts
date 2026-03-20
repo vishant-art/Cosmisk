@@ -83,6 +83,7 @@ export const routes: Routes = [
       { path: 'audit', loadComponent: () => import('./features/audit/audit.component') },
       { path: 'automations', loadComponent: () => import('./features/automations/automations.component') },
       { path: 'autopilot', loadComponent: () => import('./features/autopilot/autopilot.component') },
+      { path: 'agent', loadComponent: () => import('./features/agent/agent-dashboard.component') },
       { path: 'content-bank', loadComponent: () => import('./features/content-bank/content-bank.component') },
       { path: 'competitor-spy', loadComponent: () => import('./features/competitor-spy/competitor-spy.component') },
       { path: 'settings', loadComponent: () => import('./features/settings/settings.component') },
