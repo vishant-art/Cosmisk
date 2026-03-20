@@ -37,6 +37,15 @@ export function createTables(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS google_tokens (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      encrypted_access_token TEXT NOT NULL,
+      encrypted_refresh_token TEXT NOT NULL,
+      customer_ids TEXT,
+      expires_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS reports (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -348,6 +357,21 @@ export function createTables(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_reset_tokens_hash ON password_reset_tokens(token_hash);
+
+    CREATE TABLE IF NOT EXISTS swipe_file (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      brand TEXT NOT NULL DEFAULT '',
+      thumbnail TEXT,
+      hook_dna TEXT NOT NULL DEFAULT '[]',
+      visual_dna TEXT NOT NULL DEFAULT '[]',
+      audio_dna TEXT NOT NULL DEFAULT '[]',
+      notes TEXT,
+      source_url TEXT,
+      source_ad_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_swipe_file_user ON swipe_file(user_id);
   `);
 
   // --- Safe migrations ---

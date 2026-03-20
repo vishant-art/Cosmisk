@@ -30,6 +30,7 @@ import { creativeEngineRoutes } from './routes/creative-engine.js';
 import { contentRoutes } from './routes/content.js';
 import { scoreRoutes } from './routes/score.js';
 import { agentRoutes } from './routes/agent.js';
+import { swipeFileRoutes } from './routes/swipe-file.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -172,6 +173,7 @@ await app.register(creativeEngineRoutes, { prefix: '/creative-engine' });
 await app.register(contentRoutes, { prefix: '/content' });
 await app.register(scoreRoutes, { prefix: '/score' });
 await app.register(agentRoutes, { prefix: '/agent' });
+await app.register(swipeFileRoutes, { prefix: '/swipe-file' });
 
 // Serve generated audio files from data/audio/
 import { existsSync, mkdirSync } from 'node:fs';

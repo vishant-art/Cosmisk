@@ -23,6 +23,15 @@ export interface MetaTokenRow {
   created_at: string;
 }
 
+export interface GoogleTokenRow {
+  user_id: string;
+  encrypted_access_token: string;
+  encrypted_refresh_token: string;
+  customer_ids: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
 export interface ReportRow {
   id: string;
   user_id: string;
@@ -369,6 +378,20 @@ export interface AgentEpisodeRow {
   entities: string | null;
   relevance_score: number;
   reinforcement_count: number;
+  created_at: string;
+}
+
+export interface SwipeFileRow {
+  id: string;
+  user_id: string;
+  brand: string;
+  thumbnail: string | null;
+  hook_dna: string;
+  visual_dna: string;
+  audio_dna: string;
+  notes: string | null;
+  source_url: string | null;
+  source_ad_id: string | null;
   created_at: string;
 }
 

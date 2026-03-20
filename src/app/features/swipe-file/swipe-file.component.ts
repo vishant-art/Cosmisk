@@ -19,6 +19,8 @@ interface SwipeAd {
   savedAt: string;
   notes: string;
   height: number;
+  persisted?: boolean;       // true if saved to backend
+  sourceAdId?: string;       // original Meta ad id if applicable
 }
 
 @Component({
@@ -113,9 +115,20 @@ interface SwipeAd {
                     <app-dna-badge [label]="a" type="audio" size="sm" />
                   }
                 </div>
-                <button (click)="createBriefFrom(ad)" class="w-full px-3 py-1.5 bg-accent/10 text-accent rounded-lg text-xs font-body font-semibold hover:bg-accent/20 transition-colors">
-                  Create Brief from This <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon>
-                </button>
+                <div class="flex gap-2">
+                  @if (!ad.persisted) {
+                    <button (click)="saveAd(ad)" class="flex-1 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg text-xs font-body font-semibold hover:bg-green-100 transition-colors">
+                      Save <lucide-icon name="bookmark" [size]="12" class="inline-block"></lucide-icon>
+                    </button>
+                  } @else {
+                    <button (click)="removeAd(ad)" class="px-3 py-1.5 bg-red-50 text-red-500 rounded-lg text-xs font-body font-semibold hover:bg-red-100 transition-colors">
+                      <lucide-icon name="trash-2" [size]="12" class="inline-block"></lucide-icon>
+                    </button>
+                  }
+                  <button (click)="createBriefFrom(ad)" class="flex-1 px-3 py-1.5 bg-accent/10 text-accent rounded-lg text-xs font-body font-semibold hover:bg-accent/20 transition-colors">
+                    Create Brief <lucide-icon name="arrow-right" [size]="12" class="inline-block"></lucide-icon>
+                  </button>
+                </div>
               </div>
             </div>
           }
@@ -133,14 +146,19 @@ export default class SwipeFileComponent implements OnInit {
   loading = signal(true);
   savedAds = signal<SwipeAd[]>([]);
 
+  /** Set of persisted swipe-file IDs (backend ids) for dedup */
+  private persistedIds = new Set<string>();
+  /** Set of source_ad_id values already saved, to mark Meta ads */
+  private savedAdIds = new Set<string>();
+
   private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private accountEffect = effect(() => {
     const acc = this.adAccountService.currentAccount();
     if (acc) {
-      this.loadTopAds(acc.id, acc.credential_group);
+      this.loadPersistedThenTopAds(acc.id, acc.credential_group);
     } else {
-      this.loading.set(false);
+      this.loadPersistedOnly();
     }
   }, { allowSignalWrites: true });
 
@@ -153,9 +171,135 @@ export default class SwipeFileComponent implements OnInit {
     }, 8000);
   }
 
-  private loadTopAds(accountId: string, credentialGroup: string) {
+  /** Load persisted items from backend, then overlay live Meta top ads */
+  private loadPersistedThenTopAds(accountId: string, credentialGroup: string) {
     this.loading.set(true);
     this.startLoadingTimeout();
+
+    // First load persisted items
+    this.api.get<any>(environment.SWIPE_FILE_LIST).subscribe({
+      next: (res) => {
+        const persisted: SwipeAd[] = [];
+        if (res.success && res.items?.length) {
+          for (const item of res.items) {
+            this.persistedIds.add(item.id);
+            if (item.sourceAdId) this.savedAdIds.add(item.sourceAdId);
+
+            const hashCode = (item.id).split('').reduce((a: number, c: string) => ((a << 5) - a) + c.charCodeAt(0), 0);
+            persisted.push({
+              id: item.id,
+              brand: item.brand,
+              thumbnail: item.thumbnail,
+              hookDna: item.hookDna || [],
+              visualDna: item.visualDna || [],
+              audioDna: item.audioDna || [],
+              savedAt: this.formatDate(item.savedAt),
+              notes: item.notes,
+              height: 180 + (Math.abs(hashCode) % 121),
+              persisted: true,
+              sourceAdId: item.sourceAdId || undefined,
+            });
+          }
+        }
+
+        // Then load live Meta ads
+        this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
+          account_id: accountId,
+          credential_group: credentialGroup,
+          limit: 50,
+          date_preset: 'last_30d',
+        }).subscribe({
+          next: (metaRes) => {
+            const liveAds: SwipeAd[] = [];
+            if (metaRes.success && metaRes.ads?.length) {
+              for (let i = 0; i < metaRes.ads.length; i++) {
+                const ad = metaRes.ads[i];
+                const adId = ad.id || `swipe-${i}`;
+
+                // Skip if already persisted
+                if (this.savedAdIds.has(adId)) continue;
+
+                const roas = ad.metrics?.roas ?? 0;
+                const spend = ad.metrics?.spend ?? 0;
+                const objectType = ad.object_type || '';
+                const hookDna: string[] = [];
+                const visualDna: string[] = objectType === 'VIDEO' ? ['Video'] : objectType === 'CAROUSEL' ? ['Carousel'] : ['Static'];
+                const audioDna: string[] = objectType === 'VIDEO' ? ['Has Audio'] : [];
+                const notes = this.buildNotes(ad, roas, spend);
+                const thumbnailUrl = ad.thumbnail_url || ad.image_url || ad.effective_image_url || '';
+                const hashCode = adId.split('').reduce((a: number, c: string) => ((a << 5) - a) + c.charCodeAt(0), 0);
+
+                liveAds.push({
+                  id: adId,
+                  brand: ad.name || 'Unnamed Ad',
+                  thumbnail: thumbnailUrl,
+                  hookDna,
+                  visualDna,
+                  audioDna,
+                  savedAt: this.formatDate(ad.created_time),
+                  notes,
+                  height: 180 + (Math.abs(hashCode) % 121),
+                  persisted: false,
+                  sourceAdId: adId,
+                });
+              }
+            }
+
+            // Persisted items first, then live unsaved ads
+            this.savedAds.set([...persisted, ...liveAds]);
+            this.loading.set(false);
+          },
+          error: () => {
+            // Still show persisted items even if Meta fetch fails
+            this.savedAds.set(persisted);
+            this.loading.set(false);
+          },
+        });
+      },
+      error: () => {
+        // Fall back to just loading Meta ads if backend fails
+        this.loadTopAdsOnly(accountId, credentialGroup);
+      },
+    });
+  }
+
+  /** Load only persisted items (no ad account connected) */
+  private loadPersistedOnly() {
+    this.loading.set(true);
+    this.api.get<any>(environment.SWIPE_FILE_LIST).subscribe({
+      next: (res) => {
+        if (res.success && res.items?.length) {
+          const mapped: SwipeAd[] = res.items.map((item: any) => {
+            const hashCode = (item.id).split('').reduce((a: number, c: string) => ((a << 5) - a) + c.charCodeAt(0), 0);
+            return {
+              id: item.id,
+              brand: item.brand,
+              thumbnail: item.thumbnail,
+              hookDna: item.hookDna || [],
+              visualDna: item.visualDna || [],
+              audioDna: item.audioDna || [],
+              savedAt: this.formatDate(item.savedAt),
+              notes: item.notes,
+              height: 180 + (Math.abs(hashCode) % 121),
+              persisted: true,
+              sourceAdId: item.sourceAdId || undefined,
+            } satisfies SwipeAd;
+          });
+          this.savedAds.set(mapped);
+        } else {
+          this.savedAds.set([]);
+        }
+        this.loading.set(false);
+      },
+      error: () => {
+        this.savedAds.set([]);
+        this.loading.set(false);
+      },
+    });
+  }
+
+  /** Fallback: load only Meta top ads without persistence layer */
+  private loadTopAdsOnly(accountId: string, credentialGroup: string) {
     this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
       account_id: accountId,
       credential_group: credentialGroup,
@@ -166,23 +310,14 @@ export default class SwipeFileComponent implements OnInit {
         if (res.success && res.ads?.length) {
           const mapped: SwipeAd[] = res.ads.map((ad: any, i: number) => {
             const roas = ad.metrics?.roas ?? 0;
-            const ctr = ad.metrics?.ctr ?? 0;
             const spend = ad.metrics?.spend ?? 0;
-
-            // Show actual ad metadata instead of fabricated DNA tags
             const objectType = ad.object_type || '';
             const hookDna: string[] = [];
             const visualDna: string[] = objectType === 'VIDEO' ? ['Video'] : objectType === 'CAROUSEL' ? ['Carousel'] : ['Static'];
             const audioDna: string[] = objectType === 'VIDEO' ? ['Has Audio'] : [];
-
-            // Build notes from performance data
             const notes = this.buildNotes(ad, roas, spend);
-
             const thumbnailUrl = ad.thumbnail_url || ad.image_url || ad.effective_image_url || '';
-
-            // Deterministic height based on ad id hash
             const hashCode = (ad.id || `swipe-${i}`).split('').reduce((a: number, c: string) => ((a << 5) - a) + c.charCodeAt(0), 0);
-            const height = 180 + (Math.abs(hashCode) % 121);
 
             return {
               id: ad.id || `swipe-${i}`,
@@ -193,7 +328,9 @@ export default class SwipeFileComponent implements OnInit {
               audioDna,
               savedAt: this.formatDate(ad.created_time),
               notes,
-              height,
+              height: 180 + (Math.abs(hashCode) % 121),
+              persisted: false,
+              sourceAdId: ad.id || undefined,
             } satisfies SwipeAd;
           });
           this.savedAds.set(mapped);
@@ -210,24 +347,90 @@ export default class SwipeFileComponent implements OnInit {
     });
   }
 
+  /** Save an ad from the live feed to the backend */
+  saveAd(ad: SwipeAd) {
+    this.api.post<any>(environment.SWIPE_FILE_SAVE, {
+      brand: ad.brand,
+      thumbnail: ad.thumbnail,
+      hookDna: ad.hookDna,
+      visualDna: ad.visualDna,
+      audioDna: ad.audioDna,
+      notes: ad.notes,
+      sourceAdId: ad.sourceAdId || ad.id,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          // Update the ad in place to mark as persisted
+          this.savedAds.update(ads => ads.map(a =>
+            a.id === ad.id ? { ...a, id: res.id, persisted: true } : a
+          ));
+          this.persistedIds.add(res.id);
+          if (ad.sourceAdId) this.savedAdIds.add(ad.sourceAdId);
+          this.toast.success('Saved', 'Ad saved to your swipe file');
+        }
+      },
+      error: () => {
+        this.toast.error('Error', 'Failed to save ad. Please try again.');
+      },
+    });
+  }
+
+  /** Remove a persisted ad from the backend */
+  removeAd(ad: SwipeAd) {
+    this.api.delete<any>(`${environment.SWIPE_FILE_DELETE}/${ad.id}`).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.savedAds.update(ads => ads.filter(a => a.id !== ad.id));
+          this.persistedIds.delete(ad.id);
+          if (ad.sourceAdId) this.savedAdIds.delete(ad.sourceAdId);
+          this.toast.success('Removed', 'Ad removed from your swipe file');
+        }
+      },
+      error: () => {
+        this.toast.error('Error', 'Failed to remove ad. Please try again.');
+      },
+    });
+  }
+
   saveFromUrl() {
     const url = prompt('Enter the ad URL to save:');
     if (!url) return;
-    this.toast.info('Saving', 'Fetching ad from URL...');
-    // Add as a local entry for now
-    const newAd: SwipeAd = {
-      id: 'url-' + Date.now(),
+    this.toast.info('Saving', 'Saving ad from URL...');
+
+    const thumbnail = url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? url : '';
+
+    this.api.post<any>(environment.SWIPE_FILE_SAVE, {
       brand: 'Saved from URL',
-      thumbnail: url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? url : '',
+      thumbnail,
       hookDna: [],
       visualDna: ['Saved'],
       audioDna: [],
-      savedAt: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
       notes: `Source: ${url}`,
-      height: 220,
-    };
-    this.savedAds.update(ads => [newAd, ...ads]);
-    this.toast.success('Saved', 'Ad added to your swipe file');
+      sourceUrl: url,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          const newAd: SwipeAd = {
+            id: res.id,
+            brand: 'Saved from URL',
+            thumbnail,
+            hookDna: [],
+            visualDna: ['Saved'],
+            audioDna: [],
+            savedAt: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+            notes: `Source: ${url}`,
+            height: 220,
+            persisted: true,
+          };
+          this.savedAds.update(ads => [newAd, ...ads]);
+          this.persistedIds.add(res.id);
+          this.toast.success('Saved', 'Ad added to your swipe file');
+        }
+      },
+      error: () => {
+        this.toast.error('Error', 'Failed to save ad. Please try again.');
+      },
+    });
   }
 
   browseAdLibrary() {

@@ -120,73 +120,53 @@ COSMISK WEEKLY DATA:
 ${topic ? `\nSPECIFIC TOPIC: ${topic}` : ''}
 ${transcript ? `\nTRANSCRIPT FROM SCREEN RECORDING:\n${transcript.slice(0, 3000)}` : ''}`;
 
-    const systemPrompt = `You are a content creation agent for Vishant (aka Smashed) — a 26-year-old agency founder and SaaS builder from India.
+    // Fetch user profile for multi-tenant persona
+    const userProfile = db.prepare(
+      'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?'
+    ).get(userId) as { name: string; brand_name?: string; website_url?: string; goals?: string; competitors?: string } | undefined;
 
-WHO VISHANT IS:
-- Runs a 16-person performance marketing agency generating ₹25+ crore in client revenue
-- Building Cosmisk — AI-powered creative intelligence tool for Meta advertisers
-- Started at 19 in college, wanted to buy gym supplements without asking dad for money. Led to affiliate marketing, then deep into digital marketing
-- Built skills from scratch: content writing, design, video editing, freelancing, then agency operations
-- Was faceless for 3-4 years. Now transitioning to face-first personal branding
-- Located in Ahmedabad, Gujarat, India. Gym freak.
+    const userName = userProfile?.name || 'the user';
+    const brandName = userProfile?.brand_name || 'their brand';
+    const websiteUrl = userProfile?.website_url ? `\n- Website: ${userProfile.website_url}` : '';
+    const userGoals = userProfile?.goals ? `\n- Goals: ${JSON.parse(userProfile.goals).join(', ')}` : '';
+    const userCompetitors = userProfile?.competitors ? `\n- Competitors: ${JSON.parse(userProfile.competitors).join(', ')}` : '';
 
-TWO BRAND ACCOUNTS:
-- @vishant (Personal): Authority + vulnerability-confidence balance. Building in public with real numbers.
-- @cosmisk (Product): Relatable founder comedy + AI SaaS storytelling. Anti-Dashboard positioning.
+    const toneInstruction = contentTone === 'technical'
+      ? 'Technical, specific, show-don\'t-tell. Include code snippets or system design details.'
+      : contentTone === 'data-driven'
+      ? 'Lead with numbers. Every claim backed by a specific metric or stat.'
+      : contentTone === 'motivational'
+      ? 'Founder journey, real struggles, real wins. Vulnerable but confident.'
+      : 'Conversational, like talking to a smart friend. Punchy. Not generic.';
 
-CONTENT TONE: ${contentTone === 'technical' ? 'Technical, specific, show-don\'t-tell. Include code snippets or system design details.' : contentTone === 'data-driven' ? 'Lead with numbers. Every claim backed by a specific metric or stat.' : contentTone === 'motivational' ? 'Founder journey, real struggles, real wins. Vulnerable but confident.' : 'Conversational, like talking to a smart friend. Punchy. Not generic.'}
+    const systemPrompt = `You are a content creation agent for ${userName}, who runs ${brandName}.
+
+PROFILE:
+- Name: ${userName}
+- Brand: ${brandName}${websiteUrl}${userGoals}${userCompetitors}
+
+CONTENT TONE: ${toneInstruction}
 
 VOICE RULES:
 - Direct and action-oriented. Get to the point.
-- Conversational but professional — like a trusted colleague over chai
-- Thoughtfully contrarian — challenge industry norms with real data
-- Selectively vulnerable — share failures only when they teach something
-- Data-informed — back claims with actual numbers (₹ figures, %, client counts)
-- Use "crores" not millions. Use specific INR amounts: ₹42 lakh, ₹10L/month
-- Use phrases like: "Here's the thing...", "Let's be real...", "In my experience...", "Everyone says X, but I've found the opposite..."
+- Conversational but professional
+- Data-informed — back claims with actual numbers when available
+- Avoid generic motivational platitudes — be specific and grounded
 
 BANNED WORDS (never use): revolutionary, game changer, cutting-edge, synergy, ecosystem, robust, seamless, deep dive, unlock potential, unleash, realm, tapestry, holistic, epic, limitless, groundbreaking, delve, paramount, pivotal
 
-HOOK FORMULAS (from Vishant's actual reels):
-- Number-First: "₹25 crore in client revenue. 16 people. Zero fancy offices." / "8 lakh spent. ROAS 0.9."
-- Age-Achievement: "At 26, I've probably failed at more things online than most people will ever try."
-- Credential + Vulnerability: "I've helped brands spend crores on ads. And I still can't always tell you why one ad works and the other one just... doesn't."
-- Pattern Interrupt: "I've been hiding for 4 years." / "In 2026, building won't be the hard part."
-- Contrarian: "Everyone says grow by adding more. I tried that. Built a 2 crore agency. And I hit a ceiling."
-- Lie/Confession: "25 crore in client revenue. And it all started with a lie I told in college."
-- Doubt Flip: "I doubt myself every single day. And I'm still building a 100M company."
-
-VISHANT'S SIGNATURE PHRASES (use these naturally):
-- "Here's the thing..." / "Here's what nobody tells you about..."
-- "And I told myself..." / "But here's what actually happens..."
-- "That's the whole game, isn't it?"
-- "The next level isn't about X. It's about Y."
-- Numbered triplets: "One niche. One problem. One solution."
-- Ending with a question: "What are you holding onto that's keeping you stuck?"
-
-NARRATIVE STRUCTURE (Vishant's reel format):
-Hook (0-3s) → Setup/Credentials (3-12s) → Insight/Turn (12-22s) → Decision/Reveal (22-32s) → Close/CTA (32-38s)
-Always have a 'turn' — the moment the narrative shifts. E.g., "And I still woke up feeling empty."
-
-KEY STORY BEATS TO REFERENCE:
-- Started at 19 in hostel room, wanted gym supplements money
-- 400K YouTube subscribers without showing face
-- Faceless for 4 years, face reveal was a big moment
-- Cafe moment: 3 college friends deciding to build Cosmisk instead of another agency
-- "Agencies don't scale. They just get heavier."
-- "Dashboards are dumb. We're building something that just tells you what to do."
-- ROAS 0.9 → 4.2 gifting ad discovery story (proof of creative intelligence)
-- "We're all just guessing with better data" — Cosmisk origin truth
-- "Distribution eats product for breakfast" — building in public thesis
+HOOK FORMULAS:
+- Number-First: Lead with a specific metric or stat
+- Credential + Insight: Establish authority, then share a non-obvious takeaway
+- Pattern Interrupt: Start with something unexpected
+- Contrarian: Challenge common wisdom with evidence
 
 PLATFORM FORMATS:
 - Twitter: Short, punchy. Threads have a killer first tweet. No emojis. Under 280 chars for singles.
 - LinkedIn: Punchy hook line that makes them click "see more." 2-3 short paragraphs. Plain English. Close with takeaway or question.
 - Instagram: Caption complements the visual. Can use emojis here. Include reel shot notes with timing.
 
-CONTENT PILLARS: Agency Systems, Performance Marketing, Building in Public (Cosmisk), Team Building, E-commerce Expertise, AI SaaS Wave
-
-THE TEST: Read it out loud. If you wouldn't say it to a friend over chai, rewrite it. If it sounds like LinkedIn AI slop, delete it.
+THE TEST: Read it out loud. If it sounds like AI slop, rewrite it. Every post should feel like something ${userName} would actually say.
 
 OUTPUT FORMAT — respond with ONLY valid JSON:
 {
@@ -474,20 +454,32 @@ COSMISK WEEKLY DATA:
 
     const platforms = ['twitter', 'linkedin', 'instagram'];
 
-    const systemPrompt = `You are a weekly content batch generator for Vishant — 26yo agency founder (16-person team, ₹25Cr+ revenue) building Cosmisk (AI creative intelligence for Meta advertisers).
+    // Fetch user profile for multi-tenant persona
+    const userProfile = db.prepare(
+      'SELECT name, brand_name, goals FROM users WHERE id = ?'
+    ).get(userId) as { name: string; brand_name?: string; goals?: string } | undefined;
+
+    const userName = userProfile?.name || 'the user';
+    const brandName = userProfile?.brand_name || 'their brand';
+    const userGoals = userProfile?.goals ? JSON.parse(userProfile.goals) as string[] : [];
+    const contentPillars = userGoals.length > 0
+      ? userGoals.join(', ')
+      : 'Industry Insights, Building in Public, Team & Operations, Performance Marketing, Product Updates';
+
+    const systemPrompt = `You are a weekly content batch generator for ${userName}, who runs ${brandName}.
 
 Generate 7 days of content — one post per platform per day (21 total pieces).
 
-VOICE: Direct, conversational, data-backed. Use ₹ and crores. No banned words (revolutionary, game changer, cutting-edge, synergy, ecosystem, robust, seamless, deep dive, etc.)
+VOICE: Direct, conversational, data-backed. No banned words (revolutionary, game changer, cutting-edge, synergy, ecosystem, robust, seamless, deep dive, etc.)
 
-HOOK FORMULAS: Number-First, Age-Achievement, Credential+Vulnerability, Pattern Interrupt, Contrarian.
+HOOK FORMULAS: Number-First, Credential+Insight, Pattern Interrupt, Contrarian.
 
 PLATFORM RULES:
 - Twitter: Short, punchy. No emojis. Under 280 chars for singles.
 - LinkedIn: Hook line + 2-3 paragraphs. Close with question or takeaway.
 - Instagram: Caption + reel idea. Emojis ok.
 
-CONTENT PILLARS: Agency Systems, Performance Marketing, Building in Public (Cosmisk), Team Building, E-commerce Expertise. Rotate through these across the week.
+CONTENT PILLARS: ${contentPillars}. Rotate through these across the week.
 
 OUTPUT — respond with ONLY valid JSON:
 {

@@ -3,6 +3,7 @@ import { getDb } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { encryptToken, decryptToken } from './token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
+import type { GoogleTokenRow } from '../types/index.js';
 
 /* ------------------------------------------------------------------ */
 /*  Google Ads OAuth2                                                  */
@@ -214,17 +215,6 @@ export class GoogleAdsApiService {
 
 export function saveGoogleToken(userId: string, accessToken: string, refreshToken: string, expiresAt: string, customerIds: string[]): void {
   const db = getDb();
-  // Ensure google_tokens table exists
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS google_tokens (
-      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      encrypted_access_token TEXT NOT NULL,
-      encrypted_refresh_token TEXT NOT NULL,
-      customer_ids TEXT,
-      expires_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
 
   db.prepare(`
     INSERT INTO google_tokens (user_id, encrypted_access_token, encrypted_refresh_token, customer_ids, expires_at)
@@ -240,7 +230,7 @@ export function saveGoogleToken(userId: string, accessToken: string, refreshToke
 
 export function getGoogleToken(userId: string): { accessToken: string; refreshToken: string; customerIds: string[]; expiresAt: string | null } | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM google_tokens WHERE user_id = ?').get(userId) as any;
+  const row = db.prepare('SELECT * FROM google_tokens WHERE user_id = ?').get(userId) as GoogleTokenRow | undefined;
   if (!row) return null;
 
   return {
