@@ -6,6 +6,9 @@ import { handleSlackAction, verifySlackSignature } from '../services/slack-inter
 import { buildContextWindow, runDecay } from '../services/agent-memory.js';
 import { runMorningBriefing } from '../services/morning-briefing.js';
 import { config } from '../config.js';
+import { runReportAgentAll, runReportAgent } from '../services/report-agent.js';
+import { runContentAgentAll, runContentAgent } from '../services/content-agent.js';
+import { getSalesContext } from '../services/sales-agent.js';
 import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js';
 
 /* ------------------------------------------------------------------ */
@@ -77,7 +80,29 @@ function startAgentCrons() {
     }
   });
 
-  console.log('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, decay Sun 3:00 UTC');
+  // Report agent: weekly on Tuesdays at 2:00 AM UTC (7:30 AM IST)
+  cron.schedule('0 2 * * 2', async () => {
+    console.log('[Brain] Starting weekly report agent...');
+    try {
+      const count = await runReportAgentAll();
+      console.log(`[Brain] Report agent completed: ${count} reports generated`);
+    } catch (err: unknown) {
+      console.error('[Brain] Report agent failed:', err instanceof Error ? err.message : err);
+    }
+  });
+
+  // Content agent: weekly on Wednesdays at 2:00 AM UTC (7:30 AM IST)
+  cron.schedule('0 2 * * 3', async () => {
+    console.log('[Brain] Starting weekly content agent...');
+    try {
+      const count = await runContentAgentAll();
+      console.log(`[Brain] Content agent completed: ${count} briefs generated`);
+    } catch (err: unknown) {
+      console.error('[Brain] Content agent failed:', err instanceof Error ? err.message : err);
+    }
+  });
+
+  console.log('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, decay Sun 3:00 UTC');
 }
 
 /* ------------------------------------------------------------------ */
@@ -277,6 +302,34 @@ export async function agentRoutes(app: FastifyInstance) {
 
     const result = await runWatchdog();
     return { success: true, ...result };
+  });
+
+  // POST /agent/report/run — manual trigger (admin only)
+  app.post('/report/run', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const db = getDb();
+    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    if (!userRow || userRow.role !== 'admin') {
+      return reply.status(403).send({ success: false, error: 'Admin access required' });
+    }
+    const count = await runReportAgentAll();
+    return { success: true, reports: count };
+  });
+
+  // POST /agent/content/run — manual trigger (admin only)
+  app.post('/content/run', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const db = getDb();
+    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    if (!userRow || userRow.role !== 'admin') {
+      return reply.status(403).send({ success: false, error: 'Admin access required' });
+    }
+    const count = await runContentAgentAll();
+    return { success: true, briefs: count };
+  });
+
+  // GET /agent/sales/context — sales context for n8n integration
+  app.get('/sales/context', { preHandler: [app.authenticate] }, async (request) => {
+    const context = await getSalesContext(request.user.id);
+    return { success: true, ...context };
   });
 
   // GET /agent/memory/:agentType
