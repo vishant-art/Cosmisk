@@ -6,8 +6,8 @@ import { config } from '../config.js';
 import { sendTeamInviteEmail } from '../services/email.js';
 import { getUserPlan, getUserEffectiveLimits } from './billing.js';
 import type { TeamMemberRow } from '../types/index.js';
+import { validate, teamInviteSchema, teamRoleSchema, teamAcceptSchema, idParamSchema } from '../validation/schemas.js';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function teamRoutes(app: FastifyInstance) {
   /* ------------------------------------------------------------------ */
@@ -53,17 +53,9 @@ export async function teamRoutes(app: FastifyInstance) {
   app.post('/invite', { preHandler: [app.authenticate] }, async (request, reply) => {
     const db = getDb();
     const userId = request.user.id;
-    const { email, role, name } = request.body as { email: string; role?: string; name?: string };
-
-    if (!email || !email.includes('@')) {
-      return reply.status(400).send({ success: false, error: 'Valid email is required' });
-    }
-
-    const memberRole = role || 'viewer';
-    const validRoles = ['admin', 'media_buyer', 'designer', 'viewer'];
-    if (!validRoles.includes(memberRole)) {
-      return reply.status(400).send({ success: false, error: `Role must be one of: ${validRoles.join(', ')}` });
-    }
+    const parsed = validate(teamInviteSchema, request.body, reply);
+    if (!parsed) return;
+    const { email, role: memberRole, name } = parsed;
 
     // Check plan limits
     const limits = getUserEffectiveLimits(userId);
@@ -137,18 +129,14 @@ export async function teamRoutes(app: FastifyInstance) {
   app.put('/members/:id/role', { preHandler: [app.authenticate] }, async (request, reply) => {
     const db = getDb();
     const userId = request.user.id;
-    const { id } = request.params as { id: string };
-    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid member ID' });
-    const { role } = request.body as { role: string };
-
-    const validRoles = ['admin', 'media_buyer', 'designer', 'viewer'];
-    if (!validRoles.includes(role)) {
-      return reply.status(400).send({ success: false, error: `Role must be one of: ${validRoles.join(', ')}` });
-    }
+    const params = validate(idParamSchema, request.params, reply);
+    if (!params) return;
+    const body = validate(teamRoleSchema, request.body, reply);
+    if (!body) return;
 
     const result = db.prepare(
       "UPDATE team_members SET role = ? WHERE id = ? AND owner_user_id = ? AND status != 'revoked'"
-    ).run(role, id, userId);
+    ).run(body.role, params.id, userId);
 
     if (result.changes === 0) {
       return reply.status(404).send({ success: false, error: 'Member not found' });
@@ -163,8 +151,9 @@ export async function teamRoutes(app: FastifyInstance) {
   app.delete('/members/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const db = getDb();
     const userId = request.user.id;
-    const { id } = request.params as { id: string };
-    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid member ID' });
+    const params = validate(idParamSchema, request.params, reply);
+    if (!params) return;
+    const { id } = params;
 
     const result = db.prepare(
       "UPDATE team_members SET status = 'revoked', revoked_at = datetime('now') WHERE id = ? AND owner_user_id = ?"
@@ -182,11 +171,9 @@ export async function teamRoutes(app: FastifyInstance) {
   /* ------------------------------------------------------------------ */
   app.post('/accept', { preHandler: [app.authenticate] }, async (request, reply) => {
     const db = getDb();
-    const { token } = request.body as { token: string };
-
-    if (!token) {
-      return reply.status(400).send({ success: false, error: 'Invitation token is required' });
-    }
+    const parsed = validate(teamAcceptSchema, request.body, reply);
+    if (!parsed) return;
+    const { token } = parsed;
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const invite = db.prepare(`
@@ -219,12 +206,12 @@ export async function teamRoutes(app: FastifyInstance) {
   app.post('/resend/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const db = getDb();
     const userId = request.user.id;
-    const { id } = request.params as { id: string };
-    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid member ID' });
+    const params = validate(idParamSchema, request.params, reply);
+    if (!params) return;
 
     const member = db.prepare(
       "SELECT * FROM team_members WHERE id = ? AND owner_user_id = ? AND status = 'pending'"
-    ).get(id, userId) as TeamMemberRow | undefined;
+    ).get(params.id, userId) as TeamMemberRow | undefined;
 
     if (!member) {
       return reply.status(404).send({ success: false, error: 'Pending invite not found' });
@@ -237,7 +224,7 @@ export async function teamRoutes(app: FastifyInstance) {
     db.prepare(`
       INSERT INTO team_invitations (id, team_member_id, token_hash, expires_at)
       VALUES (?, ?, ?, datetime('now', '+7 days'))
-    `).run(uuidv4(), id, tokenHash);
+    `).run(uuidv4(), params.id, tokenHash);
 
     const ownerName = (db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name: string })?.name || 'Your team lead';
     await sendTeamInviteEmail(member.email, member.name || member.email.split('@')[0], ownerName, token);

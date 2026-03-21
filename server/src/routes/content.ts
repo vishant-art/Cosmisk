@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow } from '../types/index.js';
+import { validate, contentSaveSchema, contentBankQuerySchema } from '../validation/schemas.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -229,20 +230,10 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
   /* ---- POST /save — Save content to the content bank ---- */
   app.post('/save', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { platform, content_type, title, body, hashtags, media_notes, scheduled_for, source } = request.body as {
-      platform: string;
-      content_type?: string;
-      title?: string;
-      body: string;
-      hashtags?: string[];
-      media_notes?: string;
-      scheduled_for?: string;
-      source?: string;
-    };
-
-    if (!platform || !body) {
-      return reply.status(400).send({ success: false, error: 'platform and body are required' });
-    }
+    const parsed = validate(contentSaveSchema, request.body, reply);
+    if (!parsed) return;
+    const { platform, content_type, title, body, hashtags, media_notes, source } = parsed;
+    const { scheduled_for } = request.body as { scheduled_for?: string };
 
     const db = getDb();
     const id = randomUUID();
@@ -314,13 +305,10 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
   });
 
   /* ---- GET /bank — List content bank items ---- */
-  app.get('/bank', { preHandler: [app.authenticate] }, async (request) => {
-    const { platform, status, limit, offset } = request.query as {
-      platform?: string;
-      status?: string;
-      limit?: string;
-      offset?: string;
-    };
+  app.get('/bank', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(contentBankQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { platform, status, limit: lim, offset: off } = parsed;
 
     const db = getDb();
     const userId = request.user.id;
@@ -337,8 +325,6 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     }
 
     const where = conditions.join(' AND ');
-    const lim = Math.min(Math.max(1, parseInt(limit || '50', 10) || 50), 100);
-    const off = Math.max(0, parseInt(offset || '0', 10) || 0);
 
     const total = (db.prepare(`SELECT COUNT(*) as c FROM content_bank WHERE ${where}`).get(...params) as any).c;
 

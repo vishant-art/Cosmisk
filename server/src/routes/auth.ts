@@ -7,16 +7,15 @@ import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { exchangeCodeForToken, getMetaUser, MetaApiService } from '../services/meta-api.js';
 import { sendPasswordResetEmail } from '../services/email.js';
 import type { UserRow, MetaTokenRow } from '../types/index.js';
+import { validate, loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '../validation/schemas.js';
 
 export async function authRoutes(app: FastifyInstance) {
 
   // POST /auth/login
   app.post('/login', async (request, reply) => {
-    const { email, password } = request.body as { email: string; password: string };
-
-    if (!email || !password) {
-      return reply.status(400).send({ message: 'Email and password required' });
-    }
+    const parsed = validate(loginSchema, request.body, reply);
+    if (!parsed) return;
+    const { email, password } = parsed;
 
     const db = getDb();
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
@@ -47,11 +46,9 @@ export async function authRoutes(app: FastifyInstance) {
 
   // POST /auth/signup
   app.post('/signup', async (request, reply) => {
-    const { name, email, password } = request.body as { name: string; email: string; password: string };
-
-    if (!name || !email || !password) {
-      return reply.status(400).send({ error: 'Name, email, and password required' });
-    }
+    const parsed = validate(registerSchema, request.body, reply);
+    if (!parsed) return;
+    const { name, email, password } = parsed;
 
     const db = getDb();
     const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
@@ -156,8 +153,9 @@ export async function authRoutes(app: FastifyInstance) {
 
   // POST /auth/forgot-password
   app.post('/forgot-password', async (request, reply) => {
-    const { email } = request.body as { email: string };
-    if (!email) return reply.status(400).send({ success: false, error: 'Email required' });
+    const parsed = validate(forgotPasswordSchema, request.body, reply);
+    if (!parsed) return;
+    const { email } = parsed;
 
     const db = getDb();
     const user = db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email) as Pick<UserRow, 'id' | 'name' | 'email'> | undefined;
@@ -193,9 +191,9 @@ export async function authRoutes(app: FastifyInstance) {
 
   // POST /auth/reset-password
   app.post('/reset-password', async (request, reply) => {
-    const { token, password } = request.body as { token: string; password: string };
-    if (!token || !password) return reply.status(400).send({ success: false, error: 'Token and password required' });
-    if (password.length < 8) return reply.status(400).send({ success: false, error: 'Password must be at least 8 characters' });
+    const parsed = validate(resetPasswordSchema, request.body, reply);
+    if (!parsed) return;
+    const { token, password } = parsed;
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const db = getDb();

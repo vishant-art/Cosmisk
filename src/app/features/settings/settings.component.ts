@@ -229,71 +229,98 @@ import { environment } from '../../../environments/environment';
 
           <!-- Members Table -->
           <div class="bg-white rounded-card shadow-card p-5">
-            <h3 class="text-sm font-display text-navy m-0 mb-4">Team Members</h3>
-            <div class="overflow-x-auto">
-              <table class="w-full text-left">
-                <thead>
-                  <tr class="border-b border-gray-100">
-                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Member</th>
-                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Role</th>
-                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Status</th>
-                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (member of teamMembers; track member.id) {
-                    <tr class="border-b border-gray-50">
-                      <td class="py-3">
-                        <div class="flex items-center gap-2">
-                          <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-xs font-body font-bold text-accent">
-                            {{ member.name.charAt(0) }}
-                          </div>
-                          <div>
-                            <div class="text-sm font-body font-semibold text-navy">{{ member.name }}</div>
-                            <div class="text-xs text-gray-500 font-body">{{ member.email }}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td class="py-3">
-                        <span class="px-2 py-0.5 rounded text-xs font-body"
-                          [ngClass]="{
-                            'bg-purple-100 text-purple-700': member.role === 'Owner',
-                            'bg-blue-100 text-blue-700': member.role === 'Admin',
-                            'bg-green-100 text-green-700': member.role === 'Media Buyer',
-                            'bg-amber-100 text-amber-700': member.role === 'Designer',
-                            'bg-gray-100 text-gray-700': member.role === 'Viewer'
-                          }">
-                          {{ member.role }}
-                        </span>
-                      </td>
-                      <td class="py-3">
-                        <span class="text-xs font-body" [ngClass]="{
-                          'text-green-600': member.status === 'Active',
-                          'text-amber-600': member.status === 'Pending',
-                          'text-red-500': member.status === 'Revoked'
-                        }">
-                          {{ member.status }}
-                        </span>
-                      </td>
-                      <td class="py-3 text-right">
-                        @if (member.role !== 'Owner') {
-                          <div class="flex items-center gap-2 justify-end">
-                            @if (member.status === 'Pending') {
-                              <button (click)="resendInvite(member)"
-                                class="text-xs text-accent font-body hover:underline">Resend</button>
-                            }
-                            @if (member.status !== 'Revoked') {
-                              <button (click)="removeMember(member)"
-                                class="text-xs text-red-500 font-body hover:underline">Remove</button>
-                            }
-                          </div>
-                        }
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-sm font-display text-navy m-0">Team Members</h3>
+              <span class="text-xs text-gray-400 font-body">{{ teamMembers.length }} member{{ teamMembers.length !== 1 ? 's' : '' }}</span>
             </div>
+
+            @if (teamLoading) {
+              <div class="flex items-center justify-center py-8 gap-2">
+                <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-sm text-gray-500 font-body">Loading team...</span>
+              </div>
+            } @else if (teamMembers.length <= 1) {
+              <div class="text-center py-8">
+                <div class="w-12 h-12 bg-gray-100 rounded-full mx-auto flex items-center justify-center mb-3">
+                  <lucide-icon name="users" [size]="20" class="text-gray-400"></lucide-icon>
+                </div>
+                <p class="text-sm text-gray-500 font-body m-0">No team members yet</p>
+                <p class="text-xs text-gray-400 font-body mt-1 m-0">Invite your first team member above to get started</p>
+              </div>
+            } @else {
+              <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="border-b border-gray-100">
+                      <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Member</th>
+                      <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Role</th>
+                      <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Status</th>
+                      <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (member of teamMembers; track member.id) {
+                      <tr class="border-b border-gray-50">
+                        <td class="py-3">
+                          <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-xs font-body font-bold text-accent">
+                              {{ member.name.charAt(0) }}
+                            </div>
+                            <div>
+                              <div class="text-sm font-body font-semibold text-navy">{{ member.name }}</div>
+                              <div class="text-xs text-gray-500 font-body">{{ member.email }}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td class="py-3">
+                          @if (member.role === 'Owner') {
+                            <span class="px-2 py-0.5 rounded text-xs font-body bg-purple-100 text-purple-700">Owner</span>
+                          } @else if (member.status !== 'Revoked') {
+                            <select [ngModel]="member.roleKey" (ngModelChange)="changeRole(member, $event)"
+                              class="px-2 py-0.5 rounded text-xs font-body border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-accent/30">
+                              <option value="admin">Admin</option>
+                              <option value="media_buyer">Media Buyer</option>
+                              <option value="designer">Designer</option>
+                              <option value="viewer">Viewer</option>
+                            </select>
+                          } @else {
+                            <span class="px-2 py-0.5 rounded text-xs font-body bg-gray-100 text-gray-500">{{ member.role }}</span>
+                          }
+                        </td>
+                        <td class="py-3">
+                          <span class="inline-flex items-center gap-1 text-xs font-body" [ngClass]="{
+                            'text-green-600': member.status === 'Active',
+                            'text-amber-600': member.status === 'Pending',
+                            'text-red-500': member.status === 'Revoked'
+                          }">
+                            <span class="w-1.5 h-1.5 rounded-full" [ngClass]="{
+                              'bg-green-500': member.status === 'Active',
+                              'bg-amber-500': member.status === 'Pending',
+                              'bg-red-400': member.status === 'Revoked'
+                            }"></span>
+                            {{ member.status }}
+                          </span>
+                        </td>
+                        <td class="py-3 text-right">
+                          @if (member.role !== 'Owner') {
+                            <div class="flex items-center gap-2 justify-end">
+                              @if (member.status === 'Pending') {
+                                <button (click)="resendInvite(member)"
+                                  class="text-xs text-accent font-body hover:underline">Resend</button>
+                              }
+                              @if (member.status !== 'Revoked') {
+                                <button (click)="removeMember(member)"
+                                  class="text-xs text-red-500 font-body hover:underline">Remove</button>
+                              }
+                            </div>
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
           </div>
         </div>
       }
@@ -454,7 +481,7 @@ export default class SettingsComponent implements OnInit {
   ];
 
   // Team — loaded from API
-  teamMembers: { id: string; name: string; email: string; role: string; status: string }[] = [];
+  teamMembers: { id: string; name: string; email: string; role: string; roleKey: string; status: string }[] = [];
   teamLoading = false;
   inviteEmail = '';
   inviteRole = 'viewer';
@@ -714,6 +741,7 @@ export default class SettingsComponent implements OnInit {
             name: m.name || m.email.split('@')[0],
             email: m.email,
             role: this.formatRole(m.role),
+            roleKey: m.role,
             status: m.status === 'active' ? 'Active' : m.status === 'pending' ? 'Pending' : 'Revoked',
           }));
         }
@@ -722,7 +750,7 @@ export default class SettingsComponent implements OnInit {
       error: () => {
         // Fallback to JWT-based owner row
         this.teamMembers = [
-          { id: '', name: this.profileName || 'You', email: this.profileEmail || '', role: 'Owner', status: 'Active' },
+          { id: '', name: this.profileName || 'You', email: this.profileEmail || '', role: 'Owner', roleKey: 'owner', status: 'Active' },
         ];
         this.teamLoading = false;
       },
@@ -775,11 +803,13 @@ export default class SettingsComponent implements OnInit {
     });
   }
 
-  changeRole(member: { id: string; name: string }, newRole: string) {
+  changeRole(member: { id: string; name: string; roleKey: string }, newRole: string) {
     this.api.put<any>(`${environment.TEAM_MEMBERS}/${member.id}/role`, { role: newRole }).subscribe({
       next: (res) => {
         if (res.success) {
-          this.toast.success('Updated', `${member.name}'s role updated`);
+          member.roleKey = newRole;
+          member.name; // keep reference
+          this.toast.success('Updated', `${member.name}'s role updated to ${this.formatRole(newRole)}`);
           this.loadTeam();
         }
       },

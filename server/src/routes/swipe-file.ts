@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import type { SwipeFileRow } from '../types/index.js';
+import { validate, swipeFileSaveSchema, idParamSchema } from '../validation/schemas.js';
 
 export async function swipeFileRoutes(app: FastifyInstance) {
 
@@ -33,18 +34,20 @@ export async function swipeFileRoutes(app: FastifyInstance) {
 
   /* ---- POST /save — save a new swipe file item ---- */
   app.post('/save', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(swipeFileSaveSchema, request.body, reply);
+    if (!parsed) return;
+
     const db = getDb();
     const userId = request.user.id;
-    const body = request.body as Record<string, unknown>;
 
-    const brand = (body['brand'] as string) || '';
-    const thumbnail = (body['thumbnail'] as string) || null;
-    const hookDna = JSON.stringify(body['hookDna'] || []);
-    const visualDna = JSON.stringify(body['visualDna'] || []);
-    const audioDna = JSON.stringify(body['audioDna'] || []);
-    const notes = (body['notes'] as string) || null;
-    const sourceUrl = (body['sourceUrl'] as string) || null;
-    const sourceAdId = (body['sourceAdId'] as string) || null;
+    const brand = parsed.brand;
+    const thumbnail = parsed.thumbnail || null;
+    const hookDna = JSON.stringify(parsed.hookDna);
+    const visualDna = JSON.stringify(parsed.visualDna);
+    const audioDna = JSON.stringify(parsed.audioDna);
+    const notes = parsed.notes || null;
+    const sourceUrl = parsed.sourceUrl || null;
+    const sourceAdId = parsed.sourceAdId || null;
 
     const id = randomUUID();
 
@@ -58,9 +61,12 @@ export async function swipeFileRoutes(app: FastifyInstance) {
 
   /* ---- DELETE /:id — remove a swipe file item ---- */
   app.delete('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const params = validate(idParamSchema, request.params, reply);
+    if (!params) return;
+
     const db = getDb();
     const userId = request.user.id;
-    const { id } = request.params as { id: string };
+    const { id } = params;
 
     const result = db.prepare(
       'DELETE FROM swipe_file WHERE id = ? AND user_id = ?'

@@ -13,10 +13,11 @@ interface Report {
   name: string;
   type: string;
   dateRange: string;
-  status: 'Ready' | 'Generating' | 'Scheduled';
+  status: 'Ready' | 'Generating' | 'Scheduled' | 'Failed';
   createdAt: string;
   size: string;
   data?: any;
+  expanded?: boolean;
 }
 
 @Component({
@@ -132,9 +133,20 @@ interface Report {
       <div class="bg-white rounded-card shadow-card overflow-hidden">
         <div class="p-4 border-b border-gray-100 flex items-center justify-between">
           <h3 class="text-sm font-display text-navy m-0">Generated Reports</h3>
-          @if (!loading()) {
-            <span class="text-xs text-gray-400 font-body">{{ reports.length }} reports</span>
-          }
+          <div class="flex items-center gap-3">
+            <div class="flex gap-1">
+              @for (f of typeFilters; track f.value) {
+                <button (click)="activeFilter.set(f.value)"
+                  class="px-2.5 py-1 rounded-pill text-[10px] font-body font-semibold transition-colors"
+                  [ngClass]="activeFilter() === f.value ? 'bg-accent text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'">
+                  {{ f.label }}
+                </button>
+              }
+            </div>
+            @if (!loading()) {
+              <span class="text-xs text-gray-400 font-body">{{ filteredReports().length }} reports</span>
+            }
+          </div>
         </div>
         @if (loading()) {
           <div class="p-4 space-y-3">
@@ -174,31 +186,88 @@ interface Report {
                 </tr>
               </thead>
               <tbody>
-                @for (report of reports; track report.id) {
-                  <tr class="border-t border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td class="px-4 py-3 font-medium text-navy">{{ report.name }}</td>
-                    <td class="px-4 py-3 text-gray-600">{{ report.type }}</td>
+                @for (report of filteredReports(); track report.id) {
+                  <tr class="border-t border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer" (click)="toggleReport(report)">
+                    <td class="px-4 py-3 font-medium text-navy">
+                      <div class="flex items-center gap-1.5">
+                        @if (isAgentReport(report)) {
+                          <span class="w-1.5 h-1.5 rounded-full bg-purple-500 flex-shrink-0"></span>
+                        }
+                        {{ report.name }}
+                      </div>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-semibold"
+                        [ngClass]="{
+                          'bg-purple-50 text-purple-700': isAgentReport(report),
+                          'bg-gray-100 text-gray-600': !isAgentReport(report)
+                        }">
+                        {{ formatType(report.type) }}
+                      </span>
+                    </td>
                     <td class="px-4 py-3 text-gray-600">{{ report.dateRange }}</td>
                     <td class="px-4 py-3">
                       <span class="px-2 py-0.5 rounded-pill text-[10px] font-semibold"
                         [ngClass]="{
                           'bg-green-50 text-green-700': report.status === 'Ready',
                           'bg-yellow-50 text-yellow-700': report.status === 'Generating',
-                          'bg-blue-50 text-blue-700': report.status === 'Scheduled'
+                          'bg-blue-50 text-blue-700': report.status === 'Scheduled',
+                          'bg-red-50 text-red-700': report.status === 'Failed'
                         }">
                         {{ report.status }}
                       </span>
                     </td>
                     <td class="px-4 py-3 text-gray-500">{{ report.createdAt }}</td>
                     <td class="px-4 py-3 text-gray-500">{{ report.size }}</td>
-                    <td class="px-4 py-3 text-right">
+                    <td class="px-4 py-3 text-right" (click)="$event.stopPropagation()">
                       @if (report.status === 'Ready') {
-                        <button (click)="downloadReport(report)" class="text-accent hover:underline font-semibold">
-                          Download
-                        </button>
+                        <div class="flex items-center gap-2 justify-end">
+                          @if (report.data) {
+                            <button (click)="toggleReport(report)" class="text-gray-400 hover:text-accent font-semibold">
+                              {{ report.expanded ? 'Collapse' : 'View' }}
+                            </button>
+                          }
+                          <button (click)="downloadReport(report)" class="text-accent hover:underline font-semibold">
+                            Download
+                          </button>
+                        </div>
                       }
                     </td>
                   </tr>
+                  @if (report.expanded && report.data) {
+                    <tr>
+                      <td colspan="7" class="px-4 py-0">
+                        <div class="bg-gray-50 rounded-lg p-4 my-2 text-sm font-body text-gray-700 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
+                          @if (report.data.strategy_report) {
+                            {{ report.data.strategy_report }}
+                          } @else if (report.data.narrative?.executive_summary) {
+                            <div class="mb-3">
+                              <span class="text-xs font-semibold text-navy block mb-1">Executive Summary</span>
+                              {{ report.data.narrative.executive_summary }}
+                            </div>
+                            @if (report.data.narrative.key_takeaways?.length) {
+                              <div class="mb-3">
+                                <span class="text-xs font-semibold text-navy block mb-1">Key Takeaways</span>
+                                @for (t of report.data.narrative.key_takeaways; track t) {
+                                  <div class="ml-2 mb-1">- {{ t }}</div>
+                                }
+                              </div>
+                            }
+                            @if (report.data.narrative.campaign_narratives?.length) {
+                              <div>
+                                <span class="text-xs font-semibold text-navy block mb-1">Campaigns</span>
+                                @for (c of report.data.narrative.campaign_narratives; track c.name) {
+                                  <div class="ml-2 mb-1">{{ c.name }}: {{ c.roas }} ROAS, {{ c.spend }} spend — {{ c.verdict }}</div>
+                                }
+                              </div>
+                            }
+                          } @else {
+                            <pre class="text-xs overflow-x-auto">{{ report.data | json }}</pre>
+                          }
+                        </div>
+                      </td>
+                    </tr>
+                  }
                 }
               </tbody>
             </table>
@@ -217,6 +286,15 @@ export default class ReportsComponent implements OnInit {
   generating = signal(false);
   loading = signal(true);
   loadError = signal(false);
+  activeFilter = signal('all');
+
+  typeFilters = [
+    { value: 'all', label: 'All' },
+    { value: 'agent', label: 'AI Agent' },
+    { value: 'performance', label: 'Performance' },
+    { value: 'creative', label: 'Creative' },
+    { value: 'audience', label: 'Audience' },
+  ];
 
   reportName = '';
   reportType = 'performance';
@@ -353,6 +431,33 @@ export default class ReportsComponent implements OnInit {
     });
   }
 
+  filteredReports(): Report[] {
+    const filter = this.activeFilter();
+    if (filter === 'all') return this.reports;
+    if (filter === 'agent') return this.reports.filter(r => this.isAgentReport(r));
+    return this.reports.filter(r => r.type === filter);
+  }
+
+  isAgentReport(report: Report): boolean {
+    return report.type === 'weekly-strategy' || report.type === 'agent_weekly';
+  }
+
+  formatType(type: string): string {
+    const map: Record<string, string> = {
+      'weekly-strategy': 'AI Strategy',
+      'agent_weekly': 'AI Weekly',
+      performance: 'Performance',
+      creative: 'Creative',
+      audience: 'Audience',
+      full: 'Full Report',
+    };
+    return map[type] || type;
+  }
+
+  toggleReport(report: Report) {
+    report.expanded = !report.expanded;
+  }
+
   downloadReport(report: Report) {
     if (!report.data) {
       this.toast.error('No Data', 'Report data not available');
@@ -364,8 +469,14 @@ export default class ReportsComponent implements OnInit {
     let content = `# ${report.name}\n`;
     content += `Type: ${report.type} | Period: ${report.dateRange} | Generated: ${report.createdAt}\n\n`;
 
+    if (data.strategy_report) content += `${data.strategy_report}\n\n`;
     if (data.summary) content += `## Summary\n${data.summary}\n\n`;
-    if (data.narrative) content += `## Analysis\n${data.narrative}\n\n`;
+    if (data.narrative?.executive_summary) content += `## Executive Summary\n${data.narrative.executive_summary}\n\n`;
+    if (data.narrative?.key_takeaways?.length) {
+      content += `## Key Takeaways\n`;
+      for (const t of data.narrative.key_takeaways) { content += `- ${t}\n`; }
+      content += '\n';
+    }
     if (data.kpis) {
       content += `## Key Metrics\n`;
       for (const [key, val] of Object.entries(data.kpis || {})) {

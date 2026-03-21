@@ -9,6 +9,7 @@ import { fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend, trendCaveat } from '../services/trend-analyzer.js';
 import { runAutomations } from '../services/automation-engine.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { validate, automationCreateSchema, automationUpdateSchema, idParamSchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -99,28 +100,11 @@ export async function automationRoutes(app: FastifyInstance) {
 
   // POST /automations/create — Create a new automation rule
   app.post('/create', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const {
-      name,
-      trigger_type,
-      trigger_value,
-      action_type,
-      action_value,
-      account_id,
-    } = request.body as {
-      name?: string;
-      trigger_type?: string;
-      trigger_value?: any;
-      action_type?: string;
-      action_value?: any;
-      account_id?: string;
-    };
-
-    if (!name || !trigger_type || !action_type) {
-      return reply.status(400).send({
-        success: false,
-        error: 'name, trigger_type, and action_type are required',
-      });
-    }
+    const parsed = validate(automationCreateSchema, request.body, reply);
+    if (!parsed) return;
+    const { name, trigger_type, action_type, account_id } = parsed;
+    const trigger_value = (request.body as any).trigger_value;
+    const action_value = (request.body as any).action_value;
 
     const db = getDb();
     const id = uuidv4();

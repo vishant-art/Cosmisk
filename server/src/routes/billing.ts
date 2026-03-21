@@ -6,6 +6,7 @@ import Razorpay from 'razorpay';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import type { SubscriptionRow, UserRow, UserUsageRow } from '../types/index.js';
+import { validate, checkoutSchema, verifyPaymentSchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
 /*  Plan limits — 4 tiers                                             */
@@ -289,10 +290,9 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // POST /billing/start-trial — start 14-day free trial
   app.post('/start-trial', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { plan } = request.body as { plan: string };
-    if (!['solo', 'growth', 'agency'].includes(plan)) {
-      return reply.status(400).send({ success: false, error: 'Invalid plan' });
-    }
+    const parsed = validate(checkoutSchema, request.body, reply);
+    if (!parsed) return;
+    const { plan } = parsed;
 
     const db = getDb();
     const currentPlan = getUserPlan(request.user.id);
@@ -324,13 +324,9 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // POST /billing/create-checkout — create checkout for Stripe or Razorpay
   app.post('/create-checkout', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { plan, interval = 'monthly', gateway = 'razorpay' } = request.body as {
-      plan: string; interval?: 'monthly' | 'annual'; gateway?: 'razorpay' | 'stripe';
-    };
-
-    if (!['solo', 'growth', 'agency'].includes(plan)) {
-      return reply.status(400).send({ success: false, error: 'Invalid plan' });
-    }
+    const parsed = validate(checkoutSchema, request.body, reply);
+    if (!parsed) return;
+    const { plan, interval, gateway } = parsed;
 
     const db = getDb();
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(request.user.id) as UserRow;
@@ -405,17 +401,9 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // POST /billing/verify-payment — Razorpay payment verification
   app.post('/verify-payment', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { razorpay_payment_id, razorpay_subscription_id, razorpay_signature, plan, interval = 'monthly' } = request.body as {
-      razorpay_payment_id: string;
-      razorpay_subscription_id: string;
-      razorpay_signature: string;
-      plan: string;
-      interval?: string;
-    };
-
-    if (!razorpay_payment_id || !razorpay_subscription_id || !razorpay_signature) {
-      return reply.status(400).send({ success: false, error: 'Missing payment details' });
-    }
+    const parsed = validate(verifyPaymentSchema, request.body, reply);
+    if (!parsed) return;
+    const { razorpay_payment_id, razorpay_subscription_id, razorpay_signature, plan, interval } = parsed;
 
     // Verify signature
     const expectedSignature = crypto
@@ -428,7 +416,7 @@ export async function billingRoutes(app: FastifyInstance) {
     }
 
     const db = getDb();
-    const validPlan = ['solo', 'growth', 'agency'].includes(plan) ? plan : 'solo';
+    const validPlan = plan;
 
     // Calculate period
     const now = new Date();
