@@ -34,6 +34,7 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm test
 
   docker:
     name: Docker Build
