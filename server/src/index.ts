@@ -38,6 +38,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MetaApiService } from './services/meta-api.js';
 import { parseInsightMetrics } from './services/insights-parser.js';
 import type { MetaTokenRow, UserRow } from './types/index.js';
+import { validate, profileUpdateSchema } from './validation/schemas.js';
 
 const app = Fastify({
   logger: {
@@ -69,6 +70,19 @@ await app.register(rateLimit, {
 
 await app.register(authPlugin);
 await app.register(usageLimiterPlugin);
+
+// Global error handler — structured error responses for all routes
+app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
+  const statusCode = error.statusCode || 500;
+  if (statusCode >= 500) {
+    app.log.error({ err: error, url: request.url, method: request.method }, 'Internal server error');
+  }
+  reply.status(statusCode).send({
+    success: false,
+    error: statusCode >= 500 ? 'Internal server error' : error.message,
+    ...(config.nodeEnv !== 'production' && statusCode >= 500 ? { stack: error.stack } : {}),
+  });
+});
 
 // Health check
 app.get('/health', async () => ({ status: 'ok' }));
@@ -843,13 +857,12 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
 
 // POST /settings/profile — update user profile fields
 app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const { name, email, competitors, brand_name, website_url, goals, onboarding_complete } = request.body as {
-    name?: string; email?: string; competitors?: string[];
-    brand_name?: string; website_url?: string; goals?: string[];
-    onboarding_complete?: boolean;
-  };
+  const parsed = validate(profileUpdateSchema, request.body, reply);
+  if (!parsed) return;
+  const { name, phone, brand_name, website_url, goals, competitors } = parsed;
+  const { email, onboarding_complete } = request.body as { email?: string; onboarding_complete?: boolean };
 
-  if (!name && !email && !competitors && !brand_name && !website_url && !goals && onboarding_complete === undefined) {
+  if (!name && !email && !competitors && !brand_name && !website_url && !goals && !phone && onboarding_complete === undefined) {
     return reply.status(400).send({ success: false, error: 'Provide at least one field to update' });
   }
 
@@ -875,6 +888,10 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   if (competitors) {
     updates.push('competitors = ?');
     values.push(JSON.stringify(competitors));
+  }
+  if (phone) {
+    updates.push('phone = ?');
+    values.push(phone);
   }
   if (brand_name) {
     updates.push('brand_name = ?');
