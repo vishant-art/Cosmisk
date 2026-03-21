@@ -7,6 +7,8 @@ import { sendTeamInviteEmail } from '../services/email.js';
 import { getUserPlan, getUserEffectiveLimits } from './billing.js';
 import type { TeamMemberRow } from '../types/index.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function teamRoutes(app: FastifyInstance) {
   /* ------------------------------------------------------------------ */
   /*  GET /team/members — list team members + pending invites            */
@@ -136,6 +138,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const db = getDb();
     const userId = request.user.id;
     const { id } = request.params as { id: string };
+    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid member ID' });
     const { role } = request.body as { role: string };
 
     const validRoles = ['admin', 'media_buyer', 'designer', 'viewer'];
@@ -161,6 +164,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const db = getDb();
     const userId = request.user.id;
     const { id } = request.params as { id: string };
+    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid member ID' });
 
     const result = db.prepare(
       "UPDATE team_members SET status = 'revoked', revoked_at = datetime('now') WHERE id = ? AND owner_user_id = ?"
@@ -216,6 +220,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const db = getDb();
     const userId = request.user.id;
     const { id } = request.params as { id: string };
+    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid member ID' });
 
     const member = db.prepare(
       "SELECT * FROM team_members WHERE id = ? AND owner_user_id = ? AND status = 'pending'"

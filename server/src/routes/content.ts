@@ -337,8 +337,8 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     }
 
     const where = conditions.join(' AND ');
-    const lim = Math.min(parseInt(limit || '50', 10), 100);
-    const off = parseInt(offset || '0', 10);
+    const lim = Math.min(Math.max(1, parseInt(limit || '50', 10) || 50), 100);
+    const off = Math.max(0, parseInt(offset || '0', 10) || 0);
 
     const total = (db.prepare(`SELECT COUNT(*) as c FROM content_bank WHERE ${where}`).get(...params) as any).c;
 
@@ -356,7 +356,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
         content_type: row.content_type,
         title: row.title,
         body: row.body,
-        hashtags: row.hashtags ? JSON.parse(row.hashtags) : [],
+        hashtags: (() => { try { return row.hashtags ? JSON.parse(row.hashtags) : []; } catch { return []; } })(),
         media_notes: row.media_notes,
         status: row.status,
         scheduled_for: row.scheduled_for,
