@@ -395,6 +395,19 @@ export interface SwipeFileRow {
   created_at: string;
 }
 
+export interface TeamMemberRow {
+  id: string;
+  owner_user_id: string;
+  member_user_id: string | null;
+  email: string;
+  name: string | null;
+  role: string;
+  status: string;
+  invited_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+}
+
 export interface AgentEntityRow {
   id: string;
   user_id: string;

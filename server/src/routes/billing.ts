@@ -12,17 +12,17 @@ import type { SubscriptionRow, UserRow, UserUsageRow } from '../types/index.js';
 /* ------------------------------------------------------------------ */
 
 export const PLAN_LIMITS = {
-  free:   { ad_accounts: 1,  chats_per_day: 10,  images_per_month: 0,   videos_per_month: 0,  creatives_per_month: 10,  autopilot_rules: 1,  competitors: 1  },
-  solo:   { ad_accounts: 3,  chats_per_day: -1,  images_per_month: 30,  videos_per_month: 5,  creatives_per_month: 100, autopilot_rules: 10, competitors: 5  },
-  growth: { ad_accounts: 10, chats_per_day: -1,  images_per_month: 100, videos_per_month: 20, creatives_per_month: 500, autopilot_rules: -1, competitors: 15 },
-  agency: { ad_accounts: -1, chats_per_day: -1,  images_per_month: -1,  videos_per_month: -1, creatives_per_month: -1,  autopilot_rules: -1, competitors: -1 },
+  free:   { ad_accounts: 1,  chats_per_day: 10,  images_per_month: 0,   videos_per_month: 0,  creatives_per_month: 10,  autopilot_rules: 1,  competitors: 1,  team_members: 1  },
+  solo:   { ad_accounts: 3,  chats_per_day: -1,  images_per_month: 30,  videos_per_month: 5,  creatives_per_month: 100, autopilot_rules: 10, competitors: 5,  team_members: 1  },
+  growth: { ad_accounts: 10, chats_per_day: -1,  images_per_month: 100, videos_per_month: 20, creatives_per_month: 500, autopilot_rules: -1, competitors: 15, team_members: 5  },
+  agency: { ad_accounts: -1, chats_per_day: -1,  images_per_month: -1,  videos_per_month: -1, creatives_per_month: -1,  autopilot_rules: -1, competitors: -1, team_members: -1 },
 } as const;
 
 // Trial limits: ~50% of paid tier — enough to experience the workflow, not enough to freeload
 export const TRIAL_LIMITS = {
-  solo:   { ad_accounts: 2,  chats_per_day: -1, images_per_month: 15,  videos_per_month: 2,  creatives_per_month: 50,  autopilot_rules: 3,  competitors: 2  },
-  growth: { ad_accounts: 5,  chats_per_day: -1, images_per_month: 50,  videos_per_month: 10, creatives_per_month: 250, autopilot_rules: 5,  competitors: 5  },
-  agency: { ad_accounts: 10, chats_per_day: -1, images_per_month: 100, videos_per_month: 20, creatives_per_month: 500, autopilot_rules: 10, competitors: 10 },
+  solo:   { ad_accounts: 2,  chats_per_day: -1, images_per_month: 15,  videos_per_month: 2,  creatives_per_month: 50,  autopilot_rules: 3,  competitors: 2,  team_members: 1  },
+  growth: { ad_accounts: 5,  chats_per_day: -1, images_per_month: 50,  videos_per_month: 10, creatives_per_month: 250, autopilot_rules: 5,  competitors: 5,  team_members: 3  },
+  agency: { ad_accounts: 10, chats_per_day: -1, images_per_month: 100, videos_per_month: 20, creatives_per_month: 500, autopilot_rules: 10, competitors: 10, team_members: 5  },
 } as const;
 
 export type PlanName = keyof typeof PLAN_LIMITS;
@@ -111,7 +111,7 @@ export function getUserPlanInfo(userId: string): { plan: PlanName; isTrial: bool
   return { plan: (user?.plan as PlanName) || 'free', isTrial: false };
 }
 
-type PlanLimitsShape = { ad_accounts: number; chats_per_day: number; images_per_month: number; videos_per_month: number; creatives_per_month: number; autopilot_rules: number; competitors: number };
+type PlanLimitsShape = { ad_accounts: number; chats_per_day: number; images_per_month: number; videos_per_month: number; creatives_per_month: number; autopilot_rules: number; competitors: number; team_members: number };
 
 export function getUserEffectiveLimits(userId: string): PlanLimitsShape {
   const { plan, isTrial } = getUserPlanInfo(userId);

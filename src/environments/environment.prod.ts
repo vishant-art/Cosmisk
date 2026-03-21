@@ -81,6 +81,11 @@ export const environment = {
   SETTINGS_TEAM: 'settings/team',
   SETTINGS_BILLING: 'settings/billing',
 
+  TEAM_MEMBERS: 'team/members',
+  TEAM_INVITE: 'team/invite',
+  TEAM_ACCEPT: 'team/accept',
+  TEAM_RESEND: 'team/resend',
+
   MEDIA_GENERATE_IMAGE: 'media/generate-image',
   MEDIA_GENERATE_VIDEO: 'media/generate-video',
   MEDIA_VIDEO_STATUS: 'media/video-status',

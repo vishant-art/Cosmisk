@@ -200,61 +200,100 @@ import { environment } from '../../../environments/environment';
 
       <!-- Team Tab -->
       @if (activeTab() === 'team') {
-        <div class="bg-white rounded-card shadow-card p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-sm font-display text-navy m-0">Team Members</h3>
-            <span class="px-3 py-1.5 bg-gray-100 text-gray-500 rounded-pill text-xs font-body">Team invites coming soon</span>
+        <div class="space-y-4">
+          <!-- Invite Form -->
+          <div class="bg-white rounded-card shadow-card p-5">
+            <h3 class="text-sm font-display text-navy m-0 mb-3">Invite Team Member</h3>
+            <div class="flex flex-wrap gap-3 items-end">
+              <div class="flex-1 min-w-[200px]">
+                <label class="text-xs text-gray-500 font-body block mb-1">Email</label>
+                <input type="email" [(ngModel)]="inviteEmail" placeholder="colleague@agency.com"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:outline-none focus:ring-2 focus:ring-accent/30">
+              </div>
+              <div class="w-40">
+                <label class="text-xs text-gray-500 font-body block mb-1">Role</label>
+                <select [(ngModel)]="inviteRole"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:outline-none focus:ring-2 focus:ring-accent/30">
+                  <option value="admin">Admin</option>
+                  <option value="media_buyer">Media Buyer</option>
+                  <option value="designer">Designer</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </div>
+              <button (click)="inviteMember()" [disabled]="inviting || !inviteEmail"
+                class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-body font-semibold hover:bg-accent/90 disabled:opacity-50 transition-colors">
+                {{ inviting ? 'Sending...' : 'Send Invite' }}
+              </button>
+            </div>
           </div>
-          <div class="overflow-x-auto">
-            <table class="w-full text-left">
-              <thead>
-                <tr class="border-b border-gray-100">
-                  <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Member</th>
-                  <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Role</th>
-                  <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Status</th>
-                  <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (member of teamMembers; track member.email) {
-                  <tr class="border-b border-gray-50">
-                    <td class="py-3">
-                      <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-xs font-body font-bold text-accent">
-                          {{ member.name.charAt(0) }}
-                        </div>
-                        <div>
-                          <div class="text-sm font-body font-semibold text-navy">{{ member.name }}</div>
-                          <div class="text-xs text-gray-500 font-body">{{ member.email }}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="py-3">
-                      <span class="px-2 py-0.5 rounded text-xs font-body"
-                        [ngClass]="{
-                          'bg-purple-100 text-purple-700': member.role === 'Owner',
-                          'bg-blue-100 text-blue-700': member.role === 'Admin',
-                          'bg-green-100 text-green-700': member.role === 'Media Buyer',
-                          'bg-amber-100 text-amber-700': member.role === 'Designer',
-                          'bg-gray-100 text-gray-700': member.role === 'Viewer'
-                        }">
-                        {{ member.role }}
-                      </span>
-                    </td>
-                    <td class="py-3">
-                      <span class="text-xs font-body" [ngClass]="member.status === 'Active' ? 'text-green-600' : 'text-amber-600'">
-                        {{ member.status }}
-                      </span>
-                    </td>
-                    <td class="py-3 text-right">
-                      @if (member.role !== 'Owner') {
-                        <span class="text-xs text-gray-300 font-body">—</span>
-                      }
-                    </td>
+
+          <!-- Members Table -->
+          <div class="bg-white rounded-card shadow-card p-5">
+            <h3 class="text-sm font-display text-navy m-0 mb-4">Team Members</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead>
+                  <tr class="border-b border-gray-100">
+                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Member</th>
+                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Role</th>
+                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase">Status</th>
+                    <th class="pb-3 text-xs font-body font-semibold text-gray-500 uppercase text-right">Actions</th>
                   </tr>
-                }
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  @for (member of teamMembers; track member.id) {
+                    <tr class="border-b border-gray-50">
+                      <td class="py-3">
+                        <div class="flex items-center gap-2">
+                          <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-xs font-body font-bold text-accent">
+                            {{ member.name.charAt(0) }}
+                          </div>
+                          <div>
+                            <div class="text-sm font-body font-semibold text-navy">{{ member.name }}</div>
+                            <div class="text-xs text-gray-500 font-body">{{ member.email }}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="py-3">
+                        <span class="px-2 py-0.5 rounded text-xs font-body"
+                          [ngClass]="{
+                            'bg-purple-100 text-purple-700': member.role === 'Owner',
+                            'bg-blue-100 text-blue-700': member.role === 'Admin',
+                            'bg-green-100 text-green-700': member.role === 'Media Buyer',
+                            'bg-amber-100 text-amber-700': member.role === 'Designer',
+                            'bg-gray-100 text-gray-700': member.role === 'Viewer'
+                          }">
+                          {{ member.role }}
+                        </span>
+                      </td>
+                      <td class="py-3">
+                        <span class="text-xs font-body" [ngClass]="{
+                          'text-green-600': member.status === 'Active',
+                          'text-amber-600': member.status === 'Pending',
+                          'text-red-500': member.status === 'Revoked'
+                        }">
+                          {{ member.status }}
+                        </span>
+                      </td>
+                      <td class="py-3 text-right">
+                        @if (member.role !== 'Owner') {
+                          <div class="flex items-center gap-2 justify-end">
+                            @if (member.status === 'Pending') {
+                              <button (click)="resendInvite(member)"
+                                class="text-xs text-accent font-body hover:underline">Resend</button>
+                            }
+                            @if (member.status !== 'Revoked') {
+                              <button (click)="removeMember(member)"
+                                class="text-xs text-red-500 font-body hover:underline">Remove</button>
+                            }
+                          </div>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       }
@@ -414,8 +453,12 @@ export default class SettingsComponent implements OnInit {
     { name: 'Slack', icon: 'SL', bg: '#f3e5f5', description: 'Team notifications and autopilot alerts', available: false },
   ];
 
-  // Team — populated from JWT
-  teamMembers: { name: string; email: string; role: string; status: string }[] = [];
+  // Team — loaded from API
+  teamMembers: { id: string; name: string; email: string; role: string; status: string }[] = [];
+  teamLoading = false;
+  inviteEmail = '';
+  inviteRole = 'viewer';
+  inviting = false;
 
   // Notifications
   notificationPrefs = [
@@ -441,10 +484,7 @@ export default class SettingsComponent implements OnInit {
         this.profileEmail = payload.email || '';
       } catch { /* ignore bad token */ }
     }
-    // Populate team with current user
-    this.teamMembers = [
-      { name: this.profileName || 'You', email: this.profileEmail || '', role: 'Owner', status: 'Active' },
-    ];
+    this.loadTeam();
     // Load saved preferences
     const prefs = localStorage.getItem('cosmisk_preferences');
     if (prefs) {
@@ -661,6 +701,100 @@ export default class SettingsComponent implements OnInit {
       error: () => {
         this.toast.error('Error', 'Could not cancel subscription');
       }
+    });
+  }
+
+  private loadTeam() {
+    this.teamLoading = true;
+    this.api.get<any>(environment.TEAM_MEMBERS).subscribe({
+      next: (res) => {
+        if (res.success && res.members) {
+          this.teamMembers = res.members.map((m: any) => ({
+            id: m.id,
+            name: m.name || m.email.split('@')[0],
+            email: m.email,
+            role: this.formatRole(m.role),
+            status: m.status === 'active' ? 'Active' : m.status === 'pending' ? 'Pending' : 'Revoked',
+          }));
+        }
+        this.teamLoading = false;
+      },
+      error: () => {
+        // Fallback to JWT-based owner row
+        this.teamMembers = [
+          { id: '', name: this.profileName || 'You', email: this.profileEmail || '', role: 'Owner', status: 'Active' },
+        ];
+        this.teamLoading = false;
+      },
+    });
+  }
+
+  private formatRole(role: string): string {
+    const map: Record<string, string> = {
+      owner: 'Owner', admin: 'Admin', media_buyer: 'Media Buyer',
+      designer: 'Designer', viewer: 'Viewer',
+    };
+    return map[role] || role;
+  }
+
+  inviteMember() {
+    if (!this.inviteEmail || !this.inviteEmail.includes('@')) return;
+    this.inviting = true;
+    this.api.post<any>(environment.TEAM_INVITE, {
+      email: this.inviteEmail,
+      role: this.inviteRole,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Invited', res.message || `Invitation sent to ${this.inviteEmail}`);
+          this.inviteEmail = '';
+          this.inviteRole = 'viewer';
+          this.loadTeam();
+        } else {
+          this.toast.error('Error', res.error || 'Could not send invite');
+        }
+        this.inviting = false;
+      },
+      error: (err) => {
+        this.toast.error('Error', err.error?.error || 'Could not send invite');
+        this.inviting = false;
+      },
+    });
+  }
+
+  removeMember(member: { id: string; name: string }) {
+    if (!confirm(`Remove ${member.name} from your team?`)) return;
+    this.api.delete<any>(`${environment.TEAM_MEMBERS}/${member.id}`).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Removed', `${member.name} has been removed from the team`);
+          this.loadTeam();
+        }
+      },
+      error: () => this.toast.error('Error', 'Could not remove member'),
+    });
+  }
+
+  changeRole(member: { id: string; name: string }, newRole: string) {
+    this.api.put<any>(`${environment.TEAM_MEMBERS}/${member.id}/role`, { role: newRole }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Updated', `${member.name}'s role updated`);
+          this.loadTeam();
+        }
+      },
+      error: () => this.toast.error('Error', 'Could not update role'),
+    });
+  }
+
+  resendInvite(member: { id: string; email: string }) {
+    this.api.post<any>(`${environment.TEAM_RESEND}/${member.id}`, {}).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Resent', `Invitation resent to ${member.email}`);
+        }
+      },
+      error: () => this.toast.error('Error', 'Could not resend invite'),
     });
   }
 }

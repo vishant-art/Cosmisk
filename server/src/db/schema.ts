@@ -372,6 +372,31 @@ export function createTables(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_swipe_file_user ON swipe_file(user_id);
+
+    CREATE TABLE IF NOT EXISTS team_members (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      member_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      email TEXT NOT NULL,
+      name TEXT,
+      role TEXT NOT NULL DEFAULT 'viewer',
+      status TEXT NOT NULL DEFAULT 'pending',
+      invited_at TEXT NOT NULL DEFAULT (datetime('now')),
+      accepted_at TEXT,
+      revoked_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_owner_email ON team_members(owner_user_id, email);
+    CREATE INDEX IF NOT EXISTS idx_team_members_member ON team_members(member_user_id);
+
+    CREATE TABLE IF NOT EXISTS team_invitations (
+      id TEXT PRIMARY KEY,
+      team_member_id TEXT NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token_hash);
   `);
 
   // --- Safe migrations ---

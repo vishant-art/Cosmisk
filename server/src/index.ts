@@ -31,6 +31,7 @@ import { contentRoutes } from './routes/content.js';
 import { scoreRoutes } from './routes/score.js';
 import { agentRoutes } from './routes/agent.js';
 import { swipeFileRoutes } from './routes/swipe-file.js';
+import { teamRoutes } from './routes/team.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -174,6 +175,7 @@ await app.register(contentRoutes, { prefix: '/content' });
 await app.register(scoreRoutes, { prefix: '/score' });
 await app.register(agentRoutes, { prefix: '/agent' });
 await app.register(swipeFileRoutes, { prefix: '/swipe-file' });
+await app.register(teamRoutes, { prefix: '/team' });
 
 // Serve generated audio files from data/audio/
 import { existsSync, mkdirSync } from 'node:fs';
@@ -913,20 +915,7 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   };
 });
 
-// GET /settings/team — no team feature yet
-app.get('/settings/team', { preHandler: [app.authenticate] }, async () => ({
-  success: true,
-  members: [],
-  message: 'Team management is not yet available. You are the sole account owner.',
-}));
-
-// POST /settings/team — feature not available
-app.post('/settings/team', { preHandler: [app.authenticate] }, async (_request, reply) => {
-  return reply.status(501).send({
-    success: false,
-    error: 'Team management is not yet available. This feature is coming soon.',
-  });
-});
+// Team routes now at /team/* via teamRoutes plugin
 
 // GET /settings/billing — return user's plan + usage from DB
 app.get('/settings/billing', { preHandler: [app.authenticate] }, async (request, reply) => {
