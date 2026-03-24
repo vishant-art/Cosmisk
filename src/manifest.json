@@ -1,0 +1,13 @@
+{
+  "name": "Cosmisk",
+  "short_name": "Cosmisk",
+  "description": "AI-Powered Creative Intelligence Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f23",
+  "theme_color": "#4338CA",
+  "icons": [
+    { "src": "assets/logo-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/logo-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

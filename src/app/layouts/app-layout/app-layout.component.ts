@@ -18,7 +18,7 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
         [style.margin-left.px]="sidebarCollapsed() ? 72 : 260">
         <app-topbar />
 
-        <main class="p-8">
+        <main class="p-4 md:p-8">
           <div class="route-animate" [attr.data-route]="routeKey">
             <router-outlet (activate)="onRouteActivate()" />
           </div>

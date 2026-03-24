@@ -77,7 +77,7 @@ import { LucideAngularModule } from 'lucide-angular';
           </button>
 
           @if (notifOpen()) {
-            <div class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-dropdown border border-divider w-[380px] z-50 overflow-hidden animate-scale-in">
+            <div class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-dropdown border border-divider w-[calc(100vw-2rem)] sm:w-[380px] z-50 overflow-hidden animate-scale-in">
               <div class="flex items-center justify-between px-4 py-3 border-b border-divider">
                 <h3 class="text-sm font-semibold font-body m-0">Notifications</h3>
                 <button

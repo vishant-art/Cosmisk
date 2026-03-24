@@ -29,7 +29,8 @@
               "src/favicon.ico",
               "src/assets",
               "src/robots.txt",
-              "src/sitemap.xml"
+              "src/sitemap.xml",
+              "src/manifest.json"
             ],
             "styles": [
               "src/styles.scss"
@@ -109,7 +110,8 @@
               "src/favicon.ico",
               "src/assets",
               "src/robots.txt",
-              "src/sitemap.xml"
+              "src/sitemap.xml",
+              "src/manifest.json"
             ],
             "styles": [
               "src/styles.scss"

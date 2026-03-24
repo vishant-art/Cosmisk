@@ -60,7 +60,34 @@ await app.register(cors, {
 
 // Security headers
 await app.register(helmet, {
-  contentSecurityPolicy: false, // disable CSP for now — frontend served separately
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://fonts.googleapis.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: [
+        "'self'",
+        "https://api.anthropic.com",
+        "https://graph.facebook.com",
+        "https://graph.instagram.com",
+        "https://api.razorpay.com",
+        "https://api.stripe.com",
+      ],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      frameSrc: ["'self'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+  frameguard: {
+    action: 'sameorigin',
+  },
+  noSniff: true,
+  xssFilter: true,
 });
 
 // Rate limiting — 100 req/min per IP on AI and media endpoints
