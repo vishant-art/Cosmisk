@@ -41,3 +41,22 @@ testem.log
 .DS_Store
 Thumbs.db
 .vercel
+
+# Server data
+server/cosmisk.db
+server/cosmisk.db-wal
+server/cosmisk.db-shm
+server/test-results/
+server/pratap-sons-audit/
+
+# SSL certs
+ssl/
+
+# Test artifacts
+test-results/
+videos/
+e2e/screenshots/
+
+# Environment
+.env
+*.env.local
