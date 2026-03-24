@@ -15,6 +15,11 @@ import {
   verifyPaymentSchema,
   swipeFileSaveSchema,
   profileUpdateSchema,
+  imageGenerateSchema,
+  videoGenerateSchema,
+  agentRunsQuerySchema,
+  agentDecisionsQuerySchema,
+  datePresetQuerySchema,
 } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
@@ -351,5 +356,93 @@ describe('profileUpdateSchema', () => {
   it('accepts goals array', () => {
     const r = profileUpdateSchema.safeParse({ goals: ['grow revenue', 'reduce CPA'] });
     expect(r.success).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Media generation schemas                                           */
+/* ------------------------------------------------------------------ */
+
+describe('imageGenerateSchema', () => {
+  it('accepts valid prompt', () => {
+    expect(imageGenerateSchema.safeParse({ prompt: 'A beautiful sunset' }).success).toBe(true);
+  });
+  it('rejects empty prompt', () => {
+    expect(imageGenerateSchema.safeParse({ prompt: '' }).success).toBe(false);
+  });
+  it('rejects missing prompt', () => {
+    expect(imageGenerateSchema.safeParse({}).success).toBe(false);
+  });
+  it('accepts optional style and aspect_ratio', () => {
+    const r = imageGenerateSchema.safeParse({ prompt: 'test', style: 'cinematic', aspect_ratio: '16:9' });
+    expect(r.success).toBe(true);
+  });
+});
+
+describe('videoGenerateSchema', () => {
+  it('accepts valid script', () => {
+    expect(videoGenerateSchema.safeParse({ script: 'Hello world video' }).success).toBe(true);
+  });
+  it('rejects empty script', () => {
+    expect(videoGenerateSchema.safeParse({ script: '' }).success).toBe(false);
+  });
+  it('accepts duration as number', () => {
+    const r = videoGenerateSchema.safeParse({ script: 'test', duration: 30 });
+    expect(r.success).toBe(true);
+  });
+  it('rejects duration over 120', () => {
+    expect(videoGenerateSchema.safeParse({ script: 'test', duration: 200 }).success).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Agent query schemas                                                */
+/* ------------------------------------------------------------------ */
+
+describe('agentRunsQuerySchema', () => {
+  it('applies defaults for empty query', () => {
+    const r = agentRunsQuerySchema.safeParse({});
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.limit).toBe(30);
+      expect(r.data.agent_type).toBeUndefined();
+    }
+  });
+  it('accepts valid agent_type', () => {
+    expect(agentRunsQuerySchema.safeParse({ agent_type: 'watchdog' }).success).toBe(true);
+    expect(agentRunsQuerySchema.safeParse({ agent_type: 'report' }).success).toBe(true);
+  });
+  it('rejects invalid agent_type', () => {
+    expect(agentRunsQuerySchema.safeParse({ agent_type: 'invalid' }).success).toBe(false);
+  });
+});
+
+describe('agentDecisionsQuerySchema', () => {
+  it('applies defaults for empty query', () => {
+    const r = agentDecisionsQuerySchema.safeParse({});
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.limit).toBe(50);
+  });
+  it('accepts valid status', () => {
+    expect(agentDecisionsQuerySchema.safeParse({ status: 'pending' }).success).toBe(true);
+    expect(agentDecisionsQuerySchema.safeParse({ status: 'executed' }).success).toBe(true);
+  });
+  it('rejects invalid status', () => {
+    expect(agentDecisionsQuerySchema.safeParse({ status: 'unknown' }).success).toBe(false);
+  });
+});
+
+describe('datePresetQuerySchema', () => {
+  it('defaults to last_7d', () => {
+    const r = datePresetQuerySchema.safeParse({});
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.date_preset).toBe('last_7d');
+  });
+  it('accepts valid presets', () => {
+    expect(datePresetQuerySchema.safeParse({ date_preset: 'last_30d' }).success).toBe(true);
+    expect(datePresetQuerySchema.safeParse({ date_preset: 'today' }).success).toBe(true);
+  });
+  it('rejects invalid preset', () => {
+    expect(datePresetQuerySchema.safeParse({ date_preset: 'last_year' }).success).toBe(false);
   });
 });

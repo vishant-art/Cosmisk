@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { validate, imageGenerateSchema, videoGenerateSchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
 /*  Media Generation Routes                                            */
@@ -14,16 +15,9 @@ export async function mediaGenRoutes(app: FastifyInstance) {
 
   // POST /media/generate-image
   app.post('/generate-image', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { prompt, style, aspect_ratio, reference_image_url } = request.body as {
-      prompt: string;
-      style?: string;
-      aspect_ratio?: string;
-      reference_image_url?: string;
-    };
-
-    if (!prompt?.trim()) {
-      return reply.status(400).send({ success: false, error: 'prompt is required' });
-    }
+    const parsed = validate(imageGenerateSchema, request.body, reply);
+    if (!parsed) return;
+    const { prompt, style, aspect_ratio, reference_image_url } = parsed;
 
     if (!NANO_BANANA_API_KEY) {
       return reply.status(503).send({ success: false, error: 'Image generation API not configured. Set NANO_BANANA_API_KEY in environment.' });
@@ -73,16 +67,9 @@ export async function mediaGenRoutes(app: FastifyInstance) {
 
   // POST /media/generate-video
   app.post('/generate-video', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { script, duration, aspect_ratio, avatar } = request.body as {
-      script: string;
-      duration?: string;
-      aspect_ratio?: string;
-      avatar?: string;
-    };
-
-    if (!script?.trim()) {
-      return reply.status(400).send({ success: false, error: 'script is required' });
-    }
+    const parsed = validate(videoGenerateSchema, request.body, reply);
+    if (!parsed) return;
+    const { script, duration, aspect_ratio, avatar } = parsed;
 
     if (!N8N_VIDEO_WEBHOOK) {
       return reply.status(503).send({ success: false, error: 'Video generation API not configured. Set N8N_VIDEO_WEBHOOK in environment.' });

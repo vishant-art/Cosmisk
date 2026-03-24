@@ -159,6 +159,61 @@ export const profileUpdateSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ */
+/*  Media generation schemas                                           */
+/* ------------------------------------------------------------------ */
+
+export const imageGenerateSchema = z.object({
+  prompt: z.string().min(1, 'Prompt is required').max(2000),
+  style: z.string().max(100).optional(),
+  aspect_ratio: z.string().max(20).optional(),
+  reference_image_url: z.string().url().optional(),
+});
+
+export const videoGenerateSchema = z.object({
+  script: z.string().min(1, 'Script is required').max(5000),
+  duration: z.coerce.number().int().min(5).max(120).optional(),
+  aspect_ratio: z.string().max(20).optional(),
+  avatar: z.string().max(200).optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Campaign schemas                                                   */
+/* ------------------------------------------------------------------ */
+
+export const campaignCreateSchema = z.object({
+  campaign_name: z.string().min(1).max(200),
+  account_id: z.string().min(1),
+  objective: z.string().optional(),
+  daily_budget: z.coerce.number().min(0).optional(),
+  lifetime_budget: z.coerce.number().min(0).optional(),
+  targeting: z.record(z.string(), z.unknown()).optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Agent query schemas                                                */
+/* ------------------------------------------------------------------ */
+
+export const agentRunsQuerySchema = z.object({
+  agent_type: z.enum(['watchdog', 'briefing', 'report', 'content', 'sales']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+export const agentDecisionsQuerySchema = z.object({
+  status: z.enum(['pending', 'approved', 'executed', 'rejected', 'expired']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Common query schemas                                               */
+/* ------------------------------------------------------------------ */
+
+export const datePresetQuerySchema = z.object({
+  account_id: z.string().optional(),
+  credential_group: z.string().optional(),
+  date_preset: z.enum(['today', 'yesterday', 'last_3d', 'last_7d', 'last_14d', 'last_30d', 'last_90d', 'this_month', 'last_month']).default('last_7d'),
+});
+
+/* ------------------------------------------------------------------ */
 /*  Validation helper                                                  */
 /* ------------------------------------------------------------------ */
 

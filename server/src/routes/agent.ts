@@ -10,6 +10,7 @@ import { runReportAgentAll, runReportAgent } from '../services/report-agent.js';
 import { runContentAgentAll, runContentAgent } from '../services/content-agent.js';
 import { getSalesContext } from '../services/sales-agent.js';
 import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js';
+import { validate, agentRunsQuerySchema, agentDecisionsQuerySchema, idParamSchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
 /*  Cron scheduling                                                    */
@@ -180,12 +181,14 @@ export async function agentRoutes(app: FastifyInstance) {
   // --- Authenticated routes ---
 
   // GET /agent/runs
-  app.get('/runs', { preHandler: [app.authenticate] }, async (request) => {
-    const { agent_type, limit } = request.query as { agent_type?: string; limit?: string };
+  app.get('/runs', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(agentRunsQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { agent_type, limit } = parsed;
     const db = getDb();
 
     let query = 'SELECT * FROM agent_runs WHERE user_id = ?';
-    const params: any[] = [request.user.id];
+    const params: (string | number)[] = [request.user.id];
 
     if (agent_type) {
       query += ' AND agent_type = ?';
@@ -193,7 +196,7 @@ export async function agentRoutes(app: FastifyInstance) {
     }
 
     query += ' ORDER BY started_at DESC LIMIT ?';
-    params.push(clampLimit(limit, 20));
+    params.push(limit);
 
     const runs = db.prepare(query).all(...params) as AgentRunRow[];
 
@@ -211,12 +214,14 @@ export async function agentRoutes(app: FastifyInstance) {
   });
 
   // GET /agent/decisions
-  app.get('/decisions', { preHandler: [app.authenticate] }, async (request) => {
-    const { status, limit } = request.query as { status?: string; limit?: string };
+  app.get('/decisions', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(agentDecisionsQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { status, limit } = parsed;
     const db = getDb();
 
     let query = 'SELECT * FROM agent_decisions WHERE user_id = ?';
-    const params: any[] = [request.user.id];
+    const params: (string | number)[] = [request.user.id];
 
     if (status) {
       query += ' AND status = ?';
@@ -224,7 +229,7 @@ export async function agentRoutes(app: FastifyInstance) {
     }
 
     query += ' ORDER BY rowid DESC LIMIT ?';
-    params.push(clampLimit(limit, 50));
+    params.push(limit);
 
     const decisions = db.prepare(query).all(...params) as AgentDecisionRow[];
 
@@ -253,8 +258,9 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agent/decisions/:id/approve
   app.post('/decisions/:id/approve', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid decision ID' });
+    const params = validate(idParamSchema, request.params, reply);
+    if (!params) return;
+    const { id } = params;
 
     const db = getDb();
     const decision = db.prepare(
@@ -275,8 +281,9 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agent/decisions/:id/reject
   app.post('/decisions/:id/reject', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!UUID_RE.test(id)) return reply.status(400).send({ success: false, error: 'Invalid decision ID' });
+    const params = validate(idParamSchema, request.params, reply);
+    if (!params) return;
+    const { id } = params;
 
     const db = getDb();
     const decision = db.prepare(
