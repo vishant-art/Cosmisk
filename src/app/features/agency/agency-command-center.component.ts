@@ -1,10 +1,12 @@
-const _BUILD_VER = '2026-03-03-v1';
-import { Component, inject, computed } from '@angular/core';
+const _BUILD_VER = '2026-03-24-v1';
+import { Component, inject, computed, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { BrandService } from '../../core/services/brand.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ApiService } from '../../core/services/api.service';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-agency-command-center',
@@ -69,7 +71,7 @@ import { ToastService } from '../../core/services/toast.service';
             <lucide-icon name="brain" [size]="14" class="text-gray-400"></lucide-icon>
             <span class="text-xs text-gray-500 font-body">AI Learnings</span>
           </div>
-          <div class="text-2xl font-display text-accent">{{ totalLearnings }}</div>
+          <div class="text-2xl font-display text-accent">{{ totalLearnings() }}</div>
           <span class="text-[10px] text-gray-400 font-body">patterns discovered</span>
         </div>
       </div>
@@ -187,11 +189,11 @@ import { ToastService } from '../../core/services/toast.service';
               <div class="flex items-center justify-between pt-3 border-t border-gray-100">
                 <div class="flex gap-1.5">
                   <button class="px-2 py-1 bg-accent/5 text-accent rounded text-[10px] font-body font-semibold hover:bg-accent/10 transition-colors border-0 cursor-pointer"
-                    (click)="$event.stopPropagation()">
+                    (click)="generateForBrand(brand, $event)">
                     <lucide-icon name="sparkles" [size]="10" class="inline-block mr-0.5"></lucide-icon> Generate
                   </button>
                   <button class="px-2 py-1 bg-gray-50 text-gray-500 rounded text-[10px] font-body font-semibold hover:bg-gray-100 transition-colors border-0 cursor-pointer"
-                    (click)="$event.stopPropagation()">
+                    (click)="analyzeForBrand(brand, $event)">
                     <lucide-icon name="bar-chart-3" [size]="10" class="inline-block mr-0.5"></lucide-icon> Analyze
                   </button>
                 </div>
@@ -216,7 +218,7 @@ import { ToastService } from '../../core/services/toast.service';
           </a>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
-          @for (member of teamMembers; track member.name) {
+          @for (member of teamMembers(); track member.name) {
             <div class="text-center group">
               <div class="w-10 h-10 rounded-xl mx-auto flex items-center justify-center text-sm font-body font-bold text-white mb-1.5 transition-transform group-hover:scale-105"
                 [style.background-color]="member.color">
@@ -232,8 +234,9 @@ import { ToastService } from '../../core/services/toast.service';
     </div>
   `
 })
-export default class AgencyCommandCenterComponent {
+export default class AgencyCommandCenterComponent implements OnInit {
   private brandService = inject(BrandService);
+  private api = inject(ApiService);
 
   brands = this.brandService.allBrands;
 
@@ -250,7 +253,7 @@ export default class AgencyCommandCenterComponent {
   });
   totalCreatives = computed(() => this.brands().reduce((sum, b) => sum + (b.activeCreatives ?? 0), 0));
   totalAlerts = computed(() => this.brands().reduce((sum, b) => sum + (b.alertCount ?? 0), 0));
-  totalLearnings = 68;
+  totalLearnings = computed(() => this.brands().reduce((sum, b) => sum + (b.patternCount ?? 0), 0));
 
   filteredBrands = computed(() => {
     if (this.activeBrandFilter === 'All') return this.brands();
@@ -258,20 +261,35 @@ export default class AgencyCommandCenterComponent {
   });
 
   quickActions = [
-    { icon: 'sparkles', label: 'Generate Creatives', sub: 'All brands', route: '/app/ugc-studio', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
+    { icon: 'sparkles', label: 'Generate Creatives', sub: 'All brands', route: '/app/creative-engine', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
     { icon: 'shield', label: 'Run Audits', sub: 'Account health', route: '/app/audit', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
     { icon: 'file-text', label: 'Weekly Reports', sub: 'Auto-generated', route: '/app/reports', bgClass: 'bg-emerald-100', iconClass: 'text-emerald-600' },
     { icon: 'brain', label: 'AI Insights', sub: 'Cross-brand', route: '/app/brain', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
   ];
 
-  teamMembers = [
-    { name: 'Arjun M.', role: 'Owner', color: '#6366f1', load: 45 },
-    { name: 'Priya S.', role: 'Admin', color: '#ec4899', load: 62 },
-    { name: 'Rahul V.', role: 'Media Buyer', color: '#f59e0b', load: 78 },
-    { name: 'Neha G.', role: 'Designer', color: '#10b981', load: 55 },
-    { name: 'Vikram S.', role: 'Media Buyer', color: '#3b82f6', load: 83 },
-    { name: 'Ananya P.', role: 'Viewer', color: '#8b5cf6', load: 30 },
-  ];
+  teamMembers = signal<{ name: string; role: string; color: string; load: number }[]>([]);
+
+  private memberColors = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6'];
+
+  ngOnInit() {
+    this.loadTeamMembers();
+  }
+
+  private loadTeamMembers() {
+    this.api.get<any>(environment.TEAM_MEMBERS).subscribe({
+      next: (res) => {
+        if (res.members?.length) {
+          this.teamMembers.set(res.members.map((m: any, i: number) => ({
+            name: m.name || m.email?.split('@')[0] || 'Member',
+            role: m.role || 'viewer',
+            color: this.memberColors[i % this.memberColors.length],
+            load: 0,
+          })));
+        }
+      },
+      error: () => {},
+    });
+  }
 
   private brandColors: Record<string, string> = {
     'brand-001': '#6366f1',
@@ -298,6 +316,20 @@ export default class AgencyCommandCenterComponent {
 
   private router = inject(Router);
   private toast = inject(ToastService);
+
+  generateForBrand(brand: any, event: Event) {
+    event.stopPropagation();
+    this.brandService.switchBrand(brand.id);
+    this.router.navigate(['/app/creative-engine']);
+    this.toast.info(brand.name, 'Switched to brand. Start generating creatives.');
+  }
+
+  analyzeForBrand(brand: any, event: Event) {
+    event.stopPropagation();
+    this.brandService.switchBrand(brand.id);
+    this.router.navigate(['/app/brain']);
+    this.toast.info(brand.name, 'Switched to brand. Viewing AI insights.');
+  }
 
   goToReports() {
     this.router.navigate(['/app/reports']);

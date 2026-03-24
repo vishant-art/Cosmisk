@@ -301,13 +301,22 @@ export const directorBriefSchema = z.object({
   credential_group: z.string().optional(),
 });
 
+const directorCreativeSchema = z.object({
+  title: z.string().max(500).optional(),
+  body: z.string().max(5000).optional(),
+  link_url: z.string().url().optional(),
+  image_url: z.string().url().optional(),
+  call_to_action_type: z.string().optional(),
+});
+
 export const directorLaunchSchema = z.object({
   account_id: z.string().min(1),
   campaign_name: z.string().min(1).max(200),
   objective: z.string().optional(),
   daily_budget: z.coerce.number().min(0).optional(),
   targeting: z.record(z.string(), z.unknown()).optional(),
-  creative: z.record(z.string(), z.unknown()).optional(),
+  creative: directorCreativeSchema.optional(),
+  creatives: z.array(directorCreativeSchema).max(50).optional(),
   page_id: z.string().optional(),
   status: z.string().optional(),
 });

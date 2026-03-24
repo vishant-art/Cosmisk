@@ -560,28 +560,33 @@ export default class DirectorLabComponent implements OnInit {
     const acc = this.adAccountService.currentAccount();
 
     const budgetCents = Math.round(parseFloat(this.publishBudget.replace(/,/g, '')) * 100) || 1000000;
-    const firstVariation = approvedVariations[0];
+
+    // Send all approved variations as separate creatives
+    const creatives = approvedVariations.map((v: any) => ({
+      title: v.name || this.brief?.concept_name || 'Ad Creative',
+      body: v.description || this.brief?.hook_scripts?.[0] || '',
+      link_url: this.publishLinkUrl,
+      call_to_action_type: 'SHOP_NOW',
+    }));
 
     this.api.post<any>(environment.DIRECTOR_PUBLISH, {
       account_id: this.publishAdAccount || acc?.id || '',
       campaign_name: this.publishCampaign || 'Cosmisk Brief',
       objective: this.publishObjective,
       daily_budget: budgetCents,
-      creative: firstVariation ? {
-        title: firstVariation.name || this.brief?.concept_name || 'Ad Creative',
-        body: firstVariation.description || this.brief?.hook_scripts?.[0] || '',
-        link_url: this.publishLinkUrl,
-        call_to_action_type: 'SHOP_NOW',
-      } : undefined,
+      creatives,
       status: 'PAUSED',
     }).subscribe({
       next: (res) => {
         this.publishing.set(false);
         this.publishModalOpen.set(false);
         if (res.success) {
-          this.toast.success('Published to Meta!', `${this.approvedCount()} creatives are now live.`);
+          const count = res.published?.total_published || this.approvedCount();
+          const failed = res.published?.total_failed || 0;
+          const msg = failed > 0 ? `${count} published, ${failed} failed.` : `${count} ad${count !== 1 ? 's' : ''} created.`;
+          this.toast.success('Published to Meta!', msg + (res.message ? ` ${res.message}` : ''));
         } else {
-          this.toast.success('Published to Meta!', `${this.approvedCount()} creatives submitted for review.`);
+          this.toast.error('Publish Failed', res.error || 'Could not publish to Meta.');
         }
       },
       error: () => {

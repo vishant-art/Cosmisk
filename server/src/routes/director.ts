@@ -304,15 +304,26 @@ export async function directorRoutes(app: FastifyInstance) {
     const body = validate(directorLaunchSchema, request.body, reply);
     if (!body) return;
 
+    if (!body.page_id) {
+      return reply.status(400).send({ success: false, error: 'page_id is required to publish ads. Select a Facebook Page in Settings > Ad Accounts.' });
+    }
+
     const token = getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }
 
     const meta = new MetaApiService(token);
-    const publishStatus = body.status || 'PAUSED'; // Default to PAUSED for safety
+    const publishStatus = body.status || 'PAUSED';
     const targeting = (body.targeting || {}) as any;
-    const creative = body.creative as any;
+
+    // Support both single creative and array of creatives
+    const allCreatives: any[] = [];
+    if (body.creatives?.length) {
+      allCreatives.push(...body.creatives);
+    } else if (body.creative) {
+      allCreatives.push(body.creative);
+    }
 
     try {
       // Step 1: Create Campaign
@@ -347,7 +358,7 @@ export async function directorRoutes(app: FastifyInstance) {
           name: `${body.campaign_name} — Ad Set`,
           optimization_goal: 'OFFSITE_CONVERSIONS',
           billing_event: 'IMPRESSIONS',
-          daily_budget: body.daily_budget || 5000, // $50 default in cents
+          daily_budget: body.daily_budget || 5000,
           bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
           targeting: {
             age_min: targeting.age_min || 18,
@@ -369,43 +380,47 @@ export async function directorRoutes(app: FastifyInstance) {
       const adSet = await safeJson(adSetResp);
       const adSetId = adSet.id;
 
-      // Step 3: Create Ad Creative (if creative data provided)
-      let adId: string | null = null;
-      if (creative) {
-        const creativeResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/adcreatives`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            access_token: token,
-            name: `${body.campaign_name} — Creative`,
-            object_story_spec: {
-              page_id: body.page_id || '',
-              link_data: {
-                link: creative.link_url,
-                message: creative.body,
-                name: creative.title,
-                ...(creative.image_url ? { image_url: creative.image_url } : {}),
-                call_to_action: {
-                  type: creative.call_to_action_type || 'SHOP_NOW',
+      // Step 3: Create ad creatives + ads for each approved variation
+      let published = 0;
+      let failed = 0;
+      const adIds: string[] = [];
+
+      for (const creative of allCreatives) {
+        try {
+          const creativeResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/adcreatives`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_token: token,
+              name: `${body.campaign_name} — Creative ${published + 1}`,
+              object_story_spec: {
+                page_id: body.page_id || '',
+                link_data: {
+                  link: creative.link_url,
+                  message: creative.body,
+                  name: creative.title,
+                  ...(creative.image_url ? { image_url: creative.image_url } : {}),
+                  call_to_action: {
+                    type: creative.call_to_action_type || 'SHOP_NOW',
+                  },
                 },
               },
-            },
-          }),
-          service: 'Meta Marketing API',
-        });
+            }),
+            service: 'Meta Marketing API',
+          });
 
-        if (creativeResp.ok) {
-          const creative = await safeJson(creativeResp);
+          if (!creativeResp.ok) { failed++; continue; }
+          const creativeData = await safeJson(creativeResp);
+          if (!creativeData?.id) { failed++; continue; }
 
-          // Step 4: Create Ad
           const adResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/ads`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               access_token: token,
               adset_id: adSetId,
-              creative: { creative_id: creative?.id },
-              name: `${body.campaign_name} — Ad`,
+              creative: { creative_id: creativeData.id },
+              name: `${body.campaign_name} — Ad ${published + 1}`,
               status: publishStatus,
             }),
             service: 'Meta Marketing API',
@@ -413,8 +428,13 @@ export async function directorRoutes(app: FastifyInstance) {
 
           if (adResp.ok) {
             const ad = await safeJson(adResp);
-            adId = ad?.id || null;
+            if (ad?.id) adIds.push(ad.id);
+            published++;
+          } else {
+            failed++;
           }
+        } catch {
+          failed++;
         }
       }
 
@@ -423,12 +443,14 @@ export async function directorRoutes(app: FastifyInstance) {
         published: {
           campaign_id: campaignId,
           adset_id: adSetId,
-          ad_id: adId,
+          ad_ids: adIds,
+          total_published: published,
+          total_failed: failed,
           status: publishStatus,
         },
         message: publishStatus === 'PAUSED'
-          ? 'Campaign created in PAUSED state. Review and activate when ready.'
-          : 'Campaign is now ACTIVE and delivering.',
+          ? `${published} ad${published !== 1 ? 's' : ''} created in PAUSED state. Review and activate when ready.`
+          : `${published} ad${published !== 1 ? 's' : ''} now ACTIVE and delivering.`,
       };
     } catch (err: any) {
       return reply.status(500).send({ success: false, error: err.message });
