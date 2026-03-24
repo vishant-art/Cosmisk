@@ -2,11 +2,51 @@ import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
-import type { SprintRow, JobRow, AssetRow } from '../types/index.js';
+import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+
+/** Aggregated job stats for a time window */
+interface JobStatsRow {
+  total: number;
+  completed: number;
+  total_cost_cents: number;
+}
+
+/** Week stats (jobs + completed) used in /generate and /trigger-weekly */
+interface WeekStatsRow {
+  jobs: number;
+  completed: number;
+}
+
+/** Top-performing asset fields selected in /weekly-stats */
+interface TopAssetRow {
+  format: string;
+  predicted_score: number | null;
+  dna_tags: string | null;
+  actual_metrics: string | null;
+}
+
+/** Recent sprint summary fields */
+interface RecentSprintRow {
+  name: string;
+  status: string;
+  total_creatives: number;
+  completed_creatives: number;
+  actual_cost_cents: number;
+  created_at: string;
+}
+
+/** Trimmed sprint row for /trigger-weekly (no actual_cost_cents) */
+interface TriggerSprintRow {
+  name: string;
+  status: string;
+  total_creatives: number;
+  completed_creatives: number;
+  created_at: string;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Content Generator — Personal branding content from Cosmisk data    */
@@ -23,7 +63,7 @@ export async function contentRoutes(app: FastifyInstance) {
 
     const sprintsThisWeek = db.prepare(
       'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ? AND created_at >= ?'
-    ).get(userId, weekAgo) as any;
+    ).get(userId, weekAgo) as CountRow | undefined;
 
     const jobsThisWeek = db.prepare(`
       SELECT
@@ -31,21 +71,21 @@ export async function contentRoutes(app: FastifyInstance) {
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
         SUM(cost_cents) as total_cost_cents
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
-    `).get(userId, weekAgo) as any;
+    `).get(userId, weekAgo) as JobStatsRow | undefined;
 
     const topFormats = db.prepare(`
       SELECT format, COUNT(*) as count
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
       GROUP BY format ORDER BY count DESC LIMIT 5
-    `).all(userId, weekAgo) as any[];
+    `).all(userId, weekAgo) as FormatCountRow[];
 
     const totalSprints = (db.prepare(
       'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ?'
-    ).get(userId) as any).c;
+    ).get(userId) as CountRow).c;
 
     const totalCreatives = (db.prepare(
       'SELECT COUNT(*) as c FROM creative_jobs WHERE user_id = ?'
-    ).get(userId) as any).c;
+    ).get(userId) as CountRow).c;
 
     // Best performing assets this week
     const topAssets = db.prepare(`
@@ -54,7 +94,7 @@ export async function contentRoutes(app: FastifyInstance) {
       WHERE user_id = ? AND created_at >= ? AND actual_metrics IS NOT NULL
       ORDER BY json_extract(actual_metrics, '$.roas') DESC
       LIMIT 5
-    `).all(userId, weekAgo) as any[];
+    `).all(userId, weekAgo) as TopAssetRow[];
 
     return {
       success: true,
@@ -70,7 +110,7 @@ export async function contentRoutes(app: FastifyInstance) {
           total_sprints: totalSprints,
           total_creatives: totalCreatives,
         },
-        top_performers: topAssets.map((a: any) => ({
+        top_performers: topAssets.map((a) => ({
           format: a.format,
           predicted_score: a.predicted_score,
           dna_tags: a.dna_tags ? JSON.parse(a.dna_tags) : null,
@@ -96,26 +136,26 @@ export async function contentRoutes(app: FastifyInstance) {
 
     const recentSprints = db.prepare(
       'SELECT name, status, total_creatives, completed_creatives, actual_cost_cents, created_at FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 5'
-    ).all(userId) as any[];
+    ).all(userId) as RecentSprintRow[];
 
     const weekStats = db.prepare(`
       SELECT COUNT(*) as jobs, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
-    `).get(userId, weekAgo) as any;
+    `).get(userId, weekAgo) as WeekStatsRow | undefined;
 
     const topFormats = db.prepare(`
       SELECT format, COUNT(*) as count FROM creative_jobs WHERE user_id = ? AND status = 'completed'
       GROUP BY format ORDER BY count DESC LIMIT 5
-    `).all(userId) as any[];
+    `).all(userId) as FormatCountRow[];
 
     // Build data context
     const dataContext = `
 COSMISK WEEKLY DATA:
-- Sprints this week: ${recentSprints.filter((s: any) => s.created_at >= weekAgo).length}
+- Sprints this week: ${recentSprints.filter((s) => s.created_at >= weekAgo).length}
 - Creatives generated: ${weekStats?.jobs || 0}
 - Creatives completed: ${weekStats?.completed || 0}
-- Recent sprints: ${recentSprints.map((s: any) => `"${s.name}" (${s.status}, ${s.completed_creatives}/${s.total_creatives} done)`).join(', ') || 'None yet'}
-- Most used formats: ${topFormats.map((f: any) => `${f.format} (${f.count})`).join(', ') || 'N/A'}
+- Recent sprints: ${recentSprints.map((s) => `"${s.name}" (${s.status}, ${s.completed_creatives}/${s.total_creatives} done)`).join(', ') || 'None yet'}
+- Most used formats: ${topFormats.map((f) => `${f.format} (${f.count})`).join(', ') || 'N/A'}
 ${topic ? `\nSPECIFIC TOPIC: ${topic}` : ''}
 ${transcript ? `\nTRANSCRIPT FROM SCREEN RECORDING:\n${transcript.slice(0, 3000)}` : ''}`;
 
@@ -214,7 +254,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
           data_context_used: {
             sprints_referenced: recentSprints.length,
             week_creatives: weekStats?.completed || 0,
-            top_formats: topFormats.map((f: any) => f.format),
+            top_formats: topFormats.map((f) => f.format),
           },
         };
       }
@@ -299,7 +339,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     const db = getDb();
     const userId = request.user.id;
     const conditions = ['user_id = ?'];
-    const params: any[] = [userId];
+    const params: (string | number)[] = [userId];
 
     if (platform) {
       conditions.push('platform = ?');
@@ -312,17 +352,17 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
     const where = conditions.join(' AND ');
 
-    const total = (db.prepare(`SELECT COUNT(*) as c FROM content_bank WHERE ${where}`).get(...params) as any).c;
+    const total = (db.prepare(`SELECT COUNT(*) as c FROM content_bank WHERE ${where}`).get(...params) as CountRow).c;
 
     const items = db.prepare(`
       SELECT * FROM content_bank WHERE ${where}
       ORDER BY created_at DESC LIMIT ? OFFSET ?
-    `).all(...params, lim, off) as any[];
+    `).all(...params, lim, off) as ContentBankRow[];
 
     return {
       success: true,
       total,
-      items: items.map((row: any) => ({
+      items: items.map((row) => ({
         id: row.id,
         platform: row.platform,
         content_type: row.content_type,
@@ -355,7 +395,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     }
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
 
     if (updates.status) { fields.push('status = ?'); values.push(updates.status); }
     if (updates.body) { fields.push('body = ?'); values.push(updates.body); }
@@ -401,25 +441,25 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     // Gather stats
     const recentSprints = db.prepare(
       'SELECT name, status, total_creatives, completed_creatives, created_at FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 5'
-    ).all(userId) as any[];
+    ).all(userId) as TriggerSprintRow[];
 
     const weekStats = db.prepare(`
       SELECT COUNT(*) as jobs, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
-    `).get(userId, weekAgo) as any;
+    `).get(userId, weekAgo) as WeekStatsRow | undefined;
 
     const topFormats = db.prepare(`
       SELECT format, COUNT(*) as count FROM creative_jobs WHERE user_id = ? AND status = 'completed'
       GROUP BY format ORDER BY count DESC LIMIT 5
-    `).all(userId) as any[];
+    `).all(userId) as FormatCountRow[];
 
     const dataContext = `
 COSMISK WEEKLY DATA:
-- Sprints this week: ${recentSprints.filter((s: any) => s.created_at >= weekAgo).length}
+- Sprints this week: ${recentSprints.filter((s) => s.created_at >= weekAgo).length}
 - Creatives generated: ${weekStats?.jobs || 0}
 - Creatives completed: ${weekStats?.completed || 0}
-- Recent sprints: ${recentSprints.map((s: any) => `"${s.name}" (${s.status}, ${s.completed_creatives}/${s.total_creatives} done)`).join(', ') || 'None yet'}
-- Most used formats: ${topFormats.map((f: any) => `${f.format} (${f.count})`).join(', ') || 'N/A'}`;
+- Recent sprints: ${recentSprints.map((s) => `"${s.name}" (${s.status}, ${s.completed_creatives}/${s.total_creatives} done)`).join(', ') || 'None yet'}
+- Most used formats: ${topFormats.map((f) => `${f.format} (${f.count})`).join(', ') || 'N/A'}`;
 
     const platforms = ['twitter', 'linkedin', 'instagram'];
 

@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import Razorpay from 'razorpay';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
-import type { SubscriptionRow, UserRow, UserUsageRow } from '../types/index.js';
+import type { SubscriptionRow, UserRow, UserUsageRow, StripeSubscriptionWithPeriod, RazorpayWebhookEvent, FastifyRawBodyRequest } from '../types/index.js';
 import { validate, checkoutSchema, verifyPaymentSchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
@@ -52,7 +52,7 @@ let _stripe: Stripe | null = null;
 function getStripe(): Stripe | null {
   if (!config.stripeSecretKey) return null;
   if (!_stripe) {
-    _stripe = new Stripe(config.stripeSecretKey, { apiVersion: '2025-04-30.basil' as any });
+    _stripe = new Stripe(config.stripeSecretKey, { apiVersion: '2025-04-30.basil' as Stripe.LatestApiVersion });
   }
   return _stripe;
 }
@@ -350,8 +350,8 @@ export async function billingRoutes(app: FastifyInstance) {
         plan_id: razorpayPlanId,
         total_count: interval === 'annual' ? 12 : 60, // max billing cycles
         customer_notify: 0,
-        notes: { user_id: request.user.id, plan, interval },
-      } as any);
+        notes: { user_id: request.user.id, plan, interval } as Record<string, string>,
+      });
 
       return {
         success: true,
@@ -465,7 +465,7 @@ export async function billingRoutes(app: FastifyInstance) {
       if (rzp) {
         try {
           await rzp.subscriptions.cancel(sub.razorpay_subscription_id);
-        } catch (err: any) {
+        } catch (err: unknown) {
           app.log.error({ err }, 'Razorpay cancel failed');
         }
       }
@@ -474,7 +474,7 @@ export async function billingRoutes(app: FastifyInstance) {
       if (stripe) {
         try {
           await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
-        } catch (err: any) {
+        } catch (err: unknown) {
           app.log.error({ err }, 'Stripe cancel failed');
         }
       }
@@ -533,7 +533,7 @@ export async function billingRoutes(app: FastifyInstance) {
     }
 
     // Verify webhook signature
-    const body = (request as any).rawBody as string || JSON.stringify(request.body);
+    const body = (request as FastifyRawBodyRequest).rawBody || JSON.stringify(request.body);
     const expectedSig = crypto
       .createHmac('sha256', config.razorpayWebhookSecret)
       .update(body)
@@ -543,7 +543,7 @@ export async function billingRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid webhook signature' });
     }
 
-    const event = request.body as any;
+    const event = request.body as RazorpayWebhookEvent;
     const db = getDb();
     const eventType = event.event;
     const payload = event.payload?.subscription?.entity;
@@ -619,12 +619,13 @@ export async function billingRoutes(app: FastifyInstance) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(
-        (request as any).rawBody as string || JSON.stringify(request.body),
+        (request as FastifyRawBodyRequest).rawBody || JSON.stringify(request.body),
         sig,
         config.stripeWebhookSecret,
       );
-    } catch (err: any) {
-      return reply.status(400).send({ error: `Webhook Error: ${err.message}` });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.status(400).send({ error: `Webhook Error: ${message}` });
     }
 
     const db = getDb();
@@ -637,7 +638,7 @@ export async function billingRoutes(app: FastifyInstance) {
         if (!userId) break;
 
         const subId = session.subscription as string;
-        const stripeSub = await stripe.subscriptions.retrieve(subId) as any;
+        const stripeSub = await stripe.subscriptions.retrieve(subId) as unknown as StripeSubscriptionWithPeriod;
 
         // Deactivate any existing active subscription
         db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE user_id = ? AND status IN ('active', 'trialing')")
@@ -657,7 +658,7 @@ export async function billingRoutes(app: FastifyInstance) {
       }
 
       case 'customer.subscription.updated': {
-        const sub = event.data.object as any;
+        const sub = event.data.object as unknown as StripeSubscriptionWithPeriod;
         db.prepare(`
           UPDATE subscriptions SET
             status = ?, cancel_at_period_end = ?,

@@ -409,6 +409,35 @@ export interface TeamMemberRow {
   revoked_at: string | null;
 }
 
+export interface ContentBankRow {
+  id: string;
+  user_id: string;
+  platform: string;
+  content_type: string;
+  title: string | null;
+  body: string;
+  hashtags: string | null;
+  media_notes: string | null;
+  status: string;
+  scheduled_for: string | null;
+  posted_at: string | null;
+  source: string | null;
+  generation_context: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Reusable row shape for COUNT(*) as c queries */
+export interface CountRow {
+  c: number;
+}
+
+/** Row shape for format + count aggregation queries */
+export interface FormatCountRow {
+  format: string;
+  count: number;
+}
+
 export interface AgentEntityRow {
   id: string;
   user_id: string;
@@ -418,4 +447,43 @@ export interface AgentEntityRow {
   mention_count: number;
   first_seen: string;
   last_seen: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Billing / webhook helper types                                     */
+/* ------------------------------------------------------------------ */
+
+/** Stripe subscription with period fields (current_period_* removed from top-level type in newer Stripe SDK versions) */
+export interface StripeSubscriptionWithPeriod {
+  id: string;
+  status: string;
+  cancel_at_period_end: boolean;
+  current_period_start: number;
+  current_period_end: number;
+}
+
+/** Shape of a Razorpay webhook event body */
+export interface RazorpayWebhookEvent {
+  event: string;
+  payload?: {
+    subscription?: {
+      entity?: {
+        id: string;
+        plan_id?: string;
+        status?: string;
+        [key: string]: unknown;
+      };
+    };
+    payment?: {
+      entity?: {
+        id: string;
+        [key: string]: unknown;
+      };
+    };
+  };
+}
+
+/** Fastify request with rawBody (enabled via config: { rawBody: true }) */
+export interface FastifyRawBodyRequest {
+  rawBody?: string;
 }

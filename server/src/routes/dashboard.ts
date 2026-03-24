@@ -8,6 +8,15 @@ import { computeTrend, assessConfidence } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, InsightItem } from '../types/index.js';
 import { validate, accountQuerySchema, accountIdQuerySchema } from '../validation/schemas.js';
 
+interface CountRow {
+  c: number;
+}
+
+interface StatusCountRow {
+  status: string;
+  c: number;
+}
+
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
   const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
@@ -267,18 +276,18 @@ export async function dashboardRoutes(app: FastifyInstance) {
       const db = getDb();
       const userId = request.user.id;
 
-      const projectTotal = (db.prepare('SELECT COUNT(*) as c FROM ugc_projects WHERE user_id = ?').get(userId) as any)?.c || 0;
-      const byStatus = db.prepare('SELECT status, COUNT(*) as c FROM ugc_projects WHERE user_id = ? GROUP BY status').all(userId) as any[];
+      const projectTotal = (db.prepare('SELECT COUNT(*) as c FROM ugc_projects WHERE user_id = ?').get(userId) as CountRow | undefined)?.c || 0;
+      const byStatus = db.prepare('SELECT status, COUNT(*) as c FROM ugc_projects WHERE user_id = ? GROUP BY status').all(userId) as StatusCountRow[];
 
-      const conceptTotal = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ?`).get(userId) as any)?.c || 0;
-      const conceptApproved = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ? AND c.status = 'approved'`).get(userId) as any)?.c || 0;
-      const conceptPending = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ? AND c.status = 'pending'`).get(userId) as any)?.c || 0;
-      const conceptRejected = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ? AND c.status = 'rejected'`).get(userId) as any)?.c || 0;
+      const conceptTotal = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ?`).get(userId) as CountRow | undefined)?.c || 0;
+      const conceptApproved = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ? AND c.status = 'approved'`).get(userId) as CountRow | undefined)?.c || 0;
+      const conceptPending = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ? AND c.status = 'pending'`).get(userId) as CountRow | undefined)?.c || 0;
+      const conceptRejected = (db.prepare(`SELECT COUNT(*) as c FROM ugc_concepts c JOIN ugc_projects p ON c.project_id = p.id WHERE p.user_id = ? AND c.status = 'rejected'`).get(userId) as CountRow | undefined)?.c || 0;
 
-      const scriptTotal = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ?`).get(userId) as any)?.c || 0;
-      const scriptDelivered = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ? AND s.status = 'delivered'`).get(userId) as any)?.c || 0;
-      const scriptReview = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ? AND s.status = 'in_review'`).get(userId) as any)?.c || 0;
-      const scriptDraft = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ? AND s.status = 'draft'`).get(userId) as any)?.c || 0;
+      const scriptTotal = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ?`).get(userId) as CountRow | undefined)?.c || 0;
+      const scriptDelivered = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ? AND s.status = 'delivered'`).get(userId) as CountRow | undefined)?.c || 0;
+      const scriptReview = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ? AND s.status = 'in_review'`).get(userId) as CountRow | undefined)?.c || 0;
+      const scriptDraft = (db.prepare(`SELECT COUNT(*) as c FROM ugc_scripts s JOIN ugc_projects p ON s.project_id = p.id WHERE p.user_id = ? AND s.status = 'draft'`).get(userId) as CountRow | undefined)?.c || 0;
 
       const statusMap: Record<string, number> = {};
       for (const s of byStatus) statusMap[s.status] = s.c;
