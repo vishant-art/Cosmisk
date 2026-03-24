@@ -82,7 +82,7 @@ import { LucideAngularModule } from 'lucide-angular';
               }
             </ul>
             <a
-              [routerLink]="plan.id === 'free' ? '/signup' : '/signup'"
+              [routerLink]="plan.id === 'free' ? '/signup' : '/billing'"
               class="block text-center py-3 rounded-lg font-body font-semibold text-sm transition-colors no-underline"
               [ngClass]="plan.featured ? 'bg-accent text-white hover:bg-accent-hover' : 'bg-navy text-white hover:bg-navy-hover'">
               {{ plan.cta }}

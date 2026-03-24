@@ -9,4 +9,5 @@ export interface Brand {
   status: 'active' | 'warning' | 'paused';
   activeCampaigns?: number;
   activeCreatives?: number;
+  patternCount?: number;
 }
