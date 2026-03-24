@@ -6,7 +6,13 @@ import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import { round, fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
-import type { MetaTokenRow, UgcConceptRow } from '../types/index.js';
+import type { MetaTokenRow, UgcConceptRow, UgcProjectRow } from '../types/index.js';
+
+/** Minimal row shape for project ownership check */
+interface ProjectIdRow { id: string }
+
+/** Minimal row shape for script ownership check */
+interface ScriptIdRow { id: string }
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -364,7 +370,7 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
 
     // Verify ownership
     const project = db.prepare('SELECT id FROM ugc_projects WHERE id = ? AND user_id = ?')
-      .get(project_id, request.user.id) as any;
+      .get(project_id, request.user.id) as ProjectIdRow | undefined;
     if (!project) {
       return reply.status(403).send({ success: false, error: 'Not authorized to modify this project' });
     }
@@ -394,7 +400,7 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
 
     // Get project brief
     const project = db.prepare('SELECT * FROM ugc_projects WHERE id = ? AND user_id = ?')
-      .get(project_id, request.user.id) as any;
+      .get(project_id, request.user.id) as UgcProjectRow | undefined;
     if (!project) return { success: false, error: 'Project not found' };
 
     const brief = project.brief ? JSON.parse(project.brief) : {};
@@ -457,7 +463,7 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
       `SELECT s.id FROM ugc_scripts s
        JOIN ugc_projects p ON s.project_id = p.id
        WHERE s.id = ? AND p.user_id = ?`
-    ).get(script_id, request.user.id) as any;
+    ).get(script_id, request.user.id) as ScriptIdRow | undefined;
 
     if (!script) {
       return reply.status(403).send({ success: false, error: 'Not authorized to edit this script' });

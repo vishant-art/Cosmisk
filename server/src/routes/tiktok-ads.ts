@@ -103,9 +103,17 @@ function saveTikTokToken(userId: string, accessToken: string, advertiserId: stri
   `).run(userId, encryptToken(accessToken), advertiserId);
 }
 
+/** Row shape for the tiktok_tokens table */
+interface TikTokTokenRow {
+  user_id: string;
+  encrypted_access_token: string;
+  advertiser_id: string;
+  created_at: string;
+}
+
 function getTikTokToken(userId: string): { accessToken: string; advertiserId: string } | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM tiktok_tokens WHERE user_id = ?').get(userId) as any;
+  const row = db.prepare('SELECT * FROM tiktok_tokens WHERE user_id = ?').get(userId) as TikTokTokenRow | undefined;
   if (!row) return null;
   return { accessToken: decryptToken(row.encrypted_access_token), advertiserId: row.advertiser_id };
 }

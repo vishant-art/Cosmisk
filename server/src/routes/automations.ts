@@ -427,7 +427,7 @@ export async function automationRoutes(app: FastifyInstance) {
 
   // POST /automations/run — Manual trigger for automation rules (admin only)
   app.post('/run', { preHandler: [app.authenticate] }, async (request, reply) => {
-    if ((request.user as any).role !== 'admin') {
+    if (request.user.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
     try {

@@ -11,6 +11,19 @@ import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
 import Anthropic from '@anthropic-ai/sdk';
 
+/** Shape of a Meta Insights API response with a data array of raw insight rows */
+interface MetaInsightsResponse {
+  data?: MetaInsightRow[];
+}
+
+/** A single row from Meta Insights — field names vary by query, so indexed access is used */
+interface MetaInsightRow {
+  [field: string]: string | number | Record<string, unknown>[] | undefined;
+  ad_name?: string;
+  campaign_name?: string;
+  date_start?: string;
+}
+
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
 /* ------------------------------------------------------------------ */
@@ -439,14 +452,14 @@ async function handleAudience(meta: MetaApiService, accountId: string, datePrese
 }
 
 async function handleCreative(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
-  const adData = await meta.get<any>(`/${accountId}/insights`, {
+  const adData = await meta.get<MetaInsightsResponse>(`/${accountId}/insights`, {
     fields: `ad_name,campaign_name,${INSIGHT_FIELDS}`,
     level: 'ad',
     date_preset: datePreset,
     limit: '50',
   });
 
-  const rows = (adData.data || []) as any[];
+  const rows = adData.data || [];
 
   if (rows.length === 0) {
     return { content: 'I don\'t see any ad-level data for this period. Your ads need to be running and delivering for me to analyze creative performance.' };
@@ -594,14 +607,14 @@ async function handleCpa(meta: MetaApiService, accountId: string, datePreset: st
 }
 
 async function handleForecast(meta: MetaApiService, accountId: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
-  const dailyData = await meta.get<any>(`/${accountId}/insights`, {
+  const dailyData = await meta.get<MetaInsightsResponse>(`/${accountId}/insights`, {
     fields: INSIGHT_FIELDS,
     date_preset: 'last_14d',
     time_increment: '1',
     level: 'account',
   });
 
-  const days = (dailyData.data || []) as any[];
+  const days = dailyData.data || [];
 
   if (days.length < 3) {
     return { content: 'I need at least 3 days of data to project anything meaningful. Your account doesn\'t have enough history in this window yet.' };

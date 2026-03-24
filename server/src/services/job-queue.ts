@@ -6,8 +6,15 @@
 import { getDb } from '../db/index.js';
 import { getProvider } from './api-providers.js';
 import { notifyAlert } from './notifications.js';
-import type { JobRow, SprintRow } from '../types/index.js';
+import type { JobRow, SprintRow, CountRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+
+/** Shape returned by the sprint job stats aggregation query */
+interface SprintJobStats {
+  completed: number | null;
+  failed: number | null;
+  actual_cost: number | null;
+}
 
 const MAX_CONCURRENT = 5;
 const POLL_INTERVAL_MS = 5_000;
@@ -52,7 +59,7 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       // Count currently active jobs (generating or polling)
       const activeCount = (db.prepare(
         "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status IN ('generating', 'polling')"
-      ).get(sprintId) as any).c;
+      ).get(sprintId) as CountRow).c;
 
       // Poll any async jobs that are waiting
       if (activeCount > 0) {
@@ -78,7 +85,7 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       // Check if all jobs are done
       const remaining = (db.prepare(
         "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')"
-      ).get(sprintId) as any).c;
+      ).get(sprintId) as CountRow).c;
 
       if (remaining === 0) {
         // All done — update sprint status
@@ -254,7 +261,7 @@ function updateSprintProgress(sprintId: string): void {
       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
       SUM(CASE WHEN status = 'completed' THEN cost_cents ELSE 0 END) as actual_cost
     FROM creative_jobs WHERE sprint_id = ?
-  `).get(sprintId) as any;
+  `).get(sprintId) as SprintJobStats;
 
   db.prepare(`
     UPDATE creative_sprints
@@ -271,7 +278,7 @@ function getActiveJobCount(sprintId: string): number {
   const db = getDb();
   return (db.prepare(
     "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status IN ('generating', 'polling')"
-  ).get(sprintId) as any).c;
+  ).get(sprintId) as CountRow).c;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -306,7 +313,7 @@ export function recoverInterruptedSprints(): void {
     // Check if there are still jobs to process
     const remaining = (db.prepare(
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')"
-    ).get(sprint.id) as any).c;
+    ).get(sprint.id) as CountRow).c;
 
     if (remaining > 0) {
       logger.info(`[JobQueue] Recovery: resuming sprint ${sprint.id} (${remaining} jobs remaining)`);

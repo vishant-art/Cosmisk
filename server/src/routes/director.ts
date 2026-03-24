@@ -7,6 +7,16 @@ import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, directorBriefSchema, directorLaunchSchema, directorUpdateStatusSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
+
+/** Shape of the targeting config passed in a director launch request */
+interface TargetingConfig {
+  age_min?: number;
+  age_max?: number;
+  genders?: number[];
+  geo_locations?: { countries: string[] };
+  interests?: Array<{ id: string; name: string }>;
+}
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -104,13 +114,13 @@ export async function directorRoutes(app: FastifyInstance) {
                   metrics: { roas: round(m.roas, 2), cpa: round(m.cpa, 2), ctr: round(m.ctr, 2), spend: round(m.spend, 2), impressions: m.impressions, conversions: m.conversions },
                 };
               }
-            } catch {
-              // Base creative insight not available
+            } catch (err: any) {
+              logger.warn({ creativeId: body.base_creative, error: err?.message }, 'Failed to fetch base creative insight');
             }
           }
         }
-      } catch {
-        // Meta data not available — continue with defaults
+      } catch (err: any) {
+        logger.warn({ accountId: body.account_id, error: err?.message }, 'Meta performance data unavailable for brief generation');
       }
     }
 
@@ -315,7 +325,7 @@ export async function directorRoutes(app: FastifyInstance) {
 
     const meta = new MetaApiService(token);
     const publishStatus = body.status || 'PAUSED';
-    const targeting = (body.targeting || {}) as any;
+    const targeting = (body.targeting || {}) as TargetingConfig;
 
     // Support both single creative and array of creatives
     const allCreatives: any[] = [];

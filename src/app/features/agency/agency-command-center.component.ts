@@ -287,7 +287,7 @@ export default class AgencyCommandCenterComponent implements OnInit {
           })));
         }
       },
-      error: () => {},
+      error: (err: any) => console.error('Failed to load team members:', err),
     });
   }
 
@@ -320,14 +320,14 @@ export default class AgencyCommandCenterComponent implements OnInit {
   generateForBrand(brand: any, event: Event) {
     event.stopPropagation();
     this.brandService.switchBrand(brand.id);
-    this.router.navigate(['/app/creative-engine']);
+    this.router.navigate(['/app/creative-engine'], { queryParams: { brand: brand.name } });
     this.toast.info(brand.name, 'Switched to brand. Start generating creatives.');
   }
 
   analyzeForBrand(brand: any, event: Event) {
     event.stopPropagation();
     this.brandService.switchBrand(brand.id);
-    this.router.navigate(['/app/brain']);
+    this.router.navigate(['/app/brain'], { queryParams: { brand: brand.name } });
     this.toast.info(brand.name, 'Switched to brand. Viewing AI insights.');
   }
 

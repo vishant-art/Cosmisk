@@ -161,8 +161,8 @@ export async function agentRoutes(app: FastifyInstance) {
         if (!payloadStr) return reply.status(400).send({ error: 'Missing payload' });
         payload = JSON.parse(payloadStr);
       } else {
-        const body = request.body as any;
-        payload = body.payload ? JSON.parse(body.payload) : body;
+        const body = request.body as Record<string, string>;
+        payload = body['payload'] ? JSON.parse(body['payload']) : body;
       }
 
       // Validate action value is a UUID (#7)

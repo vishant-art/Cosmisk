@@ -6,7 +6,7 @@ import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import { round, fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
-import type { MetaTokenRow, SprintRow, JobRow, AssetRow, CostLedgerRow } from '../types/index.js';
+import type { MetaTokenRow, SprintRow, JobRow, AssetRow, CostLedgerRow, CountRow } from '../types/index.js';
 import { generateSprintPlan, generateScript, generateScriptsForJobs } from '../services/sprint-planner.js';
 import { scorePlanItems, optimizeCounts } from '../services/plan-scorer.js';
 import { startSprintGeneration, isSprintActive, stopSprintGeneration } from '../services/job-queue.js';
@@ -17,6 +17,87 @@ import { searchAdLibrary } from './competitor-spy.js';
 import { analyzeTopAdVisuals, buildVisualSummary, selectAdsForAnalysis } from '../services/visual-analyzer.js';
 import type { VideoDNA } from '../services/creative-patterns.js';
 import { logger } from '../utils/logger.js';
+
+/* ------------------------------------------------------------------ */
+/*  Local query-result interfaces (only fields actually accessed)      */
+/* ------------------------------------------------------------------ */
+
+/** Progress stats for a sprint's jobs */
+interface SprintProgressRow {
+  total: number;
+  completed: number;
+  failed: number;
+  in_progress: number;
+  pending: number;
+}
+
+/** Cost aggregation by provider */
+interface CostByProviderRow {
+  api_provider: string;
+  total_cents: number;
+  operations: number;
+}
+
+/** Cost aggregation by sprint */
+interface CostBySprintRow {
+  sprint_id: string;
+  total_cents: number;
+  operations: number;
+}
+
+/** Single sum of cost_cents */
+interface CostTotalRow {
+  total_cents: number | null;
+}
+
+/** Monthly / all-time usage aggregation */
+interface UsageAggRow {
+  generations: number;
+  cost_cents: number;
+}
+
+/** Format performance aggregation */
+interface FormatPerformanceRow {
+  format: string;
+  total_assets: number;
+  tracked_assets: number;
+  avg_predicted_score: number | null;
+}
+
+/** Row containing only actual_metrics JSON string */
+interface ActualMetricsRow {
+  actual_metrics: string;
+}
+
+/** Sprint trend data for analytics */
+interface SprintTrendRow {
+  id: string;
+  name: string;
+  status: string;
+  total_creatives: number;
+  completed_creatives: number;
+  estimated_cost_cents: number;
+  actual_cost_cents: number;
+  created_at: string;
+}
+
+/** Asset with predicted score and metrics for prediction accuracy */
+interface PredictionRow {
+  predicted_score: number | null;
+  actual_metrics: string;
+}
+
+/** Top DNA row with tags, metrics, and score */
+interface TopDnaRow {
+  dna_tags: string;
+  actual_metrics: string;
+  predicted_score: number | null;
+}
+
+/** Shape of a Meta API error response body */
+interface MetaErrorBody {
+  error?: { message?: string };
+}
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -484,7 +565,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         SUM(CASE WHEN status IN ('generating', 'polling') THEN 1 ELSE 0 END) as in_progress,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
       FROM creative_jobs WHERE sprint_id = ?
-    `).get(id) as any;
+    `).get(id) as SprintProgressRow;
 
     return {
       success: true,
@@ -653,7 +734,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     // Check usage limits
     const jobCount = (db.prepare(
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ?"
-    ).get(id) as any).c;
+    ).get(id) as CountRow).c;
 
     const { allowed, current, limit } = checkLimit(request.user.id, 'creative_count');
     if (!allowed) {
@@ -668,7 +749,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     // Check scripts are generated
     const unscripted = (db.prepare(
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status = 'pending' AND script IS NULL"
-    ).get(id) as any).c;
+    ).get(id) as CountRow).c;
 
     if (unscripted > 0) {
       return reply.status(400).send({
@@ -748,7 +829,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
         if (!campaignResp.ok) {
           const errBody = await safeJson(campaignResp);
-          throw new Error((errBody as any)?.error?.message || 'Failed to create campaign');
+          throw new Error((errBody as MetaErrorBody)?.error?.message || 'Failed to create campaign');
         }
         const campaign = await safeJson(campaignResp);
         if (!campaign?.id) throw new Error('Campaign creation returned no ID');
@@ -780,7 +861,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
         if (!adSetResp.ok) {
           const errBody = await safeJson(adSetResp);
-          throw new Error((errBody as any)?.error?.message || 'Failed to create ad set');
+          throw new Error((errBody as MetaErrorBody)?.error?.message || 'Failed to create ad set');
         }
         const adSet = await safeJson(adSetResp);
         if (!adSet?.id) throw new Error('Ad set creation returned no ID');
@@ -969,17 +1050,17 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       SELECT api_provider, SUM(cost_cents) as total_cents, COUNT(*) as operations
       FROM cost_ledger WHERE user_id = ?
       GROUP BY api_provider
-    `).all(request.user.id) as any[];
+    `).all(request.user.id) as CostByProviderRow[];
 
     const bySprint = db.prepare(`
       SELECT sprint_id, SUM(cost_cents) as total_cents, COUNT(*) as operations
       FROM cost_ledger WHERE user_id = ? AND sprint_id IS NOT NULL
       GROUP BY sprint_id
-    `).all(request.user.id) as any[];
+    `).all(request.user.id) as CostBySprintRow[];
 
     const total = db.prepare(
       'SELECT SUM(cost_cents) as total_cents FROM cost_ledger WHERE user_id = ?'
-    ).get(request.user.id) as any;
+    ).get(request.user.id) as CostTotalRow | undefined;
 
     return {
       success: true,
@@ -1006,22 +1087,22 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         COUNT(*) as generations,
         COALESCE(SUM(cost_cents), 0) as cost_cents
       FROM cost_ledger WHERE user_id = ? AND created_at >= ?
-    `).get(request.user.id, monthStr) as any;
+    `).get(request.user.id, monthStr) as UsageAggRow | undefined;
 
     const totalUsage = db.prepare(`
       SELECT
         COUNT(*) as generations,
         COALESCE(SUM(cost_cents), 0) as cost_cents
       FROM cost_ledger WHERE user_id = ?
-    `).get(request.user.id) as any;
+    `).get(request.user.id) as UsageAggRow | undefined;
 
     const sprintCount = (db.prepare(
       'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ?'
-    ).get(request.user.id) as any).c;
+    ).get(request.user.id) as CountRow).c;
 
     const activeSprints = (db.prepare(
       "SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ? AND status IN ('generating', 'approved')"
-    ).get(request.user.id) as any).c;
+    ).get(request.user.id) as CountRow).c;
 
     // Provider config status (which providers are ready)
     const providers: Record<string, boolean> = {
@@ -1208,15 +1289,23 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       WHERE ca.user_id = ?
       GROUP BY ca.format
       ORDER BY total_assets DESC
-    `).all(userId) as any[];
+    `).all(userId) as FormatPerformanceRow[];
 
     // Enrich with actual metrics from the assets that have been tracked
-    const formatWinRates: any[] = [];
+    const formatWinRates: {
+      format: string;
+      total_assets: number;
+      tracked_assets: number;
+      avg_predicted_score: number;
+      avg_actual_roas: number;
+      avg_actual_ctr: number;
+      total_spend: number;
+    }[] = [];
     for (const fp of formatPerformance) {
       const assetsWithMetrics = db.prepare(`
         SELECT actual_metrics FROM creative_assets
         WHERE user_id = ? AND format = ? AND actual_metrics IS NOT NULL
-      `).all(userId, fp.format) as any[];
+      `).all(userId, fp.format) as ActualMetricsRow[];
 
       let avgRoas = 0;
       let avgCtr = 0;
@@ -1257,9 +1346,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       FROM creative_sprints cs
       WHERE cs.user_id = ?
       ORDER BY cs.created_at ASC
-    `).all(userId) as any[];
+    `).all(userId) as SprintTrendRow[];
 
-    const costTrends = sprintTrends.map((s: any) => ({
+    const costTrends = sprintTrends.map((s: SprintTrendRow) => ({
       sprint_id: s.id,
       name: s.name,
       status: s.status,
@@ -1283,27 +1372,27 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         ca.actual_metrics
       FROM creative_assets ca
       WHERE ca.user_id = ? AND ca.predicted_score IS NOT NULL AND ca.actual_metrics IS NOT NULL
-    `).all(userId) as any[];
+    `).all(userId) as PredictionRow[];
 
     let predictionAccuracy = null;
     if (predictionData.length >= 3) {
       // Compare predicted scores against actual ROAS ranking
-      const scored = predictionData.map((d: any) => {
+      const scored = predictionData.map((d: PredictionRow) => {
         const metrics = JSON.parse(d.actual_metrics);
         return {
           predicted: d.predicted_score,
-          actual_roas: metrics.roas || 0,
+          actual_roas: (metrics.roas as number) || 0,
         };
       });
 
       // Simple correlation: do higher predicted scores correlate with higher ROAS?
-      scored.sort((a: any, b: any) => b.predicted - a.predicted);
+      scored.sort((a, b) => (b.predicted ?? 0) - (a.predicted ?? 0));
       const topHalfPredicted = scored.slice(0, Math.ceil(scored.length / 2));
       const bottomHalfPredicted = scored.slice(Math.ceil(scored.length / 2));
 
-      const topAvgRoas = topHalfPredicted.reduce((s: number, d: any) => s + d.actual_roas, 0) / topHalfPredicted.length;
+      const topAvgRoas = topHalfPredicted.reduce((s, d) => s + d.actual_roas, 0) / topHalfPredicted.length;
       const bottomAvgRoas = bottomHalfPredicted.length > 0
-        ? bottomHalfPredicted.reduce((s: number, d: any) => s + d.actual_roas, 0) / bottomHalfPredicted.length
+        ? bottomHalfPredicted.reduce((s, d) => s + d.actual_roas, 0) / bottomHalfPredicted.length
         : 0;
 
       predictionAccuracy = {
@@ -1324,7 +1413,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       WHERE ca.user_id = ? AND ca.dna_tags IS NOT NULL AND ca.actual_metrics IS NOT NULL
       ORDER BY json_extract(ca.actual_metrics, '$.roas') DESC
       LIMIT 20
-    `).all(userId) as any[];
+    `).all(userId) as TopDnaRow[];
 
     const dnaPatterns: Record<string, { count: number; avgRoas: number }> = {};
     for (const row of topDna) {
@@ -1352,7 +1441,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         prediction_accuracy: predictionAccuracy,
         winning_dna: winningDna,
         total_sprints: sprintTrends.length,
-        total_assets: formatPerformance.reduce((s: number, f: any) => s + f.total_assets, 0),
+        total_assets: formatPerformance.reduce((s: number, f: FormatPerformanceRow) => s + f.total_assets, 0),
       },
     };
   });

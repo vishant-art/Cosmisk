@@ -71,7 +71,7 @@ if (config.nodeEnv === 'production') {
     ['tokenEncryptionKey', 'dev-encryption-key-change-me-now!'],
   ];
   for (const [key, defaultVal] of defaults) {
-    if ((config as any)[key] === defaultVal) {
+    if (config[key as keyof typeof config] === defaultVal) {
       console.error(`FATAL: ${key} is set to the default value. Set a secure value in production.`);
       process.exit(1);
     }

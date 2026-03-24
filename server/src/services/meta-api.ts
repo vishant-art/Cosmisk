@@ -1,5 +1,23 @@
 import { config } from '../config.js';
 
+/** Shape of a Meta Graph API error response */
+interface MetaErrorResponse {
+  error?: { message?: string; code?: number };
+}
+
+/** Shape of a Meta Graph API paginated response */
+interface MetaPaginatedResponse<T> {
+  data?: T[];
+  paging?: { next?: string };
+}
+
+/** Shape of a Meta OAuth token exchange response */
+interface MetaOAuthTokenResponse {
+  access_token: string;
+  expires_in?: number;
+  error?: { message?: string };
+}
+
 export class MetaApiService {
   private accessToken: string;
 
@@ -16,7 +34,7 @@ export class MetaApiService {
 
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(30000) });
     if (!res.ok) {
-      const error = await res.json().catch(() => ({}));
+      const error: MetaErrorResponse = await res.json().catch(() => ({}));
       throw new MetaApiError(
         error?.error?.message || `Meta API error: ${res.status}`,
         res.status,
@@ -49,7 +67,7 @@ export class MetaApiService {
 
       const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(30000) });
       if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
+        const error: MetaErrorResponse = await res.json().catch(() => ({}));
         throw new MetaApiError(
           error?.error?.message || `Meta API error: ${res.status}`,
           res.status,
@@ -57,7 +75,7 @@ export class MetaApiService {
         );
       }
 
-      const json = await res.json().catch(() => ({})) as any;
+      const json: MetaPaginatedResponse<T> = await res.json().catch(() => ({}));
       if (json.data) {
         allData.push(...json.data);
       }
@@ -89,10 +107,10 @@ export async function exchangeCodeForToken(code: string, redirectUri: string): P
 
   const shortRes = await fetch(shortUrl.toString());
   if (!shortRes.ok) {
-    const err = await shortRes.json().catch(() => ({}));
+    const err: MetaErrorResponse = await shortRes.json().catch(() => ({}));
     throw new Error(err?.error?.message || 'Failed to exchange code for token');
   }
-  const shortData = await shortRes.json() as any;
+  const shortData: MetaOAuthTokenResponse = await shortRes.json();
 
   // Step 2: Exchange for long-lived token
   const longUrl = new URL(`${config.graphApiBase}/oauth/access_token`);
@@ -103,10 +121,10 @@ export async function exchangeCodeForToken(code: string, redirectUri: string): P
 
   const longRes = await fetch(longUrl.toString());
   if (!longRes.ok) {
-    const err = await longRes.json().catch(() => ({}));
+    const err: MetaErrorResponse = await longRes.json().catch(() => ({}));
     throw new Error(err?.error?.message || 'Failed to exchange for long-lived token');
   }
-  const longData = await longRes.json() as any;
+  const longData: MetaOAuthTokenResponse = await longRes.json();
 
   return {
     accessToken: longData.access_token,

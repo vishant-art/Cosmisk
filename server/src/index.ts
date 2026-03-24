@@ -39,6 +39,7 @@ import { MetaApiService } from './services/meta-api.js';
 import { parseInsightMetrics } from './services/insights-parser.js';
 import type { MetaTokenRow, UserRow } from './types/index.js';
 import { validate, profileUpdateSchema } from './validation/schemas.js';
+import { extractText } from './utils/claude-helpers.js';
 
 const app = Fastify({
   logger: {
@@ -603,7 +604,7 @@ Return ONLY valid JSON array (no markdown):
       }],
     });
 
-    const text = (msg.content[0] as any).text || '';
+    const text = extractText(msg);
     let analyzed: { id: string; hook: string[]; visual: string[]; audio: string[]; reasoning: string }[] = [];
     try {
       const jsonStr = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
