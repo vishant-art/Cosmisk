@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { validate, imageGenerateSchema, videoGenerateSchema } from '../validation/schemas.js';
+import { safeJson } from '../utils/safe-fetch.js';
 import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
@@ -53,7 +54,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         return reply.status(502).send({ success: false, error: `Image generation failed: ${response.statusText}` });
       }
 
-      const result = await response.json() as any;
+      const result: any = (await safeJson(response)) || {};
 
       return {
         success: true,
@@ -96,7 +97,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         return reply.status(502).send({ success: false, error: `Video generation failed: ${response.statusText}` });
       }
 
-      const result = await response.json() as any;
+      const result: any = (await safeJson(response)) || {};
 
       // n8n webhook may return immediately with a job ID for async processing
       // or may return the video URL directly
@@ -124,7 +125,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
 
   // GET /media/video-status — poll for async video generation
   app.get('/video-status', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { generation_id } = request.query as { generation_id?: string };
+    const { generation_id } = request.query as Record<string, string>;
 
     if (!generation_id) {
       return reply.status(400).send({ success: false, error: 'generation_id is required' });
@@ -146,7 +147,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         return reply.status(502).send({ success: false, error: 'Could not check video status' });
       }
 
-      const result = await response.json() as any;
+      const result: any = (await safeJson(response)) || {};
 
       return {
         success: true,

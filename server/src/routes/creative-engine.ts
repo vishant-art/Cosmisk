@@ -747,10 +747,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         });
 
         if (!campaignResp.ok) {
-          const err = await safeJson(campaignResp);
-          throw new Error((err as any)?.error?.message || 'Failed to create campaign');
+          const errBody = await safeJson(campaignResp);
+          throw new Error((errBody as any)?.error?.message || 'Failed to create campaign');
         }
-        const campaign = await safeJson(campaignResp) as any;
+        const campaign = await safeJson(campaignResp);
+        if (!campaign?.id) throw new Error('Campaign creation returned no ID');
         targetCampaignId = campaign.id;
       }
 
@@ -778,10 +779,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         });
 
         if (!adSetResp.ok) {
-          const err = await safeJson(adSetResp);
-          throw new Error((err as any)?.error?.message || 'Failed to create ad set');
+          const errBody = await safeJson(adSetResp);
+          throw new Error((errBody as any)?.error?.message || 'Failed to create ad set');
         }
-        const adSet = await safeJson(adSetResp) as any;
+        const adSet = await safeJson(adSetResp);
+        if (!adSet?.id) throw new Error('Ad set creation returned no ID');
         targetAdSetId = adSet.id;
       }
 
@@ -819,7 +821,8 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
             continue;
           }
 
-          const creative = await safeJson(creativeResp) as any;
+          const creative = await safeJson(creativeResp);
+          if (!creative?.id) { failed++; continue; }
 
           // Create ad
           const adResp = await safeFetch(`${config.graphApiBase}/${account_id}/ads`, {
@@ -836,10 +839,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
           });
 
           if (adResp.ok) {
-            const ad = await safeJson(adResp) as any;
+            const ad = await safeJson(adResp);
             db.prepare(
               "UPDATE creative_assets SET meta_ad_id = ?, meta_campaign_id = ?, status = 'published', published_at = datetime('now') WHERE id = ?"
-            ).run(ad.id, targetCampaignId, asset.id);
+            ).run(ad?.id || null, targetCampaignId, asset.id);
             published++;
           } else {
             failed++;

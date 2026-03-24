@@ -2,13 +2,7 @@ import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
-
-declare module '@fastify/jwt' {
-  interface FastifyJWT {
-    payload: { id: string; email: string; name: string; role: string };
-    user: { id: string; email: string; name: string; role: string };
-  }
-}
+import '../types/fastify-jwt.js';
 
 async function auth(app: FastifyInstance) {
   await app.register(jwt, {
