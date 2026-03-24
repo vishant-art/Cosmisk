@@ -4,6 +4,7 @@ import {
   getGoogleOAuthUrl, exchangeGoogleCode, refreshGoogleToken,
   GoogleAdsApiService, saveGoogleToken, getGoogleToken
 } from '../services/google-ads-api.js';
+import { validate, oauthCodeSchema, googleAdsQuerySchema } from '../validation/schemas.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -40,10 +41,9 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // POST /google-ads/oauth/exchange — exchange code for tokens
   app.post('/oauth/exchange', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { code } = request.body as { code: string };
-    if (!code) {
-      return reply.status(400).send({ success: false, error: 'code required' });
-    }
+    const parsed = validate(oauthCodeSchema, request.body, reply);
+    if (!parsed) return;
+    const { code } = parsed;
 
     try {
       const { accessToken, refreshToken, expiresIn } = await exchangeGoogleCode(code);
@@ -107,7 +107,9 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // GET /google-ads/kpis — KPIs for a Google Ads customer
   app.get('/kpis', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { customer_id, date_preset = 'last_7d' } = request.query as { customer_id?: string; date_preset?: string };
+    const parsed = validate(googleAdsQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { customer_id, date_preset } = parsed;
     if (!customer_id) {
       return reply.status(400).send({ success: false, error: 'customer_id required' });
     }
@@ -135,7 +137,9 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // GET /google-ads/campaigns — campaign performance
   app.get('/campaigns', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { customer_id, date_preset = 'last_7d' } = request.query as { customer_id?: string; date_preset?: string };
+    const parsed = validate(googleAdsQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { customer_id, date_preset } = parsed;
     if (!customer_id) {
       return reply.status(400).send({ success: false, error: 'customer_id required' });
     }
@@ -163,7 +167,9 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // GET /google-ads/analyze — Claude analysis of Google Ads data
   app.get('/analyze', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { customer_id, date_preset = 'last_7d' } = request.query as { customer_id?: string; date_preset?: string };
+    const parsed = validate(googleAdsQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { customer_id, date_preset } = parsed;
     if (!customer_id) {
       return reply.status(400).send({ success: false, error: 'customer_id required' });
     }

@@ -6,6 +6,7 @@ import { parseInsightMetrics } from '../services/insights-parser.js';
 import { round, fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, PatternItem } from '../types/index.js';
+import { validate, accountIdQuerySchema } from '../validation/schemas.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -18,7 +19,9 @@ export async function brainRoutes(app: FastifyInstance) {
 
   // GET /brain/patterns
   app.get('/patterns', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id } = request.query as { account_id?: string; credential_group?: string };
+    const parsed = validate(accountIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id } = parsed;
 
     try {
       const token = getUserMetaToken(request.user.id);

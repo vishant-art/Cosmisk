@@ -97,9 +97,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
   // POST /autopilot/run — manually trigger autopilot (admin only)
   app.post('/run', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const db = getDb();
-    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
-    if (!user || user.role !== 'admin') {
+    if (request.user.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
     const alertCount = await runAutopilot();

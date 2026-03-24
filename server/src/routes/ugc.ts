@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../db/index.js';
 import type { UgcProjectRow, UgcConceptRow, UgcScriptRow } from '../types/index.js';
+import { validate, projectIdBodySchema, projectIdQuerySchema } from '../validation/schemas.js';
 
 export async function ugcRoutes(app: FastifyInstance) {
 
@@ -25,11 +26,9 @@ export async function ugcRoutes(app: FastifyInstance) {
 
   // POST /ugc/project-detail
   app.post('/project-detail', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { project_id } = request.body as { project_id: string };
-
-    if (!project_id) {
-      return reply.status(400).send({ error: 'project_id required' });
-    }
+    const parsed = validate(projectIdBodySchema, request.body, reply);
+    if (!parsed) return;
+    const { project_id } = parsed;
 
     const db = getDb();
     const project = db.prepare(
@@ -78,11 +77,9 @@ export async function ugcRoutes(app: FastifyInstance) {
 
   // GET /ugc/concepts
   app.get('/concepts', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { project_id } = request.query as { project_id: string };
-
-    if (!project_id) {
-      return reply.status(400).send({ error: 'project_id required' });
-    }
+    const parsed = validate(projectIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { project_id } = parsed;
 
     const db = getDb();
     const concepts = db.prepare(
@@ -106,11 +103,9 @@ export async function ugcRoutes(app: FastifyInstance) {
 
   // GET /ugc/scripts
   app.get('/scripts', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { project_id } = request.query as { project_id: string };
-
-    if (!project_id) {
-      return reply.status(400).send({ error: 'project_id required' });
-    }
+    const parsed = validate(projectIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { project_id } = parsed;
 
     const db = getDb();
     const scripts = db.prepare(

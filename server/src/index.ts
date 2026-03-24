@@ -755,6 +755,7 @@ app.post('/auth/refresh', async (request, reply) => {
       id: request.user.id,
       email: request.user.email,
       name: request.user.name,
+      role: request.user.role,
     });
     return { token: newToken };
   } catch {
@@ -920,6 +921,7 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
     id: updatedUser.id,
     email: updatedUser.email,
     name: updatedUser.name,
+    role: updatedUser.role,
   });
 
   return {

@@ -6,6 +6,7 @@ import { parseChartData, parseInsightMetrics } from '../services/insights-parser
 import { fmt, setCurrency } from '../services/format-helpers.js';
 import { computeTrend, assessConfidence } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, InsightItem } from '../types/index.js';
+import { validate, accountQuerySchema, accountIdQuerySchema } from '../validation/schemas.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -18,9 +19,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   // GET /dashboard/chart
   app.get('/chart', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id, date_preset = 'last_7d' } = request.query as {
-      account_id: string; credential_group?: string; date_preset?: string;
-    };
+    const parsed = validate(accountQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id, date_preset } = parsed;
 
     if (!account_id) {
       return reply.status(400).send({ success: false, error: 'account_id required' });
@@ -49,9 +50,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   // GET /dashboard/insights
   app.get('/insights', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id } = request.query as {
-      account_id: string; credential_group?: string;
-    };
+    const parsed = validate(accountIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id } = parsed;
 
     if (!account_id) {
       return reply.status(400).send({ success: false, error: 'account_id required' });

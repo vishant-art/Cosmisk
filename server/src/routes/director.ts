@@ -6,6 +6,7 @@ import { parseInsightMetrics } from '../services/insights-parser.js';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { validate, directorBriefSchema, directorLaunchSchema, directorUpdateStatusSchema } from '../validation/schemas.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -23,16 +24,8 @@ export async function directorRoutes(app: FastifyInstance) {
 
   // POST /director/generate-brief
   app.post('/generate-brief', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const body = request.body as {
-      base_creative?: string;
-      patterns?: string[];
-      format?: string;
-      target_audience?: string;
-      product_focus?: string;
-      tones?: string[];
-      account_id?: string;
-      credential_group?: string;
-    };
+    const body = validate(directorBriefSchema, request.body, reply);
+    if (!body) return;
 
     const format = body.format || 'video';
     const targetAudience = body.target_audience || 'Broad audience';
@@ -308,32 +301,8 @@ export async function directorRoutes(app: FastifyInstance) {
 
   // POST /director/auto-publish — create a full campaign on Meta
   app.post('/auto-publish', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const body = request.body as {
-      account_id: string;
-      campaign_name: string;
-      objective?: string;
-      daily_budget?: number;  // in cents
-      targeting?: {
-        age_min?: number;
-        age_max?: number;
-        genders?: number[];  // 1=male, 2=female
-        geo_locations?: { countries: string[] };
-        interests?: { id: string; name: string }[];
-      };
-      creative?: {
-        title: string;
-        body: string;
-        link_url: string;
-        image_url?: string;
-        call_to_action_type?: string;
-      };
-      page_id?: string;
-      status?: string;  // PAUSED or ACTIVE
-    };
-
-    if (!body.account_id || !body.campaign_name) {
-      return reply.status(400).send({ success: false, error: 'account_id and campaign_name required' });
-    }
+    const body = validate(directorLaunchSchema, request.body, reply);
+    if (!body) return;
 
     const token = getUserMetaToken(request.user.id);
     if (!token) {
@@ -342,6 +311,8 @@ export async function directorRoutes(app: FastifyInstance) {
 
     const meta = new MetaApiService(token);
     const publishStatus = body.status || 'PAUSED'; // Default to PAUSED for safety
+    const targeting = (body.targeting || {}) as any;
+    const creative = body.creative as any;
 
     try {
       // Step 1: Create Campaign
@@ -367,7 +338,6 @@ export async function directorRoutes(app: FastifyInstance) {
       const campaignId = campaign.id;
 
       // Step 2: Create Ad Set
-      const targeting = body.targeting || {};
       const adSetResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/adsets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -401,7 +371,7 @@ export async function directorRoutes(app: FastifyInstance) {
 
       // Step 3: Create Ad Creative (if creative data provided)
       let adId: string | null = null;
-      if (body.creative) {
+      if (creative) {
         const creativeResp = await safeFetch(`${config.graphApiBase}/${body.account_id}/adcreatives`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -411,12 +381,12 @@ export async function directorRoutes(app: FastifyInstance) {
             object_story_spec: {
               page_id: body.page_id || '',
               link_data: {
-                link: body.creative.link_url,
-                message: body.creative.body,
-                name: body.creative.title,
-                ...(body.creative.image_url ? { image_url: body.creative.image_url } : {}),
+                link: creative.link_url,
+                message: creative.body,
+                name: creative.title,
+                ...(creative.image_url ? { image_url: creative.image_url } : {}),
                 call_to_action: {
-                  type: body.creative.call_to_action_type || 'SHOP_NOW',
+                  type: creative.call_to_action_type || 'SHOP_NOW',
                 },
               },
             },
@@ -467,11 +437,9 @@ export async function directorRoutes(app: FastifyInstance) {
 
   // POST /director/update-status — pause/activate a campaign
   app.post('/update-status', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { campaign_id, status } = request.body as { campaign_id: string; status: 'ACTIVE' | 'PAUSED' };
-
-    if (!campaign_id || !status) {
-      return reply.status(400).send({ success: false, error: 'campaign_id and status required' });
-    }
+    const parsed = validate(directorUpdateStatusSchema, request.body, reply);
+    if (!parsed) return;
+    const { campaign_id, status } = parsed;
 
     const token = getUserMetaToken(request.user.id);
     if (!token) {

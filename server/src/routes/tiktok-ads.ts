@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
+import { validate, oauthCodeSchema, tiktokAdsQuerySchema } from '../validation/schemas.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -125,8 +126,9 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
   // POST /tiktok-ads/oauth/exchange
   app.post('/oauth/exchange', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { code } = request.body as { code: string };
-    if (!code) return reply.status(400).send({ success: false, error: 'code required' });
+    const parsed = validate(oauthCodeSchema, request.body, reply);
+    if (!parsed) return;
+    const { code } = parsed;
 
     try {
       const { accessToken, advertiserId } = await exchangeTikTokCode(code);
@@ -145,7 +147,9 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
   // GET /tiktok-ads/kpis — account-level KPIs
   app.get('/kpis', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { date_preset = 'last_7d' } = request.query as { date_preset?: string };
+    const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
+    if (!qParsed) return;
+    const { date_preset } = qParsed;
     const tokenData = getTikTokToken(request.user.id);
     if (!tokenData) return reply.status(200).send({ success: false, error: 'TikTok not connected' });
 
@@ -182,7 +186,9 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
   // GET /tiktok-ads/campaigns — campaign performance
   app.get('/campaigns', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { date_preset = 'last_7d' } = request.query as { date_preset?: string };
+    const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
+    if (!qParsed) return;
+    const { date_preset } = qParsed;
     const tokenData = getTikTokToken(request.user.id);
     if (!tokenData) return reply.status(200).send({ success: false, error: 'TikTok not connected' });
 
@@ -218,7 +224,9 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
   // GET /tiktok-ads/analyze — Claude analysis
   app.get('/analyze', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { date_preset = 'last_7d' } = request.query as { date_preset?: string };
+    const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
+    if (!qParsed) return;
+    const { date_preset } = qParsed;
     const tokenData = getTikTokToken(request.user.id);
     if (!tokenData) return reply.status(200).send({ success: false, error: 'TikTok not connected' });
 

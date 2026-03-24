@@ -9,7 +9,7 @@ import { assessConfidence, computeTrend, qualifyMetric } from '../services/trend
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
-import { validate, accountIdQuerySchema } from '../validation/schemas.js';
+import { validate, accountIdQuerySchema, campaignIdQuerySchema, campaignLocalCreateSchema, campaignUpdateBodySchema, campaignIdBodySchema } from '../validation/schemas.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -38,8 +38,10 @@ interface CampaignRow {
 export async function campaignRoutes(app: FastifyInstance) {
 
   // GET /campaigns/list — List user's campaigns
-  app.get('/list', { preHandler: [app.authenticate] }, async (request) => {
-    const { account_id } = request.query as { account_id?: string };
+  app.get('/list', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(accountIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id } = parsed;
 
     const db = getDb();
     let campaigns: CampaignRow[];
@@ -76,11 +78,9 @@ export async function campaignRoutes(app: FastifyInstance) {
 
   // GET /campaigns/detail — Get single campaign
   app.get('/detail', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { campaign_id } = request.query as { campaign_id: string };
-
-    if (!campaign_id) {
-      return reply.status(400).send({ success: false, error: 'campaign_id required' });
-    }
+    const parsed = validate(campaignIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { campaign_id } = parsed;
 
     const db = getDb();
     const campaign = db.prepare(
@@ -112,19 +112,9 @@ export async function campaignRoutes(app: FastifyInstance) {
   });
 
   // POST /campaigns/create — Create new campaign
-  app.post('/create', { preHandler: [app.authenticate] }, async (request) => {
-    const body = request.body as {
-      account_id?: string;
-      name: string;
-      objective?: string;
-      budget?: string;
-      schedule_start?: string;
-      schedule_end?: string;
-      audience?: any;
-      placements?: string;
-      creative_ids?: string[];
-      status?: string;
-    };
+  app.post('/create', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const body = validate(campaignLocalCreateSchema, request.body, reply);
+    if (!body) return;
 
     const db = getDb();
     const id = uuidv4();
@@ -152,22 +142,8 @@ export async function campaignRoutes(app: FastifyInstance) {
 
   // POST /campaigns/update — Update existing campaign
   app.post('/update', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const body = request.body as {
-      campaign_id: string;
-      name?: string;
-      objective?: string;
-      budget?: string;
-      schedule_start?: string;
-      schedule_end?: string;
-      audience?: any;
-      placements?: string;
-      creative_ids?: string[];
-      status?: string;
-    };
-
-    if (!body.campaign_id) {
-      return reply.status(400).send({ success: false, error: 'campaign_id required' });
-    }
+    const body = validate(campaignUpdateBodySchema, request.body, reply);
+    if (!body) return;
 
     const db = getDb();
 
@@ -210,11 +186,9 @@ export async function campaignRoutes(app: FastifyInstance) {
 
   // POST /campaigns/launch — Create real Meta campaign + ad set, then mark launched
   app.post('/launch', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { campaign_id } = request.body as { campaign_id: string };
-
-    if (!campaign_id) {
-      return reply.status(400).send({ success: false, error: 'campaign_id required' });
-    }
+    const parsed = validate(campaignIdBodySchema, request.body, reply);
+    if (!parsed) return;
+    const { campaign_id } = parsed;
 
     const db = getDb();
 
@@ -325,7 +299,9 @@ export async function campaignRoutes(app: FastifyInstance) {
 
   // GET /campaigns/suggest — AI suggestion based on real account data
   app.get('/suggest', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id } = request.query as { account_id?: string };
+    const parsed = validate(accountIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id } = parsed;
 
     if (!account_id) {
       return { success: true, suggestion: 'Select an ad account to get a data-driven campaign recommendation.' };

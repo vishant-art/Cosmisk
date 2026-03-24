@@ -3,6 +3,7 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { validate, assetsQuerySchema, accountIdQuerySchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -31,9 +32,9 @@ export async function assetRoutes(app: FastifyInstance) {
 
   // GET /assets/list — Return user's ad creatives as asset files
   app.get('/list', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id, date_preset = 'last_30d' } = request.query as {
-      account_id?: string; date_preset?: string;
-    };
+    const parsed = validate(assetsQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id, date_preset } = parsed;
 
     if (!account_id) {
       return reply.status(400).send({ success: false, error: 'account_id required' });
@@ -91,7 +92,9 @@ export async function assetRoutes(app: FastifyInstance) {
 
   // GET /assets/folders — Return folder structure based on campaign names
   app.get('/folders', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id } = request.query as { account_id?: string };
+    const parsed = validate(accountIdQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id } = parsed;
 
     if (!account_id) {
       return reply.status(400).send({ success: false, error: 'account_id required' });

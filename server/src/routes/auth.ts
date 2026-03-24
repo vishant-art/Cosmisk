@@ -28,7 +28,7 @@ export async function authRoutes(app: FastifyInstance) {
     const hasMeta = db.prepare('SELECT 1 FROM meta_tokens WHERE user_id = ?').get(user.id);
     const onboardingComplete = Boolean(user.onboarding_complete) || !!hasMeta;
 
-    const token = app.jwt.sign({ id: user.id, email: user.email, name: user.name });
+    const token = app.jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role });
 
     return {
       token,
@@ -63,7 +63,7 @@ export async function authRoutes(app: FastifyInstance) {
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
     ).run(id, name, email, passwordHash);
 
-    const token = app.jwt.sign({ id, email, name });
+    const token = app.jwt.sign({ id, email, name, role: 'user' });
 
     return {
       token,

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
+import { validate, creativeScoreSchema, batchScoreSchema } from '../validation/schemas.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -20,13 +21,9 @@ export async function scoreRoutes(app: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const { url, description, format, industry, platform } = request.body as {
-      url?: string;             // URL of the ad creative (image/video)
-      description?: string;     // text description of the ad if no URL
-      format?: string;          // image | video | carousel | story
-      industry?: string;        // e.g. "DTC skincare", "SaaS", "food delivery"
-      platform?: string;        // meta | google | tiktok
-    };
+    const parsed = validate(creativeScoreSchema, request.body, reply);
+    if (!parsed) return;
+    const { url, description, format, industry, platform } = parsed;
 
     if (!url && !description) {
       return reply.status(400).send({
@@ -170,11 +167,11 @@ Provide a detailed Cosmisk Score analysis.`;
       },
     },
   }, async (request, reply) => {
-    const { creatives } = request.body as {
-      creatives: { url?: string; description?: string; format?: string }[];
-    };
+    const parsed = validate(batchScoreSchema, request.body, reply);
+    if (!parsed) return;
+    const { creatives } = parsed;
 
-    if (!creatives?.length || creatives.length > 5) {
+    if (creatives.length > 5) {
       return reply.status(400).send({
         success: false,
         error: 'Provide 1-5 creatives to analyze',

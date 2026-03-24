@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow } from '../types/index.js';
-import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema } from '../validation/schemas.js';
+import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -81,12 +81,9 @@ export async function contentRoutes(app: FastifyInstance) {
 
   /* ---- POST /generate — Generate platform-specific content ---- */
   app.post('/generate', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { platforms, topic, tone, transcript } = request.body as {
-      platforms?: string[];     // ['twitter', 'linkedin', 'instagram']
-      topic?: string;           // optional: specific topic to focus on
-      tone?: string;            // 'technical' | 'casual' | 'motivational' | 'data-driven'
-      transcript?: string;      // optional: transcript from screen recording
-    };
+    const parsed = validate(contentGenerateRequestSchema, request.body, reply);
+    if (!parsed) return;
+    const { platforms, topic, tone, transcript } = parsed;
 
     const db = getDb();
     const userId = request.user.id;
@@ -260,20 +257,9 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
   /* ---- POST /save-batch — Save multiple content items from a generation ---- */
   app.post('/save-batch', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { items } = request.body as {
-      items: Array<{
-        platform: string;
-        content_type?: string;
-        title?: string;
-        body: string;
-        hashtags?: string[];
-        media_notes?: string;
-      }>;
-    };
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return reply.status(400).send({ success: false, error: 'items array is required' });
-    }
+    const parsed = validate(contentSaveBatchSchema, request.body, reply);
+    if (!parsed) return;
+    const { items } = parsed;
 
     const db = getDb();
     const ids: string[] = [];

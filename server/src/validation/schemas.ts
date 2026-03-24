@@ -189,6 +189,19 @@ export const campaignCreateSchema = z.object({
   targeting: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const campaignLocalCreateSchema = z.object({
+  account_id: z.string().optional(),
+  name: z.string().min(1).max(200).default('Untitled Campaign'),
+  objective: z.string().optional(),
+  budget: z.string().optional(),
+  schedule_start: z.string().optional(),
+  schedule_end: z.string().optional(),
+  audience: z.record(z.string(), z.unknown()).optional(),
+  placements: z.string().optional(),
+  creative_ids: z.array(z.string()).optional(),
+  status: z.string().optional(),
+});
+
 /* ------------------------------------------------------------------ */
 /*  Agent query schemas                                                */
 /* ------------------------------------------------------------------ */
@@ -380,6 +393,105 @@ export const contentUpdateSchema = z.object({
   media_notes: z.string().max(2000).optional(),
   scheduled_for: z.string().optional(),
   posted_at: z.string().optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Google/TikTok Ads query schemas                                    */
+/* ------------------------------------------------------------------ */
+
+export const googleAdsQuerySchema = z.object({
+  customer_id: z.string().optional(),
+  date_preset: z.enum(['last_7d', 'last_14d', 'last_30d', 'this_month', 'last_month']).default('last_7d'),
+});
+
+export const tiktokAdsQuerySchema = z.object({
+  date_preset: z.enum(['last_7d', 'last_14d', 'last_30d', 'this_month', 'last_month']).default('last_7d'),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Assets query schema                                                */
+/* ------------------------------------------------------------------ */
+
+export const assetsQuerySchema = z.object({
+  account_id: z.string().optional(),
+  date_preset: z.enum(['last_7d', 'last_14d', 'last_30d', 'last_90d', 'this_month', 'last_month']).default('last_30d'),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Reusable ID schemas                                                */
+/* ------------------------------------------------------------------ */
+
+export const projectIdBodySchema = z.object({
+  project_id: z.string().min(1, 'project_id is required'),
+});
+
+export const projectIdQuerySchema = z.object({
+  project_id: z.string().min(1, 'project_id is required'),
+});
+
+export const campaignIdBodySchema = z.object({
+  campaign_id: z.string().min(1, 'campaign_id is required'),
+});
+
+export const campaignIdQuerySchema = z.object({
+  campaign_id: z.string().min(1, 'campaign_id is required'),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Campaign update schema                                             */
+/* ------------------------------------------------------------------ */
+
+export const campaignUpdateBodySchema = z.object({
+  campaign_id: z.string().min(1),
+  name: z.string().min(1).max(200).optional(),
+  objective: z.string().optional(),
+  budget: z.string().optional(),
+  schedule_start: z.string().optional(),
+  schedule_end: z.string().optional(),
+  audience: z.record(z.string(), z.unknown()).optional(),
+  placements: z.string().optional(),
+  creative_ids: z.array(z.string()).optional(),
+  status: z.string().optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Director update-status schema                                      */
+/* ------------------------------------------------------------------ */
+
+export const directorUpdateStatusSchema = z.object({
+  campaign_id: z.string().min(1),
+  status: z.enum(['ACTIVE', 'PAUSED']),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Content generate/batch schemas                                     */
+/* ------------------------------------------------------------------ */
+
+export const contentGenerateRequestSchema = z.object({
+  platforms: z.array(z.string()).optional(),
+  topic: z.string().max(2000).optional(),
+  tone: z.enum(['technical', 'casual', 'motivational', 'data-driven']).optional(),
+  transcript: z.string().max(10000).optional(),
+});
+
+export const contentSaveBatchSchema = z.object({
+  items: z.array(z.object({
+    platform: z.string().min(1),
+    content_type: z.string().optional(),
+    title: z.string().max(500).optional(),
+    body: z.string().min(1).max(10000),
+    hashtags: z.array(z.string()).optional(),
+    media_notes: z.string().max(2000).optional(),
+  })).min(1).max(50),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Competitor analyze schema                                          */
+/* ------------------------------------------------------------------ */
+
+export const competitorAnalyzeSchema = z.object({
+  query: z.string().min(1).max(500),
+  country: z.string().max(10).optional(),
 });
 
 /* ------------------------------------------------------------------ */

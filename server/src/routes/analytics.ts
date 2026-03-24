@@ -5,6 +5,7 @@ import { MetaApiService } from '../services/meta-api.js';
 import { parseCampaignBreakdown, parseAudienceBreakdown, parseInsightMetrics } from '../services/insights-parser.js';
 import { computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { validate, accountQuerySchema } from '../validation/schemas.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -17,9 +18,9 @@ export async function analyticsRoutes(app: FastifyInstance) {
 
   // GET /analytics/full
   app.get('/full', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id, date_preset = 'last_7d' } = request.query as {
-      account_id: string; credential_group?: string; date_preset?: string;
-    };
+    const parsed = validate(accountQuerySchema, request.query, reply);
+    if (!parsed) return;
+    const { account_id, date_preset } = parsed;
 
     if (!account_id) {
       return reply.status(400).send({ success: false, error: 'account_id required' });

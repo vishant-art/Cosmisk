@@ -4,6 +4,7 @@ import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
+import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -133,17 +134,13 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
 
   // GET /competitor-spy/search — search Meta Ad Library
   app.get('/search', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { query, country = 'IN', limit = '25' } = request.query as {
-      query?: string; country?: string; limit?: string;
-    };
-
-    if (!query) {
-      return reply.status(400).send({ success: false, error: 'query parameter required' });
-    }
+    const parsed = validate(competitorSearchSchema, request.query, reply);
+    if (!parsed) return;
+    const { query, country, limit } = parsed;
 
     try {
       const userToken = getUserMetaToken(request.user.id);
-      const ads = await searchAdLibrary(query, country, parseInt(limit, 10) || 25, userToken);
+      const ads = await searchAdLibrary(query, country || 'IN', limit, userToken);
 
       // Group by page
       const pageMap = new Map<string, { page_name: string; page_id: string; ads: any[] }>();
@@ -177,15 +174,13 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
 
   // GET /competitor-spy/analyze — search + Claude analysis
   app.get('/analyze', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { query, country = 'IN' } = request.query as { query?: string; country?: string };
-
-    if (!query) {
-      return reply.status(400).send({ success: false, error: 'query parameter required' });
-    }
+    const parsed = validate(competitorAnalyzeSchema, request.query, reply);
+    if (!parsed) return;
+    const { query, country } = parsed;
 
     try {
       const userToken = getUserMetaToken(request.user.id);
-      const ads = await searchAdLibrary(query, country, 25, userToken);
+      const ads = await searchAdLibrary(query, country || 'IN', 25, userToken);
       const analysis = await analyzeCompetitorAds(query, ads);
 
       // Build summary stats

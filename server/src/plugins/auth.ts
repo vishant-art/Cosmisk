@@ -5,8 +5,8 @@ import { config } from '../config.js';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    payload: { id: string; email: string; name: string };
-    user: { id: string; email: string; name: string };
+    payload: { id: string; email: string; name: string; role: string };
+    user: { id: string; email: string; name: string; role: string };
   }
 }
 
