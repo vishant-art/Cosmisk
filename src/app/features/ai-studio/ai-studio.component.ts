@@ -6,6 +6,8 @@ import { LucideAngularModule } from 'lucide-angular';
 import { AiService } from '../../core/services/ai.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { DateRangeService } from '../../core/services/date-range.service';
+import { timeout, catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
 
 interface ChatMessage {
   id: string;
@@ -219,7 +221,25 @@ export default class AiStudioComponent {
       content: m.content,
     }));
 
-    this.aiService.chat(text, context, history).subscribe({
+    this.aiService.chat(text, context, history).pipe(
+      timeout(60000),
+      catchError((err) => {
+        const isTimeout = err?.name === 'TimeoutError';
+        const errorContent = isTimeout
+          ? 'The AI took too long to respond. Please try again with a simpler question.'
+          : err?.error?.error || 'Could not connect to Cosmisk AI. Please check your connection and try again.';
+        const aiMsg: ChatMessage = {
+          id: 'msg-' + Date.now() + '-err',
+          role: 'ai',
+          content: errorContent,
+          timestamp: new Date(),
+        };
+        this.messages.update(msgs => [...msgs, aiMsg]);
+        this.typing.set(false);
+        this.scrollToBottom();
+        return throwError(() => err);
+      }),
+    ).subscribe({
       next: (response) => {
         const aiMsg: ChatMessage = {
           id: 'msg-' + Date.now() + '-ai',
@@ -233,17 +253,6 @@ export default class AiStudioComponent {
         this.typing.set(false);
         this.scrollToBottom();
       },
-      error: () => {
-        const aiMsg: ChatMessage = {
-          id: 'msg-' + Date.now() + '-ai',
-          role: 'ai',
-          content: 'Could not connect to Cosmisk AI. Please check your connection and try again.',
-          timestamp: new Date(),
-        };
-        this.messages.update(msgs => [...msgs, aiMsg]);
-        this.typing.set(false);
-        this.scrollToBottom();
-      }
     });
   }
 

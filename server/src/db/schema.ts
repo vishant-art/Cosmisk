@@ -409,6 +409,10 @@ export function createTables(db: Database.Database): void {
   ensureColumn(db, 'dna_cache', 'visual_analysis', "TEXT DEFAULT '{}'");
   ensureColumn(db, 'users', 'phone', 'TEXT');
   ensureColumn(db, 'users', 'notification_preferences', "TEXT DEFAULT '{}'");
+  ensureColumn(db, 'users', 'timezone', "TEXT DEFAULT 'IST'");
+  ensureColumn(db, 'users', 'language', "TEXT DEFAULT 'en'");
+  ensureColumn(db, 'users', 'currency', "TEXT DEFAULT 'INR'");
+  ensureColumn(db, 'users', 'date_format', "TEXT DEFAULT 'DD/MM/YYYY'");
 
   // Razorpay + trial support
   ensureColumn(db, 'subscriptions', 'gateway', "TEXT DEFAULT 'stripe'");

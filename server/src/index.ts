@@ -865,6 +865,10 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
       competitors: user.competitors ? JSON.parse(user.competitors) : [],
       active_brand: user.active_brand || null,
       phone: user.phone || null,
+      timezone: user.timezone || 'IST',
+      language: user.language || 'en',
+      currency: user.currency || 'INR',
+      date_format: user.date_format || 'DD/MM/YYYY',
       onboarding_complete: !!user.onboarding_complete,
       created_at: user.created_at,
     },
@@ -875,10 +879,10 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
 app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request, reply) => {
   const parsed = validate(profileUpdateSchema, request.body, reply);
   if (!parsed) return;
-  const { name, phone, brand_name, website_url, goals, competitors } = parsed;
+  const { name, phone, brand_name, website_url, goals, competitors, timezone, language, currency, date_format } = parsed;
   const { email, onboarding_complete } = request.body as { email?: string; onboarding_complete?: boolean };
 
-  if (!name && !email && !competitors && !brand_name && !website_url && !goals && !phone && onboarding_complete === undefined) {
+  if (!name && !email && !competitors && !brand_name && !website_url && !goals && !phone && !timezone && !language && !currency && !date_format && onboarding_complete === undefined) {
     return reply.status(400).send({ success: false, error: 'Provide at least one field to update' });
   }
 
@@ -920,6 +924,22 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   if (goals) {
     updates.push('goals = ?');
     values.push(JSON.stringify(goals));
+  }
+  if (timezone) {
+    updates.push('timezone = ?');
+    values.push(timezone);
+  }
+  if (language) {
+    updates.push('language = ?');
+    values.push(language);
+  }
+  if (currency) {
+    updates.push('currency = ?');
+    values.push(currency);
+  }
+  if (date_format) {
+    updates.push('date_format = ?');
+    values.push(date_format);
   }
   if (onboarding_complete !== undefined) {
     updates.push('onboarding_complete = ?');

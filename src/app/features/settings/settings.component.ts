@@ -503,6 +503,7 @@ export default class SettingsComponent implements OnInit {
   }
 
   private loadProfile() {
+    // Set initial values from JWT token (fast, avoids blank flash)
     const token = localStorage.getItem('cosmisk_token');
     if (token) {
       try {
@@ -512,18 +513,23 @@ export default class SettingsComponent implements OnInit {
       } catch { /* ignore bad token */ }
     }
     this.loadTeam();
-    // Load saved preferences
-    const prefs = localStorage.getItem('cosmisk_preferences');
-    if (prefs) {
-      try {
-        const p = JSON.parse(prefs);
-        this.timezone = p.timezone || 'IST';
-        this.language = p.language || 'en';
-        this.currency = p.currency || 'INR';
-        this.dateFormat = p.dateFormat || 'DD/MM/YYYY';
-        this.profilePhone = p.phone || '';
-      } catch { /* ignore */ }
-    }
+
+    // Fetch full profile from server (authoritative source for all fields)
+    this.api.get<any>(environment.SETTINGS_PROFILE).subscribe({
+      next: (res) => {
+        if (res.success && res.profile) {
+          const p = res.profile;
+          this.profileName = p.name || this.profileName;
+          this.profileEmail = p.email || this.profileEmail;
+          this.profilePhone = p.phone || '';
+          this.timezone = p.timezone || 'IST';
+          this.language = p.language || 'en';
+          this.currency = p.currency || 'INR';
+          this.dateFormat = p.date_format || 'DD/MM/YYYY';
+        }
+      },
+      error: () => { /* keep JWT defaults on network failure */ }
+    });
   }
 
   private loadNotificationPrefs() {
@@ -572,19 +578,15 @@ export default class SettingsComponent implements OnInit {
   }
 
   saveProfile() {
-    // Save preferences to localStorage
-    localStorage.setItem('cosmisk_preferences', JSON.stringify({
-      timezone: this.timezone,
-      language: this.language,
-      currency: this.currency,
-      dateFormat: this.dateFormat,
-      phone: this.profilePhone,
-    }));
-
-    // Save name + email to server
+    // Save all profile fields to server
     this.api.post<any>(environment.SETTINGS_PROFILE, {
       name: this.profileName,
       email: this.profileEmail,
+      phone: this.profilePhone,
+      timezone: this.timezone,
+      language: this.language,
+      currency: this.currency,
+      date_format: this.dateFormat,
     }).subscribe({
       next: (res) => {
         if (res.success) {
@@ -797,9 +799,11 @@ export default class SettingsComponent implements OnInit {
         if (res.success) {
           this.toast.success('Removed', `${member.name} has been removed from the team`);
           this.loadTeam();
+        } else {
+          this.toast.error('Error', res.error || 'Could not remove member');
         }
       },
-      error: () => this.toast.error('Error', 'Could not remove member'),
+      error: (err) => this.toast.error('Error', err.error?.error || 'Could not remove member'),
     });
   }
 
@@ -811,9 +815,11 @@ export default class SettingsComponent implements OnInit {
           member.name; // keep reference
           this.toast.success('Updated', `${member.name}'s role updated to ${this.formatRole(newRole)}`);
           this.loadTeam();
+        } else {
+          this.toast.error('Error', res.error || 'Could not update role');
         }
       },
-      error: () => this.toast.error('Error', 'Could not update role'),
+      error: (err) => this.toast.error('Error', err.error?.error || 'Could not update role'),
     });
   }
 
@@ -822,9 +828,11 @@ export default class SettingsComponent implements OnInit {
       next: (res) => {
         if (res.success) {
           this.toast.success('Resent', `Invitation resent to ${member.email}`);
+        } else {
+          this.toast.error('Error', res.error || 'Could not resend invite');
         }
       },
-      error: () => this.toast.error('Error', 'Could not resend invite'),
+      error: (err) => this.toast.error('Error', err.error?.error || 'Could not resend invite'),
     });
   }
 }

@@ -156,6 +156,10 @@ export const profileUpdateSchema = z.object({
   website_url: z.string().url().optional().or(z.literal('')),
   goals: z.array(z.string()).max(20).optional(),
   competitors: z.array(z.string()).max(20).optional(),
+  timezone: z.string().max(50).optional(),
+  language: z.string().max(10).optional(),
+  currency: z.string().max(10).optional(),
+  date_format: z.string().max(20).optional(),
 });
 
 /* ------------------------------------------------------------------ */

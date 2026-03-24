@@ -13,6 +13,10 @@ export interface UserRow {
   competitors: string | null;    // JSON array
   active_brand: string | null;
   phone: string | null;
+  timezone: string | null;
+  language: string | null;
+  currency: string | null;
+  date_format: string | null;
 }
 
 export interface MetaTokenRow {

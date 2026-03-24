@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { ApiService } from '../../core/services/api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { environment } from '../../../environments/environment';
 
 interface ContentItem {
@@ -355,6 +356,7 @@ interface ContentItem {
 })
 export default class ContentBankComponent implements OnInit {
   private api = inject(ApiService);
+  private toast = inject(ToastService);
 
   items = signal<ContentItem[]>([]);
   total = signal(0);
@@ -488,9 +490,11 @@ export default class ContentBankComponent implements OnInit {
         setTimeout(() => this.weeklySuccess.set(false), 5000);
         this.loadContent();
       },
-      error: () => {
+      error: (err) => {
         this.generatingWeekly.set(false);
-        this.error.set('Weekly generation failed. This may take a while — please try again.');
+        const msg = err.error?.error || 'Weekly generation failed. This may take a while — please try again.';
+        this.error.set(msg);
+        this.toast.error('Generation Failed', msg);
       },
     });
   }
@@ -522,9 +526,11 @@ export default class ContentBankComponent implements OnInit {
           this.composerHashtags = res.hashtags?.[platform]?.join(' ') || '';
         }
       },
-      error: () => {
+      error: (err) => {
         this.generating.set(false);
-        this.error.set('AI generation failed. Please try again.');
+        const msg = err.error?.error || 'AI generation failed. Please try again.';
+        this.error.set(msg);
+        this.toast.error('Generation Failed', msg);
       },
     });
   }
