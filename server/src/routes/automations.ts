@@ -102,9 +102,7 @@ export async function automationRoutes(app: FastifyInstance) {
   app.post('/create', { preHandler: [app.authenticate] }, async (request, reply) => {
     const parsed = validate(automationCreateSchema, request.body, reply);
     if (!parsed) return;
-    const { name, trigger_type, action_type, account_id } = parsed;
-    const trigger_value = (request.body as any).trigger_value;
-    const action_value = (request.body as any).action_value;
+    const { name, trigger_type, trigger_value, action_type, action_value, account_id } = parsed;
 
     const db = getDb();
     const id = uuidv4();
@@ -147,27 +145,14 @@ export async function automationRoutes(app: FastifyInstance) {
 
   // PUT /automations/update — Update an existing automation rule
   app.put('/update', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const {
-      id,
-      name,
-      trigger_type,
-      trigger_value,
-      action_type,
-      action_value,
-      is_active,
-    } = request.body as {
-      id?: string;
-      name?: string;
-      trigger_type?: string;
-      trigger_value?: any;
-      action_type?: string;
-      action_value?: any;
-      is_active?: boolean;
-    };
-
-    if (!id) {
+    const { id: rawId, ...rest } = request.body as { id?: string } & Record<string, unknown>;
+    if (!rawId) {
       return reply.status(400).send({ success: false, error: 'id is required' });
     }
+    const id = rawId;
+    const parsed = validate(automationUpdateSchema, rest, reply);
+    if (!parsed) return;
+    const { name, trigger_type, trigger_value, action_type, action_value, is_active } = parsed;
 
     const db = getDb();
     const existing = db.prepare(
