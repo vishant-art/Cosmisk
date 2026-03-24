@@ -11,8 +11,8 @@ import { validate, loginSchema, registerSchema, forgotPasswordSchema, resetPassw
 
 export async function authRoutes(app: FastifyInstance) {
 
-  // POST /auth/login
-  app.post('/login', async (request, reply) => {
+  // POST /auth/login — 10 attempts per minute per IP
+  app.post('/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(loginSchema, request.body, reply);
     if (!parsed) return;
     const { email, password } = parsed;
@@ -44,8 +44,8 @@ export async function authRoutes(app: FastifyInstance) {
     };
   });
 
-  // POST /auth/signup
-  app.post('/signup', async (request, reply) => {
+  // POST /auth/signup — 5 attempts per minute per IP
+  app.post('/signup', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(registerSchema, request.body, reply);
     if (!parsed) return;
     const { name, email, password } = parsed;
@@ -151,8 +151,8 @@ export async function authRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST /auth/forgot-password
-  app.post('/forgot-password', async (request, reply) => {
+  // POST /auth/forgot-password — 3 per minute per IP (prevents email spam)
+  app.post('/forgot-password', { config: { rateLimit: { max: 3, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(forgotPasswordSchema, request.body, reply);
     if (!parsed) return;
     const { email } = parsed;

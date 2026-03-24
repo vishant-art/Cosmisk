@@ -329,7 +329,10 @@ export async function billingRoutes(app: FastifyInstance) {
     const { plan, interval, gateway } = parsed;
 
     const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(request.user.id) as UserRow;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(request.user.id) as UserRow | undefined;
+    if (!user) {
+      return reply.status(401).send({ success: false, error: 'User not found' });
+    }
 
     // --- Razorpay flow ---
     if (gateway === 'razorpay') {
@@ -406,6 +409,9 @@ export async function billingRoutes(app: FastifyInstance) {
     const { razorpay_payment_id, razorpay_subscription_id, razorpay_signature, plan, interval } = parsed;
 
     // Verify signature
+    if (!config.razorpayKeySecret) {
+      return reply.status(503).send({ success: false, error: 'Razorpay not configured' });
+    }
     const expectedSignature = crypto
       .createHmac('sha256', config.razorpayKeySecret)
       .update(`${razorpay_payment_id}|${razorpay_subscription_id}`)

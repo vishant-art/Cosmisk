@@ -62,16 +62,30 @@ type TabKey = 'decisions' | 'briefing' | 'runs';
             Autonomous AI agents monitoring and optimizing your ad accounts
           </p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 flex-wrap">
           @if (pendingCount() > 0) {
             <span class="px-2.5 py-1 text-xs font-bold font-mono bg-amber-100 text-amber-700 rounded-full">
               {{ pendingCount() }} pending
             </span>
           }
           <button
+            (click)="triggerReport()"
+            [disabled]="triggeringReport()"
+            class="px-3 py-2 text-sm font-body font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer border-0">
+            <lucide-icon name="file-text" [size]="16"></lucide-icon>
+            {{ triggeringReport() ? 'Running...' : 'Run Report' }}
+          </button>
+          <button
+            (click)="triggerContent()"
+            [disabled]="triggeringContent()"
+            class="px-3 py-2 text-sm font-body font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer border-0">
+            <lucide-icon name="pen-tool" [size]="16"></lucide-icon>
+            {{ triggeringContent() ? 'Running...' : 'Run Content' }}
+          </button>
+          <button
             (click)="triggerWatchdog()"
             [disabled]="triggeringWatchdog()"
-            class="px-4 py-2 text-sm font-body font-semibold rounded-xl bg-accent text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer border-0">
+            class="px-3 py-2 text-sm font-body font-semibold rounded-xl bg-accent text-white hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 cursor-pointer border-0">
             <lucide-icon name="scan-eye" [size]="16"></lucide-icon>
             {{ triggeringWatchdog() ? 'Running...' : 'Run Watchdog' }}
           </button>
@@ -414,6 +428,8 @@ export default class AgentDashboardComponent implements OnInit {
   loadingRuns = signal(true);
   loadingBriefing = signal(true);
   triggeringWatchdog = signal(false);
+  triggeringReport = signal(false);
+  triggeringContent = signal(false);
   processingId = signal<string | null>(null);
   activeTab = signal<TabKey>('decisions');
 
@@ -497,6 +513,44 @@ export default class AgentDashboardComponent implements OnInit {
         this.triggeringWatchdog.set(false);
         const msg = err?.error?.error || 'Failed to run watchdog';
         this.toast.error('Watchdog Failed', msg);
+      },
+    });
+  }
+
+  triggerReport() {
+    this.triggeringReport.set(true);
+    this.api.post<{ success: boolean; reports?: number }>(
+      environment.AGENT_REPORT_RUN, {}
+    ).subscribe({
+      next: (res) => {
+        this.triggeringReport.set(false);
+        if (res.success) {
+          this.toast.success('Report Agent Complete', `${res.reports ?? 0} reports generated`);
+          this.fetchRuns();
+        }
+      },
+      error: (err) => {
+        this.triggeringReport.set(false);
+        this.toast.error('Report Agent Failed', err?.error?.error || 'Failed to run report agent');
+      },
+    });
+  }
+
+  triggerContent() {
+    this.triggeringContent.set(true);
+    this.api.post<{ success: boolean; briefs?: number }>(
+      environment.AGENT_CONTENT_RUN, {}
+    ).subscribe({
+      next: (res) => {
+        this.triggeringContent.set(false);
+        if (res.success) {
+          this.toast.success('Content Agent Complete', `${res.briefs ?? 0} briefs generated`);
+          this.fetchRuns();
+        }
+      },
+      error: (err) => {
+        this.triggeringContent.set(false);
+        this.toast.error('Content Agent Failed', err?.error?.error || 'Failed to run content agent');
       },
     });
   }

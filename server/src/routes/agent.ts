@@ -292,8 +292,8 @@ export async function agentRoutes(app: FastifyInstance) {
     return { success: true, message: `Rejected: ${decision.suggested_action} on "${decision.target_name}"` };
   });
 
-  // POST /agent/watchdog/run — manual trigger (admin only)
-  app.post('/watchdog/run', { preHandler: [app.authenticate] }, async (request, reply) => {
+  // POST /agent/watchdog/run — manual trigger (admin only, 2/min)
+  app.post('/watchdog/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
     const db = getDb();
     const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
     if (!userRow || userRow.role !== 'admin') {
@@ -304,8 +304,8 @@ export async function agentRoutes(app: FastifyInstance) {
     return { success: true, ...result };
   });
 
-  // POST /agent/report/run — manual trigger (admin only)
-  app.post('/report/run', { preHandler: [app.authenticate] }, async (request, reply) => {
+  // POST /agent/report/run — manual trigger (admin only, 2/min)
+  app.post('/report/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
     const db = getDb();
     const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
     if (!userRow || userRow.role !== 'admin') {
@@ -315,8 +315,8 @@ export async function agentRoutes(app: FastifyInstance) {
     return { success: true, reports: count };
   });
 
-  // POST /agent/content/run — manual trigger (admin only)
-  app.post('/content/run', { preHandler: [app.authenticate] }, async (request, reply) => {
+  // POST /agent/content/run — manual trigger (admin only, 2/min)
+  app.post('/content/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
     const db = getDb();
     const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
     if (!userRow || userRow.role !== 'admin') {
