@@ -27,6 +27,17 @@ interface ContentItem {
   imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
     <div class="space-y-6">
+      <!-- Error banner -->
+      @if (error()) {
+        <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center gap-3">
+          <lucide-icon name="alert-circle" [size]="18" class="text-red-500 shrink-0"></lucide-icon>
+          <p class="text-sm text-red-700 font-body m-0 flex-1">{{ error() }}</p>
+          <button (click)="retry()" class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-body font-semibold hover:bg-red-200 transition-colors border-0 cursor-pointer">
+            Retry
+          </button>
+        </div>
+      }
+
       <!-- Header -->
       <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -348,6 +359,7 @@ export default class ContentBankComponent implements OnInit {
   items = signal<ContentItem[]>([]);
   total = signal(0);
   loading = signal(false);
+  error = signal<string | null>(null);
   activeFilter = signal('all');
   activePlatform = signal('all');
   expandedId = signal<string | null>(null);
@@ -401,7 +413,10 @@ export default class ContentBankComponent implements OnInit {
         this.total.set(res.total || 0);
         this.loading.set(false);
       },
-      error: () => this.loading.set(false),
+      error: () => {
+        this.loading.set(false);
+        this.error.set('Failed to load content. Check your connection and try again.');
+      },
     });
   }
 
@@ -473,7 +488,10 @@ export default class ContentBankComponent implements OnInit {
         setTimeout(() => this.weeklySuccess.set(false), 5000);
         this.loadContent();
       },
-      error: () => this.generatingWeekly.set(false),
+      error: () => {
+        this.generatingWeekly.set(false);
+        this.error.set('Weekly generation failed. This may take a while — please try again.');
+      },
     });
   }
 
@@ -504,7 +522,10 @@ export default class ContentBankComponent implements OnInit {
           this.composerHashtags = res.hashtags?.[platform]?.join(' ') || '';
         }
       },
-      error: () => this.generating.set(false),
+      error: () => {
+        this.generating.set(false);
+        this.error.set('AI generation failed. Please try again.');
+      },
     });
   }
 
@@ -539,6 +560,11 @@ export default class ContentBankComponent implements OnInit {
       twitter: 'bg-sky-100 text-sky-700',
     };
     return map[platform] || 'bg-gray-100 text-gray-600';
+  }
+
+  retry() {
+    this.error.set(null);
+    this.loadContent();
   }
 
   statusClass(status: string): string {
