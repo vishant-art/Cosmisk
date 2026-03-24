@@ -2,9 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
-import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow } from '../types/index.js';
+import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow, MetaTokenRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
+import { decryptToken } from '../services/token-crypto.js';
+import { MetaApiService } from '../services/meta-api.js';
+import { parseInsightMetrics } from '../services/insights-parser.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -46,6 +49,83 @@ interface TriggerSprintRow {
   total_creatives: number;
   completed_creatives: number;
   created_at: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Meta performance data helper                                       */
+/* ------------------------------------------------------------------ */
+
+interface MetaPerformanceSummary {
+  weekSpend: number;
+  weekRevenue: number;
+  weekRoas: number;
+  weekConversions: number;
+  weekClicks: number;
+  weekImpressions: number;
+  weekCpa: number;
+}
+
+async function fetchMetaPerformance(userId: string): Promise<MetaPerformanceSummary | null> {
+  const db = getDb();
+  const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+  if (!tokenRow) return null;
+
+  try {
+    const token = decryptToken(tokenRow.encrypted_access_token);
+    const meta = new MetaApiService(token);
+
+    const accountsResp = await meta.get<any>('/me/adaccounts', { fields: 'id', limit: '10' });
+    const accounts = accountsResp.data || [];
+    if (accounts.length === 0) return null;
+
+    let weekSpend = 0, weekRevenue = 0, weekConversions = 0, weekClicks = 0, weekImpressions = 0;
+
+    const results = await Promise.allSettled(
+      accounts.slice(0, 5).map(async (account: any) => {
+        const weekData = await meta.get<any>(`/${account.id}/insights`, {
+          fields: 'spend,actions,action_values,purchase_roas,impressions,clicks',
+          date_preset: 'last_7d',
+          level: 'account',
+        }).catch(() => ({ data: [] }));
+        return parseInsightMetrics(weekData.data?.[0] || {});
+      })
+    );
+
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      weekSpend += result.value.spend;
+      weekRevenue += result.value.revenue;
+      weekConversions += result.value.conversions;
+      weekClicks += result.value.clicks;
+      weekImpressions += result.value.impressions;
+    }
+
+    return {
+      weekSpend,
+      weekRevenue,
+      weekRoas: weekSpend > 0 ? Math.round((weekRevenue / weekSpend) * 100) / 100 : 0,
+      weekConversions,
+      weekClicks,
+      weekImpressions,
+      weekCpa: weekConversions > 0 ? Math.round((weekSpend / weekConversions) * 100) / 100 : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatMetaPerformanceSection(perf: MetaPerformanceSummary): string {
+  return `
+PERFORMANCE DATA (Last 7 Days — from your live Meta Ads accounts):
+- Ad Spend: $${perf.weekSpend.toFixed(2)}
+- Revenue: $${perf.weekRevenue.toFixed(2)}
+- ROAS: ${perf.weekRoas}x
+- Conversions: ${perf.weekConversions}
+- CPA: $${perf.weekCpa.toFixed(2)}
+- Clicks: ${perf.weekClicks.toLocaleString()}
+- Impressions: ${perf.weekImpressions.toLocaleString()}
+
+USE THIS DATA in content. "We hit ${perf.weekRoas}x ROAS this week" is 10x more powerful than generic claims. Reference real numbers — spend milestones, conversion counts, CPA improvements. If ROAS is strong, lead with it. If CPA dropped, celebrate that. Make the data the story.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -159,6 +239,10 @@ COSMISK WEEKLY DATA:
 ${topic ? `\nSPECIFIC TOPIC: ${topic}` : ''}
 ${transcript ? `\nTRANSCRIPT FROM SCREEN RECORDING:\n${transcript.slice(0, 3000)}` : ''}`;
 
+    // Fetch Meta Ads performance data (non-blocking — skip if not connected)
+    const metaPerf = await fetchMetaPerformance(userId);
+    const metaPerfSection = metaPerf ? formatMetaPerformanceSection(metaPerf) : '';
+
     // Fetch user profile for multi-tenant persona
     const userProfile = db.prepare(
       'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?'
@@ -240,7 +324,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
         max_tokens: 3000,
         temperature: 0.7,
         system: systemPrompt,
-        messages: [{ role: 'user', content: `Generate content for these platforms: ${targetPlatforms.join(', ')}\n\n${dataContext}` }],
+        messages: [{ role: 'user', content: `Generate content for these platforms: ${targetPlatforms.join(', ')}\n\n${dataContext}${metaPerfSection ? `\n${metaPerfSection}` : ''}` }],
       });
 
       const text = extractText(response);
@@ -251,6 +335,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
         return {
           success: true,
           ...parsed,
+          meta_data_used: !!metaPerf,
           data_context_used: {
             sprints_referenced: recentSprints.length,
             week_creatives: weekStats?.completed || 0,
@@ -465,30 +550,52 @@ COSMISK WEEKLY DATA:
 
     // Fetch user profile for multi-tenant persona
     const userProfile = db.prepare(
-      'SELECT name, brand_name, goals FROM users WHERE id = ?'
-    ).get(userId) as { name: string; brand_name?: string; goals?: string } | undefined;
+      'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?'
+    ).get(userId) as { name: string; brand_name?: string; website_url?: string; goals?: string; competitors?: string } | undefined;
 
     const userName = userProfile?.name || 'the user';
     const brandName = userProfile?.brand_name || 'their brand';
+    const websiteUrl = userProfile?.website_url ? `\n- Website: ${userProfile.website_url}` : '';
     const userGoals = userProfile?.goals ? JSON.parse(userProfile.goals) as string[] : [];
+    const userCompetitors = userProfile?.competitors ? `\n- Competitors: ${JSON.parse(userProfile.competitors).join(', ')}` : '';
     const contentPillars = userGoals.length > 0
       ? userGoals.join(', ')
-      : 'Industry Insights, Building in Public, Team & Operations, Performance Marketing, Product Updates';
+      : 'Industry Insights, Client Results, Lessons Learned, Behind the Scenes, Product Updates';
+
+    // Fetch Meta Ads performance data (non-blocking — skip if not connected)
+    const metaPerf = await fetchMetaPerformance(userId);
+    const metaPerfSection = metaPerf ? formatMetaPerformanceSection(metaPerf) : '';
 
     const systemPrompt = `You are a weekly content batch generator for ${userName}, who runs ${brandName}.
 
+PROFILE:
+- Name: ${userName}
+- Brand: ${brandName}${websiteUrl}${userCompetitors}
+
 Generate 7 days of content — one post per platform per day (21 total pieces).
 
-VOICE: Direct, conversational, data-backed. No banned words (revolutionary, game changer, cutting-edge, synergy, ecosystem, robust, seamless, deep dive, etc.)
+VOICE RULES:
+- Direct and action-oriented. Get to the point.
+- Conversational but professional
+- Data-informed — back claims with actual numbers when available
+- Avoid generic motivational platitudes — be specific and grounded
 
-HOOK FORMULAS: Number-First, Credential+Insight, Pattern Interrupt, Contrarian.
+BANNED WORDS (never use): revolutionary, game changer, cutting-edge, synergy, ecosystem, robust, seamless, deep dive, unlock potential, unleash, realm, tapestry, holistic, epic, limitless, groundbreaking, delve, paramount, pivotal
+
+HOOK FORMULAS:
+- Number-First: Lead with a specific metric or stat
+- Credential + Insight: Establish authority, then share a non-obvious takeaway
+- Pattern Interrupt: Start with something unexpected
+- Contrarian: Challenge common wisdom with evidence
 
 PLATFORM RULES:
-- Twitter: Short, punchy. No emojis. Under 280 chars for singles.
-- LinkedIn: Hook line + 2-3 paragraphs. Close with question or takeaway.
-- Instagram: Caption + reel idea. Emojis ok.
+- Twitter: Short, punchy. Threads have a killer first tweet. No emojis. Under 280 chars for singles.
+- LinkedIn: Punchy hook line that makes them click "see more." 2-3 short paragraphs. Plain English. Close with takeaway or question.
+- Instagram: Caption complements the visual. Can use emojis here. Include reel shot notes with timing.
 
 CONTENT PILLARS: ${contentPillars}. Rotate through these across the week.
+
+THE TEST: Read it out loud. If it sounds like AI slop, rewrite it. Every post should feel like something ${userName} would actually say.
 
 OUTPUT — respond with ONLY valid JSON:
 {
@@ -509,7 +616,7 @@ OUTPUT — respond with ONLY valid JSON:
         max_tokens: 8000,
         temperature: 0.7,
         system: systemPrompt,
-        messages: [{ role: 'user', content: `Generate this week's content batch.\n\n${dataContext}` }],
+        messages: [{ role: 'user', content: `Generate this week's content batch.\n\n${dataContext}${metaPerfSection ? `\n${metaPerfSection}` : ''}` }],
       });
 
       const text = extractText(response);

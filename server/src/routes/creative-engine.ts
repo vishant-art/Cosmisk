@@ -332,6 +332,35 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         }
       }
 
+      // Resolve brand context: prefer request body, fall back to user profile + UGC brief
+      let brandName    = preferences?.brand_name    as string | undefined;
+      let productName  = preferences?.product_name  as string | undefined;
+      let targetAudience = preferences?.target_audience as string | undefined;
+      let industry     = preferences?.industry      as string | undefined;
+
+      if (!brandName || !productName || !industry) {
+        const db0 = getDb();
+        const userProfile = db0.prepare('SELECT brand_name FROM users WHERE id = ?')
+          .get(request.user.id) as { brand_name?: string } | undefined;
+
+        if (!brandName && userProfile?.brand_name) brandName = userProfile.brand_name;
+
+        // Pull product/audience/industry from latest UGC project brief if not supplied
+        if (!productName || !targetAudience || !industry) {
+          const latestProject = db0.prepare(
+            `SELECT brief FROM ugc_projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`
+          ).get(request.user.id) as { brief?: string } | undefined;
+          if (latestProject?.brief) {
+            try {
+              const brief = JSON.parse(latestProject.brief);
+              if (!productName)      productName = brief.product_description || brief.product_feature || undefined;
+              if (!targetAudience)   targetAudience = brief.target_audience || brief.target_user || undefined;
+              if (!industry)         industry = brief.industry || (brief.additional_notes?.match(/Industry:\s*(.+)/)?.[1]) || undefined;
+            } catch { /* brief not valid JSON — skip */ }
+          }
+        }
+      }
+
       // Claude-powered plan generation — analyzes the data and recommends formats
       const rawPlan = await generateSprintPlan(snapshot, {
         budget_cents: preferences?.budget_cents,
@@ -340,6 +369,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         total_creatives: preferences?.total_creatives,
         competitor_context: competitorContext,
         visual_summary: snapshot.visualSummary,
+        brand_name: brandName,
+        product_name: productName,
+        target_audience: targetAudience,
+        industry,
       });
 
       // --- Plan-stage scoring (zero Claude calls) ---

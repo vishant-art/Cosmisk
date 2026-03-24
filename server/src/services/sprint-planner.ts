@@ -114,6 +114,10 @@ export async function generateSprintPlan(
     total_creatives?: number;
     competitor_context?: CompetitorContext;
     visual_summary?: string;
+    brand_name?: string;
+    product_name?: string;
+    target_audience?: string;
+    industry?: string;
   },
 ): Promise<SprintPlan> {
   const currency = preferences.currency || 'USD';
@@ -137,10 +141,20 @@ export async function generateSprintPlan(
     ? snapshot.fatigueSignals.join('\n')
     : 'No major fatigue signals detected.';
 
+  // Build brand context block
+  const brandLines: string[] = [];
+  if (preferences.brand_name)      brandLines.push(`Brand: ${preferences.brand_name}`);
+  if (preferences.product_name)    brandLines.push(`Product / Service: ${preferences.product_name}`);
+  if (preferences.industry)        brandLines.push(`Industry: ${preferences.industry}`);
+  if (preferences.target_audience) brandLines.push(`Target Audience: ${preferences.target_audience}`);
+  const brandBlock = brandLines.length > 0
+    ? `\nBRAND CONTEXT:\n${brandLines.join('\n')}\n\nUse this brand context to tailor every recommendation — format choices, messaging angles, hook styles, and creative direction should reflect what this brand sells, who they sell to, and how their industry works. A skincare brand needs different creatives than a SaaS tool.\n`
+    : '';
+
   const systemPrompt = `You are a performance creative strategist at Cosmisk. You create data-backed sprint plans.
 
 You have access to an advertiser's Meta Ads performance data. Your job is to create a creative sprint plan — a batch of ad creatives to generate and test.
-
+${brandBlock}
 RULES:
 - Think like a strategist. Analyze what's working and WHY, then recommend formats that exploit those patterns.
 - Every recommendation must reference specific ad names and metrics from the data.

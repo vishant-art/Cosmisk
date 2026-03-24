@@ -41,7 +41,51 @@ const INSIGHT_FIELDS = 'spend,impressions,clicks,ctr,cpc,actions,action_values,p
 
 const CLAUDE_FALLBACK = "I couldn't generate a detailed analysis right now. Here's the raw data in the chart and table below.";
 
-function buildSystemPrompt(): string {
+/** Map natural-language date ranges to Meta API date_preset values */
+function mapDateRange(dateRange: string): string | null {
+  const lower = dateRange.toLowerCase().trim();
+  const map: Record<string, string> = {
+    'today': 'today',
+    'yesterday': 'yesterday',
+    'last 3 days': 'last_3d',
+    'last 3d': 'last_3d',
+    'past 3 days': 'last_3d',
+    'last 7 days': 'last_7d',
+    'last week': 'last_7d',
+    'past week': 'last_7d',
+    'this week': 'last_7d',
+    'last 14 days': 'last_14d',
+    'last 2 weeks': 'last_14d',
+    'past 2 weeks': 'last_14d',
+    'last 30 days': 'last_30d',
+    'last month': 'last_30d',
+    'past month': 'last_30d',
+    'this month': 'this_month',
+    'last 90 days': 'last_90d',
+    'last 3 months': 'last_90d',
+    'last quarter': 'last_quarter',
+    'this year': 'this_year',
+    'last year': 'last_year',
+  };
+  return map[lower] || null;
+}
+
+/** Filter campaigns by name (case-insensitive partial match) */
+function filterCampaignsByName<T extends { label?: string; name?: string; campaign_name?: string }>(
+  items: T[],
+  campaignFilter: string,
+): T[] {
+  const lower = campaignFilter.toLowerCase();
+  return items.filter(item => {
+    const name = (item.label || item.name || item.campaign_name || '').toLowerCase();
+    return name.includes(lower);
+  });
+}
+
+function buildSystemPrompt(campaignFilter?: string): string {
+  const filterNote = campaignFilter
+    ? `\n- The user is asking specifically about campaign: "${campaignFilter}". Focus your analysis on this campaign. If it appears in the data, lead with it. If it does not appear, say so explicitly.`
+    : '';
   return `You are a Meta Ads strategist at Cosmisk. You analyze real campaign data and give specific, actionable advice.
 
 Rules:
@@ -53,17 +97,18 @@ Rules:
 - End every response with a specific next action the user should take
 - Use the currency symbol ${CURRENCY_SYMBOLS[getCurrency()] || getCurrency()} (${getCurrency()}) for all monetary values — never use $ unless the account currency is USD
 - Never use bullet points or numbered lists unless specifically generating hooks/scripts
-- Keep responses focused and under 400 words`;
+- Keep responses focused and under 400 words${filterNote}`;
 }
 
 async function askClaude(
   userMessage: string,
   dataContext: Record<string, any>,
   analysisType: string,
-  history?: { role: 'user' | 'ai'; content: string }[]
+  history?: { role: 'user' | 'ai'; content: string }[],
+  campaignFilter?: string,
 ): Promise<string | null> {
   try {
-    const systemPrompt = buildSystemPrompt()
+    const systemPrompt = buildSystemPrompt(campaignFilter)
       + `\n\nAnalysis type: ${analysisType}\n\nData:\n${JSON.stringify(dataContext, null, 2)}`;
 
     const historyMessages: { role: 'user' | 'assistant'; content: string }[] = [];
@@ -219,7 +264,7 @@ function detectIntentWithContext(message: string, lastAiResponse: string): Inten
 /*  Intent handlers                                                   */
 /* ------------------------------------------------------------------ */
 
-async function handleRoas(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleRoas(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData, dailyCampaignData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -242,7 +287,8 @@ async function handleRoas(meta: MetaApiService, accountId: string, datePreset: s
   ]);
 
   const acct = parseInsightMetrics(accountData.data?.[0] || {});
-  const campaigns = parseCampaignBreakdown(campaignData.data || []);
+  let campaigns = parseCampaignBreakdown(campaignData.data || []);
+  if (campaignFilter) campaigns = filterCampaignsByName(campaigns, campaignFilter);
   const sorted = [...campaigns].sort((a, b) => b.roas - a.roas);
   const top5 = sorted.slice(0, 5);
   const withSpend = campaigns.filter(c => c.spend > 0);
@@ -269,7 +315,7 @@ async function handleRoas(meta: MetaApiService, accountId: string, datePreset: s
     summary: { totalCampaigns: withSpend.length, profitable: profitable.length, unprofitable: unprofitable.length, totalSpend },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'roas', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'roas', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const chart: AiChart = {
@@ -292,7 +338,7 @@ async function handleRoas(meta: MetaApiService, accountId: string, datePreset: s
   return { content, chart, table };
 }
 
-async function handleSpend(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleSpend(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -308,7 +354,8 @@ async function handleSpend(meta: MetaApiService, accountId: string, datePreset: 
   ]);
 
   const acct = parseInsightMetrics(accountData.data?.[0] || {});
-  const campaigns = parseCampaignBreakdown(campaignData.data || []);
+  let campaigns = parseCampaignBreakdown(campaignData.data || []);
+  if (campaignFilter) campaigns = filterCampaignsByName(campaigns, campaignFilter);
   const sorted = [...campaigns].sort((a, b) => b.spend - a.spend);
   const top5 = sorted.slice(0, 5);
   const withSpend = campaigns.filter(c => c.spend > 0);
@@ -334,7 +381,7 @@ async function handleSpend(meta: MetaApiService, accountId: string, datePreset: 
     summary: { totalCampaigns: withSpend.length, totalSpend: totalCampaignSpend },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'spend', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'spend', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const chart: AiChart = {
@@ -361,7 +408,7 @@ async function handleSpend(meta: MetaApiService, accountId: string, datePreset: 
   return { content, chart, table };
 }
 
-async function handleAudience(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleAudience(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const audienceData = await meta.get<any>(`/${accountId}/insights`, {
     fields: 'spend,impressions,clicks,actions,action_values,purchase_roas',
     breakdowns: 'age,gender',
@@ -428,7 +475,7 @@ async function handleAudience(meta: MetaApiService, accountId: string, datePrese
     summary: { totalSegments: segments.length, totalSpend, totalConversions, avgCpa },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'audience', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'audience', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const chart: AiChart = {
@@ -451,7 +498,7 @@ async function handleAudience(meta: MetaApiService, accountId: string, datePrese
   return { content, chart, table };
 }
 
-async function handleCreative(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleCreative(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const adData = await meta.get<MetaInsightsResponse>(`/${accountId}/insights`, {
     fields: `ad_name,campaign_name,${INSIGHT_FIELDS}`,
     level: 'ad',
@@ -465,7 +512,7 @@ async function handleCreative(meta: MetaApiService, accountId: string, datePrese
     return { content: 'I don\'t see any ad-level data for this period. Your ads need to be running and delivering for me to analyze creative performance.' };
   }
 
-  const parsed = rows.map(row => {
+  let parsed = rows.map(row => {
     const m = parseInsightMetrics(row);
     return {
       adName: row.ad_name || 'Unknown',
@@ -473,6 +520,13 @@ async function handleCreative(meta: MetaApiService, accountId: string, datePrese
       ...m,
     };
   });
+  if (campaignFilter) {
+    const lower = campaignFilter.toLowerCase();
+    parsed = parsed.filter(a => a.campaignName.toLowerCase().includes(lower));
+    if (parsed.length === 0) {
+      return { content: `I couldn't find any ads under a campaign matching "${campaignFilter}" in this period. Double-check the campaign name or try a broader time range.` };
+    }
+  }
 
   const sortedByRoas = [...parsed].sort((a, b) => b.roas - a.roas);
   const sortedByCtr = [...parsed].sort((a, b) => b.ctr - a.ctr);
@@ -505,7 +559,7 @@ async function handleCreative(meta: MetaApiService, accountId: string, datePrese
     },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'creative', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'creative', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const table: AiTable = {
@@ -524,7 +578,7 @@ async function handleCreative(meta: MetaApiService, accountId: string, datePrese
   return { content, table };
 }
 
-async function handleCpa(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleCpa(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData, dailyCampaignData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -547,7 +601,8 @@ async function handleCpa(meta: MetaApiService, accountId: string, datePreset: st
   ]);
 
   const acct = parseInsightMetrics(accountData.data?.[0] || {});
-  const campaigns = parseCampaignBreakdown(campaignData.data || []);
+  let campaigns = parseCampaignBreakdown(campaignData.data || []);
+  if (campaignFilter) campaigns = filterCampaignsByName(campaigns, campaignFilter);
   const withConversions = campaigns.filter(c => c.conversions > 0);
   const noConversions = campaigns.filter(c => c.conversions === 0 && c.spend > 0);
   const sorted = [...withConversions].sort((a, b) => a.cpa - b.cpa);
@@ -580,7 +635,7 @@ async function handleCpa(meta: MetaApiService, accountId: string, datePreset: st
     },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'cpa', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'cpa', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const chart: AiChart = {
@@ -693,7 +748,7 @@ async function handleForecast(meta: MetaApiService, accountId: string, userMessa
   return { content, chart };
 }
 
-async function handleScript(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleScript(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [adData, campaignData, audienceData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: `ad_name,campaign_name,${INSIGHT_FIELDS}`,
@@ -745,7 +800,7 @@ async function handleScript(meta: MetaApiService, accountId: string, datePreset:
     requestedContentType: contentType,
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'script', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'script', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   if (topAds.length > 0) {
@@ -765,7 +820,7 @@ async function handleScript(meta: MetaApiService, accountId: string, datePreset:
   return { content };
 }
 
-async function handleOverview(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleOverview(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData, adData, dailyData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -793,7 +848,8 @@ async function handleOverview(meta: MetaApiService, accountId: string, datePrese
   ]);
 
   const acct = parseInsightMetrics(accountData.data?.[0] || {});
-  const campaigns = parseCampaignBreakdown(campaignData.data || []);
+  let campaigns = parseCampaignBreakdown(campaignData.data || []);
+  if (campaignFilter) campaigns = filterCampaignsByName(campaigns, campaignFilter);
   const ads = (adData.data || []).map((row: any) => ({
     name: row.ad_name || 'Unknown',
     ...parseInsightMetrics(row),
@@ -836,7 +892,7 @@ async function handleOverview(meta: MetaApiService, accountId: string, datePrese
     trends: { roas: roasTrend, spend: spendTrend },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'overview', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'overview', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const chart: AiChart = {
@@ -863,7 +919,7 @@ async function handleOverview(meta: MetaApiService, accountId: string, datePrese
   return { content, chart, table };
 }
 
-async function handleComparison(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, params: Record<string, any>, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleComparison(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, params: Record<string, any>, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   // Fetch two periods for comparison — current period and previous period
   const currentPreset = datePreset;
   const previousPreset = datePreset === 'last_7d' ? 'last_14d' : 'last_30d';
@@ -889,7 +945,8 @@ async function handleComparison(meta: MetaApiService, accountId: string, datePre
 
   const current = parseInsightMetrics(currentData.data?.[0] || {});
   const previous = parseInsightMetrics(previousData.data?.[0] || {});
-  const campaigns = parseCampaignBreakdown(campaignCurrent.data || []);
+  let campaigns = parseCampaignBreakdown(campaignCurrent.data || []);
+  if (campaignFilter) campaigns = filterCampaignsByName(campaigns, campaignFilter);
 
   const dataContext = {
     current_period: { preset: currentPreset, ...current },
@@ -905,7 +962,7 @@ async function handleComparison(meta: MetaApiService, accountId: string, datePre
     user_params: params,
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'comparison', history);
+  const claudeContent = await askClaude(userMessage, dataContext, 'comparison', history, campaignFilter);
   const content = claudeContent || CLAUDE_FALLBACK;
 
   const table: AiTable = {
@@ -990,27 +1047,37 @@ export async function aiRoutes(app: FastifyInstance) {
 
     const meta = new MetaApiService(token);
 
+    // Wire extracted intent params: override date_preset if a date_range was extracted
+    let effectiveDatePreset = date_preset;
+    if (intentParams['date_range']) {
+      const mapped = mapDateRange(intentParams['date_range']);
+      if (mapped) effectiveDatePreset = mapped;
+    }
+
+    // Extract campaign filter if present
+    const campaignFilter: string | undefined = intentParams['campaign_name'] || undefined;
+
     try {
       switch (intent) {
         case 'roas':
-          return await handleRoas(meta, account_id, date_preset, message, history);
+          return await handleRoas(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'spend':
-          return await handleSpend(meta, account_id, date_preset, message, history);
+          return await handleSpend(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'audience':
-          return await handleAudience(meta, account_id, date_preset, message, history);
+          return await handleAudience(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'creative':
-          return await handleCreative(meta, account_id, date_preset, message, history);
+          return await handleCreative(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'cpa':
-          return await handleCpa(meta, account_id, date_preset, message, history);
+          return await handleCpa(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'forecast':
           return await handleForecast(meta, account_id, message, history);
         case 'script':
-          return await handleScript(meta, account_id, date_preset, message, history);
+          return await handleScript(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'comparison':
-          return await handleComparison(meta, account_id, date_preset, message, intentParams, history);
+          return await handleComparison(meta, account_id, effectiveDatePreset, message, intentParams, history, campaignFilter);
         case 'overview':
         default:
-          return await handleOverview(meta, account_id, date_preset, message, history);
+          return await handleOverview(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
       }
     } catch (err: any) {
       const errorMsg = err.message || 'Unknown error';

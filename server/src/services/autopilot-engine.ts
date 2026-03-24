@@ -215,17 +215,103 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
 
 async function generateAlertContent(type: string, data: any): Promise<string> {
   try {
+    const systemPrompt = `You are Cosmisk Autopilot — a senior Meta Ads strategist delivering daily performance alerts to agency operators.
+
+VOICE RULES:
+- Write like a strategist briefing a colleague, not a dashboard notification.
+- Be direct and specific. Reference exact campaign names, amounts, and percentages.
+- 2-3 sentences max. No filler. Every word should earn its place.
+- End with ONE concrete action the user should take today.
+- Use plain prose — no bullet points, no markdown, no headers, no emojis.
+
+BANNED WORDS: "optimize", "leverage", "significant", "notable", "I recommend", "consider exploring".
+Instead of "optimize" say "fix", "cut", "scale", or "test". Instead of "I recommend" just state the action.
+
+DATA CONFIDENCE AWARENESS:
+- If total spend is under $50 or conversions are under 5, explicitly caveat that the data is too thin to act on confidently.
+- A 20x ROAS on $10 spend is noise. A 3x ROAS on $500 spend is a real signal. Weight your urgency accordingly.
+- Trends over 5+ days matter more than single-day spikes.`;
+
+    const userContent = formatAlertData(type, data);
+
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 300,
-      temperature: 0.5,
-      system: `You are Cosmisk Autopilot, a Meta Ads strategist AI. Generate a concise, actionable alert message (2-3 sentences). Be specific with numbers. End with a clear action the user should take. No bullet points.`,
-      messages: [{ role: 'user', content: `Alert type: ${type}\nData: ${JSON.stringify(data)}` }],
+      temperature: 0.3,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }],
     });
-    return extractText(response) || JSON.stringify(data);
+    return extractText(response) || generateFallbackContent(type, data);
   } catch {
     // Fallback to template-based content
     return generateFallbackContent(type, data);
+  }
+}
+
+function formatAlertData(type: string, data: any): string {
+  switch (type) {
+    case 'roas_decline': {
+      const campaignLines = (data.campaigns || [])
+        .map((c: any) => `  - "${c.name}": ${round(c.roas, 2)}x ROAS on ${fmt(c.spend)} spend`)
+        .join('\n');
+      return `ALERT: ROAS Decline
+
+Account-level ROAS dropped from ${round(data.weekAgoRoas, 2)}x to ${round(data.currentRoas, 2)}x over the past 7 days.
+Overall 7-day average: ${round(data.overallRoas, 2)}x ROAS on ${fmt(data.spend)} total spend.
+${data.spend < 50 ? '(Note: low spend — data confidence is limited.)\n' : ''}
+Top campaigns by spend:
+${campaignLines || '  (no campaign data)'}
+
+Generate an alert explaining the decline and what to do about it.`;
+    }
+
+    case 'cpa_spike': {
+      return `ALERT: CPA Spike
+
+Campaign: "${data.campaignName}"
+CPA increased ${data.spikePercent}% — now at ${fmt(data.currentCpa)} per acquisition.
+Campaign ROAS: ${round(data.roas, 2)}x on ${fmt(data.spend)} spend.
+${data.spend < 50 ? '(Note: low spend — this could be noise rather than a real trend.)\n' : ''}
+Generate an alert explaining the CPA spike and what to do about it.`;
+    }
+
+    case 'scale_opportunity': {
+      return `ALERT: Scale Opportunity
+
+Campaign: "${data.campaignName}"
+Delivering ${round(data.roas, 2)}x ROAS with ${data.conversions} conversions on ${fmt(data.spend)} spend.
+ROAS trend: ${data.trend || 'stable'}.
+${data.conversions < 10 ? '(Note: conversion volume is low — scaling may be premature.)\n' : ''}
+Generate an alert explaining why this is ready to scale and by how much.`;
+    }
+
+    case 'wasted_spend': {
+      const campaignLines = (data.campaigns || [])
+        .map((c: any) => `  - "${c.name}": ${round(c.roas, 2)}x ROAS on ${fmt(c.spend)} spend`)
+        .join('\n');
+      return `ALERT: Wasted Spend
+
+${fmt(data.wastedSpend)} spent on ${data.count} campaigns running below breakeven (< 1x ROAS).
+That is ${round((data.wastedSpend / data.totalSpend) * 100, 0)}% of the total ${fmt(data.totalSpend)} weekly spend.
+
+Below-breakeven campaigns:
+${campaignLines || '  (no campaign data)'}
+
+Generate an alert explaining the waste and which campaigns to cut or fix.`;
+    }
+
+    case 'creative_fatigue': {
+      return `ALERT: Creative Fatigue
+
+Campaign: "${data.campaignName}"
+Average CTR has declined to ${data.avgCtr}% over the past 7 days (trend: ${data.trend}).
+Campaign spend: ${fmt(data.spend)}.
+
+Generate an alert explaining the creative fatigue signal and what to do next.`;
+    }
+
+    default:
+      return `Alert type: ${type}\nData: ${JSON.stringify(data)}`;
   }
 }
 
