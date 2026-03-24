@@ -43,7 +43,13 @@ interface AutomationRow {
 /*  Helper: format condition and action for display                    */
 /* ------------------------------------------------------------------ */
 function formatCondition(triggerType: string, triggerValue: string | null): string {
-  const parsed = triggerValue ? JSON.parse(triggerValue) : {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parsed: any = {};
+  try {
+    parsed = triggerValue ? JSON.parse(triggerValue) : {};
+  } catch {
+    parsed = {};
+  }
   const metric = triggerType.toUpperCase();
   const operator = parsed.operator || 'gt';
   const value = parsed.value || '0';
@@ -54,13 +60,18 @@ function formatCondition(triggerType: string, triggerValue: string | null): stri
 }
 
 function formatAction(actionType: string, actionValue: string | null): string {
-  const parsed = actionValue ? JSON.parse(actionValue) : {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parsed: any = {};
+  try {
+    parsed = actionValue ? JSON.parse(actionValue) : {};
+  } catch {
+    parsed = {};
+  }
   const actionMap: Record<string, string> = {
     pause: 'Pause ad set',
     reduce_budget: `Reduce budget by ${parsed.percentage || 20}%`,
     increase_budget: `Increase budget by ${parsed.percentage || 20}%`,
     notify: 'Send notification',
-    duplicate: 'Duplicate & modify',
   };
   const scope = parsed.scope ? ` (${parsed.scope})` : '';
   return (actionMap[actionType] || actionType) + scope;

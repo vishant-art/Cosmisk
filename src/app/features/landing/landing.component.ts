@@ -1738,14 +1738,14 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
   submitHeroEmail() {
     if (this.heroEmail.includes('@')) {
       this.heroSubmitted.set(true);
-      this.http.post(`${environment.N8N_BASE_URL}/leads/capture`, { email: this.heroEmail, source: 'hero' }).subscribe();
+      this.http.post(`${environment.API_BASE_URL}/leads/capture`, { email: this.heroEmail, source: 'hero' }).subscribe();
     }
   }
 
   submitDemoEmail() {
     if (this.demoEmail.includes('@')) {
       this.demoSubmitted.set(true);
-      this.http.post(`${environment.N8N_BASE_URL}/leads/capture`, { email: this.demoEmail, source: 'demo' }).subscribe();
+      this.http.post(`${environment.API_BASE_URL}/leads/capture`, { email: this.demoEmail, source: 'demo' }).subscribe();
     }
   }
 

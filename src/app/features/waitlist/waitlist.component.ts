@@ -476,7 +476,7 @@ export default class WaitlistComponent {
       signed_up_at: new Date().toISOString(),
     };
 
-    this.http.post<{ position: number }>(`${environment.N8N_BASE_URL}/waitlist/join`, payload).subscribe({
+    this.http.post<{ position: number }>(`${environment.API_BASE_URL}/waitlist/join`, payload).subscribe({
       next: (res) => {
         this.position.set(res.position || 1);
         this.step.set(4);

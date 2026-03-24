@@ -305,7 +305,7 @@ export default class ScoreComponent {
     this.error.set(null);
 
     const isUrl = input.startsWith('http://') || input.startsWith('https://');
-    const baseUrl = environment.production ? environment.N8N_BASE_URL : '/api';
+    const baseUrl = environment.production ? environment.API_BASE_URL : '/api';
 
     this.http.post<any>(`${baseUrl}/${environment.SCORE_ANALYZE}`, {
       url: isUrl ? input : undefined,

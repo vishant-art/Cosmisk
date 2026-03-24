@@ -294,24 +294,9 @@ async function fetchAudienceData(meta: MetaApiService, accountId: string, datePr
 }
 
 /* ------------------------------------------------------------------ */
-/*  Ensure 'type' column exists (safe migration)                       */
-/* ------------------------------------------------------------------ */
-function ensureReportTypeColumn(): void {
-  const db = getDb();
-  // Check if 'type' column exists — if not, add it
-  const tableInfo = db.prepare("PRAGMA table_info('reports')").all() as Array<{ name: string }>;
-  const hasType = tableInfo.some(col => col.name === 'type');
-  if (!hasType) {
-    db.exec("ALTER TABLE reports ADD COLUMN type TEXT NOT NULL DEFAULT 'performance'");
-  }
-}
-
-/* ------------------------------------------------------------------ */
 /*  Routes                                                             */
 /* ------------------------------------------------------------------ */
 export async function reportRoutes(app: FastifyInstance) {
-  // Run migration on startup
-  ensureReportTypeColumn();
   // Start weekly report cron
   startWeeklyReportCron();
 
@@ -601,6 +586,9 @@ function startWeeklyReportCron() {
   weeklyReportCronStarted = true;
 
   cron.schedule('0 7 * * 1', async () => {
+    const MAX_BATCH_SIZE = 50;
+    const DELAY_BETWEEN_USERS_MS = 2000;
+
     logger.info('[Weekly Reports] Starting generation...');
     const db = getDb();
 
@@ -610,10 +598,25 @@ function startWeeklyReportCron() {
       AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
     `).all() as Pick<UserRow, 'id' | 'name' | 'email'>[];
 
-    let generated = 0;
+    const totalEligible = users.length;
+    const batch = users.slice(0, MAX_BATCH_SIZE);
+    const skipped = totalEligible - batch.length;
 
-    for (const user of users) {
+    if (skipped > 0) {
+      logger.warn(`[Weekly Reports] ${totalEligible} eligible users, processing ${batch.length}, skipping ${skipped} (batch limit ${MAX_BATCH_SIZE})`);
+    }
+
+    let generated = 0;
+    let processed = 0;
+
+    for (const user of batch) {
       try {
+        // Delay between users to avoid overwhelming external APIs (Anthropic, Meta)
+        if (processed > 0) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_USERS_MS));
+        }
+        processed++;
+
         const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
         if (!tokenRow) continue;
 
@@ -652,7 +655,7 @@ function startWeeklyReportCron() {
       }
     }
 
-    logger.info(`[Weekly Reports] Generated ${generated} reports.`);
+    logger.info(`[Weekly Reports] Done — ${generated} reports generated, ${processed}/${totalEligible} users processed, ${skipped} skipped.`);
   });
 
   logger.info('[Weekly Reports] Cron scheduled for Monday 7:00 AM UTC');

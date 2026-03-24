@@ -397,6 +397,13 @@ export function createTables(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token_hash);
+
+    CREATE TABLE IF NOT EXISTS tiktok_tokens (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      encrypted_access_token TEXT NOT NULL,
+      advertiser_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // --- Safe migrations ---

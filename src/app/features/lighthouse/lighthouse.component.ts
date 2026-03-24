@@ -53,6 +53,17 @@ interface Campaign {
             }
           </div>
         </div>
+      } @else if (campaigns.length === 0) {
+        <!-- Empty State -->
+        <div class="bg-white rounded-card shadow-card p-10 text-center">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+            <lucide-icon name="landmark" [size]="28" class="text-gray-400"></lucide-icon>
+          </div>
+          <h2 class="text-lg font-display text-navy m-0 mb-2">No Budget Data Available</h2>
+          <p class="text-sm text-gray-500 font-body max-w-md mx-auto mb-0">
+            Connect your Meta Ads account and ensure campaigns are running to see budget pacing insights and AI-powered recommendations.
+          </p>
+        </div>
       } @else {
         <!-- Monthly Budget Overview -->
         <div class="bg-white rounded-card shadow-card p-6">

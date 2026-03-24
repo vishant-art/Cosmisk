@@ -179,7 +179,7 @@ export default class ContactComponent {
   submitForm() {
     if (this.form.name && this.form.email.includes('@') && this.form.message) {
       this.submitted.set(true);
-      this.http.post(`${environment.N8N_BASE_URL}/leads/capture`, {
+      this.http.post(`${environment.API_BASE_URL}/leads/capture`, {
         email: this.form.email,
         source: 'contact',
       }).subscribe();

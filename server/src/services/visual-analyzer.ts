@@ -501,6 +501,45 @@ Respond with ONLY valid JSON:
 }
 
 /* ------------------------------------------------------------------ */
+/*  Gemini concurrency limiter — max 2 concurrent video analyses       */
+/* ------------------------------------------------------------------ */
+
+const GEMINI_MAX_CONCURRENT = 2;
+
+async function processInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  processor: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(processor));
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Gemini File API cleanup                                            */
+/* ------------------------------------------------------------------ */
+
+const GEMINI_FILE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
+async function deleteGeminiFile(fileName: string): Promise<void> {
+  if (!config.geminiApiKey || !fileName) return;
+  try {
+    await safeFetch(
+      `${GEMINI_FILE_API_BASE}/${fileName}?key=${config.geminiApiKey}`,
+      { method: 'DELETE', service: 'Gemini File delete', timeoutMs: 10_000 },
+    );
+    logger.info(`Deleted Gemini file: ${fileName}`);
+  } catch (err: unknown) {
+    logger.warn({ err }, `Failed to delete Gemini file: ${fileName}`);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Public API                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -528,46 +567,54 @@ export async function analyzeTopAdVisuals(
 
   const fresh = new Map<string, VideoDNA>();
 
-  // Analyze video ads individually (each needs its own Gemini File API upload)
-  const videoPromises = videoAds.map(async (ad) => {
+  // Process video ads in batches of GEMINI_MAX_CONCURRENT (rate limiting)
+  const fallbacks = await processInBatches(videoAds, GEMINI_MAX_CONCURRENT, async (ad): Promise<AdForAnalysis | null> => {
+    let uploadedFileName: string | null = null;
     try {
       const sourceUrl = await fetchVideoSource(meta!, ad.video_id!, accountId);
       if (!sourceUrl) {
-        // Fall back to image analysis for this ad
-        imageAds.push(ad);
-        return;
+        return ad;
       }
 
       const videoData = await downloadVideo(sourceUrl);
       if (!videoData) {
-        imageAds.push(ad);
-        return;
+        return ad;
       }
 
       const uploaded = await uploadToGeminiFileApi(videoData.buffer, videoData.mimeType);
       if (!uploaded) {
-        imageAds.push(ad);
-        return;
+        return ad;
       }
+
+      // Extract file name from URI for cleanup (format: files/abc123)
+      const uriParts = uploaded.fileUri.match(/files\/[^/]+/);
+      uploadedFileName = uriParts ? uriParts[0] : null;
 
       const dna = await analyzeVideoWithGemini(uploaded.fileUri, ad);
       if (dna) {
         fresh.set(ad.id, dna);
+        return null;
       } else {
-        imageAds.push(ad);
+        return ad;
       }
     } catch (err: unknown) {
       logger.error({ err }, `Video analysis failed for ad ${ad.id}`);
-      imageAds.push(ad);
+      return ad;
+    } finally {
+      // Clean up uploaded file from Gemini File API
+      if (uploadedFileName) {
+        await deleteGeminiFile(uploadedFileName);
+      }
     }
   });
 
-  // Process video ads (up to 5 in parallel)
-  await Promise.all(videoPromises);
+  // Merge video fallbacks into imageAds for batch image analysis
+  const imageFallbacks = fallbacks.filter((ad): ad is AdForAnalysis => ad !== null);
+  const allImageAds = [...imageAds, ...imageFallbacks];
 
   // Analyze remaining image ads in a single batch call
-  if (imageAds.length > 0) {
-    const imageDna = await analyzeImageWithGemini(imageAds);
+  if (allImageAds.length > 0) {
+    const imageDna = await analyzeImageWithGemini(allImageAds);
     for (const [id, dna] of imageDna) {
       fresh.set(id, dna);
     }

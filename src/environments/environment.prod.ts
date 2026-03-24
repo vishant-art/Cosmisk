@@ -1,6 +1,6 @@
 export const environment = {
   production: true,
-  N8N_BASE_URL: 'https://api.cosmisk.com',
+  API_BASE_URL: 'https://api.cosmisk.com',
   META_APP_ID: '675224542133938',
 
   AUTH_LOGIN: 'auth/login',
@@ -97,6 +97,9 @@ export const environment = {
   BILLING_VERIFY_PAYMENT: 'billing/verify-payment',
   BILLING_START_TRIAL: 'billing/start-trial',
   BILLING_CANCEL: 'billing/cancel',
+  // Razorpay key is returned by the backend via billing/create-checkout (razorpay_key field).
+  // This empty fallback is intentional — the frontend uses the server-provided key at checkout time.
+  // Only set this if you need client-side key access outside the checkout flow.
   RAZORPAY_KEY_ID: '',
 
   AUTOPILOT_ALERTS: 'autopilot/alerts',

@@ -79,17 +79,7 @@ async function tiktokGet(path: string, accessToken: string, params: Record<strin
 /*  DB helpers                                                         */
 /* ------------------------------------------------------------------ */
 
-function ensureTikTokTable(): void {
-  const db = getDb();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tiktok_tokens (
-      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      encrypted_access_token TEXT NOT NULL,
-      advertiser_id TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-}
+// tiktok_tokens table is created centrally in db/schema.ts
 
 function saveTikTokToken(userId: string, accessToken: string, advertiserId: string): void {
   const db = getDb();
@@ -123,7 +113,6 @@ function getTikTokToken(userId: string): { accessToken: string; advertiserId: st
 /* ------------------------------------------------------------------ */
 
 export async function tiktokAdsRoutes(app: FastifyInstance) {
-  ensureTikTokTable();
 
   // GET /tiktok-ads/oauth-url
   app.get('/oauth-url', { preHandler: [app.authenticate] }, async (request) => {
