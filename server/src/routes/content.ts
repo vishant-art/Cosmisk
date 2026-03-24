@@ -80,7 +80,7 @@ export async function contentRoutes(app: FastifyInstance) {
   });
 
   /* ---- POST /generate — Generate platform-specific content ---- */
-  app.post('/generate', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/generate', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(contentGenerateRequestSchema, request.body, reply);
     if (!parsed) return;
     const { platforms, topic, tone, transcript } = parsed;
@@ -393,7 +393,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
   });
 
   /* ---- POST /trigger-weekly — n8n webhook trigger: generate weekly content batch ---- */
-  app.post('/trigger-weekly', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/trigger-weekly', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
     const db = getDb();
     const userId = request.user.id;
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().replace('T', ' ').split('.')[0];

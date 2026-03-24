@@ -223,7 +223,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
   });
 
   // GET /tiktok-ads/analyze — Claude analysis
-  app.get('/analyze', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/analyze', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
     if (!qParsed) return;
     const { date_preset } = qParsed;

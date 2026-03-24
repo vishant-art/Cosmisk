@@ -84,8 +84,20 @@ app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => 
   });
 });
 
-// Health check
-app.get('/health', async () => ({ status: 'ok' }));
+// Health check — production monitoring
+const SERVER_START = new Date().toISOString();
+app.get('/health', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async () => {
+  let dbOk = false;
+  try { const db = getDb(); db.prepare('SELECT 1').get(); dbOk = true; } catch {}
+  return {
+    status: dbOk ? 'ok' : 'degraded',
+    uptime: Math.floor(process.uptime()),
+    started_at: SERVER_START,
+    db: dbOk ? 'connected' : 'error',
+    node: process.version,
+    env: config.nodeEnv,
+  };
+});
 
 // Public: Lead capture (no auth)
 app.post('/leads/capture', async (request, reply) => {

@@ -173,7 +173,7 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
   });
 
   // GET /competitor-spy/analyze — search + Claude analysis
-  app.get('/analyze', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/analyze', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(competitorAnalyzeSchema, request.query, reply);
     if (!parsed) return;
     const { query, country } = parsed;

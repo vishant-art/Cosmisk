@@ -14,7 +14,7 @@ const N8N_VIDEO_WEBHOOK = process.env['N8N_VIDEO_WEBHOOK'] || '';
 export async function mediaGenRoutes(app: FastifyInstance) {
 
   // POST /media/generate-image
-  app.post('/generate-image', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/generate-image', { preHandler: [app.authenticate], config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(imageGenerateSchema, request.body, reply);
     if (!parsed) return;
     const { prompt, style, aspect_ratio, reference_image_url } = parsed;
@@ -66,7 +66,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
   });
 
   // POST /media/generate-video
-  app.post('/generate-video', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/generate-video', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(videoGenerateSchema, request.body, reply);
     if (!parsed) return;
     const { script, duration, aspect_ratio, avatar } = parsed;

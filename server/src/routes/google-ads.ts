@@ -166,7 +166,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
   });
 
   // GET /google-ads/analyze — Claude analysis of Google Ads data
-  app.get('/analyze', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/analyze', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(googleAdsQuerySchema, request.query, reply);
     if (!parsed) return;
     const { customer_id, date_preset } = parsed;

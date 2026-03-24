@@ -915,7 +915,7 @@ async function handleComparison(meta: MetaApiService, accountId: string, datePre
 export async function aiRoutes(app: FastifyInstance) {
 
   // POST /ai/chat
-  app.post('/chat', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/chat', { preHandler: [app.authenticate], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = validate(aiChatSchema, request.body, reply);
     if (!parsed) return;
 
