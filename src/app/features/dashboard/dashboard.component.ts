@@ -56,6 +56,25 @@ import { environment } from '../../../environments/environment';
       </div>
     </div>
 
+    <!-- Error Banner -->
+    @if (error()) {
+      <div class="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+            <lucide-icon name="alert-circle" [size]="16" class="text-red-500"></lucide-icon>
+          </div>
+          <div>
+            <p class="text-sm font-body font-semibold text-red-800 m-0">Failed to load dashboard data</p>
+            <p class="text-xs font-body text-red-600 m-0 mt-0.5">{{ error() }}</p>
+          </div>
+        </div>
+        <button (click)="retry()"
+          class="px-4 py-1.5 text-xs font-body font-semibold rounded-lg bg-red-100 text-red-700 hover:bg-red-200 transition-colors cursor-pointer border-0">
+          Retry
+        </button>
+      </div>
+    }
+
     <!-- Active Sprints Widget -->
     @if (activeSprints().length > 0) {
       <div class="mb-8">
@@ -352,6 +371,7 @@ export default class DashboardComponent implements OnInit {
 
   loading = signal(true);
   insightsLoading = signal(true);
+  error = signal<string | null>(null);
   activeSprints = signal<any[]>([]);
   private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -532,6 +552,19 @@ export default class DashboardComponent implements OnInit {
     this.loadActiveSprints();
   }
 
+  retry() {
+    this.error.set(null);
+    const acc = this.adAccountService.currentAccount();
+    const datePreset = this.dateRangeService.datePreset();
+    if (acc) {
+      this.loadKpis(acc.id, acc.credential_group, datePreset);
+      this.loadTopAds(acc.id, acc.credential_group, datePreset);
+      this.loadChartData(acc.id, acc.credential_group, datePreset);
+      this.loadInsights(acc.id, acc.credential_group);
+    }
+    this.loadActiveSprints();
+  }
+
   private loadActiveSprints() {
     this.engineService.getSprints().subscribe({
       next: (res: any) => {
@@ -574,7 +607,11 @@ export default class DashboardComponent implements OnInit {
         }
         this.loading.set(false);
       },
-      error: () => { this.loading.set(false); },
+      error: (err) => {
+        this.loading.set(false);
+        this.error.set(err?.error?.error || 'Could not load KPIs. Check your connection.');
+        this.toast.error('Dashboard Error', 'Failed to load KPI data');
+      },
     });
   }
 
@@ -602,6 +639,7 @@ export default class DashboardComponent implements OnInit {
       },
       error: () => {
         this.chartData.set([]);
+        this.toast.error('Chart Error', 'Failed to load chart data');
       },
     });
   }
@@ -626,7 +664,10 @@ export default class DashboardComponent implements OnInit {
         }
         this.insightsLoading.set(false);
       },
-      error: () => { this.insightsLoading.set(false); },
+      error: () => {
+        this.insightsLoading.set(false);
+        this.toast.error('Insights Error', 'Failed to load AI insights');
+      },
     });
   }
 
