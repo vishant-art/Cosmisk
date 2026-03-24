@@ -1117,7 +1117,7 @@ process.on('SIGTERM', shutdown);
 
 try {
   await app.listen({ port: config.port, host: '0.0.0.0' });
-  console.log(`Cosmisk server running on port ${config.port}`);
+  app.log.info(`Cosmisk server running on port ${config.port}`);
 
   // Recover any sprints interrupted by previous server restart
   const { recoverInterruptedSprints } = await import('./services/job-queue.js');

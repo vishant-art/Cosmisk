@@ -11,6 +11,7 @@ import { runContentAgentAll, runContentAgent } from '../services/content-agent.j
 import { getSalesContext } from '../services/sales-agent.js';
 import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js';
 import { validate, agentRunsQuerySchema, agentDecisionsQuerySchema, idParamSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Cron scheduling                                                    */
@@ -25,13 +26,13 @@ function startAgentCrons() {
 
   // Watchdog: daily at 1:30 AM UTC (7:00 AM IST)
   cron.schedule('30 1 * * *', async () => {
-    console.log('[Brain] Starting daily watchdog...');
+    logger.info('[Brain] Starting daily watchdog...');
     watchdogRunning = true;
     try {
       const result = await runWatchdog();
-      console.log(`[Brain] Watchdog completed: ${result.runs} runs, ${result.decisions} decisions`);
+      logger.info(`[Brain] Watchdog completed: ${result.runs} runs, ${result.decisions} decisions`);
     } catch (err: any) {
-      console.error('[Brain] Watchdog failed:', err.message);
+      logger.error({ err: err.message }, '[Brain] Watchdog failed');
     } finally {
       watchdogRunning = false;
     }
@@ -47,63 +48,63 @@ function startAgentCrons() {
       await new Promise(resolve => setTimeout(resolve, 5000));
     }
     if (watchdogRunning) {
-      console.warn('[Brain] Morning briefing starting despite watchdog still running (timeout)');
+      logger.warn('[Brain] Morning briefing starting despite watchdog still running (timeout)');
     }
 
-    console.log('[Brain] Starting morning briefing...');
+    logger.info('[Brain] Starting morning briefing...');
     try {
       const sent = await runMorningBriefing();
-      console.log(`[Brain] Morning briefing sent to ${sent} user(s)`);
+      logger.info(`[Brain] Morning briefing sent to ${sent} user(s)`);
     } catch (err: any) {
-      console.error('[Brain] Morning briefing failed:', err.message);
+      logger.error({ err: err.message }, '[Brain] Morning briefing failed');
     }
   });
 
   // Outcome checker: weekly on Mondays at 2:00 AM UTC
   cron.schedule('0 2 * * 1', async () => {
-    console.log('[Brain] Running outcome checker...');
+    logger.info('[Brain] Running outcome checker...');
     try {
       const checked = await checkOutcomes();
-      console.log(`[Brain] Outcome checker: ${checked} decisions checked`);
+      logger.info(`[Brain] Outcome checker: ${checked} decisions checked`);
     } catch (err: any) {
-      console.error('[Brain] Outcome checker failed:', err.message);
+      logger.error({ err: err.message }, '[Brain] Outcome checker failed');
     }
   });
 
   // Memory decay: weekly on Sundays at 3:00 AM UTC
   cron.schedule('0 3 * * 0', () => {
-    console.log('[Brain] Running memory decay...');
+    logger.info('[Brain] Running memory decay...');
     try {
       const affected = runDecay();
-      console.log(`[Brain] Memory decay: ${affected} episodes affected`);
+      logger.info(`[Brain] Memory decay: ${affected} episodes affected`);
     } catch (err: any) {
-      console.error('[Brain] Memory decay failed:', err.message);
+      logger.error({ err: err.message }, '[Brain] Memory decay failed');
     }
   });
 
   // Report agent: weekly on Tuesdays at 2:00 AM UTC (7:30 AM IST)
   cron.schedule('0 2 * * 2', async () => {
-    console.log('[Brain] Starting weekly report agent...');
+    logger.info('[Brain] Starting weekly report agent...');
     try {
       const count = await runReportAgentAll();
-      console.log(`[Brain] Report agent completed: ${count} reports generated`);
+      logger.info(`[Brain] Report agent completed: ${count} reports generated`);
     } catch (err: unknown) {
-      console.error('[Brain] Report agent failed:', err instanceof Error ? err.message : err);
+      logger.error({ err: err instanceof Error ? err.message : err }, '[Brain] Report agent failed');
     }
   });
 
   // Content agent: weekly on Wednesdays at 2:00 AM UTC (7:30 AM IST)
   cron.schedule('0 2 * * 3', async () => {
-    console.log('[Brain] Starting weekly content agent...');
+    logger.info('[Brain] Starting weekly content agent...');
     try {
       const count = await runContentAgentAll();
-      console.log(`[Brain] Content agent completed: ${count} briefs generated`);
+      logger.info(`[Brain] Content agent completed: ${count} briefs generated`);
     } catch (err: unknown) {
-      console.error('[Brain] Content agent failed:', err instanceof Error ? err.message : err);
+      logger.error({ err: err instanceof Error ? err.message : err }, '[Brain] Content agent failed');
     }
   });
 
-  console.log('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, decay Sun 3:00 UTC');
+  logger.info('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, decay Sun 3:00 UTC');
 }
 
 /* ------------------------------------------------------------------ */
@@ -140,7 +141,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
     // ALWAYS verify signature — reject if no signing secret configured (#5)
     if (!config.slackSigningSecret) {
-      console.warn('[Brain] Slack action rejected: SLACK_SIGNING_SECRET not configured');
+      logger.warn('[Brain] Slack action rejected: SLACK_SIGNING_SECRET not configured');
       return reply.status(403).send({ error: 'Slack signing secret not configured' });
     }
 
@@ -173,7 +174,7 @@ export async function agentRoutes(app: FastifyInstance) {
       const result = await handleSlackAction(payload);
       return result;
     } catch (err: any) {
-      console.error('[Brain] Slack action error:', err.message);
+      logger.error({ err: err.message }, '[Brain] Slack action error');
       return reply.status(500).send({ error: 'Internal error' });
     }
   });

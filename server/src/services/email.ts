@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { safeFetch } from '../utils/safe-fetch.js';
+import { logger } from '../utils/logger.js';
 
 export async function sendPasswordResetEmail(
   to: string,
@@ -7,7 +8,7 @@ export async function sendPasswordResetEmail(
   token: string,
 ): Promise<boolean> {
   if (!config.resendApiKey) {
-    console.warn('[Email] RESEND_API_KEY not set — password reset email not sent');
+    logger.warn('[Email] RESEND_API_KEY not set — password reset email not sent');
     return false;
   }
 
@@ -54,7 +55,7 @@ export async function sendPasswordResetEmail(
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    console.error(`[Email] Password reset email failed: ${resp.status} ${text}`);
+    logger.error(`[Email] Password reset email failed: ${resp.status} ${text}`);
     return false;
   }
 
@@ -68,7 +69,7 @@ export async function sendTeamInviteEmail(
   token: string,
 ): Promise<boolean> {
   if (!config.resendApiKey) {
-    console.warn('[Email] RESEND_API_KEY not set — team invite email not sent');
+    logger.warn('[Email] RESEND_API_KEY not set — team invite email not sent');
     return false;
   }
 
@@ -115,7 +116,7 @@ export async function sendTeamInviteEmail(
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    console.error(`[Email] Team invite email failed: ${resp.status} ${text}`);
+    logger.error(`[Email] Team invite email failed: ${resp.status} ${text}`);
     return false;
   }
 

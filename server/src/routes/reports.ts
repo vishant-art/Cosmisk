@@ -8,6 +8,8 @@ import { round, fmt, fmtInt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, ReportRow, UserRow } from '../types/index.js';
 import { validate, reportGenerateSchema, reportWeeklySchema } from '../validation/schemas.js';
+import { extractText } from '../utils/claude-helpers.js';
+import { logger } from '../utils/logger.js';
 import Anthropic from '@anthropic-ai/sdk';
 import cron from 'node-cron';
 
@@ -581,10 +583,9 @@ Rules:
       messages: [{ role: 'user', content: `Generate weekly strategy report:\n${JSON.stringify(dataContext, null, 2)}` }],
     });
 
-    const text = response.content.find((b: any) => b.type === 'text');
-    return text ? (text as any).text : null;
+    return extractText(response) || null;
   } catch (err: any) {
-    console.error(`Weekly report generation failed for account ${accountId}:`, err.message);
+    logger.error({ err: err.message }, `Weekly report generation failed for account ${accountId}`);
     return null;
   }
 }
@@ -600,7 +601,7 @@ function startWeeklyReportCron() {
   weeklyReportCronStarted = true;
 
   cron.schedule('0 7 * * 1', async () => {
-    console.log('[Weekly Reports] Starting generation...');
+    logger.info('[Weekly Reports] Starting generation...');
     const db = getDb();
 
     const users = db.prepare(`
@@ -647,14 +648,14 @@ function startWeeklyReportCron() {
           generated++;
         }
       } catch (err: any) {
-        console.error(`Weekly report failed for user ${user.id}:`, err.message);
+        logger.error({ err: err.message }, `Weekly report failed for user ${user.id}`);
       }
     }
 
-    console.log(`[Weekly Reports] Generated ${generated} reports.`);
+    logger.info(`[Weekly Reports] Generated ${generated} reports.`);
   });
 
-  console.log('[Weekly Reports] Cron scheduled for Monday 7:00 AM UTC');
+  logger.info('[Weekly Reports] Cron scheduled for Monday 7:00 AM UTC');
 }
 
 /* ------------------------------------------------------------------ */

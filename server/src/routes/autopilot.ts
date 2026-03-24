@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { runAutopilot } from '../services/autopilot-engine.js';
 import type { AutopilotAlertRow } from '../types/index.js';
 import { validate, autopilotAlertsQuerySchema, autopilotMarkReadSchema, idParamSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Schedule daily autopilot run (6 AM UTC)                            */
@@ -16,16 +17,16 @@ function startAutopilotCron() {
   cronStarted = true;
 
   cron.schedule('0 6 * * *', async () => {
-    console.log('[Autopilot] Starting daily analysis...');
+    logger.info('[Autopilot] Starting daily analysis...');
     try {
       const alertCount = await runAutopilot();
-      console.log(`[Autopilot] Completed. Generated ${alertCount} alerts.`);
+      logger.info(`[Autopilot] Completed. Generated ${alertCount} alerts.`);
     } catch (err: any) {
-      console.error('[Autopilot] Failed:', err.message);
+      logger.error({ err: err.message }, '[Autopilot] Failed');
     }
   });
 
-  console.log('[Autopilot] Cron scheduled for 6:00 AM UTC daily');
+  logger.info('[Autopilot] Cron scheduled for 6:00 AM UTC daily');
 }
 
 /* ------------------------------------------------------------------ */

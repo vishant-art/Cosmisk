@@ -8,8 +8,10 @@ import { notifyAlert } from './notifications.js';
 import { sendMorningBriefing } from './slack-interactive.js';
 import { recordEpisode } from './agent-memory.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow, AgentDecisionRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -160,7 +162,7 @@ async function gatherAdPerformance(userId: string): Promise<BriefingSource['adPe
       weekRoas: weekSpend > 0 ? round(weekRevenue / weekSpend, 2) : 0,
     };
   } catch (err: any) {
-    console.error('[Briefing] Ad performance fetch failed:', err.message);
+    logger.error({ err: err.message }, '[Briefing] Ad performance fetch failed');
     return null;
   }
 }
@@ -182,7 +184,7 @@ async function fetchN8nBriefingData(): Promise<any | null> {
     const text = await resp.text();
     // Cap n8n data to 4KB to avoid blowing up Claude's context (#20)
     if (text.length > 4096) {
-      console.warn(`[Briefing] n8n data truncated: ${text.length} bytes -> 4096`);
+      logger.warn(`[Briefing] n8n data truncated: ${text.length} bytes -> 4096`);
       return JSON.parse(text.slice(0, 4096));
     }
     return JSON.parse(text);
@@ -272,16 +274,16 @@ Rules:
       messages: [{ role: 'user', content: dataContext.join('\n\n') }],
     });
 
-    const text = response.content.find((b: any) => b.type === 'text');
-    if (!text) throw new Error('No text in response');
+    const rawText = extractText(response);
+    if (!rawText) throw new Error('No text in response');
 
-    const jsonStr = (text as any).text.trim();
+    const jsonStr = rawText.trim();
     const match = jsonStr.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('No JSON in response');
 
     return JSON.parse(match[0]) as SynthesizedBriefing;
   } catch (err: any) {
-    console.error('[Briefing] Claude synthesis failed:', err.message);
+    logger.error({ err: err.message }, '[Briefing] Claude synthesis failed');
     // Fallback: structured but not synthesized
     return {
       summary: `Daily update: ${sources.watchdog.pendingDecisions.length} pending decisions, ${sources.autopilot.length} alerts, ${sources.pendingJobs} jobs in pipeline.`,
@@ -334,7 +336,7 @@ export async function runMorningBriefing(): Promise<number> {
         title: 'Your Daily Briefing',
         content: `${briefing.summary}\n\n${briefing.sections.map(s => `**${s.title}**\n${s.content}`).join('\n\n')}\n\n**Action Items:**\n${briefing.actionItems.map((a, i) => `${i + 1}. ${a}`).join('\n')}`,
         severity: 'info',
-      }).catch(err => console.error('[Briefing] Email notification failed:', err.message));
+      }).catch(err => logger.error({ err: err.message }, '[Briefing] Email notification failed'));
 
       // 5. Record as episode for memory
       recordEpisode(
@@ -352,13 +354,13 @@ export async function runMorningBriefing(): Promise<number> {
       `).run(briefing.summary, JSON.stringify(briefing), runId);
 
       if (slackSent) sent++;
-      console.log(`[Briefing] Sent to ${user.name || user.email}`);
+      logger.info(`[Briefing] Sent to ${user.name || user.email}`);
     } catch (err: any) {
       db.prepare(`
         UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
         summary = ? WHERE id = ?
       `).run(`Error: ${err.message}`, runId);
-      console.error(`[Briefing] Failed for user ${user.id}:`, err.message);
+      logger.error({ err: err.message }, `[Briefing] Failed for user ${user.id}`);
     }
   }
 

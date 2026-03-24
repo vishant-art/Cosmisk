@@ -4,6 +4,7 @@ import { executeDecision } from './ad-watchdog.js';
 import { safeFetch } from '../utils/safe-fetch.js';
 import type { AgentDecisionRow } from '../types/index.js';
 import crypto from 'node:crypto';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Slack Block Kit: Watchdog Briefing                                 */
@@ -106,7 +107,7 @@ export async function sendWatchdogBriefing(
 ): Promise<boolean> {
   const url = webhookUrl || config.slackWebhookUrl;
   if (!url) {
-    console.warn('[SlackInteractive] No Slack webhook URL configured');
+    logger.warn('[SlackInteractive] No Slack webhook URL configured');
     return false;
   }
 
@@ -123,7 +124,7 @@ export async function sendWatchdogBriefing(
     });
     return resp.ok;
   } catch (err: unknown) {
-    console.error('[SlackInteractive] Send failed:', err);
+    logger.error({ err }, '[SlackInteractive] Send failed');
     return false;
   }
 }
@@ -263,7 +264,7 @@ export async function sendMorningBriefing(
     });
     return resp.ok;
   } catch (err: unknown) {
-    console.error('[SlackInteractive] Morning briefing send failed:', err);
+    logger.error({ err }, '[SlackInteractive] Morning briefing send failed');
     return false;
   }
 }

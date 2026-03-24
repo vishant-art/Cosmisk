@@ -6,6 +6,7 @@
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { safeFetch } from '../utils/safe-fetch.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -66,7 +67,7 @@ async function sendSlackNotification(webhookUrl: string, alert: Alert): Promise<
     });
     return resp.ok;
   } catch (err: unknown) {
-    console.error('[Notifications] Slack send failed:', err);
+    logger.error({ err }, '[Notifications] Slack send failed');
     return false;
   }
 }
@@ -107,7 +108,7 @@ async function sendEmailNotification(to: string, alert: Alert): Promise<boolean>
     });
     return resp.ok;
   } catch (err: unknown) {
-    console.error('[Notifications] Email send failed:', err);
+    logger.error({ err }, '[Notifications] Email send failed');
     return false;
   }
 }
@@ -154,7 +155,7 @@ export async function notifyAlert(userId: string, alert: Alert): Promise<void> {
     const results = await Promise.allSettled(promises);
     const sent = results.filter(r => r.status === 'fulfilled' && r.value).length;
     if (sent > 0) {
-      console.log(`[Notifications] Sent ${sent} notification(s) for alert "${alert.title}" to user ${userId}`);
+      logger.info(`[Notifications] Sent ${sent} notification(s) for alert "${alert.title}" to user ${userId}`);
     }
   }
 }

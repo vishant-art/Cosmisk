@@ -16,6 +16,7 @@ import { checkLimit, incrementUsage } from './billing.js';
 import { searchAdLibrary } from './competitor-spy.js';
 import { analyzeTopAdVisuals, buildVisualSummary, selectAdsForAnalysis } from '../services/visual-analyzer.js';
 import type { VideoDNA } from '../services/creative-patterns.js';
+import { logger } from '../utils/logger.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -922,7 +923,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
           tracked++;
         }
       } catch (err: any) {
-        console.error(`[Track] Error fetching metrics for asset ${asset.id}:`, err.message);
+        logger.error({ err: err.message }, `[Track] Error fetching metrics for asset ${asset.id}`);
       }
     }
 
@@ -1483,7 +1484,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
           tracked++;
         }
       } catch (err: any) {
-        console.error(`[Auto-Track] Error for asset ${asset.id}:`, err.message);
+        logger.error({ err: err.message }, `[Auto-Track] Error for asset ${asset.id}`);
         failed++;
       }
     }

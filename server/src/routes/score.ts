@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { validate, creativeScoreSchema, batchScoreSchema } from '../validation/schemas.js';
+import { extractText } from '../utils/claude-helpers.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -128,8 +129,7 @@ Provide a detailed Cosmisk Score analysis.`;
         messages: [{ role: 'user', content: userMessage }],
       });
 
-      const textBlock = response.content.find((b: any) => b.type === 'text');
-      const text = textBlock ? (textBlock as any).text : '';
+      const text = extractText(response);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
 
       if (jsonMatch) {
@@ -224,8 +224,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
         messages: [{ role: 'user', content: `Compare and rank these ad creatives:\n\n${userMessage}` }],
       });
 
-      const textBlock = response.content.find((b: any) => b.type === 'text');
-      const text = textBlock ? (textBlock as any).text : '';
+      const text = extractText(response);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
 
       if (jsonMatch) {

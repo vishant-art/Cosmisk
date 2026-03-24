@@ -10,6 +10,7 @@ import { assessConfidence, computeTrend, trendCaveat } from '../services/trend-a
 import { runAutomations } from '../services/automation-engine.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, automationCreateSchema, automationUpdateSchema, idParamSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -443,11 +444,11 @@ export async function automationRoutes(app: FastifyInstance) {
     cron.schedule('0 */4 * * *', async () => {
       try {
         const count = await runAutomations();
-        console.log(`[Automations] Cron complete: ${count} actions executed`);
+        logger.info(`[Automations] Cron complete: ${count} actions executed`);
       } catch (err: any) {
-        console.error('[Automations] Cron failed:', err.message);
+        logger.error({ err: err.message }, '[Automations] Cron failed');
       }
     });
-    console.log('[Automations] Cron scheduled every 4 hours');
+    logger.info('[Automations] Cron scheduled every 4 hours');
   }
 }

@@ -8,6 +8,7 @@ import { exchangeCodeForToken, getMetaUser, MetaApiService } from '../services/m
 import { sendPasswordResetEmail } from '../services/email.js';
 import type { UserRow, MetaTokenRow } from '../types/index.js';
 import { validate, loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
 
 export async function authRoutes(app: FastifyInstance) {
 
@@ -183,7 +184,7 @@ export async function authRoutes(app: FastifyInstance) {
 
     // Send email (fire-and-forget)
     sendPasswordResetEmail(user.email, user.name, rawToken).catch(err =>
-      console.error('[Auth] Failed to send reset email:', err.message)
+      logger.error({ err: err.message }, '[Auth] Failed to send reset email')
     );
 
     return { success: true };

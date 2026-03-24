@@ -15,8 +15,10 @@ import { notifyAlert } from './notifications.js';
 import { CREATIVE_PATTERNS } from './creative-patterns.js';
 import { config } from '../config.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -70,11 +72,11 @@ export async function runContentAgentAll(): Promise<number> {
           await runContentAgent(user.id, acct.account_id || acct.id, meta);
           completed++;
         } catch (err: unknown) {
-          console.error(`[ContentAgent] Failed for account ${acct.account_id}:`, err);
+          logger.error({ err }, `[ContentAgent] Failed for account ${acct.account_id}`);
         }
       }
     } catch (err: unknown) {
-      console.error(`[ContentAgent] Failed for user ${user.id}:`, err);
+      logger.error({ err }, `[ContentAgent] Failed for user ${user.id}`);
     }
   }
   return completed;
@@ -153,15 +155,15 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = response.content[0];
+    const rawText = extractText(response);
     let brief: Partial<ContentBrief> = {};
 
     try {
-      const jsonStr = (text as any).text.trim();
+      const jsonStr = rawText.trim();
       const match = jsonStr.match(/\{[\s\S]*\}/);
       if (match) brief = JSON.parse(match[0]);
     } catch {
-      brief.weeklyTheme = (text as any).text?.slice(0, 300) || 'Content brief generated';
+      brief.weeklyTheme = rawText?.slice(0, 300) || 'Content brief generated';
     }
 
     // Build full brief
@@ -210,7 +212,7 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
       accountId,
     }).catch(() => {});
 
-    console.log(`[ContentAgent] Completed brief for ${fullBrief.accountName} (${userId})`);
+    logger.info(`[ContentAgent] Completed brief for ${fullBrief.accountName} (${userId})`);
     return runId;
 
   } catch (err: unknown) {

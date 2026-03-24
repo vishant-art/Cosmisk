@@ -8,9 +8,11 @@ import { notifyAlert } from './notifications.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { config } from '../config.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEpisode } from './agent-memory.js';
 import type { MetaTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -247,10 +249,10 @@ Return ONLY the JSON array, no other text.`;
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = response.content.find((b: any) => b.type === 'text');
-    if (!text) return [];
+    const rawText = extractText(response);
+    if (!rawText) return [];
 
-    const jsonStr = (text as any).text.trim();
+    const jsonStr = rawText.trim();
 
     // Try direct parse first, then regex extraction (#8)
     let parsed: any[];
@@ -267,7 +269,7 @@ Return ONLY the JSON array, no other text.`;
     // Validate each decision (#9)
     return parsed.map(validateDecision).filter((d): d is WatchdogDecision => d !== null);
   } catch (err: any) {
-    console.error('[Watchdog] Claude reasoning failed:', err.message);
+    logger.error({ err: err.message }, '[Watchdog] Claude reasoning failed');
     return [];
   }
 }
@@ -344,7 +346,7 @@ export async function executeDecision(decisionId: string, userId?: string): Prom
           return { success: false, message: `All budget changes failed: ${(failures[0] as PromiseRejectedResult).reason}` };
         }
         if (failures.length > 0) {
-          console.warn(`[Watchdog] ${failures.length}/${adsets.length} budget changes failed for ${decision.target_name}`);
+          logger.warn(`[Watchdog] ${failures.length}/${adsets.length} budget changes failed for ${decision.target_name}`);
         }
         break;
       }
@@ -441,7 +443,7 @@ export async function checkOutcomes(): Promise<number> {
 
       checked++;
     } catch (err: any) {
-      console.error(`[Watchdog] Outcome check failed for decision ${decision.id}:`, err.message);
+      logger.error({ err: err.message }, `[Watchdog] Outcome check failed for decision ${decision.id}`);
     }
   }
 
@@ -468,7 +470,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
       const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
-        console.warn(`[Watchdog] Skipping user ${user.id}: Meta token expired`);
+        logger.warn(`[Watchdog] Skipping user ${user.id}: Meta token expired`);
         continue;
       }
 
@@ -546,7 +548,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                   content: briefingContent,
                   severity: decisions.some(d => d.urgency === 'critical') ? 'critical' : 'warning',
                   accountId: account.id,
-                }).catch(err => console.error('[Watchdog] Notification failed:', err.message));
+                }).catch(err => logger.error({ err: err.message }, '[Watchdog] Notification failed'));
               }
 
               return { decisions: decisions.length };
@@ -555,7 +557,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
                 summary = ? WHERE id = ?
               `).run(`Error: ${err.message}`, runId);
-              console.error(`[Watchdog] Failed for account ${account.id}:`, err.message);
+              logger.error({ err: err.message }, `[Watchdog] Failed for account ${account.id}`);
               return { decisions: 0 };
             }
           })
@@ -569,7 +571,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
         }
       }
     } catch (err: any) {
-      console.error(`[Watchdog] Failed for user ${user.id}:`, err.message);
+      logger.error({ err: err.message }, `[Watchdog] Failed for user ${user.id}`);
     }
   }
 
@@ -577,10 +579,10 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
   try {
     const outcomeCount = await checkOutcomes();
     if (outcomeCount > 0) {
-      console.log(`[Watchdog] Checked outcomes for ${outcomeCount} past decisions`);
+      logger.info(`[Watchdog] Checked outcomes for ${outcomeCount} past decisions`);
     }
   } catch (err: any) {
-    console.error('[Watchdog] Outcome check failed:', err.message);
+    logger.error({ err: err.message }, '[Watchdog] Outcome check failed');
   }
 
   return { runs: totalRuns, decisions: totalDecisions };

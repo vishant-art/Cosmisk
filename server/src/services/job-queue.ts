@@ -7,6 +7,7 @@ import { getDb } from '../db/index.js';
 import { getProvider } from './api-providers.js';
 import { notifyAlert } from './notifications.js';
 import type { JobRow, SprintRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 const MAX_CONCURRENT = 5;
 const POLL_INTERVAL_MS = 5_000;
@@ -23,7 +24,7 @@ export function startSprintGeneration(sprintId: string): void {
   if (activeProcessors.has(sprintId)) return;
   activeProcessors.add(sprintId);
   processSprintJobs(sprintId).catch((err) => {
-    console.error(`[JobQueue] Fatal error processing sprint ${sprintId}:`, err);
+    logger.error({ err }, `[JobQueue] Fatal error processing sprint ${sprintId}`);
     activeProcessors.delete(sprintId);
   });
 }
@@ -34,7 +35,7 @@ export function startSprintGeneration(sprintId: string): void {
 
 async function processSprintJobs(sprintId: string): Promise<void> {
   const db = getDb();
-  console.log(`[JobQueue] Starting generation for sprint ${sprintId}`);
+  logger.info(`[JobQueue] Starting generation for sprint ${sprintId}`);
 
   try {
     while (true) {
@@ -44,7 +45,7 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       ).get(sprintId) as { status: string } | undefined;
 
       if (!sprint || sprint.status !== 'generating') {
-        console.log(`[JobQueue] Sprint ${sprintId} is no longer generating (${sprint?.status}), stopping`);
+        logger.info(`[JobQueue] Sprint ${sprintId} is no longer generating (${sprint?.status}), stopping`);
         break;
       }
 
@@ -85,7 +86,7 @@ async function processSprintJobs(sprintId: string): Promise<void> {
         db.prepare(
           "UPDATE creative_sprints SET status = 'reviewing', updated_at = datetime('now') WHERE id = ?"
         ).run(sprintId);
-        console.log(`[JobQueue] Sprint ${sprintId} generation complete, moved to reviewing`);
+        logger.info(`[JobQueue] Sprint ${sprintId} generation complete, moved to reviewing`);
 
         // Notify user of sprint completion
         const sprint = db.prepare(
@@ -97,7 +98,7 @@ async function processSprintJobs(sprintId: string): Promise<void> {
             title: `Sprint "${sprint.name}" generation complete`,
             content: `${sprint.completed_creatives} creatives generated successfully${sprint.failed_creatives > 0 ? `, ${sprint.failed_creatives} failed` : ''}. Ready for review.`,
             severity: 'info',
-          }).catch(err => console.error('[JobQueue] Notify dispatch error:', err));
+          }).catch(err => logger.error({ err }, '[JobQueue] Notify dispatch error'));
         }
         break;
       }
@@ -189,7 +190,7 @@ async function pollAsyncJobs(sprintId: string): Promise<void> {
         }
         // 'processing' → keep polling
       } catch (err: any) {
-        console.error(`[JobQueue] Error polling job ${job.id}:`, err.message);
+        logger.error({ err: err.message }, `[JobQueue] Error polling job ${job.id}`);
         // Don't fail the job on poll error — might be transient
       }
     })
@@ -208,13 +209,13 @@ function handleJobFailure(job: JobRow, errorMessage: string): void {
     db.prepare(
       "UPDATE creative_jobs SET status = 'pending', error_message = ?, retry_count = retry_count + 1 WHERE id = ?"
     ).run(errorMessage, job.id);
-    console.log(`[JobQueue] Job ${job.id} failed (attempt ${job.retry_count + 1}/${MAX_RETRIES + 1}), will retry: ${errorMessage}`);
+    logger.info(`[JobQueue] Job ${job.id} failed (attempt ${job.retry_count + 1}/${MAX_RETRIES + 1}), will retry: ${errorMessage}`);
   } else {
     // Max retries exceeded — mark as failed
     db.prepare(
       "UPDATE creative_jobs SET status = 'failed', error_message = ?, completed_at = datetime('now') WHERE id = ?"
     ).run(errorMessage, job.id);
-    console.log(`[JobQueue] Job ${job.id} permanently failed after ${MAX_RETRIES + 1} attempts: ${errorMessage}`);
+    logger.info(`[JobQueue] Job ${job.id} permanently failed after ${MAX_RETRIES + 1} attempts: ${errorMessage}`);
   }
 }
 
@@ -293,7 +294,7 @@ export function recoverInterruptedSprints(): void {
   `).run();
 
   if (resetResult.changes > 0) {
-    console.log(`[JobQueue] Recovery: reset ${resetResult.changes} interrupted jobs to pending`);
+    logger.info(`[JobQueue] Recovery: reset ${resetResult.changes} interrupted jobs to pending`);
   }
 
   // Find sprints that are still in 'generating' state
@@ -308,7 +309,7 @@ export function recoverInterruptedSprints(): void {
     ).get(sprint.id) as any).c;
 
     if (remaining > 0) {
-      console.log(`[JobQueue] Recovery: resuming sprint ${sprint.id} (${remaining} jobs remaining)`);
+      logger.info(`[JobQueue] Recovery: resuming sprint ${sprint.id} (${remaining} jobs remaining)`);
       startSprintGeneration(sprint.id);
     } else {
       // All jobs are done but sprint wasn't updated — finalize it
@@ -316,12 +317,12 @@ export function recoverInterruptedSprints(): void {
       db.prepare(
         "UPDATE creative_sprints SET status = 'reviewing', updated_at = datetime('now') WHERE id = ?"
       ).run(sprint.id);
-      console.log(`[JobQueue] Recovery: sprint ${sprint.id} was already complete, moved to reviewing`);
+      logger.info(`[JobQueue] Recovery: sprint ${sprint.id} was already complete, moved to reviewing`);
     }
   }
 
   if (stuckSprints.length === 0 && resetResult.changes === 0) {
-    console.log('[JobQueue] Recovery: no interrupted sprints found');
+    logger.info('[JobQueue] Recovery: no interrupted sprints found');
   }
 }
 

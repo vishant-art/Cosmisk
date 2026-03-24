@@ -3,6 +3,7 @@ import { getDb } from '../db/index.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { CREATIVE_PATTERNS, type VideoDNA } from './creative-patterns.js';
 import type { MetaApiService } from './meta-api.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -162,13 +163,13 @@ async function uploadToGeminiFileApi(
     });
 
     if (!initResponse.ok) {
-      console.error(`Gemini File API init error: HTTP ${initResponse.status}`);
+      logger.error(`Gemini File API init error: HTTP ${initResponse.status}`);
       return null;
     }
 
     const uploadUrl = initResponse.headers.get('x-goog-upload-url');
     if (!uploadUrl) {
-      console.error('Gemini File API: No upload URL in response headers');
+      logger.error('Gemini File API: No upload URL in response headers');
       return null;
     }
 
@@ -186,14 +187,14 @@ async function uploadToGeminiFileApi(
     });
 
     if (!uploadResponse.ok) {
-      console.error(`Gemini File API upload error: HTTP ${uploadResponse.status}`);
+      logger.error(`Gemini File API upload error: HTTP ${uploadResponse.status}`);
       return null;
     }
 
     const data = await safeJson<any>(uploadResponse);
     const fileUri = data?.file?.uri;
     if (!fileUri) {
-      console.error('Gemini File API: No file URI in response');
+      logger.error('Gemini File API: No file URI in response');
       return null;
     }
 
@@ -209,7 +210,7 @@ async function uploadToGeminiFileApi(
         const status = await safeJson<any>(statusResp);
         if (status?.state === 'ACTIVE') return { fileUri };
         if (status?.state === 'FAILED') {
-          console.error('Gemini File API: File processing failed');
+          logger.error('Gemini File API: File processing failed');
           return null;
         }
       }
@@ -217,10 +218,10 @@ async function uploadToGeminiFileApi(
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    console.error('Gemini File API: File processing timed out');
+    logger.error('Gemini File API: File processing timed out');
     return null;
   } catch (err: unknown) {
-    console.error('Gemini File API upload failed:', err);
+    logger.error({ err }, 'Gemini File API upload failed');
     return null;
   }
 }
@@ -309,7 +310,7 @@ Respond with ONLY valid JSON matching this exact schema:
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      console.error(`Gemini Video Analysis error: HTTP ${response.status} — ${errText.slice(0, 200)}`);
+      logger.error(`Gemini Video Analysis error: HTTP ${response.status} — ${errText.slice(0, 200)}`);
       return null;
     }
 
@@ -343,7 +344,7 @@ Respond with ONLY valid JSON matching this exact schema:
       suggested_variations: parsed.suggested_variations || [],
     };
   } catch (err: unknown) {
-    console.error('Gemini Video analysis failed:', err);
+    logger.error({ err }, 'Gemini Video analysis failed');
     return null;
   }
 }
@@ -453,7 +454,7 @@ Respond with ONLY valid JSON:
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      console.error(`Gemini Vision API error: HTTP ${response.status} — ${errText.slice(0, 200)}`);
+      logger.error(`Gemini Vision API error: HTTP ${response.status} — ${errText.slice(0, 200)}`);
       return results;
     }
 
@@ -493,7 +494,7 @@ Respond with ONLY valid JSON:
       }
     }
   } catch (err: unknown) {
-    console.error('Gemini Vision analysis failed:', err);
+    logger.error({ err }, 'Gemini Vision analysis failed');
   }
 
   return results;
@@ -556,7 +557,7 @@ export async function analyzeTopAdVisuals(
         imageAds.push(ad);
       }
     } catch (err: unknown) {
-      console.error(`Video analysis failed for ad ${ad.id}:`, err);
+      logger.error({ err }, `Video analysis failed for ad ${ad.id}`);
       imageAds.push(ad);
     }
   });

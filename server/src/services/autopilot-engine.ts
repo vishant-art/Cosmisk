@@ -5,8 +5,10 @@ import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.j
 import { assessConfidence, computeTrend } from './trend-analyzer.js';
 import { round, fmt } from './format-helpers.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -201,7 +203,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
     }
 
   } catch (err: any) {
-    console.error(`Autopilot error for account ${accountId}:`, err.message);
+    logger.error({ err: err.message }, `Autopilot error for account ${accountId}`);
   }
 
   return alerts;
@@ -220,8 +222,7 @@ async function generateAlertContent(type: string, data: any): Promise<string> {
       system: `You are Cosmisk Autopilot, a Meta Ads strategist AI. Generate a concise, actionable alert message (2-3 sentences). Be specific with numbers. End with a clear action the user should take. No bullet points.`,
       messages: [{ role: 'user', content: `Alert type: ${type}\nData: ${JSON.stringify(data)}` }],
     });
-    const text = response.content.find((b: any) => b.type === 'text');
-    return text ? (text as any).text : JSON.stringify(data);
+    return extractText(response) || JSON.stringify(data);
   } catch {
     // Fallback to template-based content
     return generateFallbackContent(type, data);
@@ -264,7 +265,7 @@ export async function runAutopilot(): Promise<number> {
       const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
-        console.warn(`[autopilot] Skipping user ${user.id}: Meta token expired at ${tokenRow.expires_at}`);
+        logger.warn(`[autopilot] Skipping user ${user.id}: Meta token expired at ${tokenRow.expires_at}`);
         continue;
       }
 
@@ -288,7 +289,7 @@ export async function runAutopilot(): Promise<number> {
         }
       }
     } catch (err: any) {
-      console.error(`Autopilot failed for user ${user.id}:`, err.message);
+      logger.error({ err: err.message }, `Autopilot failed for user ${user.id}`);
     }
   }
 

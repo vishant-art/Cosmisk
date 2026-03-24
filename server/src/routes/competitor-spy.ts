@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
+import { extractText } from '../utils/claude-helpers.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -108,8 +109,7 @@ Rules:
       }],
     });
 
-    const text = response.content.find((b: any) => b.type === 'text');
-    return text ? (text as any).text : 'Analysis unavailable.';
+    return extractText(response, 'Analysis unavailable.');
   } catch {
     return `Found ${ads.length} active ads from "${brandName}". The longest-running ads (those active for weeks/months) are likely their best performers. Review their copy patterns and hooks for inspiration.`;
   }

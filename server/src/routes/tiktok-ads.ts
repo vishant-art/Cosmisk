@@ -4,6 +4,7 @@ import { getDb } from '../db/index.js';
 import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
 import { validate, oauthCodeSchema, tiktokAdsQuerySchema } from '../validation/schemas.js';
+import { extractText } from '../utils/claude-helpers.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -275,13 +276,12 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
         }],
       });
 
-      const text = response.content.find((b: any) => b.type === 'text');
       return {
         success: true,
         platform: 'tiktok',
         kpis,
         campaigns: campaigns.slice(0, 10),
-        analysis: text ? (text as any).text : 'Analysis unavailable.',
+        analysis: extractText(response, 'Analysis unavailable.'),
       };
     } catch (err: any) {
       return reply.status(500).send({ success: false, error: err.message });

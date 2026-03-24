@@ -7,6 +7,8 @@ import { round, fmt, fmtNum, fmtInt, setCurrency, getCurrency, avgVal, CURRENCY_
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, aiChatSchema } from '../validation/schemas.js';
+import { extractText } from '../utils/claude-helpers.js';
+import { logger } from '../utils/logger.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -75,10 +77,9 @@ async function askClaude(
       messages,
     });
 
-    const textBlock = response.content.find((b: any) => b.type === 'text');
-    return textBlock ? (textBlock as any).text : null;
+    return extractText(response) || null;
   } catch (err: unknown) {
-    console.error('askClaude error:', err);
+    logger.error({ err }, 'askClaude error');
     return null;
   }
 }
@@ -155,9 +156,9 @@ Respond ONLY with valid JSON: {"intent": "...", "params": {...}}`,
       }],
     });
 
-    const text = response.content.find((b: any) => b.type === 'text');
-    if (text) {
-      const parsed = JSON.parse((text as any).text);
+    const intentText = extractText(response);
+    if (intentText) {
+      const parsed = JSON.parse(intentText);
       const validIntents: Intent[] = ['roas', 'spend', 'audience', 'creative', 'cpa', 'forecast', 'script', 'help', 'overview', 'comparison'];
       if (validIntents.includes(parsed.intent)) {
         return { intent: parsed.intent, params: parsed.params || {} };

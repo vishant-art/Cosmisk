@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { validate, imageGenerateSchema, videoGenerateSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Media Generation Routes                                            */
@@ -48,7 +49,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error('Nano Banana API error:', response.status, errorBody);
+        logger.error({ status: response.status, body: errorBody }, 'Nano Banana API error');
         return reply.status(502).send({ success: false, error: `Image generation failed: ${response.statusText}` });
       }
 
@@ -60,7 +61,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         generation_id: result.id || result.generation_id || null,
       };
     } catch (err: any) {
-      console.error('Image generation error:', err);
+      logger.error({ err }, 'Image generation error');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
@@ -91,7 +92,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error('n8n video webhook error:', response.status, errorBody);
+        logger.error({ status: response.status, body: errorBody }, 'n8n video webhook error');
         return reply.status(502).send({ success: false, error: `Video generation failed: ${response.statusText}` });
       }
 
@@ -116,7 +117,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         message: 'Video is being generated. Poll /media/video-status for updates.',
       };
     } catch (err: any) {
-      console.error('Video generation error:', err);
+      logger.error({ err }, 'Video generation error');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });

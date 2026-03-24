@@ -7,6 +7,7 @@ import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { notifyAlert } from './notifications.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -190,7 +191,7 @@ async function executeAction(
         content: alertContent,
         severity: 'warning',
         accountId,
-      }).catch(err => console.error('[Automations] Notify dispatch error:', err));
+      }).catch(err => logger.error({ err }, '[Automations] Notify dispatch error'));
       return { executed: true, message: `Notification created for "${trigger.adName}"` };
     }
 
@@ -229,7 +230,7 @@ export async function runAutomations(): Promise<number> {
       const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
-        console.warn(`[automations] Skipping user ${userId}: Meta token expired at ${tokenRow.expires_at}`);
+        logger.warn(`[automations] Skipping user ${userId}: Meta token expired at ${tokenRow.expires_at}`);
         continue;
       }
       const token = decryptToken(tokenRow.encrypted_access_token);
@@ -260,15 +261,15 @@ export async function runAutomations(): Promise<number> {
                 ).run(rule.id);
               }
 
-              console.log(`[Automations] Rule "${rule.name}" on ${trigger.adName}: ${result.message}`);
+              logger.info(`[Automations] Rule "${rule.name}" on ${trigger.adName}: ${result.message}`);
             }
           } catch (err: any) {
-            console.error(`[Automations] Rule "${rule.name}" failed:`, err.message);
+            logger.error({ err: err.message }, `[Automations] Rule "${rule.name}" failed`);
           }
         }
       }
     } catch (err: any) {
-      console.error(`[Automations] User ${userId} failed:`, err.message);
+      logger.error({ err: err.message }, `[Automations] User ${userId} failed`);
     }
   }
 

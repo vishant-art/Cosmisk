@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
+import { extractText } from '../utils/claude-helpers.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -202,8 +203,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
         messages: [{ role: 'user', content: `Generate content for these platforms: ${targetPlatforms.join(', ')}\n\n${dataContext}` }],
       });
 
-      const textBlock = response.content.find((b: any) => b.type === 'text');
-      const text = textBlock ? (textBlock as any).text : '';
+      const text = extractText(response);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
 
       if (jsonMatch) {
@@ -472,8 +472,7 @@ OUTPUT — respond with ONLY valid JSON:
         messages: [{ role: 'user', content: `Generate this week's content batch.\n\n${dataContext}` }],
       });
 
-      const textBlock = response.content.find((b: any) => b.type === 'text');
-      const text = textBlock ? (textBlock as any).text : '';
+      const text = extractText(response);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
 
       if (!jsonMatch) {

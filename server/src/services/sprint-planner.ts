@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { round, fmt, setCurrency } from './format-helpers.js';
 import type { VideoDNA } from './creative-patterns.js';
+import { logger } from '../utils/logger.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -229,8 +231,7 @@ ${buildCompetitorSection(preferences.competitor_context)}`;
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const textBlock = response.content.find((b: any) => b.type === 'text');
-    const text = textBlock ? (textBlock as any).text : '';
+    const text = extractText(response);
 
     // Parse JSON from response (handle potential markdown wrapping)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -254,7 +255,7 @@ ${buildCompetitorSection(preferences.competitor_context)}`;
       return { items, totalCreatives, totalEstimatedCents };
     }
   } catch (err: unknown) {
-    console.error('Sprint plan Claude error:', err);
+    logger.error({ err }, 'Sprint plan Claude error');
   }
 
   // Fallback: generate a basic plan from data without Claude
@@ -436,8 +437,7 @@ Generate a script that would outperform the account average. Predict a performan
       messages: [{ role: 'user', content: userMessage }],
     });
 
-    const textBlock = response.content.find((b: any) => b.type === 'text');
-    const text = textBlock ? (textBlock as any).text : '';
+    const text = extractText(response);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (jsonMatch) {
@@ -455,7 +455,7 @@ Generate a script that would outperform the account average. Predict a performan
       };
     }
   } catch (err: unknown) {
-    console.error('Script generation Claude error:', err);
+    logger.error({ err }, 'Script generation Claude error');
   }
 
   // Fallback script

@@ -1,5 +1,6 @@
 import { getDb } from '../db/index.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   AgentType, AgentCoreMemoryRow, AgentEpisodeRow, AgentEntityRow,
@@ -128,9 +129,9 @@ Return ONLY the JSON array.`,
       messages: [{ role: 'user', content: text }],
     });
 
-    const block = response.content.find((b: any) => b.type === 'text');
-    if (!block) return [];
-    const match = (block as any).text.match(/\[[\s\S]*\]/);
+    const extracted = extractText(response);
+    if (!extracted) return [];
+    const match = extracted.match(/\[[\s\S]*\]/);
     if (!match) return [];
     return JSON.parse(match[0]);
   } catch {

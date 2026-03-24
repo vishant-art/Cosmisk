@@ -15,8 +15,10 @@ import { buildContextWindow, recordEpisode, recordDecisionEpisode } from './agen
 import { notifyAlert } from './notifications.js';
 import { config } from '../config.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -74,11 +76,11 @@ export async function runReportAgentAll(): Promise<number> {
           await runReportAgent(user.id, acct.account_id || acct.id, meta);
           completed++;
         } catch (err: unknown) {
-          console.error(`[ReportAgent] Failed for account ${acct.account_id}:`, err);
+          logger.error({ err }, `[ReportAgent] Failed for account ${acct.account_id}`);
         }
       }
     } catch (err: unknown) {
-      console.error(`[ReportAgent] Failed for user ${user.id}:`, err);
+      logger.error({ err }, `[ReportAgent] Failed for user ${user.id}`);
     }
   }
   return completed;
@@ -161,15 +163,15 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const text = response.content[0];
+    const rawText = extractText(response);
     let analysis = { insights: [] as string[], recommendations: [] as string[], commentary: '', summary: '' };
 
     try {
-      const jsonStr = (text as any).text.trim();
+      const jsonStr = rawText.trim();
       const match = jsonStr.match(/\{[\s\S]*\}/);
       if (match) analysis = JSON.parse(match[0]);
     } catch {
-      analysis.summary = (text as any).text?.slice(0, 500) || 'Report generated';
+      analysis.summary = rawText?.slice(0, 500) || 'Report generated';
     }
 
     // Build report data
@@ -229,7 +231,7 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
       accountId,
     }).catch(() => {});
 
-    console.log(`[ReportAgent] Completed report for ${reportData.accountName} (${userId})`);
+    logger.info(`[ReportAgent] Completed report for ${reportData.accountName} (${userId})`);
     return runId;
 
   } catch (err: unknown) {

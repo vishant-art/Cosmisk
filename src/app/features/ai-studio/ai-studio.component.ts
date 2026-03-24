@@ -17,12 +17,12 @@ interface ChatMessage {
 }
 
 const SUGGESTED_QUESTIONS = [
-  { icon: '📊', text: 'How is my account doing?' },
-  { icon: '💰', text: 'Where is my budget going?' },
-  { icon: '🎯', text: 'What audience segments convert best?' },
-  { icon: '🎬', text: 'Which ads are performing best?' },
-  { icon: '📉', text: 'What\'s my CPA across campaigns?' },
-  { icon: '🔮', text: 'Predict next week\'s performance' },
+  { text: 'How is my account doing?' },
+  { text: 'Where is my budget going?' },
+  { text: 'What audience segments convert best?' },
+  { text: 'Which ads are performing best?' },
+  { text: 'What\'s my CPA across campaigns?' },
+  { text: 'Predict next week\'s performance' },
 ];
 
 
@@ -60,8 +60,7 @@ const SUGGESTED_QUESTIONS = [
                 <button
                   (click)="askQuestion(q.text)"
                   class="text-left p-3 bg-gray-50 rounded-lg hover:bg-accent/5 hover:border-accent/30 border border-gray-100 transition-all group">
-                  <span class="text-lg block mb-1">{{ q.icon }}</span>
-                  <span class="text-xs font-body text-gray-600 group-hover:text-accent">{{ q.text }}</span>
+                  <span class="text-sm font-body text-gray-600 group-hover:text-accent">{{ q.text }}</span>
                 </button>
               }
             </div>
