@@ -407,6 +407,7 @@ export function createTables(db: Database.Database): void {
   ensureColumn(db, 'users', 'competitors', 'TEXT');     // JSON array
   ensureColumn(db, 'users', 'active_brand', 'TEXT');
   ensureColumn(db, 'dna_cache', 'visual_analysis', "TEXT DEFAULT '{}'");
+  ensureColumn(db, 'users', 'phone', 'TEXT');
   ensureColumn(db, 'users', 'notification_preferences', "TEXT DEFAULT '{}'");
 
   // Razorpay + trial support

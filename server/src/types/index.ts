@@ -12,6 +12,7 @@ export interface UserRow {
   goals: string | null;          // JSON array
   competitors: string | null;    // JSON array
   active_brand: string | null;
+  phone: string | null;
 }
 
 export interface MetaTokenRow {
