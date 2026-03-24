@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow } from '../types/index.js';
-import { validate, contentSaveSchema, contentBankQuerySchema } from '../validation/schemas.js';
+import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema } from '../validation/schemas.js';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
 
@@ -356,16 +356,11 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
   /* ---- PUT /bank/:id — Update content bank item status/body ---- */
   app.put('/bank/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const updates = request.body as {
-      status?: string;
-      body?: string;
-      title?: string;
-      hashtags?: string[];
-      media_notes?: string;
-      scheduled_for?: string;
-      posted_at?: string;
-    };
+    const paramsParsed = validate(idParamSchema, request.params, reply);
+    if (!paramsParsed) return;
+    const { id } = paramsParsed;
+    const updates = validate(contentUpdateSchema, request.body, reply);
+    if (!updates) return;
 
     const db = getDb();
     const existing = db.prepare('SELECT id FROM content_bank WHERE id = ? AND user_id = ?').get(id, request.user.id);
@@ -398,7 +393,9 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
   /* ---- DELETE /bank/:id — Delete content bank item ---- */
   app.delete('/bank/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const paramsParsed = validate(idParamSchema, request.params, reply);
+    if (!paramsParsed) return;
+    const { id } = paramsParsed;
     const db = getDb();
     const result = db.prepare('DELETE FROM content_bank WHERE id = ? AND user_id = ?').run(id, request.user.id);
 

@@ -7,6 +7,7 @@ import { parseInsightMetrics, parseCampaignBreakdown, parseAudienceBreakdown } f
 import { round, fmt, fmtInt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, ReportRow, UserRow } from '../types/index.js';
+import { validate, reportGenerateSchema, reportWeeklySchema } from '../validation/schemas.js';
 import Anthropic from '@anthropic-ai/sdk';
 import cron from 'node-cron';
 
@@ -345,10 +346,9 @@ export async function reportRoutes(app: FastifyInstance) {
 
   // POST /reports/generate-weekly — manually trigger weekly strategy report
   app.post('/generate-weekly', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id } = request.body as { account_id?: string };
-    if (!account_id) {
-      return reply.status(400).send({ success: false, error: 'account_id required' });
-    }
+    const parsed = validate(reportWeeklySchema, request.body, reply);
+    if (!parsed) return;
+    const account_id = parsed.account_id;
 
     const token = getUserMetaToken(request.user.id);
     if (!token) {
@@ -381,31 +381,20 @@ export async function reportRoutes(app: FastifyInstance) {
 
   // POST /reports/generate
   app.post('/generate', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(reportGenerateSchema, request.body, reply);
+    if (!parsed) return;
+
     const {
       name,
-      type = 'performance',
-      date_range = 'last_7d',
+      type,
+      date_range,
       brand,
       sections,
       include_branding,
       include_ai_summary,
       account_id,
       credential_group,
-    } = request.body as {
-      name?: string;
-      type?: string;
-      date_range?: string;
-      brand?: string;
-      sections?: string[];
-      include_branding?: boolean;
-      include_ai_summary?: boolean;
-      account_id?: string;
-      credential_group?: string;
-    };
-
-    if (!account_id) {
-      return reply.status(400).send({ success: false, error: 'account_id is required' });
-    }
+    } = parsed;
 
     const db = getDb();
     const id = uuidv4();

@@ -6,6 +6,7 @@ import { parseInsightMetrics, parseCampaignBreakdown, parseAudienceBreakdown } f
 import { round, fmt, fmtNum, fmtInt, setCurrency, getCurrency, avgVal, CURRENCY_SYMBOLS } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { validate, aiChatSchema } from '../validation/schemas.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
@@ -915,14 +916,10 @@ export async function aiRoutes(app: FastifyInstance) {
 
   // POST /ai/chat
   app.post('/chat', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { message, account_id, date_preset = 'last_7d', currency = 'USD', history } = request.body as {
-      message: string;
-      account_id?: string;
-      credential_group?: string;
-      date_preset?: string;
-      currency?: string;
-      history?: { role: 'user' | 'ai'; content: string }[];
-    };
+    const parsed = validate(aiChatSchema, request.body, reply);
+    if (!parsed) return;
+
+    const { message, account_id, date_preset = 'last_7d', currency = 'USD', history } = parsed;
 
     setCurrency(currency);
 

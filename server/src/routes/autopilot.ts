@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { getDb } from '../db/index.js';
 import { runAutopilot } from '../services/autopilot-engine.js';
 import type { AutopilotAlertRow } from '../types/index.js';
+import { validate, autopilotAlertsQuerySchema, autopilotMarkReadSchema, idParamSchema } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
 /*  Schedule daily autopilot run (6 AM UTC)                            */
@@ -36,19 +37,21 @@ export async function autopilotRoutes(app: FastifyInstance) {
   startAutopilotCron();
 
   // GET /autopilot/alerts — list user's alerts
-  app.get('/alerts', { preHandler: [app.authenticate] }, async (request) => {
-    const { limit = '50', unread_only = 'false' } = request.query as { limit?: string; unread_only?: string };
+  app.get('/alerts', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(autopilotAlertsQuerySchema, request.query, reply);
+    if (!parsed) return;
+
     const db = getDb();
 
     let query = 'SELECT * FROM autopilot_alerts WHERE user_id = ?';
-    const params: any[] = [request.user.id];
+    const params: (string | number)[] = [request.user.id];
 
-    if (unread_only === 'true') {
+    if (parsed.unread_only === 'true') {
       query += ' AND read = 0';
     }
 
     query += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(parseInt(limit, 10) || 50);
+    params.push(parsed.limit);
 
     const alerts = db.prepare(query).all(...params) as AutopilotAlertRow[];
 
@@ -76,16 +79,17 @@ export async function autopilotRoutes(app: FastifyInstance) {
   });
 
   // POST /autopilot/mark-read — mark alert(s) as read
-  app.post('/mark-read', { preHandler: [app.authenticate] }, async (request) => {
-    const { alert_ids, mark_all } = request.body as { alert_ids?: string[]; mark_all?: boolean };
+  app.post('/mark-read', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const parsed = validate(autopilotMarkReadSchema, request.body, reply);
+    if (!parsed) return;
     const db = getDb();
 
-    if (mark_all) {
+    if (parsed.mark_all) {
       db.prepare('UPDATE autopilot_alerts SET read = 1 WHERE user_id = ?').run(request.user.id);
-    } else if (alert_ids && alert_ids.length > 0) {
-      const placeholders = alert_ids.map(() => '?').join(',');
+    } else if (parsed.alert_ids && parsed.alert_ids.length > 0) {
+      const placeholders = parsed.alert_ids.map(() => '?').join(',');
       db.prepare(`UPDATE autopilot_alerts SET read = 1 WHERE id IN (${placeholders}) AND user_id = ?`)
-        .run(...alert_ids, request.user.id);
+        .run(...parsed.alert_ids, request.user.id);
     }
 
     return { success: true };
@@ -93,7 +97,9 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
   // POST /autopilot/run — manually trigger autopilot (admin only)
   app.post('/run', { preHandler: [app.authenticate] }, async (request, reply) => {
-    if ((request.user as any).role !== 'admin') {
+    const db = getDb();
+    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    if (!user || user.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
     const alertCount = await runAutopilot();
@@ -102,9 +108,10 @@ export async function autopilotRoutes(app: FastifyInstance) {
 
   // DELETE /autopilot/alerts/:id — delete a specific alert
   app.delete('/alerts/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { id } = request.params as { id: string };
+    const parsed = validate(idParamSchema, request.params, reply);
+    if (!parsed) return;
     const db = getDb();
-    const result = db.prepare('DELETE FROM autopilot_alerts WHERE id = ? AND user_id = ?').run(id, request.user.id);
+    const result = db.prepare('DELETE FROM autopilot_alerts WHERE id = ? AND user_id = ?').run(parsed.id, request.user.id);
     if (result.changes === 0) {
       return reply.status(404).send({ success: false, error: 'Alert not found' });
     }

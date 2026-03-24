@@ -20,6 +20,17 @@ import {
   agentRunsQuerySchema,
   agentDecisionsQuerySchema,
   datePresetQuerySchema,
+  autopilotAlertsQuerySchema,
+  autopilotMarkReadSchema,
+  reportGenerateSchema,
+  reportWeeklySchema,
+  aiChatSchema,
+  oauthCodeSchema,
+  contentUpdateSchema,
+  directorBriefSchema,
+  creativeScoreSchema,
+  competitorSearchSchema,
+  ugcCreateProjectSchema,
 } from '../validation/schemas.js';
 
 /* ------------------------------------------------------------------ */
@@ -444,5 +455,182 @@ describe('datePresetQuerySchema', () => {
   });
   it('rejects invalid preset', () => {
     expect(datePresetQuerySchema.safeParse({ date_preset: 'last_year' }).success).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Autopilot schemas                                                  */
+/* ------------------------------------------------------------------ */
+
+describe('autopilotAlertsQuerySchema', () => {
+  it('accepts defaults', () => {
+    const r = autopilotAlertsQuerySchema.safeParse({});
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.limit).toBe(50);
+      expect(r.data.unread_only).toBe('false');
+    }
+  });
+  it('accepts custom limit', () => {
+    expect(autopilotAlertsQuerySchema.safeParse({ limit: '20', unread_only: 'true' }).success).toBe(true);
+  });
+  it('rejects limit > 200', () => {
+    expect(autopilotAlertsQuerySchema.safeParse({ limit: '999' }).success).toBe(false);
+  });
+});
+
+describe('autopilotMarkReadSchema', () => {
+  it('accepts mark_all', () => {
+    expect(autopilotMarkReadSchema.safeParse({ mark_all: true }).success).toBe(true);
+  });
+  it('accepts alert_ids', () => {
+    expect(autopilotMarkReadSchema.safeParse({ alert_ids: ['abc', 'def'] }).success).toBe(true);
+  });
+  it('accepts empty body', () => {
+    expect(autopilotMarkReadSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Report schemas                                                     */
+/* ------------------------------------------------------------------ */
+
+describe('reportGenerateSchema', () => {
+  it('accepts valid report request', () => {
+    const r = reportGenerateSchema.safeParse({ account_id: 'act_123', type: 'performance' });
+    expect(r.success).toBe(true);
+  });
+  it('rejects missing account_id', () => {
+    expect(reportGenerateSchema.safeParse({ type: 'creative' }).success).toBe(false);
+  });
+  it('rejects invalid type', () => {
+    expect(reportGenerateSchema.safeParse({ account_id: 'act_123', type: 'invalid' }).success).toBe(false);
+  });
+  it('defaults type to performance', () => {
+    const r = reportGenerateSchema.safeParse({ account_id: 'act_123' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.type).toBe('performance');
+  });
+});
+
+describe('reportWeeklySchema', () => {
+  it('accepts valid account_id', () => {
+    expect(reportWeeklySchema.safeParse({ account_id: 'act_123' }).success).toBe(true);
+  });
+  it('rejects empty account_id', () => {
+    expect(reportWeeklySchema.safeParse({ account_id: '' }).success).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  AI Chat schema                                                     */
+/* ------------------------------------------------------------------ */
+
+describe('aiChatSchema', () => {
+  it('accepts valid chat message', () => {
+    const r = aiChatSchema.safeParse({ message: 'How are my ads doing?' });
+    expect(r.success).toBe(true);
+  });
+  it('rejects empty message', () => {
+    expect(aiChatSchema.safeParse({ message: '' }).success).toBe(false);
+  });
+  it('accepts message with history', () => {
+    const r = aiChatSchema.safeParse({
+      message: 'What about last week?',
+      history: [{ role: 'user', content: 'Hi' }, { role: 'ai', content: 'Hello' }],
+    });
+    expect(r.success).toBe(true);
+  });
+  it('rejects history with invalid role', () => {
+    expect(aiChatSchema.safeParse({
+      message: 'test',
+      history: [{ role: 'system', content: 'hack' }],
+    }).success).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  OAuth code schema                                                  */
+/* ------------------------------------------------------------------ */
+
+describe('oauthCodeSchema', () => {
+  it('accepts valid code', () => {
+    expect(oauthCodeSchema.safeParse({ code: 'AQB1234' }).success).toBe(true);
+  });
+  it('rejects empty code', () => {
+    expect(oauthCodeSchema.safeParse({ code: '' }).success).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Content update schema                                              */
+/* ------------------------------------------------------------------ */
+
+describe('contentUpdateSchema', () => {
+  it('accepts status update', () => {
+    expect(contentUpdateSchema.safeParse({ status: 'posted' }).success).toBe(true);
+  });
+  it('rejects invalid status', () => {
+    expect(contentUpdateSchema.safeParse({ status: 'invalid' }).success).toBe(false);
+  });
+  it('accepts body update', () => {
+    expect(contentUpdateSchema.safeParse({ body: 'New content' }).success).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Director Lab schemas                                               */
+/* ------------------------------------------------------------------ */
+
+describe('directorBriefSchema', () => {
+  it('accepts valid brief', () => {
+    expect(directorBriefSchema.safeParse({ format: 'ugc_video', target_audience: 'D2C brands' }).success).toBe(true);
+  });
+  it('accepts empty brief', () => {
+    expect(directorBriefSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Score schemas                                                      */
+/* ------------------------------------------------------------------ */
+
+describe('creativeScoreSchema', () => {
+  it('accepts url + format', () => {
+    expect(creativeScoreSchema.safeParse({ url: 'https://example.com/ad.mp4', format: 'video' }).success).toBe(true);
+  });
+  it('accepts empty object', () => {
+    expect(creativeScoreSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Competitor Spy schema                                              */
+/* ------------------------------------------------------------------ */
+
+describe('competitorSearchSchema', () => {
+  it('accepts valid query', () => {
+    const r = competitorSearchSchema.safeParse({ query: 'nike' });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.limit).toBe(10);
+  });
+  it('rejects empty query', () => {
+    expect(competitorSearchSchema.safeParse({ query: '' }).success).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  UGC schemas                                                        */
+/* ------------------------------------------------------------------ */
+
+describe('ugcCreateProjectSchema', () => {
+  it('accepts valid project', () => {
+    expect(ugcCreateProjectSchema.safeParse({ name: 'Summer Campaign', brand_name: 'Nike' }).success).toBe(true);
+  });
+  it('accepts empty body', () => {
+    expect(ugcCreateProjectSchema.safeParse({}).success).toBe(true);
+  });
+  it('rejects too many concepts', () => {
+    expect(ugcCreateProjectSchema.safeParse({ num_concepts: 100 }).success).toBe(false);
   });
 });

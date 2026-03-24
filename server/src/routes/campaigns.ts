@@ -9,6 +9,7 @@ import { assessConfidence, computeTrend, qualifyMetric } from '../services/trend
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { validate, accountIdQuerySchema } from '../validation/schemas.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();

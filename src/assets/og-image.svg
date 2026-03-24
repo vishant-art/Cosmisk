@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A"/>
+      <stop offset="100%" style="stop-color:#1E293B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#6366F1"/>
+      <stop offset="100%" style="stop-color:#8B5CF6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Subtle grid pattern -->
+  <g opacity="0.04" stroke="#fff" stroke-width="1">
+    <line x1="0" y1="0" x2="1200" y2="630"/>
+    <line x1="200" y1="0" x2="1200" y2="500"/>
+    <line x1="400" y1="0" x2="1200" y2="400"/>
+    <line x1="0" y1="200" x2="800" y2="630"/>
+    <line x1="0" y1="400" x2="400" y2="630"/>
+  </g>
+
+  <!-- Accent glow -->
+  <circle cx="900" cy="300" r="250" fill="#6366F1" opacity="0.08"/>
+  <circle cx="300" cy="500" r="200" fill="#8B5CF6" opacity="0.05"/>
+
+  <!-- Logo mark -->
+  <g transform="translate(80, 220)">
+    <rect width="48" height="48" rx="12" fill="url(#accent)"/>
+    <text x="24" y="35" text-anchor="middle" fill="white" font-family="system-ui, sans-serif" font-size="28" font-weight="700">C</text>
+  </g>
+
+  <!-- Brand name -->
+  <text x="148" y="256" fill="white" font-family="Georgia, 'Times New Roman', serif" font-size="52" font-weight="700" letter-spacing="-1">Cosmisk</text>
+
+  <!-- Tagline -->
+  <text x="82" y="310" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="28" font-weight="400">AI-Powered Creative Intelligence</text>
+
+  <!-- Subline -->
+  <text x="82" y="360" fill="#64748B" font-family="system-ui, -apple-system, sans-serif" font-size="20">Every ad you make, makes your next ad better.</text>
+
+  <!-- Feature pills -->
+  <g transform="translate(82, 400)">
+    <rect width="140" height="36" rx="18" fill="#6366F1" opacity="0.15"/>
+    <text x="70" y="24" text-anchor="middle" fill="#A5B4FC" font-family="system-ui, sans-serif" font-size="14" font-weight="500">Creative DNA</text>
+
+    <rect x="156" width="120" height="36" rx="18" fill="#6366F1" opacity="0.15"/>
+    <text x="216" y="24" text-anchor="middle" fill="#A5B4FC" font-family="system-ui, sans-serif" font-size="14" font-weight="500">AI Sprints</text>
+
+    <rect x="292" width="120" height="36" rx="18" fill="#6366F1" opacity="0.15"/>
+    <text x="352" y="24" text-anchor="middle" fill="#A5B4FC" font-family="system-ui, sans-serif" font-size="14" font-weight="500">Meta Ads</text>
+
+    <rect x="428" width="130" height="36" rx="18" fill="#6366F1" opacity="0.15"/>
+    <text x="493" y="24" text-anchor="middle" fill="#A5B4FC" font-family="system-ui, sans-serif" font-size="14" font-weight="500">UGC Studio</text>
+  </g>
+
+  <!-- Right side: abstract data visualization -->
+  <g transform="translate(750, 150)" opacity="0.6">
+    <!-- Bar chart abstraction -->
+    <rect x="0" y="180" width="40" height="120" rx="4" fill="#6366F1" opacity="0.4"/>
+    <rect x="60" y="120" width="40" height="180" rx="4" fill="#6366F1" opacity="0.5"/>
+    <rect x="120" y="80" width="40" height="220" rx="4" fill="#6366F1" opacity="0.6"/>
+    <rect x="180" y="40" width="40" height="260" rx="4" fill="#8B5CF6" opacity="0.7"/>
+    <rect x="240" y="0" width="40" height="300" rx="4" fill="#A78BFA" opacity="0.8"/>
+
+    <!-- Trend line -->
+    <polyline points="20,170 80,110 140,70 200,30 260,-10" fill="none" stroke="#A78BFA" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="260" cy="-10" r="6" fill="#A78BFA"/>
+  </g>
+
+  <!-- Bottom bar -->
+  <rect y="590" width="1200" height="40" fill="#6366F1" opacity="0.1"/>
+  <text x="82" y="616" fill="#64748B" font-family="system-ui, sans-serif" font-size="15">cosmisk.ai</text>
+
+  <!-- ROAS badge -->
+  <g transform="translate(1020, 590)">
+    <text x="0" y="26" fill="#6366F1" font-family="system-ui, sans-serif" font-size="15" font-weight="600">Powered by your ad data</text>
+  </g>
+</svg>

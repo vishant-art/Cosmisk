@@ -19,6 +19,27 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npx ng build --configuration production
 
+  smoke-test:
+    name: Smoke Test (Playwright)
+    runs-on: ubuntu-latest
+    needs: [frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npx ng build --configuration production
+      - run: npx playwright install chromium --with-deps
+      - run: npx playwright test --config=playwright.ci.config.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
+
   backend:
     name: Backend (Fastify)
     runs-on: ubuntu-latest

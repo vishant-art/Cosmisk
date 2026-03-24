@@ -214,6 +214,175 @@ export const datePresetQuerySchema = z.object({
 });
 
 /* ------------------------------------------------------------------ */
+/*  Autopilot schemas                                                  */
+/* ------------------------------------------------------------------ */
+
+export const autopilotAlertsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  unread_only: z.enum(['true', 'false']).default('false'),
+});
+
+export const autopilotMarkReadSchema = z.object({
+  alert_ids: z.array(z.string()).optional(),
+  mark_all: z.boolean().optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Report schemas                                                     */
+/* ------------------------------------------------------------------ */
+
+export const reportGenerateSchema = z.object({
+  name: z.string().max(500).optional(),
+  type: z.enum(['performance', 'creative', 'audience', 'full', 'weekly-strategy']).default('performance'),
+  date_range: z.enum(['last_7d', 'last_14d', 'last_30d', 'last_90d', 'this_month', 'last_month']).default('last_7d'),
+  brand: z.string().max(200).optional(),
+  sections: z.array(z.string()).optional(),
+  include_branding: z.boolean().optional(),
+  include_ai_summary: z.boolean().optional(),
+  account_id: z.string().min(1, 'account_id is required'),
+  credential_group: z.string().optional(),
+});
+
+export const reportWeeklySchema = z.object({
+  account_id: z.string().min(1, 'account_id is required'),
+});
+
+/* ------------------------------------------------------------------ */
+/*  UGC schemas                                                        */
+/* ------------------------------------------------------------------ */
+
+export const ugcCreateProjectSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  brand_name: z.string().max(200).optional(),
+  brief: z.string().max(10000).optional(),
+  account_id: z.string().optional(),
+  credential_group: z.string().optional(),
+  currency: z.string().max(10).optional(),
+  num_concepts: z.coerce.number().int().min(1).max(20).optional(),
+});
+
+export const ugcConceptActionSchema = z.object({
+  project_id: z.string().min(1, 'project_id is required'),
+  action: z.enum(['approve', 'reject', 'revise']).optional(),
+  concept_ids: z.array(z.string()).optional(),
+  notes: z.string().max(5000).optional(),
+});
+
+export const ugcScriptUpdateSchema = z.object({
+  script_id: z.string().min(1, 'script_id is required'),
+  content: z.string().max(50000).optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Director Lab schemas                                               */
+/* ------------------------------------------------------------------ */
+
+export const directorBriefSchema = z.object({
+  base_creative: z.string().max(10000).optional(),
+  patterns: z.array(z.string()).optional(),
+  format: z.string().max(100).optional(),
+  target_audience: z.string().max(1000).optional(),
+  product_focus: z.string().max(1000).optional(),
+  tones: z.array(z.string()).optional(),
+  account_id: z.string().optional(),
+  credential_group: z.string().optional(),
+});
+
+export const directorLaunchSchema = z.object({
+  account_id: z.string().min(1),
+  campaign_name: z.string().min(1).max(200),
+  objective: z.string().optional(),
+  daily_budget: z.coerce.number().min(0).optional(),
+  targeting: z.record(z.string(), z.unknown()).optional(),
+  creative: z.record(z.string(), z.unknown()).optional(),
+  page_id: z.string().optional(),
+  status: z.string().optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Score schemas                                                      */
+/* ------------------------------------------------------------------ */
+
+export const creativeScoreSchema = z.object({
+  url: z.string().optional(),
+  description: z.string().max(5000).optional(),
+  format: z.string().max(100).optional(),
+  industry: z.string().max(100).optional(),
+  platform: z.string().max(50).optional(),
+});
+
+export const batchScoreSchema = z.object({
+  creatives: z.array(z.object({
+    url: z.string().optional(),
+    description: z.string().max(5000).optional(),
+    format: z.string().max(100).optional(),
+  })).min(1).max(50),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Account/dashboard query schemas                                    */
+/* ------------------------------------------------------------------ */
+
+export const accountQuerySchema = z.object({
+  account_id: z.string().optional(),
+  credential_group: z.string().optional(),
+  date_preset: z.enum(['today', 'yesterday', 'last_3d', 'last_7d', 'last_14d', 'last_30d', 'last_90d', 'this_month', 'last_month']).default('last_7d'),
+});
+
+export const accountIdQuerySchema = z.object({
+  account_id: z.string().optional(),
+  credential_group: z.string().optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  AI Chat schema                                                     */
+/* ------------------------------------------------------------------ */
+
+export const aiChatSchema = z.object({
+  message: z.string().min(1, 'Message is required').max(10000),
+  account_id: z.string().optional(),
+  credential_group: z.string().optional(),
+  date_preset: z.string().optional(),
+  currency: z.string().max(10).optional(),
+  history: z.array(z.object({
+    role: z.enum(['user', 'ai']),
+    content: z.string(),
+  })).optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/*  OAuth code schema                                                  */
+/* ------------------------------------------------------------------ */
+
+export const oauthCodeSchema = z.object({
+  code: z.string().min(1, 'Authorization code is required'),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Competitor Spy schemas                                             */
+/* ------------------------------------------------------------------ */
+
+export const competitorSearchSchema = z.object({
+  query: z.string().min(1).max(500),
+  country: z.string().max(10).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+/* ------------------------------------------------------------------ */
+/*  Content update schema                                              */
+/* ------------------------------------------------------------------ */
+
+export const contentUpdateSchema = z.object({
+  status: z.enum(['draft', 'scheduled', 'posted', 'archived']).optional(),
+  body: z.string().max(10000).optional(),
+  title: z.string().max(500).optional(),
+  hashtags: z.string().max(2000).optional(),
+  media_notes: z.string().max(2000).optional(),
+  scheduled_for: z.string().optional(),
+  posted_at: z.string().optional(),
+});
+
+/* ------------------------------------------------------------------ */
 /*  Validation helper                                                  */
 /* ------------------------------------------------------------------ */
 
