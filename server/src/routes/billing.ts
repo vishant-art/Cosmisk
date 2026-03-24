@@ -193,7 +193,7 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // GET /billing/plans — return available plans with limits + pricing
   app.get('/plans', async (request) => {
-    const { currency = 'INR' } = request.query as { currency?: string };
+    const { currency = 'INR' } = (request.query || {}) as Record<string, string>;
     const cur = currency.toUpperCase() === 'USD' ? 'usd' : 'inr';
     const sym = cur === 'inr' ? '\u20B9' : '$';
 
