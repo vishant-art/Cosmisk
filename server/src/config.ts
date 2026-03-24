@@ -64,8 +64,9 @@ export const config = {
   ].filter(Boolean) as string[],
 } as const;
 
-// Refuse to start in production with default secrets
+// Refuse to start in production with default or missing secrets
 if (config.nodeEnv === 'production') {
+  // Keys that must not be left at their dev defaults
   const defaults: [string, string][] = [
     ['jwtSecret', 'dev-secret-change-me'],
     ['tokenEncryptionKey', 'dev-encryption-key-change-me-now!'],
@@ -73,6 +74,20 @@ if (config.nodeEnv === 'production') {
   for (const [key, defaultVal] of defaults) {
     if (config[key as keyof typeof config] === defaultVal) {
       console.error(`FATAL: ${key} is set to the default value. Set a secure value in production.`);
+      process.exit(1);
+    }
+  }
+
+  // Keys that must be present (empty string = not configured)
+  const required: [string, string][] = [
+    ['anthropicApiKey', 'ANTHROPIC_API_KEY'],
+    ['metaAppSecret', 'META_APP_SECRET'],
+    ['stripeSecretKey', 'STRIPE_SECRET_KEY'],
+    ['stripeWebhookSecret', 'STRIPE_WEBHOOK_SECRET'],
+  ];
+  for (const [key, envName] of required) {
+    if (!config[key as keyof typeof config]) {
+      console.error(`FATAL: ${envName} is not set. Required in production.`);
       process.exit(1);
     }
   }

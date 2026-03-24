@@ -40,6 +40,7 @@ import { parseInsightMetrics } from './services/insights-parser.js';
 import type { MetaTokenRow, UserRow } from './types/index.js';
 import { validate, profileUpdateSchema } from './validation/schemas.js';
 import { extractText } from './utils/claude-helpers.js';
+import { logger } from './utils/logger.js';
 
 const app = Fastify({
   logger: {
@@ -89,7 +90,7 @@ app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => 
 const SERVER_START = new Date().toISOString();
 app.get('/health', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async () => {
   let dbOk = false;
-  try { const db = getDb(); db.prepare('SELECT 1').get(); dbOk = true; } catch {}
+  try { const db = getDb(); db.prepare('SELECT 1').get(); dbOk = true; } catch (err) { logger.warn({ err }, 'Health check: DB unavailable'); }
   return {
     status: dbOk ? 'ok' : 'degraded',
     uptime: Math.floor(process.uptime()),
@@ -170,8 +171,8 @@ app.post('/waitlist/join', async (request, reply) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, email }),
-    }).catch(() => {});
-  } catch {}
+    }).catch((err: unknown) => { logger.error({ err }, 'Failed to sync waitlist to n8n'); });
+  } catch (err) { logger.error({ err }, 'Failed to fire waitlist webhook'); }
 
   return { success: true, position };
 });
