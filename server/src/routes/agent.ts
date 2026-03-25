@@ -12,6 +12,7 @@ import { getSalesContext } from '../services/sales-agent.js';
 import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js';
 import { validate, agentRunsQuerySchema, agentDecisionsQuerySchema, idParamSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 /* ------------------------------------------------------------------ */
 /*  Cron scheduling                                                    */
@@ -358,10 +359,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
     if (!run) return { success: true, briefing: null };
 
-    let rawContext = null;
-    try {
-      rawContext = run.raw_context ? JSON.parse(run.raw_context) : null;
-    } catch { /* ignore */ }
+    const rawContext = safeJsonParse(run.raw_context, null);
 
     return {
       success: true,

@@ -456,7 +456,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
         content_type: row.content_type,
         title: row.title,
         body: row.body,
-        hashtags: (() => { try { return row.hashtags ? JSON.parse(row.hashtags) : []; } catch { return []; } })(),
+        hashtags: safeJsonParse(row.hashtags, []),
         media_notes: row.media_notes,
         status: row.status,
         scheduled_for: row.scheduled_for,

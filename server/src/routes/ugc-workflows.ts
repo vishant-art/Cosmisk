@@ -7,6 +7,7 @@ import { parseInsightMetrics } from '../services/insights-parser.js';
 import { round, fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, UgcConceptRow, UgcProjectRow } from '../types/index.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 /** Minimal row shape for project ownership check */
 interface ProjectIdRow { id: string }
@@ -403,7 +404,7 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
       .get(project_id, request.user.id) as UgcProjectRow | undefined;
     if (!project) return { success: false, error: 'Project not found' };
 
-    const brief = project.brief ? JSON.parse(project.brief) : {};
+    const brief = safeJsonParse(project.brief, {});
 
     // Fetch top ads for data context
     let topAds: TopAd[] = [];

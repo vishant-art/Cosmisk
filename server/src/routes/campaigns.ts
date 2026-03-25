@@ -11,6 +11,7 @@ import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, accountIdQuerySchema, campaignIdQuerySchema, campaignLocalCreateSchema, campaignUpdateBodySchema, campaignIdBodySchema } from '../validation/schemas.js';
 import { internalError } from '../utils/error-response.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -67,9 +68,9 @@ export async function campaignRoutes(app: FastifyInstance) {
         budget: c.budget,
         schedule_start: c.schedule_start,
         schedule_end: c.schedule_end,
-        audience: c.audience ? JSON.parse(c.audience) : null,
+        audience: safeJsonParse(c.audience, null),
         placements: c.placements,
-        creative_ids: c.creative_ids ? JSON.parse(c.creative_ids) : [],
+        creative_ids: safeJsonParse(c.creative_ids, []),
         status: c.status,
         created_at: c.created_at,
         updated_at: c.updated_at,
@@ -102,9 +103,9 @@ export async function campaignRoutes(app: FastifyInstance) {
         budget: campaign.budget,
         schedule_start: campaign.schedule_start,
         schedule_end: campaign.schedule_end,
-        audience: campaign.audience ? JSON.parse(campaign.audience) : null,
+        audience: safeJsonParse(campaign.audience, null),
         placements: campaign.placements,
-        creative_ids: campaign.creative_ids ? JSON.parse(campaign.creative_ids) : [],
+        creative_ids: safeJsonParse(campaign.creative_ids, []),
         status: campaign.status,
         created_at: campaign.created_at,
         updated_at: campaign.updated_at,
@@ -210,7 +211,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }
 
-    const audience = campaign.audience ? JSON.parse(campaign.audience) : {};
+    const audience: any = safeJsonParse(campaign.audience, {});
     const budgetCents = campaign.budget ? Math.round(parseFloat(campaign.budget) * 100) : 500000; // default ₹5000/day
 
     // Map objective to Meta API format

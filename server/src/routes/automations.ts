@@ -12,6 +12,7 @@ import type { MetaTokenRow } from '../types/index.js';
 import { validate, automationCreateSchema, automationUpdateSchema, idParamSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -45,12 +46,7 @@ interface AutomationRow {
 /* ------------------------------------------------------------------ */
 function formatCondition(triggerType: string, triggerValue: string | null): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let parsed: any = {};
-  try {
-    parsed = triggerValue ? JSON.parse(triggerValue) : {};
-  } catch {
-    parsed = {};
-  }
+  const parsed: any = safeJsonParse(triggerValue, {});
   const metric = triggerType.toUpperCase();
   const operator = parsed.operator || 'gt';
   const value = parsed.value || '0';
@@ -62,12 +58,7 @@ function formatCondition(triggerType: string, triggerValue: string | null): stri
 
 function formatAction(actionType: string, actionValue: string | null): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let parsed: any = {};
-  try {
-    parsed = actionValue ? JSON.parse(actionValue) : {};
-  } catch {
-    parsed = {};
-  }
+  const parsed: any = safeJsonParse(actionValue, {});
   const actionMap: Record<string, string> = {
     pause: 'Pause ad set',
     reduce_budget: `Reduce budget by ${parsed.percentage || 20}%`,
@@ -101,9 +92,9 @@ export async function automationRoutes(app: FastifyInstance) {
       lastTriggered: row.last_triggered ? new Date(row.last_triggered + 'Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Never',
       triggerCount: row.last_triggered ? 1 : 0,
       triggerType: row.trigger_type,
-      triggerValue: row.trigger_value ? JSON.parse(row.trigger_value) : null,
+      triggerValue: safeJsonParse(row.trigger_value, null),
       actionType: row.action_type,
-      actionValue: row.action_value ? JSON.parse(row.action_value) : null,
+      actionValue: safeJsonParse(row.action_value, null),
       accountId: row.account_id,
       createdAt: row.created_at,
     }));
@@ -147,9 +138,9 @@ export async function automationRoutes(app: FastifyInstance) {
         lastTriggered: 'Never',
         triggerCount: 0,
         triggerType: created.trigger_type,
-        triggerValue: created.trigger_value ? JSON.parse(created.trigger_value) : null,
+        triggerValue: safeJsonParse(created.trigger_value, null),
         actionType: created.action_type,
-        actionValue: created.action_value ? JSON.parse(created.action_value) : null,
+        actionValue: safeJsonParse(created.action_value, null),
         accountId: created.account_id,
         createdAt: created.created_at,
       },
@@ -209,9 +200,9 @@ export async function automationRoutes(app: FastifyInstance) {
         lastTriggered: updated.last_triggered || 'Never',
         triggerCount: 0,
         triggerType: updated.trigger_type,
-        triggerValue: updated.trigger_value ? JSON.parse(updated.trigger_value) : null,
+        triggerValue: safeJsonParse(updated.trigger_value, null),
         actionType: updated.action_type,
-        actionValue: updated.action_value ? JSON.parse(updated.action_value) : null,
+        actionValue: safeJsonParse(updated.action_value, null),
         accountId: updated.account_id,
         createdAt: updated.created_at,
       },

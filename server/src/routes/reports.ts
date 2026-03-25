@@ -11,6 +11,7 @@ import { validate, reportGenerateSchema, reportWeeklySchema } from '../validatio
 import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import cron from 'node-cron';
@@ -317,7 +318,7 @@ export async function reportRoutes(app: FastifyInstance) {
     return {
       success: true,
       reports: reports.map(r => {
-        const parsedData = r.data ? JSON.parse(r.data) : null;
+        const parsedData = safeJsonParse(r.data, null);
         const dataSize = r.data ? Buffer.byteLength(r.data, 'utf-8') : 0;
         return {
           id: r.id,

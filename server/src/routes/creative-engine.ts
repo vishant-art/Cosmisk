@@ -712,7 +712,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const snapshot = JSON.parse(sprint.learn_snapshot || '{"topAds":[],"benchmarks":{"avgRoas":0,"avgCtr":0,"avgCpa":0,"avgSpend":0,"totalSpend":0},"formatBreakdown":{},"fatigueSignals":[]}');
+    const snapshot = safeJsonParse(sprint.learn_snapshot, {"topAds":[],"benchmarks":{"avgRoas":0,"avgCtr":0,"avgCpa":0,"avgSpend":0,"totalSpend":0},"formatBreakdown":{},"fatigueSignals":[]});
 
     // Get pending jobs that need scripts
     const pendingJobs = db.prepare(

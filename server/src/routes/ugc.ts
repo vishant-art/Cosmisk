@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb } from '../db/index.js';
 import type { UgcProjectRow, UgcConceptRow, UgcScriptRow } from '../types/index.js';
 import { validate, projectIdBodySchema, projectIdQuerySchema } from '../validation/schemas.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 export async function ugcRoutes(app: FastifyInstance) {
 
@@ -52,7 +53,7 @@ export async function ugcRoutes(app: FastifyInstance) {
       name: project.name,
       brand_name: project.brand_name,
       status: project.status,
-      brief: project.brief ? JSON.parse(project.brief) : null,
+      brief: safeJsonParse(project.brief, null),
       concepts: concepts.map(c => ({
         id: c.id,
         title: c.title,
