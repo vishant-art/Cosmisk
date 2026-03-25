@@ -1,5 +1,5 @@
 # ---- Frontend Build Stage ----
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ COPY tailwind.config.js ./
 RUN npx ng build --configuration production
 
 # ---- Backend Build Stage ----
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Native build tools for better-sqlite3
 RUN apk add --no-cache python3 make g++
@@ -30,7 +30,7 @@ COPY server/ ./
 RUN npm run build
 
 # ---- Production Stage ----
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 # Native modules need these at runtime
 RUN apk add --no-cache python3 make g++
