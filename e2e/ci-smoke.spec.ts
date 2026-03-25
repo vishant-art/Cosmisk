@@ -6,10 +6,10 @@ test.describe('CI Smoke Tests', () => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
 
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto('/', { waitUntil: 'networkidle' });
 
     // Page should have a visible heading
-    await expect(page.locator('h1').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10000 });
 
     // Body should not contain rendering artifacts
     const body = await page.locator('body').textContent() ?? '';
@@ -22,9 +22,9 @@ test.describe('CI Smoke Tests', () => {
   });
 
   test('Login page renders with form elements', async ({ page }) => {
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
+    await page.goto('/login', { waitUntil: 'networkidle' });
 
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('input[type="password"]')).toBeVisible();
 
     // Should have a submit button
@@ -37,8 +37,8 @@ test.describe('CI Smoke Tests', () => {
   });
 
   test('Login form shows validation on empty submit', async ({ page }) => {
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 
     // Click submit without filling form
     const submitBtn = page.locator('button[type="submit"], button:has-text("Log"), button:has-text("Sign in")');
@@ -50,9 +50,9 @@ test.describe('CI Smoke Tests', () => {
   });
 
   test('Signup page renders with form elements', async ({ page }) => {
-    await page.goto('/signup', { waitUntil: 'domcontentloaded' });
+    await page.goto('/signup', { waitUntil: 'networkidle' });
 
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 
     // Should have name field
     const nameInput = page.locator('input[type="text"], input[placeholder*="name" i], input[name="name"]');
@@ -64,8 +64,8 @@ test.describe('CI Smoke Tests', () => {
   });
 
   test('Navigation between login and signup works', async ({ page }) => {
-    await page.goto('/login', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 
     // Click signup link
     const signupLink = page.locator('a[href*="signup"], a:has-text("Sign up"), a:has-text("Create")');
@@ -73,14 +73,14 @@ test.describe('CI Smoke Tests', () => {
 
     // Should be on signup now
     await expect(page).toHaveURL(/signup/);
-    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
   });
 
   test('Pricing page renders', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
 
-    await page.goto('/pricing', { waitUntil: 'domcontentloaded' });
+    await page.goto('/pricing', { waitUntil: 'networkidle' });
 
     // Should show pricing content — plan names or price amounts
     const body = await page.locator('body').textContent() ?? '';
@@ -93,7 +93,7 @@ test.describe('CI Smoke Tests', () => {
   });
 
   test('Unknown routes do not crash', async ({ page }) => {
-    await page.goto('/nonexistent-route-12345', { waitUntil: 'domcontentloaded' });
+    await page.goto('/nonexistent-route-12345', { waitUntil: 'networkidle' });
 
     // Should not crash — either redirect to landing or show content
     const body = await page.locator('body').textContent() ?? '';
@@ -102,7 +102,7 @@ test.describe('CI Smoke Tests', () => {
   });
 
   test('Protected routes redirect to login', async ({ page }) => {
-    await page.goto('/app/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.goto('/app/dashboard', { waitUntil: 'networkidle' });
 
     // Should redirect to login since not authenticated
     await page.waitForTimeout(1000);

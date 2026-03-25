@@ -10,7 +10,7 @@ RUN npm ci --no-audit
 # Copy frontend source and build
 COPY src/ ./src/
 COPY angular.json tsconfig.json tsconfig.app.json ./
-COPY tailwind.config.js postcss.config.js ./
+COPY tailwind.config.js ./
 RUN npx ng build --configuration production
 
 # ---- Backend Build Stage ----

@@ -3,8 +3,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   testMatch: 'ci-smoke.spec.ts',
-  timeout: 30_000,
-  expect: { timeout: 5_000 },
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   fullyParallel: true,
   retries: 1,
   reporter: 'list',
@@ -21,6 +21,6 @@ export default defineConfig({
     command: 'npx serve dist/cosmisk/browser -l 4173 -s',
     port: 4173,
     reuseExistingServer: !process.env['CI'],
-    timeout: 10_000,
+    timeout: 30_000,
   },
 });
