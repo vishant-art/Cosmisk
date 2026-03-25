@@ -7,8 +7,9 @@ import {
 import { validate, oauthCodeSchema, googleAdsQuerySchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { logger } from '../utils/logger.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Date range mapping                                                 */
@@ -61,6 +62,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, customer_ids: customerIds };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'google-ads/oauth-exchange failed');
       return reply.status(400).send({ success: false, error: err.message });
     }
   });
@@ -102,6 +104,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, accounts: customerIds.map(id => ({ id, customer_id: id })) };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'google-ads/accounts failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
@@ -132,6 +135,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, platform: 'google', kpis };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'google-ads/kpis failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
@@ -162,6 +166,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, platform: 'google', campaigns };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'google-ads/campaigns failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
@@ -212,6 +217,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
         analysis: extractText(response, 'Analysis unavailable.'),
       };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'google-ads/analyze failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });

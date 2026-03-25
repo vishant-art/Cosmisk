@@ -11,9 +11,10 @@ import { validate, reportGenerateSchema, reportWeeklySchema } from '../validatio
 import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { config } from '../config.js';
 import cron from 'node-cron';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */

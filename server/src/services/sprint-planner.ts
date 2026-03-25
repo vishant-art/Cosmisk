@@ -2,9 +2,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from '../utils/claude-helpers.js';
 import { round, fmt, setCurrency } from './format-helpers.js';
 import type { VideoDNA } from './creative-patterns.js';
+import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

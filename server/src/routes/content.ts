@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
+import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow, MetaTokenRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
@@ -9,7 +10,7 @@ import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /** Aggregated job stats for a time window */
 interface JobStatsRow {

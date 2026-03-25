@@ -430,7 +430,7 @@ export async function automationRoutes(app: FastifyInstance) {
       // Limit to most recent 10 entries
       return { success: true, activity: activity.slice(0, 10) };
     } catch (err: any) {
-      app.log.error({ err: err.message }, 'automations/activity failed');
+      logger.error({ err: err.message }, 'automations/activity failed');
       // Return empty activity on error rather than failing
       return { success: true, activity: [] };
     }

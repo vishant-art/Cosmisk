@@ -104,7 +104,7 @@ await app.register(usageLimiterPlugin);
 app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
   const statusCode = error.statusCode || 500;
   if (statusCode >= 500) {
-    app.log.error({ err: error, url: request.url, method: request.method }, 'Internal server error');
+    logger.error({ err: error, url: request.url, method: request.method }, 'Internal server error');
   }
   reply.status(statusCode).send({
     success: false,
@@ -609,7 +609,7 @@ app.post('/creatives/batch-dna', { preHandler: [app.authenticate] }, async (requ
 
   // Claude analysis for uncached ads
   try {
-    const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+    const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
     // Compute account benchmarks from the batch
     const totalSpend = ads.reduce((s, a) => s + a.spend, 0);
@@ -1183,12 +1183,12 @@ process.on('SIGTERM', shutdown);
 
 try {
   await app.listen({ port: config.port, host: '0.0.0.0' });
-  app.log.info(`Cosmisk server running on port ${config.port}`);
+  logger.info(`Cosmisk server running on port ${config.port}`);
 
   // Recover any sprints interrupted by previous server restart
   const { recoverInterruptedSprints } = await import('./services/job-queue.js');
   recoverInterruptedSprints();
 } catch (err: unknown) {
-  app.log.error(err);
+  logger.error(err);
   process.exit(1);
 }

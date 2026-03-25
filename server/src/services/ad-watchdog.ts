@@ -14,7 +14,7 @@ import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEp
 import type { MetaTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */

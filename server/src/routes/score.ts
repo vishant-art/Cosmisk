@@ -2,8 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { validate, creativeScoreSchema, batchScoreSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
+import { config } from '../config.js';
+import { logger } from '../utils/logger.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Cosmisk Score — Free public ad creative analysis                   */
@@ -153,6 +155,7 @@ Provide a detailed Cosmisk Score analysis.`;
 
       return reply.status(500).send({ success: false, error: 'Analysis failed to parse' });
     } catch (err: any) {
+      logger.error({ err: err.message }, 'score/analyze failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
@@ -233,6 +236,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
       return reply.status(500).send({ success: false, error: 'Batch analysis failed to parse' });
     } catch (err: any) {
+      logger.error({ err: err.message }, 'score/batch failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });

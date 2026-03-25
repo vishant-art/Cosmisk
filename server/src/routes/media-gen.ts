@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { config } from '../config.js';
 import { validate, imageGenerateSchema, videoGenerateSchema } from '../validation/schemas.js';
 import { safeJson } from '../utils/safe-fetch.js';
 import { logger } from '../utils/logger.js';
@@ -10,8 +11,8 @@ import { logger } from '../utils/logger.js';
 /*  GET  /media/video-status    — Poll video generation status          */
 /* ------------------------------------------------------------------ */
 
-const NANO_BANANA_API_KEY = process.env['NANO_BANANA_API_KEY'] || '';
-const N8N_VIDEO_WEBHOOK = process.env['N8N_VIDEO_WEBHOOK'] || '';
+const NANO_BANANA_API_KEY = config.nanoBananaApiKey;
+const N8N_VIDEO_WEBHOOK = config.n8nVideoWebhook;
 
 export async function mediaGenRoutes(app: FastifyInstance) {
 

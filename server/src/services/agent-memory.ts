@@ -2,11 +2,12 @@ import { getDb } from '../db/index.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config.js';
 import type {
   AgentType, AgentCoreMemoryRow, AgentEpisodeRow, AgentEntityRow,
 } from '../types/index.js';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Core Memory — always included in agent prompts                     */
@@ -115,7 +116,7 @@ function upsertEntity(userId: string, entityStr: string): void {
 /* ------------------------------------------------------------------ */
 
 async function extractEntities(text: string): Promise<string[]> {
-  if (!process.env['ANTHROPIC_API_KEY']) return [];
+  if (!config.anthropicApiKey) return [];
 
   try {
     const response = await anthropic.messages.create({

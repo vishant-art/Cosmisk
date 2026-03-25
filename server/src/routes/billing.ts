@@ -7,6 +7,7 @@ import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import type { SubscriptionRow, UserRow, UserUsageRow, StripeSubscriptionWithPeriod, RazorpayWebhookEvent, FastifyRawBodyRequest } from '../types/index.js';
 import { validate, checkoutSchema, verifyPaymentSchema } from '../validation/schemas.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Plan limits — 4 tiers                                             */
@@ -466,7 +467,7 @@ export async function billingRoutes(app: FastifyInstance) {
         try {
           await rzp.subscriptions.cancel(sub.razorpay_subscription_id);
         } catch (err: unknown) {
-          app.log.error({ err }, 'Razorpay cancel failed');
+          logger.error({ err }, 'Razorpay cancel failed');
         }
       }
     } else if (gateway === 'stripe' && sub.stripe_subscription_id) {
@@ -475,7 +476,7 @@ export async function billingRoutes(app: FastifyInstance) {
         try {
           await stripe.subscriptions.update(sub.stripe_subscription_id, { cancel_at_period_end: true });
         } catch (err: unknown) {
-          app.log.error({ err }, 'Stripe cancel failed');
+          logger.error({ err }, 'Stripe cancel failed');
         }
       }
     }

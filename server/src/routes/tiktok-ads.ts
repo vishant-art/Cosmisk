@@ -7,7 +7,7 @@ import { validate, oauthCodeSchema, tiktokAdsQuerySchema } from '../validation/s
 import { extractText } from '../utils/claude-helpers.js';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 const TIKTOK_AUTH_URL = 'https://business-api.tiktok.com/portal/auth';
 const TIKTOK_API_URL = 'https://business-api.tiktok.com/open_api/v1.3';

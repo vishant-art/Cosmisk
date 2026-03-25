@@ -463,6 +463,7 @@ export async function directorRoutes(app: FastifyInstance) {
           : `${published} ad${published !== 1 ? 's' : ''} now ACTIVE and delivering.`,
       };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'director/auto-publish failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });
@@ -493,6 +494,7 @@ export async function directorRoutes(app: FastifyInstance) {
 
       return { success: true, campaign_id, status };
     } catch (err: any) {
+      logger.error({ err: err.message }, 'director/update-status failed');
       return reply.status(500).send({ success: false, error: err.message });
     }
   });

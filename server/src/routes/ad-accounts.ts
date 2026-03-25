@@ -4,6 +4,7 @@ import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import type { MetaTokenRow, AdAccount, TopAd } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -65,7 +66,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
 
       return { success: true, accounts, total: accounts.length };
     } catch (err: any) {
-      app.log.error({ err: err.message }, 'ad-accounts/list failed');
+      logger.error({ err: err.message }, 'ad-accounts/list failed');
       if (err.message?.includes('too many calls') || err.message?.includes('rate') || err.message?.includes('limit')) {
         return reply.status(429).send({ success: false, error: 'Meta API rate limited. Wait a few minutes and refresh.', accounts: [], total: 0 });
       }
