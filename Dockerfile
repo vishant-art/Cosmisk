@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install frontend dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci --no-audit
+RUN npm install --no-audit --no-fund
 
 # Copy frontend source and build
 COPY src/ ./src/
