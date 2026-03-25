@@ -394,6 +394,7 @@ export default class AutomationsComponent {
   }
 
   deleteRule(id: string) {
+    if (!confirm('Delete this automation rule? This cannot be undone.')) return;
     this.api.delete<any>(`${environment.AUTOMATIONS_DELETE}?id=${id}`).subscribe({
       next: (res) => {
         if (res.success) {

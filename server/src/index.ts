@@ -914,6 +914,7 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
       language: user.language || 'en',
       currency: user.currency || 'INR',
       date_format: user.date_format || 'DD/MM/YYYY',
+      notification_preferences: user.notification_preferences || '{}',
       onboarding_complete: !!user.onboarding_complete,
       created_at: user.created_at,
     },
@@ -924,10 +925,10 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
 app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request, reply) => {
   const parsed = validate(profileUpdateSchema, request.body, reply);
   if (!parsed) return;
-  const { name, phone, brand_name, website_url, goals, competitors, timezone, language, currency, date_format } = parsed;
+  const { name, phone, brand_name, website_url, goals, competitors, timezone, language, currency, date_format, notification_preferences } = parsed;
   const { email, onboarding_complete } = request.body as { email?: string; onboarding_complete?: boolean };
 
-  if (!name && !email && !competitors && !brand_name && !website_url && !goals && !phone && !timezone && !language && !currency && !date_format && onboarding_complete === undefined) {
+  if (!name && !email && !competitors && !brand_name && !website_url && !goals && !phone && !timezone && !language && !currency && !date_format && !notification_preferences && onboarding_complete === undefined) {
     return reply.status(400).send({ success: false, error: 'Provide at least one field to update' });
   }
 
@@ -985,6 +986,10 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   if (date_format) {
     updates.push('date_format = ?');
     values.push(date_format);
+  }
+  if (notification_preferences) {
+    updates.push('notification_preferences = ?');
+    values.push(notification_preferences);
   }
   if (onboarding_complete !== undefined) {
     updates.push('onboarding_complete = ?');

@@ -160,6 +160,7 @@ export const profileUpdateSchema = z.object({
   language: z.string().max(10).optional(),
   currency: z.string().max(10).optional(),
   date_format: z.string().max(20).optional(),
+  notification_preferences: z.string().max(5000).optional(),
 });
 
 /* ------------------------------------------------------------------ */

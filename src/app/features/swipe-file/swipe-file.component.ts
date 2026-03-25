@@ -377,6 +377,7 @@ export default class SwipeFileComponent implements OnInit {
 
   /** Remove a persisted ad from the backend */
   removeAd(ad: SwipeAd) {
+    if (!confirm('Remove this ad from your swipe file?')) return;
     this.api.delete<any>(`${environment.SWIPE_FILE_DELETE}/${ad.id}`).subscribe({
       next: (res) => {
         if (res.success) {

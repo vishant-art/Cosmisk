@@ -174,10 +174,25 @@ export default class AiStudioComponent {
   private adAccountService = inject(AdAccountService);
   private dateRangeService = inject(DateRangeService);
 
-  messages = signal<ChatMessage[]>([]);
+  messages = signal<ChatMessage[]>(this.loadChatHistory());
   typing = signal(false);
   inputText = '';
   suggestedQuestions = SUGGESTED_QUESTIONS;
+
+  private loadChatHistory(): ChatMessage[] {
+    try {
+      const saved = sessionStorage.getItem('cosmisk_chat_history');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved) as ChatMessage[];
+      return parsed.map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+    } catch { return []; }
+  }
+
+  private saveChatHistory() {
+    try {
+      sessionStorage.setItem('cosmisk_chat_history', JSON.stringify(this.messages()));
+    } catch { /* storage full — ignore */ }
+  }
 
   askQuestion(text: string) {
     this.inputText = text;
@@ -203,6 +218,7 @@ export default class AiStudioComponent {
       timestamp: new Date(),
     };
     this.messages.update(msgs => [...msgs, userMsg]);
+    this.saveChatHistory();
     this.inputText = '';
     this.typing.set(true);
     this.scrollToBottom();
@@ -235,6 +251,7 @@ export default class AiStudioComponent {
           timestamp: new Date(),
         };
         this.messages.update(msgs => [...msgs, aiMsg]);
+        this.saveChatHistory();
         this.typing.set(false);
         this.scrollToBottom();
         return throwError(() => err);
@@ -250,6 +267,7 @@ export default class AiStudioComponent {
           table: response.table,
         };
         this.messages.update(msgs => [...msgs, aiMsg]);
+        this.saveChatHistory();
         this.typing.set(false);
         this.scrollToBottom();
       },

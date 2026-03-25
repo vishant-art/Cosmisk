@@ -472,6 +472,7 @@ export default class ContentBankComponent implements OnInit {
   }
 
   deleteContent(id: string) {
+    if (!confirm('Delete this content? This cannot be undone.')) return;
     this.api.delete<any>(`${environment.CONTENT_BANK}/${id}`).subscribe({
       next: () => {
         this.items.update(prev => prev.filter(i => i.id !== id));

@@ -526,6 +526,20 @@ export default class SettingsComponent implements OnInit {
           this.language = p.language || 'en';
           this.currency = p.currency || 'INR';
           this.dateFormat = p.date_format || 'DD/MM/YYYY';
+          // Load notification preferences from server (overrides localStorage)
+          if (p.notification_preferences) {
+            try {
+              const prefs = typeof p.notification_preferences === 'string'
+                ? JSON.parse(p.notification_preferences)
+                : p.notification_preferences;
+              if (Array.isArray(prefs)) {
+                for (const s of prefs) {
+                  const match = this.notificationPrefs.find(np => np.label === s.label);
+                  if (match) { match.email = s.email; match.push = s.push; }
+                }
+              }
+            } catch { /* ignore bad JSON */ }
+          }
         }
       },
       error: () => { /* keep JWT defaults on network failure */ }
@@ -572,6 +586,7 @@ export default class SettingsComponent implements OnInit {
   }
 
   disconnectMeta() {
+    if (!confirm('Disconnect Meta Ads? You will lose access to all ad account data until you reconnect.')) return;
     this.metaOAuth.disconnect();
     this.toast.info('Disconnected', 'Meta Ads account has been disconnected');
     this.adAccountService.loadAccounts();
@@ -604,10 +619,20 @@ export default class SettingsComponent implements OnInit {
   }
 
   saveNotifications() {
-    localStorage.setItem('cosmisk_notification_prefs', JSON.stringify(
-      this.notificationPrefs.map(p => ({ label: p.label, email: p.email, push: p.push }))
-    ));
-    this.toast.success('Saved', 'Notification preferences updated');
+    const prefs = this.notificationPrefs.map(p => ({ label: p.label, email: p.email, push: p.push }));
+    // Persist to server
+    this.api.post<any>(environment.SETTINGS_PROFILE, {
+      notification_preferences: JSON.stringify(prefs),
+    }).subscribe({
+      next: () => {
+        localStorage.setItem('cosmisk_notification_prefs', JSON.stringify(prefs));
+        this.toast.success('Saved', 'Notification preferences updated');
+      },
+      error: () => {
+        localStorage.setItem('cosmisk_notification_prefs', JSON.stringify(prefs));
+        this.toast.success('Saved', 'Preferences saved locally');
+      },
+    });
   }
 
   connectPlatform(name: string) {

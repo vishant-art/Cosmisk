@@ -225,7 +225,7 @@ export default class AutopilotComponent implements OnInit {
 
   markAllRead() {
     this.markingAllRead.set(true);
-    this.api.post(environment.AUTOPILOT_MARK_READ, { all: true }).subscribe({
+    this.api.post(environment.AUTOPILOT_MARK_READ, { mark_all: true }).subscribe({
       next: () => {
         this.alerts.update(alerts => alerts.map(a => ({ ...a, read: true })));
         this.badgeService.refresh();

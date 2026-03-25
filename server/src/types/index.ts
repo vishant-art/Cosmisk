@@ -17,6 +17,7 @@ export interface UserRow {
   language: string | null;
   currency: string | null;
   date_format: string | null;
+  notification_preferences: string | null;
 }
 
 export interface MetaTokenRow {
