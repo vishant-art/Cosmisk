@@ -490,18 +490,16 @@ export default class DashboardComponent implements OnInit {
       });
     }
 
-    // 5. Content bank empty
-    if (creatives.length >= 0) {
-      actions.push({
-        id: 'content',
-        title: 'Generate weekly content',
-        description: '21 pieces of platform-specific content in one click — Instagram, LinkedIn, Twitter.',
-        icon: 'notebook-pen',
-        color: '#8B5CF6',
-        route: '/app/content-bank',
-        priority: 2,
-      });
-    }
+    // 5. Content bank — always suggest (low priority)
+    actions.push({
+      id: 'content',
+      title: 'Generate weekly content',
+      description: '21 pieces of platform-specific content in one click — Instagram, LinkedIn, Twitter.',
+      icon: 'notebook-pen',
+      color: '#8B5CF6',
+      route: '/app/content-bank',
+      priority: 2,
+    });
 
     // 6. High ROAS + low spend = opportunity
     const underSpentWinners = creatives.filter(c => c.metrics.roas >= 3 && c.metrics.spend < k.spend.value * 0.1);
