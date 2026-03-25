@@ -344,7 +344,7 @@ export async function runMorningBriefing(): Promise<number> {
         'briefing',
         `Morning briefing: ${briefing.summary}`,
         JSON.stringify({ sections: briefing.sections.length, actionItems: briefing.actionItems.length }),
-      ).catch(() => {});
+      ).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in morning-briefing'));
 
       // 6. Complete run
       db.prepare(`

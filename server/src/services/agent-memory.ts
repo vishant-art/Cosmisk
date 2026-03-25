@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
+import { logger } from '../utils/logger.js';
 import type {
   AgentType, AgentCoreMemoryRow, AgentEpisodeRow, AgentEntityRow,
 } from '../types/index.js';
@@ -78,7 +79,7 @@ export async function recordEpisode(
         upsertEntity(userId, entity);
       }
     }
-  }).catch(() => {});
+  }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'extractEntities failed in agent-memory'));
 
   return episodeId;
 }

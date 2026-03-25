@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../db/index.js';
 import type { SwipeFileRow } from '../types/index.js';
 import { validate, swipeFileSaveSchema, idParamSchema } from '../validation/schemas.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 export async function swipeFileRoutes(app: FastifyInstance) {
 
@@ -21,9 +22,9 @@ export async function swipeFileRoutes(app: FastifyInstance) {
         id: r.id,
         brand: r.brand,
         thumbnail: r.thumbnail || '',
-        hookDna: JSON.parse(r.hook_dna),
-        visualDna: JSON.parse(r.visual_dna),
-        audioDna: JSON.parse(r.audio_dna),
+        hookDna: safeJsonParse(r.hook_dna, []),
+        visualDna: safeJsonParse(r.visual_dna, []),
+        audioDna: safeJsonParse(r.audio_dna, []),
         notes: r.notes || '',
         sourceUrl: r.source_url || '',
         sourceAdId: r.source_ad_id || '',

@@ -5,6 +5,7 @@ import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import type { MetaTokenRow, AdAccount, TopAd } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -66,11 +67,11 @@ export async function adAccountRoutes(app: FastifyInstance) {
 
       return { success: true, accounts, total: accounts.length };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'ad-accounts/list failed');
       if (err.message?.includes('too many calls') || err.message?.includes('rate') || err.message?.includes('limit')) {
+        logger.error({ err: err.message }, 'ad-accounts/list rate limited');
         return reply.status(429).send({ success: false, error: 'Meta API rate limited. Wait a few minutes and refresh.', accounts: [], total: 0 });
       }
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'ad-accounts/list failed');
     }
   });
 
@@ -163,7 +164,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
         },
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'ad-accounts/kpis failed');
     }
   });
 
@@ -229,7 +230,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
 
       return { success: true, ads };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'ad-accounts/top-ads failed');
     }
   });
 
@@ -302,7 +303,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
 
       return { success: false, video_url: '', error: 'Could not retrieve video source. The app may need pages_read_engagement permission.' };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'ad-accounts/video-source failed');
     }
   });
 
@@ -329,7 +330,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
 
       return { success: true, pages };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'ad-accounts/pages failed');
     }
   });
 }

@@ -8,6 +8,7 @@ import { validate, oauthCodeSchema, googleAdsQuerySchema } from '../validation/s
 import { extractText } from '../utils/claude-helpers.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -104,8 +105,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, accounts: customerIds.map(id => ({ id, customer_id: id })) };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'google-ads/accounts failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'google-ads/accounts failed');
     }
   });
 
@@ -135,8 +135,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, platform: 'google', kpis };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'google-ads/kpis failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'google-ads/kpis failed');
     }
   });
 
@@ -166,8 +165,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       return { success: true, platform: 'google', campaigns };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'google-ads/campaigns failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'google-ads/campaigns failed');
     }
   });
 
@@ -217,8 +215,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
         analysis: extractText(response, 'Analysis unavailable.'),
       };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'google-ads/analyze failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'google-ads/analyze failed');
     }
   });
 

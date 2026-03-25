@@ -11,6 +11,7 @@ import { buildContextWindow, recordEpisode } from './agent-memory.js';
 import { v4 as uuidv4 } from 'uuid';
 import { PLAN_LIMITS } from '../routes/billing.js';
 import type { SubscriptionRow, UserUsageRow } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -206,7 +207,7 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
     await recordEpisode(
       userId, 'sales',
       `Provided sales context. Upsell signals: ${upsellSignals.join('; ') || 'none'}. Churn risks: ${churnRiskSignals.join('; ') || 'none'}`,
-    ).catch(() => {});
+    ).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in sales-agent'));
 
     return context;
 

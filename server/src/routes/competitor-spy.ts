@@ -6,6 +6,7 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
+import { internalError } from '../utils/error-response.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -168,7 +169,7 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
         pages: Array.from(pageMap.values()),
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'competitor-spy/search failed');
     }
   });
 
@@ -216,7 +217,7 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
         sample_ads: sampleAds,
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'competitor-spy/analyze failed');
     }
   });
 }

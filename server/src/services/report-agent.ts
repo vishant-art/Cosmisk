@@ -220,7 +220,7 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
       userId, 'report',
       `Generated weekly report for ${reportData.accountName}. ROAS: ${weekMetrics.roas.toFixed(2)}x, Spend: $${weekMetrics.spend.toFixed(0)}. Top insight: ${(analysis.insights?.[0] || 'none')}`,
       memoryContext,
-    ).catch(() => {});
+    ).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in report-agent'));
 
     // Notify user
     await notifyAlert(userId, {
@@ -229,7 +229,7 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
       content: summary,
       severity: 'info',
       accountId,
-    }).catch(() => {});
+    }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'notifyAlert failed in report-agent'));
 
     logger.info(`[ReportAgent] Completed report for ${reportData.accountName} (${userId})`);
     return runId;

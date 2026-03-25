@@ -524,7 +524,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                   targetName: decision.targetName,
                   suggestedAction: decision.suggestedAction,
                   reasoning: decision.reasoning,
-                }).catch(() => {});
+                }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordDecisionEpisode failed in ad-watchdog'));
               }
 
               const summary = decisions.length > 0

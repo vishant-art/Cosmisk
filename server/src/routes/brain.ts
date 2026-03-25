@@ -7,6 +7,7 @@ import { round, fmt, setCurrency } from '../services/format-helpers.js';
 import { assessConfidence, computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, PatternItem } from '../types/index.js';
 import { validate, accountIdQuerySchema } from '../validation/schemas.js';
+import { internalError } from '../utils/error-response.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -348,7 +349,7 @@ export async function brainRoutes(app: FastifyInstance) {
 
       return { success: true, patterns, brands, brandMetrics };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'brain/patterns failed');
     }
   });
 }

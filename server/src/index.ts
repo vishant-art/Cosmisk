@@ -41,6 +41,7 @@ import type { MetaTokenRow, UserRow } from './types/index.js';
 import { validate, profileUpdateSchema } from './validation/schemas.js';
 import { extractText } from './utils/claude-helpers.js';
 import { logger } from './utils/logger.js';
+import { internalError } from './utils/error-response.js';
 
 const app = Fastify({
   logger: {
@@ -345,7 +346,7 @@ app.get('/creatives/list', { preHandler: [app.authenticate] }, async (request, r
 
     return { success: true, creatives };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'dashboard/creatives failed');
   }
 });
 
@@ -398,7 +399,7 @@ app.get('/dashboard/top-creatives', { preHandler: [app.authenticate] }, async (r
 
     return { success: true, creatives: creatives.slice(0, 6) };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'dashboard/top-creatives failed');
   }
 });
 
@@ -455,7 +456,7 @@ app.get('/creatives/detail', { preHandler: [app.authenticate] }, async (request,
 
     return { success: true, creative: detail };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'creatives/detail failed');
   }
 });
 
@@ -570,7 +571,7 @@ app.post('/creatives/analyze', { preHandler: [app.authenticate] }, async (reques
       },
     };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'creatives/analyze failed');
   }
 });
 
@@ -683,7 +684,7 @@ Return ONLY valid JSON array (no markdown):
 
     return { success: true, dna: results, cached: false, analyzed: analyzed.length };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'creatives/batch-dna failed');
   }
 });
 
@@ -799,7 +800,7 @@ app.get('/creatives/recommendations', { preHandler: [app.authenticate] }, async 
 
     return { success: true, recommendations };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'creatives/recommendations failed');
   }
 });
 
@@ -1095,7 +1096,7 @@ app.get('/brain/compare', { preHandler: [app.authenticate] }, async (request, re
 
     return { success: true, comparison };
   } catch (err: any) {
-    return reply.status(500).send({ success: false, error: err.message });
+    return internalError(reply, err, 'brain/compare failed');
   }
 });
 

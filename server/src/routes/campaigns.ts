@@ -10,6 +10,7 @@ import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, accountIdQuerySchema, campaignIdQuerySchema, campaignLocalCreateSchema, campaignUpdateBodySchema, campaignIdBodySchema } from '../validation/schemas.js';
+import { internalError } from '../utils/error-response.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -293,7 +294,7 @@ export async function campaignRoutes(app: FastifyInstance) {
         },
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'campaigns/launch failed');
     }
   });
 

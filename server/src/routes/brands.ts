@@ -3,6 +3,7 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import type { MetaTokenRow } from '../types/index.js';
+import { internalError } from '../utils/error-response.js';
 
 // In-memory cache for brands list (expires after 5 minutes)
 const brandsCache = new Map<string, { data: any; ts: number }>();
@@ -64,7 +65,7 @@ export async function brandRoutes(app: FastifyInstance) {
       brandsCache.set(userId, { data: result, ts: Date.now() });
       return result;
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'brands/list failed');
     }
   });
 }

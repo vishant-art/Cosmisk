@@ -10,6 +10,7 @@ import type { MetaTokenRow, ReportRow, UserRow } from '../types/index.js';
 import { validate, reportGenerateSchema, reportWeeklySchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../config.js';
 import cron from 'node-cron';
@@ -467,9 +468,9 @@ export async function reportRoutes(app: FastifyInstance) {
       // Still save the report but mark as failed
       db.prepare(
         'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(id, request.user.id, reportName, type, account_id, date_range, 'Failed', JSON.stringify({ error: err.message }));
+      ).run(id, request.user.id, reportName, type, account_id, date_range, 'Failed', JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
 
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'reports/generate failed');
     }
   });
 }

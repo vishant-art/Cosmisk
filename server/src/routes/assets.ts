@@ -5,6 +5,7 @@ import { MetaApiService } from '../services/meta-api.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, assetsQuerySchema, accountIdQuerySchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -86,8 +87,7 @@ export async function assetRoutes(app: FastifyInstance) {
 
       return { success: true, files };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'assets/list failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'assets/list failed');
     }
   });
 
@@ -151,8 +151,7 @@ export async function assetRoutes(app: FastifyInstance) {
 
       return { success: true, folders };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'assets/folders failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'assets/folders failed');
     }
   });
 }

@@ -7,6 +7,7 @@ import { fmt, setCurrency } from '../services/format-helpers.js';
 import { computeTrend, assessConfidence } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, InsightItem } from '../types/index.js';
 import { validate, accountQuerySchema, accountIdQuerySchema } from '../validation/schemas.js';
+import { internalError } from '../utils/error-response.js';
 
 interface CountRow {
   c: number;
@@ -53,7 +54,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
       const chart = parseChartData(data.data || []);
       return { success: true, chart };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'dashboard/chart failed');
     }
   });
 
@@ -266,7 +267,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
       return { success: true, insights };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'dashboard/insights failed');
     }
   });
 
@@ -299,7 +300,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
         recent_projects: [],
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'dashboard/kpis failed');
     }
   });
 }

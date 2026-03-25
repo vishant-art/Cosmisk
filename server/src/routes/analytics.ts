@@ -6,6 +6,7 @@ import { parseCampaignBreakdown, parseAudienceBreakdown, parseInsightMetrics } f
 import { computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, accountQuerySchema } from '../validation/schemas.js';
+import { internalError } from '../utils/error-response.js';
 
 function getUserMetaToken(userId: string): string | null {
   const db = getDb();
@@ -77,7 +78,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
 
       return { success: true, campaignBreakdown, audienceBreakdown };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'analytics/full failed');
     }
   });
 }

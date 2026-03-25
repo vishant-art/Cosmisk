@@ -11,6 +11,7 @@ import { runAutomations } from '../services/automation-engine.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, automationCreateSchema, automationUpdateSchema, idParamSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -445,7 +446,7 @@ export async function automationRoutes(app: FastifyInstance) {
       const count = await runAutomations();
       return { success: true, executed: count, message: `${count} automation actions executed` };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'automations/run failed');
     }
   });
 

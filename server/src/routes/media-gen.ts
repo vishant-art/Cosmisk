@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { validate, imageGenerateSchema, videoGenerateSchema } from '../validation/schemas.js';
 import { safeJson } from '../utils/safe-fetch.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 /* ------------------------------------------------------------------ */
 /*  Media Generation Routes                                            */
@@ -63,8 +64,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         generation_id: result.id || result.generation_id || null,
       };
     } catch (err: any) {
-      logger.error({ err }, 'Image generation error');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'media/generate-image failed');
     }
   });
 
@@ -119,8 +119,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         message: 'Video is being generated. Poll /media/video-status for updates.',
       };
     } catch (err: any) {
-      logger.error({ err }, 'Video generation error');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'media/generate-video failed');
     }
   });
 
@@ -157,7 +156,7 @@ export async function mediaGenRoutes(app: FastifyInstance) {
         progress: result.progress || null,
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'media/video-status failed');
     }
   });
 }

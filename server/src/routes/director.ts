@@ -8,6 +8,7 @@ import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import type { MetaTokenRow } from '../types/index.js';
 import { validate, directorBriefSchema, directorLaunchSchema, directorUpdateStatusSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 /** Shape of the targeting config passed in a director launch request */
 interface TargetingConfig {
@@ -463,8 +464,7 @@ export async function directorRoutes(app: FastifyInstance) {
           : `${published} ad${published !== 1 ? 's' : ''} now ACTIVE and delivering.`,
       };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'director/auto-publish failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'director/auto-publish failed');
     }
   });
 
@@ -494,8 +494,7 @@ export async function directorRoutes(app: FastifyInstance) {
 
       return { success: true, campaign_id, status };
     } catch (err: any) {
-      logger.error({ err: err.message }, 'director/update-status failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'director/update-status failed');
     }
   });
 }

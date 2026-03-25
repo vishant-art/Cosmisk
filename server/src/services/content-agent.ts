@@ -184,7 +184,7 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
         targetName: rec.format,
         suggestedAction: `Create ${rec.format} with hooks: ${rec.hookPatterns.join(', ')}`,
         reasoning: rec.rationale,
-      }).catch(() => {});
+      }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordDecisionEpisode failed in content-agent'));
     }
 
     // Update agent run
@@ -201,7 +201,7 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
       userId, 'content',
       `Generated content brief for ${fullBrief.accountName}. Recommended: ${formatNames}. Avoid: ${fullBrief.avoidFormats.map(f => f.format).join(', ')}. Theme: ${fullBrief.weeklyTheme}`,
       memoryContext,
-    ).catch(() => {});
+    ).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in content-agent'));
 
     // Notify
     await notifyAlert(userId, {
@@ -210,7 +210,7 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
       content: summary,
       severity: 'info',
       accountId,
-    }).catch(() => {});
+    }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'notifyAlert failed in content-agent'));
 
     logger.info(`[ContentAgent] Completed brief for ${fullBrief.accountName} (${userId})`);
     return runId;

@@ -6,9 +6,11 @@ import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow, MetaTokenRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
+import { internalError } from '../utils/error-response.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -194,8 +196,8 @@ export async function contentRoutes(app: FastifyInstance) {
         top_performers: topAssets.map((a) => ({
           format: a.format,
           predicted_score: a.predicted_score,
-          dna_tags: a.dna_tags ? JSON.parse(a.dna_tags) : null,
-          actual_metrics: a.actual_metrics ? JSON.parse(a.actual_metrics) : null,
+          dna_tags: safeJsonParse(a.dna_tags, null),
+          actual_metrics: safeJsonParse(a.actual_metrics, null),
         })),
       },
     };
@@ -252,8 +254,8 @@ ${transcript ? `\nTRANSCRIPT FROM SCREEN RECORDING:\n${transcript.slice(0, 3000)
     const userName = userProfile?.name || 'the user';
     const brandName = userProfile?.brand_name || 'their brand';
     const websiteUrl = userProfile?.website_url ? `\n- Website: ${userProfile.website_url}` : '';
-    const userGoals = userProfile?.goals ? `\n- Goals: ${JSON.parse(userProfile.goals).join(', ')}` : '';
-    const userCompetitors = userProfile?.competitors ? `\n- Competitors: ${JSON.parse(userProfile.competitors).join(', ')}` : '';
+    const userGoals = userProfile?.goals ? `\n- Goals: ${safeJsonParse(userProfile.goals, []).join(', ')}` : '';
+    const userCompetitors = userProfile?.competitors ? `\n- Competitors: ${safeJsonParse(userProfile.competitors, []).join(', ')}` : '';
 
     const toneInstruction = contentTone === 'technical'
       ? 'Technical, specific, show-don\'t-tell. Include code snippets or system design details.'
@@ -347,7 +349,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
       return { success: true, raw_content: text };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'content/generate failed');
     }
   });
 
@@ -557,8 +559,8 @@ COSMISK WEEKLY DATA:
     const userName = userProfile?.name || 'the user';
     const brandName = userProfile?.brand_name || 'their brand';
     const websiteUrl = userProfile?.website_url ? `\n- Website: ${userProfile.website_url}` : '';
-    const userGoals = userProfile?.goals ? JSON.parse(userProfile.goals) as string[] : [];
-    const userCompetitors = userProfile?.competitors ? `\n- Competitors: ${JSON.parse(userProfile.competitors).join(', ')}` : '';
+    const userGoals = safeJsonParse(userProfile?.goals, [] as string[]);
+    const userCompetitors = userProfile?.competitors ? `\n- Competitors: ${safeJsonParse(userProfile.competitors, []).join(', ')}` : '';
     const contentPillars = userGoals.length > 0
       ? userGoals.join(', ')
       : 'Industry Insights, Client Results, Lessons Learned, Behind the Scenes, Product Updates';
@@ -678,7 +680,7 @@ OUTPUT — respond with ONLY valid JSON:
         weekly_content: weeklyContent,
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'content/trigger-weekly failed');
     }
   });
 }

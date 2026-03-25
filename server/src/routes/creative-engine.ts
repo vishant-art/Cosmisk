@@ -17,6 +17,8 @@ import { searchAdLibrary } from './competitor-spy.js';
 import { analyzeTopAdVisuals, buildVisualSummary, selectAdsForAnalysis } from '../services/visual-analyzer.js';
 import type { VideoDNA } from '../services/creative-patterns.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 
 /* ------------------------------------------------------------------ */
 /*  Local query-result interfaces (only fields actually accessed)      */
@@ -273,7 +275,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         },
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'creative-engine/analyze failed');
     }
   });
 
@@ -311,7 +313,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         // Auto-fetch if user has competitors configured
         const db = getDb();
         const user = db.prepare('SELECT competitors FROM users WHERE id = ?').get(request.user.id) as { competitors?: string } | undefined;
-        const competitors = user?.competitors ? JSON.parse(user.competitors) : [];
+        const competitors = safeJsonParse(user?.competitors, []);
         if (competitors.length > 0) {
           try {
             const compAds = await searchAdLibrary(competitors[0], preferences?.country || 'IN', 10);
@@ -389,7 +391,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         days_active: a.published_at
           ? Math.max(1, Math.floor((Date.now() - new Date(a.published_at).getTime()) / 86400000))
           : 30,
-        dna_tags: a.dna_tags ? JSON.parse(a.dna_tags) : undefined,
+        dna_tags: safeJsonParse(a.dna_tags, undefined) as { hook: string[]; visual: string[]; audio: string[] } | undefined,
       }));
 
       const platform = preferences?.platform || 'meta';
@@ -458,7 +460,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         },
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'creative-engine/plan failed');
     }
   });
 
@@ -473,7 +475,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       success: true,
       sprints: sprints.map(s => ({
         ...s,
-        plan: s.plan ? JSON.parse(s.plan) : null,
+        plan: safeJsonParse(s.plan, null),
       })),
     };
   });
@@ -503,18 +505,18 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       success: true,
       sprint: {
         ...sprint,
-        plan: sprint.plan ? JSON.parse(sprint.plan) : null,
-        learn_snapshot: sprint.learn_snapshot ? JSON.parse(sprint.learn_snapshot) : null,
+        plan: safeJsonParse(sprint.plan, null),
+        learn_snapshot: safeJsonParse(sprint.learn_snapshot, null),
       },
       jobs: jobs.map(j => ({
         ...j,
-        script: j.script ? JSON.parse(j.script) : null,
-        dna_tags: j.dna_tags ? JSON.parse(j.dna_tags) : null,
+        script: safeJsonParse(j.script, null),
+        dna_tags: safeJsonParse(j.dna_tags, null),
       })),
       assets: assets.map(a => ({
         ...a,
-        dna_tags: a.dna_tags ? JSON.parse(a.dna_tags) : null,
-        actual_metrics: a.actual_metrics ? JSON.parse(a.actual_metrics) : null,
+        dna_tags: safeJsonParse(a.dna_tags, []),
+        actual_metrics: safeJsonParse(a.actual_metrics, {}),
       })),
     };
   });
@@ -535,7 +537,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: `Sprint is in "${sprint.status}" state, cannot approve` });
     }
 
-    const plan = sprint.plan ? JSON.parse(sprint.plan) : null;
+    const plan = safeJsonParse<{ items: { format: string; count: number }[] } | null>(sprint.plan, null);
     if (!plan?.items?.length) {
       return reply.status(400).send({ success: false, error: 'Sprint has no plan items' });
     }
@@ -639,8 +641,8 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         output_url: j.output_url,
         output_thumbnail: j.output_thumbnail,
         predicted_score: j.predicted_score,
-        dna_tags: j.dna_tags ? JSON.parse(j.dna_tags) : null,
-        script: j.script ? JSON.parse(j.script) : null,
+        dna_tags: safeJsonParse(j.dna_tags, null),
+        script: safeJsonParse(j.script, null),
         cost_cents: j.cost_cents,
       })),
     };
@@ -710,7 +712,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const snapshot = sprint.learn_snapshot ? JSON.parse(sprint.learn_snapshot) : { topAds: [], benchmarks: {}, formatBreakdown: {}, fatigueSignals: [] };
+    const snapshot = JSON.parse(sprint.learn_snapshot || '{"topAds":[],"benchmarks":{"avgRoas":0,"avgCtr":0,"avgCpa":0,"avgSpend":0,"totalSpend":0},"formatBreakdown":{},"fatigueSignals":[]}');
 
     // Get pending jobs that need scripts
     const pendingJobs = db.prepare(
@@ -981,7 +983,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         status: publishStatus,
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'creative-engine/sprint/:id/publish failed');
     }
   });
 
@@ -1345,10 +1347,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       let totalSpend = 0;
       if (assetsWithMetrics.length > 0) {
         for (const a of assetsWithMetrics) {
-          const m = JSON.parse(a.actual_metrics);
-          avgRoas += m.roas || 0;
-          avgCtr += m.ctr || 0;
-          totalSpend += m.spend || 0;
+          const m = safeJsonParse(a.actual_metrics, {}) as Record<string, number>;
+          avgRoas += m['roas'] || 0;
+          avgCtr += m['ctr'] || 0;
+          totalSpend += m['spend'] || 0;
         }
         avgRoas /= assetsWithMetrics.length;
         avgCtr /= assetsWithMetrics.length;
@@ -1411,10 +1413,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     if (predictionData.length >= 3) {
       // Compare predicted scores against actual ROAS ranking
       const scored = predictionData.map((d: PredictionRow) => {
-        const metrics = JSON.parse(d.actual_metrics);
+        const metrics = safeJsonParse(d.actual_metrics, {}) as Record<string, number>;
         return {
           predicted: d.predicted_score,
-          actual_roas: (metrics.roas as number) || 0,
+          actual_roas: (metrics['roas'] as number) || 0,
         };
       });
 
@@ -1450,12 +1452,12 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
     const dnaPatterns: Record<string, { count: number; avgRoas: number }> = {};
     for (const row of topDna) {
-      const tags = JSON.parse(row.dna_tags);
-      const metrics = JSON.parse(row.actual_metrics);
-      const hookKey = (tags.hook || []).join('+') || 'unknown';
+      const tags = safeJsonParse(row.dna_tags, {}) as Record<string, string[]>;
+      const metrics = safeJsonParse(row.actual_metrics, {}) as Record<string, number>;
+      const hookKey = (tags['hook'] || []).join('+') || 'unknown';
       if (!dnaPatterns[hookKey]) dnaPatterns[hookKey] = { count: 0, avgRoas: 0 };
       dnaPatterns[hookKey].count++;
-      dnaPatterns[hookKey].avgRoas += metrics.roas || 0;
+      dnaPatterns[hookKey].avgRoas += metrics['roas'] || 0;
     }
     const winningDna = Object.entries(dnaPatterns)
       .map(([combo, data]) => ({
@@ -1496,14 +1498,15 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Store edits in dna_tags as metadata (keeps original asset intact)
-    const currentTags = asset.dna_tags ? JSON.parse(asset.dna_tags) : {};
+    const currentTags = safeJsonParse<Record<string, unknown>>(asset.dna_tags, {});
+    const prevEdits = (currentTags['_edits'] || {}) as Record<string, unknown>;
     const edits = {
       ...currentTags,
       _edits: {
-        headline: headline || currentTags._edits?.headline,
-        cta_text: cta_text || currentTags._edits?.cta_text,
-        hook_text: hook_text || currentTags._edits?.hook_text,
-        notes: notes || currentTags._edits?.notes,
+        headline: headline || prevEdits['headline'],
+        cta_text: cta_text || prevEdits['cta_text'],
+        hook_text: hook_text || prevEdits['hook_text'],
+        notes: notes || prevEdits['notes'],
         edited_at: new Date().toISOString(),
       },
     };

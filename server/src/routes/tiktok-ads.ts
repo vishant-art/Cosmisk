@@ -6,6 +6,7 @@ import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
 import { validate, oauthCodeSchema, tiktokAdsQuerySchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 import Anthropic from '@anthropic-ai/sdk';
+import { internalError } from '../utils/error-response.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -178,7 +179,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
         },
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'tiktok-ads/kpis failed');
     }
   });
 
@@ -216,7 +217,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
       return { success: true, platform: 'tiktok', campaigns };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'tiktok-ads/campaigns failed');
     }
   });
 
@@ -281,7 +282,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
         analysis: extractText(response, 'Analysis unavailable.'),
       };
     } catch (err: any) {
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'tiktok-ads/analyze failed');
     }
   });
 

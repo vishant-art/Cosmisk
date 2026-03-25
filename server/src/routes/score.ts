@@ -4,6 +4,7 @@ import { validate, creativeScoreSchema, batchScoreSchema } from '../validation/s
 import { extractText } from '../utils/claude-helpers.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { internalError } from '../utils/error-response.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -155,8 +156,7 @@ Provide a detailed Cosmisk Score analysis.`;
 
       return reply.status(500).send({ success: false, error: 'Analysis failed to parse' });
     } catch (err: any) {
-      logger.error({ err: err.message }, 'score/analyze failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'score/analyze failed');
     }
   });
 
@@ -236,8 +236,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
       return reply.status(500).send({ success: false, error: 'Batch analysis failed to parse' });
     } catch (err: any) {
-      logger.error({ err: err.message }, 'score/batch failed');
-      return reply.status(500).send({ success: false, error: err.message });
+      return internalError(reply, err, 'score/batch failed');
     }
   });
 }
