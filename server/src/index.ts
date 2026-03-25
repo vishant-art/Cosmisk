@@ -242,8 +242,25 @@ if (!existsSync(audioDir)) mkdirSync(audioDir, { recursive: true });
 await app.register(fastifyStatic, {
   root: audioDir,
   prefix: '/audio/',
-  decorateReply: false,
 });
+
+// Serve Angular frontend in production (when built into ../public)
+const frontendDir = join(__dirname_index, '../public');
+if (config.nodeEnv === 'production' && existsSync(frontendDir)) {
+  await app.register(fastifyStatic, {
+    root: frontendDir,
+    prefix: '/',
+    decorateReply: false,
+    wildcard: false,
+  });
+
+  // SPA fallback: serve index.html for unmatched routes (Angular routing)
+  app.setNotFoundHandler(async (_request, reply) => {
+    return reply.sendFile('index.html', frontendDir);
+  });
+
+  logger.info({ path: frontendDir }, 'Serving frontend static files');
+}
 
 // --- Creatives & Dashboard Top-Creatives: real Meta-backed implementations ---
 
