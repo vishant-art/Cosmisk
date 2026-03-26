@@ -3,6 +3,7 @@ import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
+import { computeTrend } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, AdAccount, TopAd } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
@@ -307,6 +308,192 @@ export async function adAccountRoutes(app: FastifyInstance) {
     }
   });
 
+  // GET /ad-accounts/portfolio-health — health scores for all accounts
+  const portfolioCache = new Map<string, { data: any; ts: number }>();
+  const PORTFOLIO_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+  app.get('/portfolio-health', { preHandler: [app.authenticate] }, async (request, reply) => {
+    try {
+      const userId = request.user.id;
+
+      // Check cache
+      const cached = portfolioCache.get(userId);
+      if (cached && Date.now() - cached.ts < PORTFOLIO_CACHE_TTL) {
+        return cached.data;
+      }
+
+      const token = getUserMetaToken(userId);
+      if (!token) {
+        return reply.status(200).send({ success: true, portfolio: null, accounts: [], meta_connected: false });
+      }
+      const meta = new MetaApiService(token);
+
+      // Get all ad accounts (reuse accountsCache)
+      let rawAccounts: any[];
+      const accCached = accountsCache.get(userId);
+      if (accCached && Date.now() - accCached.ts < CACHE_TTL) {
+        rawAccounts = accCached.data;
+      } else {
+        rawAccounts = await meta.getAllPages<any>('/me/adaccounts', {
+          fields: 'name,account_id,business_name,account_status,currency',
+          limit: '500',
+        });
+        accountsCache.set(userId, { data: rawAccounts, ts: Date.now() });
+      }
+
+      // Only process active accounts
+      const activeAccounts = rawAccounts.filter((a: any) => a.account_status === 1);
+
+      // Batch SQLite queries
+      const db = getDb();
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+
+      const sprintRows = db.prepare(`
+        SELECT account_id, MAX(created_at) as latest_sprint,
+          COUNT(*) as total_sprints,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_sprints
+        FROM creative_sprints WHERE account_id IS NOT NULL
+        GROUP BY account_id
+      `).all() as any[];
+
+      const alertRows = db.prepare(`
+        SELECT account_id, COUNT(*) as alert_count,
+          MAX(CASE WHEN severity = 'critical' THEN 4 WHEN severity = 'high' THEN 3 WHEN severity = 'medium' THEN 2 ELSE 1 END) as max_severity
+        FROM autopilot_alerts WHERE created_at >= ? AND account_id IS NOT NULL
+        GROUP BY account_id
+      `).all(sevenDaysAgo) as any[];
+
+      const decisionRows = db.prepare(`
+        SELECT account_id, COUNT(*) as pending_count
+        FROM agent_decisions WHERE status = 'pending' AND account_id IS NOT NULL
+        GROUP BY account_id
+      `).all() as any[];
+
+      // Index by account_id
+      const sprintMap = new Map(sprintRows.map((r: any) => [r.account_id, r]));
+      const alertMap = new Map(alertRows.map((r: any) => [r.account_id, r]));
+      const decisionMap = new Map(decisionRows.map((r: any) => [r.account_id, r]));
+
+      // Fetch insights in parallel (max 5 concurrent)
+      const CONCURRENCY = 5;
+      const accountResults: any[] = [];
+
+      for (let i = 0; i < activeAccounts.length; i += CONCURRENCY) {
+        const batch = activeAccounts.slice(i, i + CONCURRENCY);
+        const results = await Promise.allSettled(
+          batch.map(async (acc: any) => {
+            const accountId = acc.id; // "act_XXX"
+
+            // Fetch aggregate + daily insights in parallel
+            const [aggregateRes, dailyRes] = await Promise.allSettled([
+              meta.get<any>(`/${accountId}/insights`, {
+                fields: 'spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas',
+                date_preset: 'last_7d',
+                level: 'account',
+              }),
+              meta.get<any>(`/${accountId}/insights`, {
+                fields: 'spend,impressions,clicks,ctr,cpc,actions,action_values,purchase_roas',
+                date_preset: 'last_7d',
+                time_increment: '1',
+                level: 'account',
+              }),
+            ]);
+
+            const aggregateRow = aggregateRes.status === 'fulfilled' ? aggregateRes.value.data?.[0] : null;
+            const dailyRows = dailyRes.status === 'fulfilled' ? dailyRes.value.data || [] : [];
+
+            if (!aggregateRow) {
+              return {
+                accountId, accountName: acc.name || 'Unnamed', businessName: acc.business_name || '',
+                currency: acc.currency || 'USD',
+                spend: 0, revenue: 0, roas: 0, cpa: 0, ctr: 0, conversions: 0,
+                roasTrend: { direction: 'stable', pctChange: 0, label: 'No data' },
+                cpaTrend: { direction: 'stable', pctChange: 0, label: 'No data' },
+                spendTrend: { direction: 'stable', pctChange: 0, label: 'No data' },
+                healthScore: 0, healthGrade: 'red' as const, healthFactors: {},
+                healthSummary: 'No insights data available',
+                daysSinceNewCreative: null, recentAlertCount: 0, pendingDecisions: 0,
+              };
+            }
+
+            const metrics = parseInsightMetrics(aggregateRow);
+            const dailyMetrics = dailyRows.map((d: any) => parseInsightMetrics(d));
+
+            // Compute trends from daily data
+            const roasTrend = computeTrend(dailyMetrics.map((m: any) => m.roas));
+            const cpaTrend = computeTrend(dailyMetrics.map((m: any) => m.cpa));
+            const spendTrend = computeTrend(dailyMetrics.map((m: any) => m.spend));
+
+            // SQLite supplementary data
+            const sprintData = sprintMap.get(acc.account_id) || sprintMap.get(accountId);
+            const alertData = alertMap.get(acc.account_id) || alertMap.get(accountId);
+            const decisionData = decisionMap.get(acc.account_id) || decisionMap.get(accountId);
+
+            let daysSinceNewCreative: number | null = null;
+            let completionRate = -1;
+            if (sprintData) {
+              daysSinceNewCreative = Math.floor((Date.now() - new Date(sprintData.latest_sprint).getTime()) / 86400000);
+              completionRate = sprintData.total_sprints > 0 ? (sprintData.completed_sprints / sprintData.total_sprints) * 100 : 0;
+            }
+
+            const recentAlertCount = alertData?.alert_count ?? 0;
+            const maxSeverity = alertData?.max_severity ?? 0;
+            const pendingDecisions = decisionData?.pending_count ?? 0;
+
+            // Compute health score
+            const factors = computeHealthFactors(metrics, roasTrend, cpaTrend, spendTrend, daysSinceNewCreative, completionRate, maxSeverity, recentAlertCount, pendingDecisions);
+            const healthScore = factors.roasScore + factors.cpaScore + factors.budgetPacingScore + factors.creativeFreshnessScore + factors.pipelineHealthScore + factors.alertSeverityScore;
+            const healthGrade = healthScore >= 80 ? 'green' : healthScore >= 50 ? 'yellow' : 'red';
+            const healthSummary = buildHealthSummary(factors, metrics, roasTrend, cpaTrend, daysSinceNewCreative);
+
+            return {
+              accountId, accountName: acc.name || 'Unnamed', businessName: acc.business_name || '',
+              currency: acc.currency || 'USD',
+              spend: round(metrics.spend, 2), revenue: round(metrics.revenue, 2),
+              roas: round(metrics.roas, 2), cpa: round(metrics.cpa, 2),
+              ctr: round(metrics.ctr, 2), conversions: metrics.conversions,
+              roasTrend, cpaTrend, spendTrend,
+              healthScore, healthGrade, healthFactors: factors,
+              healthSummary, daysSinceNewCreative, recentAlertCount, pendingDecisions,
+            };
+          })
+        );
+
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            accountResults.push(r.value);
+          }
+        }
+      }
+
+      // Portfolio summary
+      const totalSpend = accountResults.reduce((s, a) => s + a.spend, 0);
+      const totalRevenue = accountResults.reduce((s, a) => s + a.revenue, 0);
+      const validRoas = accountResults.filter(a => a.spend > 0);
+      const avgRoas = validRoas.length > 0 ? round(validRoas.reduce((s, a) => s + a.roas, 0) / validRoas.length, 2) : 0;
+      const avgHealthScore = accountResults.length > 0 ? Math.round(accountResults.reduce((s, a) => s + a.healthScore, 0) / accountResults.length) : 0;
+      const needsAttention = accountResults.filter(a => a.healthGrade === 'red').length;
+
+      const response = {
+        success: true,
+        portfolio: {
+          totalSpend: round(totalSpend, 2), totalRevenue: round(totalRevenue, 2),
+          avgRoas, totalAccounts: accountResults.length, needsAttention, avgHealthScore,
+        },
+        accounts: accountResults,
+      };
+
+      portfolioCache.set(userId, { data: response, ts: Date.now() });
+      return response;
+    } catch (err: any) {
+      if (err.message?.includes('too many calls') || err.message?.includes('rate') || err.message?.includes('limit')) {
+        logger.error({ err: err.message }, 'portfolio-health rate limited');
+        return reply.status(429).send({ success: false, error: 'Meta API rate limited. Wait a few minutes and refresh.' });
+      }
+      return internalError(reply, err, 'ad-accounts/portfolio-health failed');
+    }
+  });
+
   // GET /ad-accounts/pages — list Facebook Pages the user manages
   app.get('/pages', { preHandler: [app.authenticate] }, async (request, reply) => {
     try {
@@ -351,4 +538,92 @@ function getPreviousPreset(preset: string): string {
 function round(value: number, decimals: number): number {
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
+}
+
+function computeHealthFactors(
+  metrics: any, roasTrend: any, cpaTrend: any, spendTrend: any,
+  daysSinceNewCreative: number | null, completionRate: number,
+  maxSeverity: number, recentAlertCount: number, pendingDecisions: number,
+) {
+  // ROAS Health (0-25)
+  let roasScore = 0;
+  if (metrics.roas >= 3) roasScore = 20;
+  else if (metrics.roas >= 2) roasScore = 15;
+  else if (metrics.roas >= 1) roasScore = 10;
+  else if (metrics.roas > 0) roasScore = 5;
+  if (roasTrend.direction === 'improving') roasScore = Math.min(25, roasScore + 5);
+  else if (roasTrend.direction === 'declining') roasScore = Math.max(0, roasScore - 5);
+
+  // CPA Health (0-20)
+  let cpaScore = 0;
+  if (metrics.conversions > 0) {
+    cpaScore = 15;
+    if (cpaTrend.direction === 'declining') cpaScore = 20; // declining CPA = improving
+    else if (cpaTrend.direction === 'improving') cpaScore = 10; // improving CPA = worsening
+  } else {
+    cpaScore = 5;
+  }
+
+  // Budget Pacing (0-15)
+  let budgetPacingScore = 0;
+  if (metrics.spend > 0) {
+    if (spendTrend.direction === 'stable' || spendTrend.direction === 'improving') budgetPacingScore = 15;
+    else budgetPacingScore = 10;
+  }
+
+  // Creative Freshness (0-20)
+  let creativeFreshnessScore = 10; // default when no data
+  if (daysSinceNewCreative !== null) {
+    if (daysSinceNewCreative <= 7) creativeFreshnessScore = 20;
+    else if (daysSinceNewCreative <= 14) creativeFreshnessScore = 15;
+    else if (daysSinceNewCreative <= 30) creativeFreshnessScore = 10;
+    else if (daysSinceNewCreative <= 60) creativeFreshnessScore = 5;
+    else creativeFreshnessScore = 0;
+  }
+
+  // Pipeline Health (0-10)
+  let pipelineHealthScore = 5; // default
+  if (completionRate >= 0) {
+    if (completionRate >= 80) pipelineHealthScore = 10;
+    else if (completionRate >= 50) pipelineHealthScore = 7;
+    else pipelineHealthScore = 3;
+  }
+
+  // Alert Severity (0-10)
+  let alertSeverityScore = 10;
+  if (maxSeverity >= 4) alertSeverityScore = 0; // critical
+  else if (maxSeverity >= 3) alertSeverityScore = 3; // high
+  else if (maxSeverity >= 2) alertSeverityScore = 6; // medium
+  else if (recentAlertCount > 0) alertSeverityScore = 8; // low
+  if (pendingDecisions > 3) alertSeverityScore = Math.max(0, alertSeverityScore - 3);
+
+  return { roasScore, cpaScore, budgetPacingScore, creativeFreshnessScore, pipelineHealthScore, alertSeverityScore };
+}
+
+function buildHealthSummary(
+  factors: any, metrics: any, roasTrend: any, cpaTrend: any, daysSinceNewCreative: number | null,
+): string {
+  const issues: string[] = [];
+
+  if (metrics.spend > 0 && metrics.roas === 0) {
+    issues.push('spending with no tracked revenue');
+  } else if (factors.roasScore < 15 && metrics.roas > 0) {
+    const dir = roasTrend.direction === 'declining' ? `declining ${Math.round(Math.abs(roasTrend.pctChange))}%` : `at ${metrics.roas.toFixed(1)}x`;
+    issues.push(`ROAS ${dir}`);
+  }
+  if (factors.cpaScore < 15 && metrics.conversions > 0) {
+    issues.push(`CPA ${cpaTrend.direction === 'improving' ? 'rising' : 'unstable'}`);
+  }
+  if (factors.creativeFreshnessScore <= 5 && daysSinceNewCreative !== null) {
+    issues.push(`no new creatives in ${daysSinceNewCreative}d`);
+  }
+  if (factors.budgetPacingScore < 10) {
+    issues.push('spend declining');
+  }
+  if (factors.alertSeverityScore < 5) {
+    issues.push('critical alerts pending');
+  }
+
+  if (issues.length === 0) return 'All metrics healthy';
+  return issues.join(', ');
 }

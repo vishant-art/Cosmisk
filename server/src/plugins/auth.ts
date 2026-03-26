@@ -2,7 +2,7 @@ import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
-import '../types/fastify-jwt.js';
+// Type augmentation loaded via tsconfig includes
 
 async function auth(app: FastifyInstance) {
   await app.register(jwt, {
