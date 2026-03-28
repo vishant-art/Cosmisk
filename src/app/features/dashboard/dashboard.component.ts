@@ -594,7 +594,6 @@ export default class DashboardComponent implements OnInit {
     this.aiService.getBriefing().subscribe({
       next: (res) => {
         if (res.briefing?.content) {
-          // Extract first 2 meaningful lines for the summary
           const lines = res.briefing.content
             .split('\n')
             .map(l => l.trim())
@@ -603,7 +602,17 @@ export default class DashboardComponent implements OnInit {
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .substring(0, 300);
           if (summary) this.briefingSummary.set(summary);
+        } else {
+          // Fallback briefing so dashboard never looks bare
+          this.briefingSummary.set(
+            'Your AI strategist is monitoring your ad accounts. <strong>Press Cmd+K</strong> to ask a question or check the <strong>AI Studio</strong> for a full strategic briefing.'
+          );
         }
+      },
+      error: () => {
+        this.briefingSummary.set(
+          'Your AI strategist is ready. <strong>Press Cmd+K</strong> to ask anything about your ad performance.'
+        );
       },
     });
   }

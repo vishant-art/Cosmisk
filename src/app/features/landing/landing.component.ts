@@ -394,7 +394,7 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <!-- ============================================================ -->
     <section class="py-16 bg-white border-t border-b border-gray-200 overflow-hidden">
       <div class="max-w-5xl mx-auto px-6 text-center mb-8">
-        <p class="text-xs text-gray-400 font-body font-medium uppercase tracking-[0.2em] mb-0">Built for India's fastest-growing D2C brands and agencies</p>
+        <p class="text-xs text-gray-400 font-body font-medium uppercase tracking-[0.2em] mb-0">Built for brands and agencies in these categories</p>
       </div>
       <div class="marquee-track">
         @for (logo of marqueeLogos; track $index) {
@@ -944,17 +944,17 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <!-- ============================================================ -->
     <section class="py-20 bg-dark-mesh">
       <div class="max-w-7xl mx-auto px-6 text-center mb-12">
-        <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">RESULTS</span>
-        <h2 class="text-page-title font-display text-white mb-4">Real Impact, Real Numbers</h2>
+        <span class="font-mono text-xs font-bold uppercase tracking-[0.2em] text-accent mb-4 block">CAPABILITIES</span>
+        <h2 class="text-page-title font-display text-white mb-4">What Your AI Strategist Delivers</h2>
       </div>
       <div id="kpi-demo" class="max-w-5xl mx-auto px-6 grid md:grid-cols-3 gap-6">
-        <!-- KPI Card 1: ROAS -->
+        <!-- KPI Card 1: Watchdog Runs -->
         @if (kpiCardCount() >= 1) {
           <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center kpi-card-in kpi-glow" style="animation-delay: 0ms">
-            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[0] }}x</p>
-            <p class="text-sm text-gray-400 font-body mb-3">Average ROAS improvement</p>
-            <div class="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-pill change-pulse">
-              <span class="text-[10px] text-green-400 font-mono font-bold">+128%</span>
+            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[0] }}</p>
+            <p class="text-sm text-gray-400 font-body mb-3">Autonomous agent runs completed</p>
+            <div class="inline-flex items-center gap-1 px-2 py-1 bg-accent/10 border border-accent/20 rounded-pill change-pulse">
+              <span class="text-[10px] text-accent font-mono font-bold">Live &amp; running</span>
             </div>
             <div class="flex justify-center mt-3 sparkline" style="height: 24px">
               @for (h of [4, 7, 5, 10, 8, 14, 12, 18, 16, 22]; track $index) {
@@ -963,28 +963,28 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
             </div>
           </div>
         }
-        <!-- KPI Card 2: CPA Saved -->
+        <!-- KPI Card 2: Brands Connected -->
         @if (kpiCardCount() >= 2) {
           <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center kpi-card-in kpi-glow" style="animation-delay: 200ms">
-            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[1] }}%</p>
-            <p class="text-sm text-gray-400 font-body mb-3">CPA reduction</p>
+            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[1] }}</p>
+            <p class="text-sm text-gray-400 font-body mb-3">Ad accounts analyzed</p>
             <div class="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-pill change-pulse">
-              <span class="text-[10px] text-green-400 font-mono font-bold">-32%</span>
+              <span class="text-[10px] text-green-400 font-mono font-bold">Cross-brand intelligence</span>
             </div>
             <div class="flex justify-center mt-3 sparkline" style="height: 24px">
-              @for (h of [20, 18, 16, 14, 12, 10, 9, 8, 7, 6]; track $index) {
+              @for (h of [6, 8, 10, 12, 14, 16, 18, 19, 20, 22]; track $index) {
                 <div class="sparkline-bar" [class.bar-grow]="kpiBarsGrown()" [style.height.px]="h" [style.animation-delay]="($index * 40) + 'ms'" style="width: 4px; margin: 0 1px; background: #22C55E;"></div>
               }
             </div>
           </div>
         }
-        <!-- KPI Card 3: Revenue -->
+        <!-- KPI Card 3: DNA Patterns -->
         @if (kpiCardCount() >= 3) {
           <div class="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-8 text-center kpi-card-in kpi-glow" style="animation-delay: 400ms">
-            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">&#8377;{{ kpiCountValues()[2] }}L</p>
-            <p class="text-sm text-gray-400 font-body mb-3">Revenue attributed</p>
-            <div class="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-pill change-pulse">
-              <span class="text-[10px] text-green-400 font-mono font-bold">+84%</span>
+            <p class="text-4xl font-mono font-bold text-white mb-2 metric-glow">{{ kpiCountValues()[2] }}+</p>
+            <p class="text-sm text-gray-400 font-body mb-3">Creative DNA patterns decoded</p>
+            <div class="inline-flex items-center gap-1 px-2 py-1 bg-purple-500/10 border border-purple-500/20 rounded-pill change-pulse">
+              <span class="text-[10px] text-purple-400 font-mono font-bold">Hook + Visual + Audio</span>
             </div>
             <div class="flex justify-center mt-3 sparkline" style="height: 24px">
               @for (h of [6, 8, 7, 11, 10, 14, 13, 17, 19, 22]; track $index) {
@@ -1228,13 +1228,15 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
               <lucide-icon name="play" [size]="24" class="text-accent"></lucide-icon>
             </div>
             <h3 class="text-section-title font-display text-navy mb-2">See Cosmisk in Action</h3>
-            <p class="text-sm text-gray-500 font-body">Our product demo is coming soon. Get notified when it's ready.</p>
+            <p class="text-sm text-gray-500 font-body">Experience the platform live. Connect your Meta Ads account and see real insights in under 60 seconds.</p>
           </div>
-          <div class="aspect-video bg-[#F7F8FA] rounded-xl mb-6 flex items-center justify-center border border-gray-200">
-            <div class="text-center">
-              <lucide-icon name="video" [size]="32" class="text-gray-300 mb-2"></lucide-icon>
-              <p class="text-sm text-gray-400 font-body m-0">Demo video coming soon</p>
-            </div>
+          <div class="aspect-video bg-gradient-to-br from-navy to-accent/80 rounded-xl mb-6 flex items-center justify-center border border-gray-200">
+            <a routerLink="/login" class="text-center no-underline group">
+              <div class="w-16 h-16 mx-auto rounded-full bg-white/20 flex items-center justify-center mb-3 group-hover:bg-white/30 transition-colors">
+                <lucide-icon name="play" [size]="32" class="text-white ml-1"></lucide-icon>
+              </div>
+              <p class="text-sm text-white/80 font-body m-0">Try it live</p>
+            </a>
           </div>
           @if (!demoSubmitted()) {
             <form (submit)="submitDemoEmail(); $event.preventDefault()" class="flex gap-2">
@@ -1634,7 +1636,7 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   private animateKpiCountUp() {
-    const targets = [4.2, 32, 12.4];
+    const targets = [294, 29, 100];
     const duration = 1200;
     const startTime = performance.now();
     const animate = (now: number) => {
@@ -1643,9 +1645,9 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
       const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
       this.zone.run(() => {
         this.kpiCountValues.set([
-          Math.round(eased * targets[0] * 10) / 10,
+          Math.round(eased * targets[0]),
           Math.round(eased * targets[1]),
-          Math.round(eased * targets[2] * 10) / 10,
+          Math.round(eased * targets[2]),
         ]);
       });
       if (progress < 1) {
@@ -1689,7 +1691,7 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
   }
 
   // Logo wall brands
-  brandLogos = ['BOAT', 'MAMAEARTH', 'SUGAR', 'LENSKART', 'NYKAA', 'WOW SKIN', 'PLUM', 'BOMBAY SHAVING', 'URBANIC', 'MCAFFEINE', 'OZIVA', 'THE MAN CO'];
+  brandLogos = ['FASHION', 'BEAUTY', 'HEALTH', 'ELECTRONICS', 'FOOD & BEV', 'HOME DECOR', 'JEWELRY', 'FRAGRANCES', 'FITNESS', 'SKINCARE', 'SUPPLEMENTS', 'ACCESSORIES'];
   marqueeLogos = [...this.brandLogos, ...this.brandLogos];
 
   // How It Works steps
