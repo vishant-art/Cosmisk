@@ -428,6 +428,79 @@ export async function automationRoutes(app: FastifyInstance) {
     }
   });
 
+  // POST /automations/execute-action — Execute a one-off action from dashboard insights
+  app.post('/execute-action', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { account_id, action_type, campaign_id, adset_id, ad_id, budget_change_pct } = request.body as any;
+
+    if (!account_id || !action_type) {
+      return reply.status(400).send({ success: false, error: 'account_id and action_type required' });
+    }
+
+    const token = getUserMetaToken(request.user.id);
+    if (!token) {
+      return reply.status(400).send({ success: false, error: 'No Meta token found. Please reconnect your account.' });
+    }
+
+    const GRAPH_BASE = 'https://graph.facebook.com/v22.0';
+    const targetId = ad_id || adset_id || campaign_id;
+
+    try {
+      switch (action_type) {
+        case 'pause': {
+          if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to pause.' });
+          const resp = await fetch(`${GRAPH_BASE}/${targetId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ access_token: token, status: 'PAUSED' }),
+          });
+          if (resp.ok) return { success: true, message: `Paused ${targetId} successfully.` };
+          const err = await resp.json().catch(() => ({}));
+          return reply.status(400).send({ success: false, error: err?.error?.message || 'Failed to pause.' });
+        }
+        case 'scale':
+        case 'increase': {
+          if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to scale.' });
+          const pct = budget_change_pct || 15;
+          const infoResp = await fetch(`${GRAPH_BASE}/${targetId}?access_token=${token}&fields=daily_budget,lifetime_budget`);
+          const info = await infoResp.json().catch(() => ({})) as any;
+          const dailyBudget = parseInt(info.daily_budget || '0');
+          if (dailyBudget > 0) {
+            const newBudget = Math.max(100, Math.round(dailyBudget * (1 + pct / 100)));
+            const upResp = await fetch(`${GRAPH_BASE}/${targetId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ access_token: token, daily_budget: newBudget }),
+            });
+            if (upResp.ok) return { success: true, message: `Budget increased by ${pct}% (${fmt(dailyBudget / 100)} → ${fmt(newBudget / 100)}).` };
+          }
+          return { success: false, error: 'No daily budget found to adjust.' };
+        }
+        case 'reduce': {
+          if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to reduce.' });
+          const pct = budget_change_pct || 20;
+          const infoResp = await fetch(`${GRAPH_BASE}/${targetId}?access_token=${token}&fields=daily_budget`);
+          const info = await infoResp.json().catch(() => ({})) as any;
+          const dailyBudget = parseInt(info.daily_budget || '0');
+          if (dailyBudget > 0) {
+            const newBudget = Math.max(100, Math.round(dailyBudget * (1 - pct / 100)));
+            const upResp = await fetch(`${GRAPH_BASE}/${targetId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ access_token: token, daily_budget: newBudget }),
+            });
+            if (upResp.ok) return { success: true, message: `Budget reduced by ${pct}% (${fmt(dailyBudget / 100)} → ${fmt(newBudget / 100)}).` };
+          }
+          return { success: false, error: 'No daily budget found to reduce.' };
+        }
+        default:
+          return { success: true, message: `Action '${action_type}' noted. Navigate to the relevant page to take action.` };
+      }
+    } catch (err: any) {
+      logger.error({ err: err.message }, 'automations/execute-action failed');
+      return reply.status(500).send({ success: false, error: err.message || 'Failed to execute action.' });
+    }
+  });
+
   // POST /automations/run — Manual trigger for automation rules (admin only)
   app.post('/run', { preHandler: [app.authenticate] }, async (request, reply) => {
     if (request.user.role !== 'admin') {

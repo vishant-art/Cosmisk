@@ -44,6 +44,35 @@ interface ActivityLogEntry {
         </button>
       </div>
 
+      <!-- Quick Templates -->
+      @if (!showBuilder() && rules().length === 0) {
+        <div class="bg-white rounded-card shadow-card p-5">
+          <div class="flex items-center gap-2 mb-4">
+            <lucide-icon name="zap" [size]="16" class="text-amber-500"></lucide-icon>
+            <h3 class="text-sm font-display text-navy m-0">Quick Start Templates</h3>
+          </div>
+          <p class="text-xs text-gray-500 font-body mb-4 m-0">One-click setup for common automation rules used by top performers.</p>
+          <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+            @for (tpl of templates; track tpl.name) {
+              <button (click)="applyTemplate(tpl)"
+                class="text-left p-4 border border-gray-200 rounded-xl hover:border-accent/50 hover:bg-accent/5 transition-all group">
+                <div class="flex items-center gap-2 mb-2">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center" [ngClass]="tpl.bgClass">
+                    <lucide-icon [name]="tpl.icon" [size]="16" [class]="tpl.iconClass"></lucide-icon>
+                  </div>
+                  <span class="text-sm font-body font-semibold text-navy group-hover:text-accent">{{ tpl.name }}</span>
+                </div>
+                <p class="text-xs text-gray-500 font-body m-0 mb-2">{{ tpl.description }}</p>
+                <div class="flex gap-1.5 flex-wrap">
+                  <span class="px-2 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] font-body">IF {{ tpl.conditionLabel }}</span>
+                  <span class="px-2 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-body">THEN {{ tpl.actionLabel }}</span>
+                </div>
+              </button>
+            }
+          </div>
+        </div>
+      }
+
       <!-- Rule Builder -->
       @if (showBuilder()) {
         <div class="bg-white rounded-card shadow-card p-6">
@@ -290,6 +319,93 @@ export default class AutomationsComponent {
   rules = signal<AutomationRule[]>([]);
   activityLog = signal<ActivityLogEntry[]>([]);
 
+  templates = [
+    {
+      name: 'Pause High CPA',
+      description: 'Auto-pause ads where CPA exceeds 2x your target.',
+      icon: 'pause',
+      bgClass: 'bg-red-100',
+      iconClass: 'text-red-600',
+      conditionLabel: 'CPA > 2x target',
+      actionLabel: 'Pause ad set',
+      metric: 'cpa',
+      operator: 'gt',
+      value: '500',
+      action: 'pause',
+      scope: 'adset',
+    },
+    {
+      name: 'Scale Winners',
+      description: 'Increase budget for ads with ROAS above 3x.',
+      icon: 'trending-up',
+      bgClass: 'bg-green-100',
+      iconClass: 'text-green-600',
+      conditionLabel: 'ROAS > 3x',
+      actionLabel: 'Increase budget 15%',
+      metric: 'roas',
+      operator: 'gt',
+      value: '3',
+      action: 'increase_budget',
+      scope: 'adset',
+    },
+    {
+      name: 'Fatigue Alert',
+      description: 'Get notified when CTR drops below 0.5%.',
+      icon: 'bell',
+      bgClass: 'bg-amber-100',
+      iconClass: 'text-amber-600',
+      conditionLabel: 'CTR < 0.5%',
+      actionLabel: 'Send notification',
+      metric: 'ctr',
+      operator: 'lt',
+      value: '0.5',
+      action: 'notify',
+      scope: 'ad',
+    },
+    {
+      name: 'Budget Guard',
+      description: 'Cap daily spend and reduce budget if overspending.',
+      icon: 'shield',
+      bgClass: 'bg-blue-100',
+      iconClass: 'text-blue-600',
+      conditionLabel: 'Daily Spend > limit',
+      actionLabel: 'Reduce budget 20%',
+      metric: 'spend',
+      operator: 'gt',
+      value: '5000',
+      action: 'reduce_budget',
+      scope: 'campaign',
+    },
+    {
+      name: 'Frequency Cap',
+      description: 'Pause ads when frequency gets too high (ad fatigue).',
+      icon: 'repeat',
+      bgClass: 'bg-violet-100',
+      iconClass: 'text-violet-600',
+      conditionLabel: 'Frequency > 3',
+      actionLabel: 'Pause ad set',
+      metric: 'frequency',
+      operator: 'gt',
+      value: '3',
+      action: 'pause',
+      scope: 'adset',
+    },
+    {
+      name: 'CPM Watchdog',
+      description: 'Alert when CPM spikes above threshold.',
+      icon: 'eye',
+      bgClass: 'bg-pink-100',
+      iconClass: 'text-pink-600',
+      conditionLabel: 'CPM > threshold',
+      actionLabel: 'Send notification',
+      metric: 'cpm',
+      operator: 'gt',
+      value: '200',
+      action: 'notify',
+      scope: 'campaign',
+    },
+  ];
+
   activeCount = computed(() => this.rules().filter(r => r.status === 'active').length);
   totalTriggers = computed(() => this.rules().reduce((sum, r) => sum + r.triggerCount, 0));
 
@@ -405,6 +521,16 @@ export default class AutomationsComponent {
         this.toast.error('Error', 'Failed to delete rule. Please try again.');
       },
     });
+  }
+
+  applyTemplate(tpl: typeof this.templates[0]) {
+    this.newRuleName = tpl.name;
+    this.conditionMetric = tpl.metric;
+    this.conditionOperator = tpl.operator;
+    this.conditionValue = tpl.value;
+    this.actionType = tpl.action;
+    this.actionScope = tpl.scope;
+    this.showBuilder.set(true);
   }
 
   private resetBuilder() {

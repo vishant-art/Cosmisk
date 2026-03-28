@@ -251,7 +251,7 @@ import { environment } from '../../../environments/environment';
         } @else {
           <div class="space-y-3">
             @for (insight of insights(); track insight.id) {
-              <app-insight-card [insight]="insight" />
+              <app-insight-card [insight]="insight" (actionClicked)="executeInsightAction($event)" />
             }
             @if (insights().length === 0) {
               <p class="text-xs text-gray-400 font-body text-center py-4">Connect an ad account to see insights</p>
@@ -650,15 +650,28 @@ export default class DashboardComponent implements OnInit {
     }).subscribe({
       next: (res) => {
         if (res.success && res.insights?.length) {
-          this.insights.set(res.insights.map((ins: any) => ({
-            id: ins.id || 'ins-' + Math.random().toString(36).slice(2),
-            priority: ins.priority || 'info',
-            title: ins.title || '',
-            description: ins.description || '',
-            actionLabel: ins.actionLabel || 'View',
-            actionRoute: ins.actionRoute || '/app/analytics',
-            createdAt: ins.createdAt || new Date().toISOString(),
-          })));
+          this.insights.set(res.insights.map((ins: any) => {
+            // Determine actionType from backend hint or infer from content
+            let actionType = ins.actionType || 'navigate';
+            const desc = (ins.description || '').toLowerCase();
+            const label = (ins.actionLabel || '').toLowerCase();
+            if (!ins.actionType) {
+              if (/scale|increase budget/i.test(label) || /scale|increase/i.test(desc)) actionType = 'scale';
+              else if (/pause/i.test(label) || /pause/i.test(desc)) actionType = 'pause';
+              else if (/reduce|decrease/i.test(label)) actionType = 'reduce';
+            }
+            return {
+              id: ins.id || 'ins-' + Math.random().toString(36).slice(2),
+              priority: ins.priority || 'info',
+              title: ins.title || '',
+              description: ins.description || '',
+              actionLabel: ins.actionLabel || 'View',
+              actionRoute: ins.actionRoute || '/app/analytics',
+              actionType,
+              actionPayload: ins.actionPayload || {},
+              createdAt: ins.createdAt || new Date().toISOString(),
+            };
+          }));
         }
         this.insightsLoading.set(false);
       },
@@ -754,6 +767,42 @@ export default class DashboardComponent implements OnInit {
           );
           this.topCreatives = this.sortCreatives(this.activeTableTab);
         }
+      },
+    });
+  }
+
+  executeInsightAction(insight: AiInsight) {
+    if (!insight.actionType || insight.actionType === 'navigate') {
+      this.router.navigate([insight.actionRoute]);
+      return;
+    }
+
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) {
+      this.toast.error('No Account', 'Please select an ad account first.');
+      return;
+    }
+
+    const payload = {
+      account_id: acc.id,
+      credential_group: acc.credential_group,
+      action_type: insight.actionType,
+      ...(insight.actionPayload || {}),
+    };
+
+    this.api.post<any>('automations/execute-action', payload).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Action Applied', res.message || `${insight.actionLabel} executed successfully.`);
+          // Refresh data after action
+          const datePreset = this.dateRangeService.datePreset();
+          this.loadKpis(acc.id, acc.credential_group, datePreset);
+        } else {
+          this.toast.error('Action Failed', res.error || 'Could not execute this action.');
+        }
+      },
+      error: (err) => {
+        this.toast.error('Action Failed', err?.error?.error || 'Could not execute this action. Please try manually.');
       },
     });
   }

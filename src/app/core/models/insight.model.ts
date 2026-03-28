@@ -1,4 +1,5 @@
 export type InsightPriority = 'alert' | 'positive' | 'pattern' | 'info';
+export type InsightActionType = 'navigate' | 'scale' | 'pause' | 'reduce' | 'increase';
 
 export interface AiInsight {
   id: string;
@@ -7,6 +8,8 @@ export interface AiInsight {
   description: string;
   actionLabel: string;
   actionRoute: string;
+  actionType?: InsightActionType;
+  actionPayload?: Record<string, any>;
   creativeId?: string;
   createdAt: string;
 }
