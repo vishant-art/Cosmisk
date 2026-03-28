@@ -1,15 +1,16 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, ViewChild, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from '../../shared/components/sidebar/sidebar.component';
 import { TopbarComponent } from '../../shared/components/topbar/topbar.component';
 import { ToastComponent } from '../../shared/components/toast/toast.component';
 import { CommandPaletteComponent } from '../../shared/components/command-palette/command-palette.component';
+import { WelcomeTourComponent } from '../../shared/components/welcome-tour/welcome-tour.component';
 
 @Component({
   selector: 'app-app-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent],
   template: `
     <div class="min-h-screen bg-[#F7F8FA]">
       <app-sidebar (collapsedChange)="sidebarCollapsed.set($event)" />
@@ -27,12 +28,22 @@ import { CommandPaletteComponent } from '../../shared/components/command-palette
 
       <app-toast />
       <app-command-palette />
+      <app-welcome-tour />
     </div>
   `
 })
-export class AppLayoutComponent {
+export class AppLayoutComponent implements OnInit {
+  @ViewChild(WelcomeTourComponent) tour!: WelcomeTourComponent;
+
   sidebarCollapsed = signal(false);
   routeKey = 0;
+
+  ngOnInit() {
+    // Show welcome tour on first visit
+    if (!localStorage.getItem('cosmisk_tour_seen')) {
+      setTimeout(() => this.tour?.show(), 800);
+    }
+  }
 
   onRouteActivate() {
     this.routeKey++;
