@@ -12,6 +12,8 @@ interface NavItem {
   route: string;
   pro?: boolean;
   badge?: 'autopilot';
+  live?: boolean;
+  newBadge?: boolean;
 }
 
 interface NavGroup {
@@ -80,6 +82,11 @@ interface NavGroup {
                       @if (item.badge === 'autopilot' && badgeService.unreadCount() > 0) {
                         <span class="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold font-mono bg-red-500 text-white rounded-full leading-none">
                           {{ badgeService.unreadCount() > 99 ? '99+' : badgeService.unreadCount() }}
+                        </span>
+                      } @else if (item.live) {
+                        <span class="ml-auto flex items-center gap-1">
+                          <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                          <span class="text-[9px] font-mono text-green-400/70">LIVE</span>
                         </span>
                       } @else if (item.pro) {
                         <span class="ml-auto px-1.5 py-0.5 text-[9px] font-bold font-mono bg-accent/15 text-accent rounded">PRO</span>
@@ -230,10 +237,10 @@ export class SidebarComponent implements OnInit, OnDestroy {
       items: [
         { label: 'Brain', icon: 'brain', route: '/app/brain', pro: true },
         { label: 'Autopilot', icon: 'zap', route: '/app/autopilot', pro: true, badge: 'autopilot' },
-        { label: 'Watchdog', icon: 'scan-eye', route: '/app/agent', pro: true },
+        { label: 'Watchdog', icon: 'scan-eye', route: '/app/agent', pro: true, live: true },
         { label: 'Competitor Spy', icon: 'search', route: '/app/competitor-spy', pro: true },
         { label: 'Analytics', icon: 'bar-chart-3', route: '/app/analytics' },
-        { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio' },
+        { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio', live: true },
         { label: 'Reports', icon: 'file-text', route: '/app/reports' },
       ]
     },
