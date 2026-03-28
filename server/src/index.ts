@@ -195,7 +195,7 @@ app.post('/waitlist/join', async (request, reply) => {
 
   // Forward to n8n webhook for Airtable sync (fire-and-forget)
   try {
-    fetch('http://n8n-jeet.duckdns.org:5678/webhook/waitlist/join', {
+    fetch(`http://${process.env['N8N_HOST'] || '187.127.132.91'}:5678/webhook/waitlist/join`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...body, email }),
@@ -592,12 +592,18 @@ app.post('/creatives/batch-dna', { preHandler: [app.authenticate] }, async (requ
   const cached = db.prepare('SELECT ad_id, hook, visual, audio, reasoning FROM dna_cache WHERE account_id = ? AND ad_id IN (' + ads.map(() => '?').join(',') + ')')
     .all(account_id, ...ads.map(a => a.id)) as { ad_id: string; hook: string; visual: string; audio: string; reasoning: string }[];
 
-  const cachedMap = new Map(cached.map(c => [c.ad_id, {
-    hook: JSON.parse(c.hook),
-    visual: JSON.parse(c.visual),
-    audio: JSON.parse(c.audio),
-    reasoning: c.reasoning,
-  }]));
+  const cachedMap = new Map(cached.map(c => {
+    try {
+      return [c.ad_id, {
+        hook: JSON.parse(c.hook),
+        visual: JSON.parse(c.visual),
+        audio: JSON.parse(c.audio),
+        reasoning: c.reasoning,
+      }];
+    } catch {
+      return [c.ad_id, { hook: {}, visual: {}, audio: {}, reasoning: c.reasoning }];
+    }
+  }));
 
   const uncached = ads.filter(a => !cachedMap.has(a.id));
 
@@ -906,8 +912,8 @@ app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request,
       plan: user.plan,
       brand_name: user.brand_name || null,
       website_url: user.website_url || null,
-      goals: user.goals ? JSON.parse(user.goals) : [],
-      competitors: user.competitors ? JSON.parse(user.competitors) : [],
+      goals: (() => { try { return user.goals ? JSON.parse(user.goals) : []; } catch { return []; } })(),
+      competitors: (() => { try { return user.competitors ? JSON.parse(user.competitors) : []; } catch { return []; } })(),
       active_brand: user.active_brand || null,
       phone: user.phone || null,
       timezone: user.timezone || 'IST',

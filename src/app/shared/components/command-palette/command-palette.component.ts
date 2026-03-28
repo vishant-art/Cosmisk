@@ -1,7 +1,10 @@
-import { Component, inject, signal, HostListener, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, HostListener, ViewChild, ElementRef, AfterViewChecked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AiService } from '../../../core/services/ai.service';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../environments/environment';
 
 interface CommandItem {
   id: string;
@@ -18,60 +21,119 @@ interface CommandItem {
   imports: [CommonModule, FormsModule],
   template: `
     @if (open()) {
-      <!-- Backdrop -->
       <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] animate-fade-in" (click)="close()"></div>
 
-      <!-- Palette -->
-      <div class="fixed top-[15%] left-1/2 -translate-x-1/2 w-full max-w-lg z-[101] animate-slide-down">
+      <div class="fixed top-[12%] left-1/2 -translate-x-1/2 w-full max-w-xl z-[101] animate-slide-down">
         <div class="bg-white rounded-xl shadow-modal overflow-hidden border border-gray-200">
           <!-- Search Input -->
           <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-            <span class="text-gray-400 text-lg">&#128269;</span>
+            @if (mode() === 'ai') {
+              <span class="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-white text-xs font-bold">AI</span>
+            } @else {
+              <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+            }
             <input
               #searchInput
               [(ngModel)]="query"
               (input)="onSearch()"
-              placeholder="Search pages, actions, or brands..."
+              (keydown)="onInputKeydown($event)"
+              [placeholder]="mode() === 'ai' ? 'Ask Cosmisk anything...' : 'Search or type a command...'"
               class="flex-1 bg-transparent border-0 outline-none text-sm font-body text-navy placeholder:text-gray-400" />
-            <kbd class="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-mono text-gray-400">ESC</kbd>
-          </div>
-
-          <!-- Results -->
-          <div class="max-h-80 overflow-y-auto">
-            @if (filteredItems().length === 0) {
-              <div class="p-8 text-center">
-                <span class="text-3xl block mb-2 opacity-40">&#128270;</span>
-                <p class="text-sm text-gray-400 font-body m-0">No results found</p>
-              </div>
+            @if (mode() === 'ai') {
+              <button (click)="switchToNav()" class="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-body text-gray-500 hover:bg-gray-200 border-0 cursor-pointer">NAV</button>
             } @else {
-              @for (category of categories(); track category) {
-                <div class="px-2 pt-2">
-                  <span class="px-2 text-[10px] font-body font-semibold text-gray-400 uppercase">{{ category }}</span>
-                </div>
-                @for (item of getItemsByCategory(category); track item.id) {
-                  <button
-                    (click)="executeItem(item)"
-                    (mouseenter)="activeIndex = getItemIndex(item)"
-                    class="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors border-0 bg-transparent cursor-pointer"
-                    [ngClass]="activeIndex === getItemIndex(item) ? 'bg-accent/5 text-accent' : 'text-navy hover:bg-gray-50'">
-                    <span class="text-lg w-6 text-center">{{ item.icon }}</span>
-                    <span class="text-sm font-body">{{ item.label }}</span>
-                  </button>
-                }
-              }
+              <kbd class="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] font-mono text-gray-400">ESC</kbd>
             }
           </div>
+
+          <!-- Quick Commands (when AI mode and no query yet) -->
+          @if (mode() === 'ai' && !query && !aiResponse()) {
+            <div class="p-3 border-b border-gray-100">
+              <span class="px-2 text-[10px] font-body font-semibold text-gray-400 uppercase">Quick Commands</span>
+              <div class="grid grid-cols-2 gap-1.5 mt-2">
+                @for (cmd of quickCommands; track cmd.label) {
+                  <button
+                    (click)="executeQuickCommand(cmd.prompt)"
+                    class="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 hover:bg-accent/5 hover:text-accent text-left border-0 cursor-pointer transition-colors">
+                    <span class="text-sm">{{ cmd.icon }}</span>
+                    <span class="text-xs font-body text-gray-700">{{ cmd.label }}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- AI Response -->
+          @if (aiResponse()) {
+            <div class="p-4 max-h-72 overflow-y-auto">
+              <div class="text-xs text-gray-400 font-body mb-1">Cosmisk AI</div>
+              <div class="text-sm font-body text-navy leading-relaxed whitespace-pre-wrap">{{ aiResponse() }}</div>
+              @if (aiActions().length > 0) {
+                <div class="flex flex-wrap gap-2 mt-3">
+                  @for (action of aiActions(); track action.label) {
+                    <button
+                      (click)="executeAiAction(action)"
+                      class="px-3 py-1.5 rounded-lg text-xs font-body font-medium border-0 cursor-pointer transition-colors"
+                      [ngClass]="action.type === 'danger' ? 'bg-red-50 text-red-700 hover:bg-red-100' : action.type === 'success' ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-accent/10 text-accent hover:bg-accent/20'">
+                      {{ action.label }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- AI Loading -->
+          @if (aiLoading()) {
+            <div class="p-6 flex items-center gap-3">
+              <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+              <span class="text-sm font-body text-gray-500">Thinking...</span>
+            </div>
+          }
+
+          <!-- Navigation Results -->
+          @if (mode() === 'nav' || (mode() === 'ai' && !aiResponse() && !aiLoading() && query)) {
+            <div class="max-h-72 overflow-y-auto">
+              @if (filteredItems().length === 0 && mode() === 'nav') {
+                <div class="p-6 text-center">
+                  <p class="text-sm text-gray-400 font-body m-0">No results. Press Enter to ask AI instead.</p>
+                </div>
+              } @else if (filteredItems().length > 0) {
+                @for (category of categories(); track category) {
+                  <div class="px-2 pt-2">
+                    <span class="px-2 text-[10px] font-body font-semibold text-gray-400 uppercase">{{ category }}</span>
+                  </div>
+                  @for (item of getItemsByCategory(category); track item.id) {
+                    <button
+                      (click)="executeItem(item)"
+                      (mouseenter)="activeIndex = getItemIndex(item)"
+                      class="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors border-0 bg-transparent cursor-pointer"
+                      [ngClass]="activeIndex === getItemIndex(item) ? 'bg-accent/5 text-accent' : 'text-navy hover:bg-gray-50'">
+                      <span class="text-lg w-6 text-center" [innerHTML]="item.icon"></span>
+                      <span class="text-sm font-body">{{ item.label }}</span>
+                    </button>
+                  }
+                }
+              }
+            </div>
+          }
 
           <!-- Footer -->
           <div class="flex items-center gap-4 px-4 py-2 border-t border-gray-100 bg-gray-50">
             <div class="flex items-center gap-1 text-[10px] text-gray-400 font-body">
-              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">↑</kbd>
-              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">↓</kbd>
+              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">Tab</kbd>
+              {{ mode() === 'nav' ? 'AI mode' : 'Nav mode' }}
+            </div>
+            <div class="flex items-center gap-1 text-[10px] text-gray-400 font-body">
+              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">&#8593;</kbd>
+              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">&#8595;</kbd>
               navigate
             </div>
             <div class="flex items-center gap-1 text-[10px] text-gray-400 font-body">
-              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">↵</kbd>
-              select
+              <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">&#8629;</kbd>
+              {{ mode() === 'ai' ? 'ask' : 'select' }}
             </div>
           </div>
         </div>
@@ -88,12 +150,32 @@ interface CommandItem {
     }
   `]
 })
-export class CommandPaletteComponent {
+export class CommandPaletteComponent implements AfterViewChecked {
   private router = inject(Router);
+  private ai = inject(AiService);
+  private http = inject(HttpClient);
+
+  @ViewChild('searchInput') searchInput!: ElementRef<HTMLInputElement>;
 
   open = signal(false);
+  mode = signal<'nav' | 'ai'>('ai'); // Default to AI mode
   query = '';
   activeIndex = 0;
+
+  aiResponse = signal<string | null>(null);
+  aiLoading = signal(false);
+  aiActions = signal<{ label: string; type: 'danger' | 'success' | 'info'; route?: string; apiCall?: string }[]>([]);
+
+  private shouldFocus = false;
+
+  quickCommands = [
+    { icon: '&#9888;&#65039;', label: 'Pause losing campaigns', prompt: 'Which campaigns have CPA above target? Should I pause any?' },
+    { icon: '&#128640;', label: 'Scale my best ads', prompt: 'Show me my top performing ads by ROAS and recommend budget increases' },
+    { icon: '&#128200;', label: 'Today\'s performance', prompt: 'Give me a quick summary of how my ads performed today' },
+    { icon: '&#129504;', label: 'Morning briefing', prompt: 'Give me my morning briefing with key decisions needed' },
+    { icon: '&#127916;', label: 'New creative brief', prompt: 'Based on my winning patterns, generate a new creative brief' },
+    { icon: '&#128737;', label: 'Account health check', prompt: 'Run a quick health check on my ad account' },
+  ];
 
   allItems: CommandItem[] = [
     // Pages
@@ -113,6 +195,8 @@ export class CommandPaletteComponent {
     { id: 'nav-attribution', label: 'Attribution', category: 'Pages', icon: '&#9095;', route: '/app/attribution' },
     { id: 'nav-audit', label: 'Account Audit', category: 'Pages', icon: '&#128737;', route: '/app/audit' },
     { id: 'nav-automations', label: 'Automations', category: 'Pages', icon: '&#9881;', route: '/app/automations' },
+    { id: 'nav-autopilot', label: 'Autopilot', category: 'Pages', icon: '&#9992;', route: '/app/autopilot' },
+    { id: 'nav-competitor', label: 'Competitor Spy', category: 'Pages', icon: '&#128373;', route: '/app/competitor-spy' },
     { id: 'nav-settings', label: 'Settings', category: 'Pages', icon: '&#9881;', route: '/app/settings' },
     { id: 'nav-agency', label: 'Agency Command Center', category: 'Pages', icon: '&#127970;', route: '/app/agency' },
     // Actions
@@ -120,17 +204,25 @@ export class CommandPaletteComponent {
     { id: 'act-creative', label: 'Generate Creative Brief', category: 'Actions', icon: '&#9997;', route: '/app/director-lab' },
     { id: 'act-report', label: 'Generate Report', category: 'Actions', icon: '&#128200;', route: '/app/reports' },
     { id: 'act-audit', label: 'Run Account Audit', category: 'Actions', icon: '&#128737;', route: '/app/audit' },
+    { id: 'act-watchdog', label: 'Run AI Watchdog', category: 'Actions', icon: '&#129454;', route: '/app/autopilot' },
+    { id: 'act-sprint', label: 'Start Creative Sprint', category: 'Actions', icon: '&#127939;', route: '/app/ugc-studio' },
   ];
 
   private filteredCache: CommandItem[] = this.allItems;
+
+  ngAfterViewChecked() {
+    if (this.shouldFocus && this.searchInput?.nativeElement) {
+      this.searchInput.nativeElement.focus();
+      this.shouldFocus = false;
+    }
+  }
 
   filteredItems(): CommandItem[] {
     return this.filteredCache;
   }
 
   categories(): string[] {
-    const cats = new Set(this.filteredCache.map(i => i.category));
-    return Array.from(cats);
+    return [...new Set(this.filteredCache.map(i => i.category))];
   }
 
   getItemsByCategory(category: string): CommandItem[] {
@@ -142,7 +234,15 @@ export class CommandPaletteComponent {
   }
 
   onSearch() {
-    const q = this.query.toLowerCase();
+    const q = this.query.toLowerCase().trim();
+
+    // Check if query looks like natural language (not just a page name)
+    const isNaturalLanguage = q.length > 15 || /\b(how|what|why|show|give|pause|scale|increase|decrease|run|generate|compare|analyze|which|my|should|can)\b/i.test(q);
+
+    if (isNaturalLanguage && this.mode() === 'nav') {
+      this.mode.set('ai');
+    }
+
     if (!q) {
       this.filteredCache = this.allItems;
     } else {
@@ -151,6 +251,93 @@ export class CommandPaletteComponent {
       );
     }
     this.activeIndex = 0;
+    this.aiResponse.set(null);
+    this.aiActions.set([]);
+  }
+
+  onInputKeydown(event: KeyboardEvent) {
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      this.mode.set(this.mode() === 'ai' ? 'nav' : 'ai');
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      this.close();
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.activeIndex = Math.min(this.activeIndex + 1, this.filteredCache.length - 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.activeIndex = Math.max(this.activeIndex - 1, 0);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (this.mode() === 'ai' && this.query.trim()) {
+        this.askAi(this.query.trim());
+      } else if (this.filteredCache.length > 0) {
+        this.executeItem(this.filteredCache[this.activeIndex]);
+      } else if (this.query.trim()) {
+        // No nav results — fall through to AI
+        this.mode.set('ai');
+        this.askAi(this.query.trim());
+      }
+    }
+  }
+
+  askAi(prompt: string) {
+    this.aiLoading.set(true);
+    this.aiResponse.set(null);
+    this.aiActions.set([]);
+
+    this.ai.chat(prompt).subscribe({
+      next: (res) => {
+        this.aiLoading.set(false);
+        this.aiResponse.set(res.content);
+
+        // Parse response for actionable suggestions
+        const actions: { label: string; type: 'danger' | 'success' | 'info'; route?: string }[] = [];
+        const text = res.content.toLowerCase();
+
+        if (/pause|stop|disable/i.test(text)) {
+          actions.push({ label: 'Go to Automations', type: 'danger', route: '/app/automations' });
+        }
+        if (/scale|increase|boost/i.test(text)) {
+          actions.push({ label: 'Open Autopilot', type: 'success', route: '/app/autopilot' });
+        }
+        if (/creative|brief|ad copy/i.test(text)) {
+          actions.push({ label: 'Open Director Lab', type: 'info', route: '/app/director-lab' });
+        }
+        if (/analytics|report|data/i.test(text)) {
+          actions.push({ label: 'View Analytics', type: 'info', route: '/app/analytics' });
+        }
+        if (/audit|health|optimize/i.test(text)) {
+          actions.push({ label: 'Run Audit', type: 'info', route: '/app/audit' });
+        }
+
+        // Always offer to continue in AI Studio for deeper conversation
+        actions.push({ label: 'Continue in AI Studio', type: 'info', route: '/app/ai-studio' });
+        this.aiActions.set(actions);
+      },
+      error: () => {
+        this.aiLoading.set(false);
+        this.aiResponse.set('Could not reach AI. Check your connection and try again.');
+      }
+    });
+  }
+
+  executeQuickCommand(prompt: string) {
+    this.query = prompt;
+    this.askAi(prompt);
+  }
+
+  executeAiAction(action: { label: string; route?: string }) {
+    this.close();
+    if (action.route) {
+      this.router.navigate([action.route]);
+    }
   }
 
   executeItem(item: CommandItem) {
@@ -163,44 +350,34 @@ export class CommandPaletteComponent {
     }
   }
 
+  switchToNav() {
+    this.mode.set('nav');
+    this.aiResponse.set(null);
+    this.aiActions.set([]);
+  }
+
   close() {
     this.open.set(false);
     this.query = '';
     this.filteredCache = this.allItems;
     this.activeIndex = 0;
+    this.mode.set('ai');
+    this.aiResponse.set(null);
+    this.aiLoading.set(false);
+    this.aiActions.set([]);
   }
 
   @HostListener('window:keydown', ['$event'])
   onKeydown(event: KeyboardEvent) {
-    // Cmd+K or Ctrl+K to open
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
-      this.open.set(!this.open());
-      if (!this.open()) {
+      if (this.open()) {
         this.close();
+      } else {
+        this.open.set(true);
+        this.shouldFocus = true;
       }
       return;
-    }
-
-    if (!this.open()) return;
-
-    // Escape to close
-    if (event.key === 'Escape') {
-      this.close();
-      return;
-    }
-
-    // Arrow navigation
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      this.activeIndex = Math.min(this.activeIndex + 1, this.filteredCache.length - 1);
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      this.activeIndex = Math.max(this.activeIndex - 1, 0);
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      const item = this.filteredCache[this.activeIndex];
-      if (item) this.executeItem(item);
     }
   }
 }
