@@ -17,7 +17,6 @@ export async function scoreRoutes(app: FastifyInstance) {
 
   /* ---- POST /analyze — Analyze an ad creative ---- */
   app.post('/analyze', {
-    preHandler: [app.authenticate],
     config: {
       rateLimit: {
         max: 10,

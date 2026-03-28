@@ -118,7 +118,7 @@ import { LucideAngularModule } from 'lucide-angular';
             [style.animation-delay]="'0.3s'">
             <div class="flex gap-3">
               <div class="text-accent/60 shrink-0 mt-0.5">
-                <lucide-icon name="quote" [size]="18"></lucide-icon>
+                <lucide-icon name="message-square" [size]="18"></lucide-icon>
               </div>
               <div>
                 <p class="text-white/80 font-body text-sm leading-relaxed mb-3 m-0">
@@ -184,35 +184,35 @@ export class AuthLayoutComponent implements OnInit, OnDestroy {
   private intervalId?: ReturnType<typeof setInterval>;
 
   liveMetrics = [
-    { label: 'Avg. ROAS', value: '4.2x', change: '+18%', trend: 'up' as const },
-    { label: 'CPA saved', value: '32%', change: '-Rs.840', trend: 'up' as const },
-    { label: 'Ads analyzed', value: '12K+', change: 'this month', trend: 'up' as const },
+    { label: 'Patterns', value: '100+', change: '7 categories', trend: 'up' as const },
+    { label: 'AI Agents', value: '6', change: '24/7 active', trend: 'up' as const },
+    { label: 'Formats', value: '10+', change: 'UGC to static', trend: 'up' as const },
   ];
 
   trustBadges = [
-    { icon: 'shield-check', text: 'SOC2 Ready' },
-    { icon: 'lock', text: '256-bit encrypted' },
-    { icon: 'globe', text: '99.9% uptime' },
+    { icon: 'shield', text: 'AES-256 encrypted' },
+    { icon: 'lock', text: 'Read-only Meta access' },
+    { icon: 'globe', text: 'Real-time Meta sync' },
   ];
 
   testimonials = [
     {
-      quote: "Cosmisk changed how we think about creative. We went from guessing to knowing exactly why our best ads work. Our ROAS improved 2.3x in the first month.",
-      name: 'Rajesh Gupta',
-      initials: 'RG',
-      role: 'Founder, Nectar Supplements'
+      quote: "Upload any ad. Cosmisk extracts Creative DNA — the specific hooks, visuals, and audio patterns that drive ROAS. Then generates more of what works.",
+      name: 'Creative DNA',
+      initials: 'CD',
+      role: 'Core Intelligence Engine'
     },
     {
-      quote: "Managing 35 brands became 10x easier. The Creative DNA concept is brilliant — our clients love the weekly strategy reports.",
-      name: 'Priya Sharma',
-      initials: 'PS',
-      role: 'CEO, AdScale Agency'
+      quote: "Six autonomous AI agents monitor your Meta campaigns, spot fatigue before it costs you, and recommend budget shifts with full reasoning you can approve or reject.",
+      name: 'The Brain',
+      initials: 'AI',
+      role: 'Autonomous Agent System'
     },
     {
-      quote: "We reduced our creative production time by 60% using Director Lab. The AI actually understands what makes a good ad, not just surface-level stuff.",
-      name: 'Amit Patel',
-      initials: 'AP',
-      role: 'CMO, Urban Drape'
+      quote: "From brief to publishable UGC video in under 60 seconds. AI avatars, voiceovers, and scripts — across 10+ formats including carousel, static, and podcast clips.",
+      name: 'Creative Studio',
+      initials: 'CS',
+      role: 'Content Generation Engine'
     },
   ];
 

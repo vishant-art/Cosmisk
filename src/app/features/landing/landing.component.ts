@@ -1076,7 +1076,7 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     </section>
 
     <!-- ============================================================ -->
-    <!-- SECTION 13: What You Get (replaces fake testimonials)        -->
+    <!-- SECTION 13: What You Get                                    -->
     <!-- ============================================================ -->
     <section class="py-20 bg-[#F7F8FA]">
       <div class="max-w-7xl mx-auto px-6">
