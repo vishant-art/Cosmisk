@@ -150,8 +150,10 @@ export async function dashboardRoutes(app: FastifyInstance) {
           priority: roasTrend.direction === 'improving' ? 'medium' : 'high',
           title: 'ROAS Below Breakeven',
           description: `Overall ROAS at ${curr.roas.toFixed(2)}x — you spent ${fmt(curr.spend)} but earned only ${fmt(curr.revenue)}.${lossNames.length > 0 ? ` Losing campaigns: ${lossNames.join(', ')}.` : ''}${trendNote} ${roasTrend.direction === 'improving' ? 'Monitor closely — it may recover.' : 'Pause underperformers and redirect budget to profitable campaigns.'}`,
-          actionLabel: 'View Campaigns',
+          actionLabel: lossCampaigns.length > 0 ? 'Pause Losers' : 'View Campaigns',
           actionRoute: '/analytics',
+          actionType: lossCampaigns.length > 0 ? 'pause' as const : 'navigate' as const,
+          actionPayload: lossCampaigns.length > 0 ? { campaign_names: lossNames.map((n: string) => n.replace(/'/g, '')) } : undefined,
           createdAt: now,
         });
       }
@@ -208,8 +210,10 @@ export async function dashboardRoutes(app: FastifyInstance) {
           priority: 'low',
           title: 'Strong ROAS Performance',
           description: `${curr.roas.toFixed(2)}x ROAS — ${fmt(curr.revenue)} revenue on ${fmt(curr.spend)} spend.${trendNote} ${scaleAdvice}`,
-          actionLabel: 'Scale Winners',
+          actionLabel: 'Scale Top Campaign',
           actionRoute: '/analytics',
+          actionType: topConf?.shouldRecommendAction ? 'scale' as const : 'navigate' as const,
+          actionPayload: topCampaign ? { campaign_name: topCampaign.name } : undefined,
           createdAt: now,
         });
       }

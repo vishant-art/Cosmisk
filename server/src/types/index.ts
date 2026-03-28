@@ -157,6 +157,8 @@ export interface InsightItem {
   description: string;
   actionLabel: string;
   actionRoute: string;
+  actionType?: 'navigate' | 'scale' | 'pause' | 'reduce';
+  actionPayload?: Record<string, any>;
   createdAt: string;
 }
 
