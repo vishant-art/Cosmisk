@@ -1170,6 +1170,86 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     </section>
 
     <!-- ============================================================ -->
+    <!-- SECTION 14.5: Cosmisk vs Hiring (NEW)                       -->
+    <!-- ============================================================ -->
+    <section class="py-16 bg-[#F7F8FA]">
+      <div class="max-w-4xl mx-auto px-6">
+        <div class="text-center mb-10">
+          <h2 class="text-page-title font-display text-navy mb-3">One Subscription vs. An Entire Team</h2>
+          <p class="text-base text-gray-500 font-body">What it actually costs to run creative operations without Cosmisk.</p>
+        </div>
+        <div class="grid md:grid-cols-2 gap-6">
+          <!-- Without Cosmisk -->
+          <div class="bg-white rounded-2xl border border-gray-200 p-8">
+            <div class="flex items-center gap-2 mb-6">
+              <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                <lucide-icon name="x" [size]="16" class="text-red-500"></lucide-icon>
+              </div>
+              <h3 class="text-sm font-display font-semibold text-navy m-0">Without Cosmisk</h3>
+            </div>
+            <div class="space-y-3 mb-6">
+              <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                <span class="text-sm font-body text-gray-600">Media Buyer (1)</span>
+                <span class="text-sm font-mono font-bold text-navy">$2,000/mo</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                <span class="text-sm font-body text-gray-600">Creative Strategist (1)</span>
+                <span class="text-sm font-mono font-bold text-navy">$2,500/mo</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                <span class="text-sm font-body text-gray-600">Video Editor (1)</span>
+                <span class="text-sm font-mono font-bold text-navy">$1,500/mo</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                <span class="text-sm font-body text-gray-600">Analytics Tools</span>
+                <span class="text-sm font-mono font-bold text-navy">$500/mo</span>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-2">
+              <span class="text-sm font-body font-semibold text-gray-600">Total</span>
+              <span class="text-lg font-mono font-bold text-red-600">$6,500/mo</span>
+            </div>
+            <p class="text-xs text-gray-400 font-body mt-2 m-0">+ 2-3 weeks to hire. 9-5 only. One brand at a time.</p>
+          </div>
+
+          <!-- With Cosmisk -->
+          <div class="bg-gradient-to-br from-accent/5 to-violet-50 rounded-2xl border-2 border-accent p-8 relative">
+            <div class="absolute -top-3 right-6 px-3 py-1 bg-accent text-white text-[10px] font-bold font-mono rounded-full">SAVES 95%</div>
+            <div class="flex items-center gap-2 mb-6">
+              <div class="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center">
+                <lucide-icon name="sparkles" [size]="16" class="text-accent"></lucide-icon>
+              </div>
+              <h3 class="text-sm font-display font-semibold text-navy m-0">With Cosmisk</h3>
+            </div>
+            <div class="space-y-3 mb-6">
+              <div class="flex items-center justify-between py-2 border-b border-accent/10">
+                <span class="text-sm font-body text-gray-600">AI Creative Strategist</span>
+                <span class="text-sm font-mono font-bold text-green-600">Included</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-accent/10">
+                <span class="text-sm font-body text-gray-600">6 Autonomous AI Agents</span>
+                <span class="text-sm font-mono font-bold text-green-600">Included</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-accent/10">
+                <span class="text-sm font-body text-gray-600">100+ Creative Generation</span>
+                <span class="text-sm font-mono font-bold text-green-600">Included</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-accent/10">
+                <span class="text-sm font-body text-gray-600">Full Analytics Suite</span>
+                <span class="text-sm font-mono font-bold text-green-600">Included</span>
+              </div>
+            </div>
+            <div class="flex items-center justify-between pt-2">
+              <span class="text-sm font-body font-semibold text-gray-600">Total</span>
+              <span class="text-lg font-mono font-bold text-accent">$299/mo</span>
+            </div>
+            <p class="text-xs text-gray-500 font-body mt-2 m-0">Works 24/7. Unlimited brands. Starts in 5 minutes.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
     <!-- SECTION 15: FAQ (NEW)                                        -->
     <!-- ============================================================ -->
     <section class="py-20 bg-[#F7F8FA]">
