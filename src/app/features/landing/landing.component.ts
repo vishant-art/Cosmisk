@@ -287,8 +287,7 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
             <span class="text-gradient">Generate What Works Next.</span>
           </h1>
           <p class="text-lg text-gray-400 font-body mb-8 max-w-lg leading-relaxed">
-            Cosmisk extracts Creative DNA from your best ads, spies on competitor strategies, understands platform algorithms,
-            and batch-generates 100+ winning creatives per sprint -- all from one cockpit.
+            One person + Cosmisk = the creative output of an entire agency team.
           </p>
           <div class="flex flex-wrap gap-4 mb-6">
             <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline hover:shadow-glow hover:scale-[1.02] transition-all duration-300">Start Free Trial</a>
@@ -323,7 +322,7 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
           }
 
           <p class="text-sm text-gray-500 font-body">
-            Trusted by <strong class="text-white">500+</strong> D2C brands &nbsp;&middot;&nbsp; &#8377;250Cr+ ad spend analyzed &nbsp;&middot;&nbsp; 12,000+ creatives decoded
+            100+ creative patterns &nbsp;&middot;&nbsp; 6 AI agents working 24/7 &nbsp;&middot;&nbsp; 10+ creative formats &nbsp;&middot;&nbsp; &lt; 60s UGC generation
           </p>
         </div>
 
@@ -395,7 +394,7 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
     <!-- ============================================================ -->
     <section class="py-16 bg-white border-t border-b border-gray-200 overflow-hidden">
       <div class="max-w-5xl mx-auto px-6 text-center mb-8">
-        <p class="text-xs text-gray-400 font-body font-medium uppercase tracking-[0.2em] mb-0">Trusted by India's fastest-growing brands</p>
+        <p class="text-xs text-gray-400 font-body font-medium uppercase tracking-[0.2em] mb-0">Built for India's fastest-growing D2C brands and agencies</p>
       </div>
       <div class="marquee-track">
         @for (logo of marqueeLogos; track $index) {
@@ -1036,127 +1035,67 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
         <div>
           <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
             @if (bigCounterStarted()) {
-              <span [appCountUp]="'&#8377;250Cr+'" [countDuration]="2000">0</span>
+              <span [appCountUp]="'100+'" [countDuration]="2000">0</span>
             } @else {
               <span>0</span>
             }
           </p>
-          <p class="text-sm text-gray-400 font-body">Ad spend analyzed</p>
+          <p class="text-sm text-gray-400 font-body">Creative patterns detected</p>
         </div>
         <div>
           <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
             @if (bigCounterStarted()) {
-              <span [appCountUp]="'4.2x'" [countDuration]="2000">0</span>
+              <span [appCountUp]="'6'" [countDuration]="2000">0</span>
             } @else {
               <span>0</span>
             }
           </p>
-          <p class="text-sm text-gray-400 font-body">Avg ROAS improvement</p>
+          <p class="text-sm text-gray-400 font-body">AI agents working 24/7</p>
         </div>
         <div>
           <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
             @if (bigCounterStarted()) {
-              <span [appCountUp]="'12,000+'" [countDuration]="2000">0</span>
+              <span [appCountUp]="'10+'" [countDuration]="2000">0</span>
             } @else {
               <span>0</span>
             }
           </p>
-          <p class="text-sm text-gray-400 font-body">Creatives decoded</p>
+          <p class="text-sm text-gray-400 font-body">Creative formats supported</p>
         </div>
         <div>
           <p class="text-3xl lg:text-4xl font-mono font-bold text-white mb-2 counter-glow">
             @if (bigCounterStarted()) {
-              <span [appCountUp]="'60%'" [countDuration]="2000">0</span>
+              <span [appCountUp]="'&lt;60s'" [countDuration]="2000">0</span>
             } @else {
               <span>0</span>
             }
           </p>
-          <p class="text-sm text-gray-400 font-body">Faster campaign launches</p>
+          <p class="text-sm text-gray-400 font-body">UGC ad generation time</p>
         </div>
       </div>
     </section>
 
     <!-- ============================================================ -->
-    <!-- SECTION 13: Testimonials Carousel (KEPT)                     -->
+    <!-- SECTION 13: What You Get (replaces fake testimonials)        -->
     <!-- ============================================================ -->
     <section class="py-20 bg-[#F7F8FA]">
       <div class="max-w-7xl mx-auto px-6">
         <div appAnimateOnScroll class="text-center mb-16">
-          <h2 class="text-page-title font-display text-navy mb-4">Loved by Performance Marketers</h2>
+          <h2 class="text-page-title font-display text-navy mb-4">What One Person Can Do With Cosmisk</h2>
+          <p class="text-gray-600 font-body max-w-2xl mx-auto">Every feature is live. No mocks. No coming-soon. Connect your Meta account and start in 5 minutes.</p>
         </div>
 
-        <!-- Carousel container -->
-        <div class="relative overflow-hidden">
-          <div class="testimonial-track flex" [style.transform]="'translateX(-' + (testimonialPage() * 100) + '%)'">
-            <!-- Page 1: first 3 -->
-            <div class="min-w-full grid md:grid-cols-3 gap-8 px-1">
-              @for (t of testimonials.slice(0, 3); track t.name; let i = $index) {
-                <div class="card !p-8 hover:border-accent/20 hover:shadow-card-hover transition-all duration-300">
-                  <!-- Star rating -->
-                  <div class="flex gap-0.5 mb-3">
-                    @for (s of [1,2,3,4,5]; track s) {
-                      <lucide-icon name="star" [size]="14" class="text-amber-400" style="fill: #FBBF24;"></lucide-icon>
-                    }
-                  </div>
-                  <p class="text-gray-600 font-body text-sm italic mb-6 leading-relaxed">"{{ t.quote }}"</p>
-                  <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm" [style.background]="t.gradient">
-                      {{ t.initials }}
-                    </div>
-                    <div>
-                      <p class="text-sm font-body font-semibold text-navy m-0">{{ t.name }}</p>
-                      <p class="text-xs text-gray-500 m-0">{{ t.role }}</p>
-                    </div>
-                  </div>
-                  @if (t.metric) {
-                    <div class="mt-4 pt-4 border-t border-divider">
-                      <span class="text-xs font-mono text-accent font-bold">{{ t.metric }}</span>
-                    </div>
-                  }
-                </div>
-              }
+        <div class="grid md:grid-cols-3 gap-8">
+          @for (cap of capabilities; track cap.title) {
+            <div class="card !p-8 hover:border-accent/20 hover:shadow-card-hover transition-all duration-300">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-4" [class]="cap.iconBg">
+                <lucide-icon [name]="cap.icon" [size]="24" [class]="cap.iconColor"></lucide-icon>
+              </div>
+              <h3 class="text-lg font-display text-navy mb-2">{{ cap.title }}</h3>
+              <p class="text-gray-600 font-body text-sm leading-relaxed mb-4">{{ cap.desc }}</p>
+              <span class="text-xs font-mono text-accent font-bold">{{ cap.stat }}</span>
             </div>
-            <!-- Page 2: next 3 -->
-            <div class="min-w-full grid md:grid-cols-3 gap-8 px-1">
-              @for (t of testimonials.slice(3, 6); track t.name; let i = $index) {
-                <div class="card !p-8 hover:border-accent/20 hover:shadow-card-hover transition-all duration-300">
-                  <div class="flex gap-0.5 mb-3">
-                    @for (s of [1,2,3,4,5]; track s) {
-                      <lucide-icon name="star" [size]="14" class="text-amber-400" style="fill: #FBBF24;"></lucide-icon>
-                    }
-                  </div>
-                  <p class="text-gray-600 font-body text-sm italic mb-6 leading-relaxed">"{{ t.quote }}"</p>
-                  <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm" [style.background]="t.gradient">
-                      {{ t.initials }}
-                    </div>
-                    <div>
-                      <p class="text-sm font-body font-semibold text-navy m-0">{{ t.name }}</p>
-                      <p class="text-xs text-gray-500 m-0">{{ t.role }}</p>
-                    </div>
-                  </div>
-                  @if (t.metric) {
-                    <div class="mt-4 pt-4 border-t border-divider">
-                      <span class="text-xs font-mono text-accent font-bold">{{ t.metric }}</span>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-
-          <!-- Carousel dots -->
-          <div class="flex justify-center gap-2 mt-8">
-            @for (page of [0, 1]; track page) {
-              <button
-                (click)="testimonialPage.set(page)"
-                class="h-2 rounded-full border-0 cursor-pointer transition-all duration-300 carousel-dot"
-                [ngClass]="testimonialPage() === page ? 'bg-accent w-6 carousel-dot-active' : 'bg-gray-300 w-2 hover:bg-gray-400'"
-                [attr.aria-label]="'Testimonials page ' + (page + 1)"
-                [attr.aria-current]="testimonialPage() === page ? 'true' : null">
-              </button>
-            }
-          </div>
+          }
         </div>
       </div>
     </section>
@@ -1762,12 +1701,8 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
     { num: '05', icon: 'trending-up', title: 'Learn Again', desc: 'Track performance. Results feed the next sprint. Every cycle gets smarter.' },
   ];
 
-  // Case studies
-  caseStudies = [
-    { metric: '4.8x ROAS', desc: 'Up from 2.1x in just 3 months', brand: 'Nectar Supplements', person: 'Rajesh Gupta' },
-    { metric: '60% Faster', desc: 'Creative production time cut by 60%', brand: 'Urban Drape', person: 'Amit Patel' },
-    { metric: '35 Brands', desc: 'Managed by a 4-person team with one cockpit', brand: 'AdScale Agency', person: 'Priya Sharma' },
-  ];
+  // Case studies — removed (were aspirational)
+  caseStudies: { metric: string; desc: string; brand: string; person: string }[] = [];
 
   // FAQ data
   faqs = [
@@ -1862,42 +1797,42 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
     },
   ];
 
-  testimonials = [
+  capabilities = [
     {
-      quote: 'Cosmisk changed how we think about creative. We went from guessing to knowing exactly why our best ads work.',
-      name: 'Rajesh Gupta', initials: 'RG', role: 'Founder, Nectar Supplements',
-      metric: '4.8x ROAS \u2192 from 2.1x in 3 months',
-      gradient: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+      icon: 'brain', iconBg: 'bg-indigo-100', iconColor: 'text-indigo-600',
+      title: 'Creative DNA Analysis',
+      desc: 'Upload any ad. AI extracts hook type, visual style, audio pattern, CTA structure across 100+ pattern dimensions.',
+      stat: '100+ patterns across 7 categories',
     },
     {
-      quote: 'Managing 35 brands became 10x easier. The Creative DNA concept is brilliant \u2014 our clients love the reports.',
-      name: 'Priya Sharma', initials: 'PS', role: 'CEO, AdScale Agency',
-      metric: '35 brands managed with 4-person team',
-      gradient: 'linear-gradient(135deg, #EC4899, #F43F5E)',
+      icon: 'bot', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
+      title: 'Autonomous Ad Watchdog',
+      desc: 'AI agent monitors your Meta campaigns 24/7, spots fatigue and opportunity, recommends budget shifts with reasoning.',
+      stat: '294 autonomous runs completed',
     },
     {
-      quote: 'We reduced our creative production time by 60% using Director Lab and Creative Studio. Game changer for D2C.',
-      name: 'Amit Patel', initials: 'AP', role: 'CMO, Urban Drape',
-      metric: '60% faster creative production',
-      gradient: 'linear-gradient(135deg, #10B981, #14B8A6)',
+      icon: 'video', iconBg: 'bg-pink-100', iconColor: 'text-pink-600',
+      title: 'UGC Studio',
+      desc: 'Generate UGC video ads with AI avatars, voiceovers, and scripts — from brief to publishable creative in under a minute.',
+      stat: '10+ formats: UGC, static, carousel, podcast',
     },
     {
-      quote: 'The AI Oracle predicted which hooks would fatigue before they did. Saved us lakhs in wasted spend.',
-      name: 'Neha Verma', initials: 'NV', role: 'Performance Lead, FreshBase',
-      metric: '\u20B912L saved in 1 month',
-      gradient: 'linear-gradient(135deg, #F59E0B, #F97316)',
+      icon: 'target', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600',
+      title: 'Sprint Planner',
+      desc: 'AI plans your creative sprint: 40% remake winners, 30% proven DNA combos, 30% fresh angles. Then generates them all.',
+      stat: 'Claude Opus strategy + Sonnet scripts',
     },
     {
-      quote: 'Cross-brand Brain is magic. Winning patterns from our skincare brand auto-applied to supplements. Both saw ROAS lift.',
-      name: 'Karan Mehta', initials: 'KM', role: 'Founder, The Skin Co.',
-      metric: '2 brands, shared DNA intelligence',
-      gradient: 'linear-gradient(135deg, #3B82F6, #6366F1)',
+      icon: 'shield', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
+      title: 'Autopilot Rules Engine',
+      desc: 'Set CPA/ROAS triggers that auto-pause, adjust budgets, or alert via Slack. Real Meta API writes, not mock actions.',
+      stat: 'Live Meta budget changes + Slack alerts',
     },
     {
-      quote: 'Creative Studio replaced our 3-week creator pipeline. We now ship 10 UGC ads per week with AI avatars.',
-      name: 'Simran Kaur', initials: 'SK', role: 'Growth Manager, FlexFit',
-      metric: '10 UGC ads/week (was 2/month)',
-      gradient: 'linear-gradient(135deg, #8B5CF6, #A855F7)',
+      icon: 'bell-ring', iconBg: 'bg-violet-100', iconColor: 'text-violet-600',
+      title: 'Morning Briefing',
+      desc: 'Wake up to a strategic briefing synthesized from watchdog findings, autopilot actions, and Meta performance data.',
+      stat: 'Daily at 7 AM IST via Slack',
     },
   ];
 }
