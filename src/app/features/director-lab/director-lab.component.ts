@@ -148,11 +148,36 @@ import { environment } from '../../../environments/environment';
                   <span class="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Brief #CB-{{ String(briefCount()).padStart(4, '0') }}</span>
                   <h3 class="text-section-title font-display text-navy m-0 mt-0.5">{{ brief.conceptName }}</h3>
                 </div>
-                <div class="flex gap-1.5">
+                <div class="flex gap-1.5 items-center">
                   <app-dna-badge [label]="brief.hookDna" type="hook" />
                   <app-dna-badge [label]="brief.visualDna" type="visual" />
                 </div>
               </div>
+
+              <!-- Performance Prediction -->
+              @if (predictedScore() > 0) {
+                <div class="mb-4 p-3 rounded-lg border flex items-center gap-3"
+                  [ngClass]="predictedScore() >= 70 ? 'bg-green-50 border-green-200' : predictedScore() >= 40 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'">
+                  <div class="w-12 h-12 rounded-full flex items-center justify-center font-display font-bold text-lg"
+                    [ngClass]="predictedScore() >= 70 ? 'bg-green-100 text-green-700' : predictedScore() >= 40 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'">
+                    {{ predictedScore() }}
+                  </div>
+                  <div class="flex-1">
+                    <span class="text-xs font-body font-semibold block"
+                      [ngClass]="predictedScore() >= 70 ? 'text-green-800' : predictedScore() >= 40 ? 'text-amber-800' : 'text-red-800'">
+                      {{ predictedScore() >= 70 ? 'High Performer Potential' : predictedScore() >= 40 ? 'Moderate Potential' : 'Test with Caution' }}
+                    </span>
+                    <span class="text-[10px] text-gray-500 font-body">Based on {{ patternMatchCount() }} matching DNA patterns from your top creatives</span>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-xs font-body font-semibold text-navy block">Est. ROAS</span>
+                    <span class="text-sm font-mono font-bold"
+                      [ngClass]="predictedRoas() >= 3 ? 'text-green-600' : predictedRoas() >= 2 ? 'text-amber-600' : 'text-gray-600'">
+                      {{ predictedRoas().toFixed(1) }}x
+                    </span>
+                  </div>
+                </div>
+              }
 
               <!-- Hook -->
               <div class="mb-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
@@ -347,6 +372,9 @@ export default class DirectorLabComponent implements OnInit {
 
   approvedCount = signal(0);
   briefCount = signal(0);
+  predictedScore = signal(0);
+  predictedRoas = signal(0);
+  patternMatchCount = signal(0);
   publishLinkUrl = '';
 
   private accountEffect = effect(() => {
@@ -489,6 +517,7 @@ export default class DirectorLabComponent implements OnInit {
         this.briefGenerated.set(true);
         this.briefCount.update(c => c + 1);
         this.updateApprovedCount();
+        this.calculatePrediction();
       },
       error: () => {
         this.genProgress.set(0);
@@ -500,6 +529,40 @@ export default class DirectorLabComponent implements OnInit {
 
   updateApprovedCount() {
     this.approvedCount.set(this.variations.filter((v: any) => v.approved).length);
+  }
+
+  private calculatePrediction() {
+    const selectedPatterns = this.winningPatterns.filter(p => p.checked);
+    const matchCount = selectedPatterns.length;
+    this.patternMatchCount.set(matchCount);
+
+    if (matchCount === 0 && !this.baseCreativeId) {
+      this.predictedScore.set(0);
+      this.predictedRoas.set(0);
+      return;
+    }
+
+    // Score based on: pattern match count, avg ROAS of matched patterns, base creative ROAS
+    let score = 30; // Base score for using the tool
+    let avgRoas = 0;
+
+    if (matchCount > 0) {
+      const totalRoas = selectedPatterns.reduce((sum, p) => sum + p.roas, 0);
+      avgRoas = totalRoas / matchCount;
+      score += Math.min(30, matchCount * 10); // Up to 30 for pattern matches
+      score += avgRoas >= 3 ? 20 : avgRoas >= 2 ? 10 : 5; // ROAS quality bonus
+    }
+
+    const baseCreative = this.creatives.find((c: any) => c.id === this.baseCreativeId);
+    if (baseCreative) {
+      const bRoas = baseCreative.metrics?.roas || 0;
+      score += bRoas >= 3 ? 20 : bRoas >= 2 ? 10 : 5;
+      if (!avgRoas) avgRoas = bRoas;
+      else avgRoas = (avgRoas + bRoas) / 2;
+    }
+
+    this.predictedScore.set(Math.min(95, Math.max(10, score)));
+    this.predictedRoas.set(avgRoas > 0 ? avgRoas : 1.5);
   }
 
   editVariation(variation: any) {

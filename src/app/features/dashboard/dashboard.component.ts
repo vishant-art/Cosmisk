@@ -13,6 +13,7 @@ import { AiInsight } from '../../core/models/insight.model';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
+import { AiService } from '../../core/services/ai.service';
 import { ToastService } from '../../core/services/toast.service';
 import { CreativeEngineService } from '../../core/services/creative-engine.service';
 import { DateRangeService } from '../../core/services/date-range.service';
@@ -55,6 +56,28 @@ import { environment } from '../../../environments/environment';
         </div>
       </div>
     </div>
+
+    <!-- Morning Briefing Widget -->
+    @if (briefingSummary()) {
+      <div class="mb-6 bg-gradient-to-r from-violet-50 to-indigo-50 border border-accent/20 rounded-xl p-4">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 bg-gradient-to-br from-accent to-violet-500 rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-accent/20">
+            <lucide-icon name="sparkles" [size]="16" class="text-white"></lucide-icon>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <h3 class="text-sm font-display font-semibold text-navy m-0">Morning Briefing</h3>
+              <span class="live-dot"></span>
+            </div>
+            <p class="text-xs text-gray-700 font-body m-0 leading-relaxed line-clamp-3" [innerHTML]="briefingSummary()"></p>
+          </div>
+          <a routerLink="/app/ai-studio"
+            class="px-3 py-1.5 text-xs font-body font-semibold text-accent border border-accent/30 rounded-lg hover:bg-accent/5 transition-colors no-underline shrink-0 flex items-center gap-1">
+            Full Briefing <lucide-icon name="arrow-right" [size]="12"></lucide-icon>
+          </a>
+        </div>
+      </div>
+    }
 
     <!-- Error Banner -->
     @if (error()) {
@@ -369,10 +392,13 @@ export default class DashboardComponent implements OnInit {
   private dateRangeService = inject(DateRangeService);
   private router = inject(Router);
 
+  private aiService = inject(AiService);
+
   loading = signal(true);
   insightsLoading = signal(true);
   error = signal<string | null>(null);
   activeSprints = signal<any[]>([]);
+  briefingSummary = signal<string | null>(null);
   private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   kpi = signal({
@@ -548,6 +574,7 @@ export default class DashboardComponent implements OnInit {
 
   ngOnInit() {
     this.loadActiveSprints();
+    this.loadBriefingSummary();
   }
 
   retry() {
@@ -561,6 +588,24 @@ export default class DashboardComponent implements OnInit {
       this.loadInsights(acc.id, acc.credential_group);
     }
     this.loadActiveSprints();
+  }
+
+  private loadBriefingSummary() {
+    this.aiService.getBriefing().subscribe({
+      next: (res) => {
+        if (res.briefing?.content) {
+          // Extract first 2 meaningful lines for the summary
+          const lines = res.briefing.content
+            .split('\n')
+            .map(l => l.trim())
+            .filter(l => l.length > 10 && !l.startsWith('#') && !l.startsWith('---'));
+          const summary = lines.slice(0, 2).join(' ')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .substring(0, 300);
+          if (summary) this.briefingSummary.set(summary);
+        }
+      },
+    });
   }
 
   private loadActiveSprints() {
