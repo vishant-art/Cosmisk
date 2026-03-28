@@ -21,7 +21,9 @@ test.describe('Morning Journey — What a Real User Sees', () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   test('Step 1: Dashboard gives me a clear picture of ad health', async ({ page }) => {
     await goTo(page, '/app/dashboard');
-    await page.waitForTimeout(3000);
+    // Wait for KPI cards to load (Total Spend appears once API returns)
+    await page.locator('text=/Total Spend/i').waitFor({ timeout: 15000 });
+    await page.waitForTimeout(1000);
 
     // Can I see how much I spent?
     const body = await page.locator('body').textContent() ?? '';
