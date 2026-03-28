@@ -292,9 +292,9 @@ import { CountUpDirective } from '../../shared/directives/count-up.directive';
           </p>
           <div class="flex flex-wrap gap-4 mb-6">
             <a routerLink="/signup" class="btn-primary !py-3.5 !px-8 !text-base no-underline hover:shadow-glow hover:scale-[1.02] transition-all duration-300">Start Free Trial</a>
-            <button (click)="showDemo.set(true)" class="btn !py-3.5 !px-8 !text-base bg-white/[0.06] border border-white/[0.15] text-white hover:bg-white/[0.1] hover:scale-[1.02] transition-all duration-300" aria-label="Watch product demo">
-              <lucide-icon name="play" [size]="16"></lucide-icon> Watch Demo
-            </button>
+            <a routerLink="/score" class="btn !py-3.5 !px-8 !text-base bg-white/[0.06] border border-white/[0.15] text-white hover:bg-white/[0.1] hover:scale-[1.02] transition-all duration-300 no-underline flex items-center gap-2" aria-label="Try free creative score">
+              <lucide-icon name="target" [size]="16"></lucide-icon> Score Your Ad Free
+            </a>
           </div>
 
           <!-- Email Capture -->
@@ -1832,7 +1832,7 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
     { name: 'Slack', emoji: '\uD83D\uDCAC', bgClass: 'bg-purple-50', connected: true },
     { name: 'Google Sheets', emoji: '\uD83D\uDCCA', bgClass: 'bg-emerald-50', connected: true },
     { name: 'Google Drive', emoji: '\uD83D\uDCC1', bgClass: 'bg-amber-50', connected: true },
-    { name: 'Razorpay', emoji: '\uD83D\uDCB3', bgClass: 'bg-blue-50', connected: false },
+    { name: 'Razorpay', emoji: '\uD83D\uDCB3', bgClass: 'bg-blue-50', connected: true },
   ];
 
   comparisonRows = [
@@ -1849,16 +1849,16 @@ export default class LandingComponent implements OnInit, OnDestroy, AfterViewIni
 
   plans = [
     {
-      name: 'Starter', price: '\u20B94,999', annualPrice: '\u20B93,999', featured: false,
-      features: ['1 brand', '5 ad accounts', 'Creative Cockpit', 'Basic DNA (Hook only)', '10 AI queries/day', '1 sprint/month (20 creatives)'],
+      name: 'Solo', price: '\u20B92,499', annualPrice: '\u20B91,899', featured: false,
+      features: ['3 ad accounts', 'Unlimited AI chats', '30 images / 5 videos', '100 creatives/month', '10 autopilot rules', '5 competitors', 'PDF reports'],
     },
     {
-      name: 'Growth', price: '\u20B914,999', annualPrice: '\u20B911,999', featured: true,
-      features: ['3 brands', 'Unlimited accounts', 'Full DNA analysis', 'Creative Engine (100+ per sprint)', 'Competitor Intelligence', 'Director Lab + Creative Studio', '50 AI queries/day'],
+      name: 'Growth', price: '\u20B95,999', annualPrice: '\u20B94,499', featured: true,
+      features: ['10 ad accounts', 'Unlimited AI + generation', '100 images / 20 videos', '500 creatives/month', 'Unlimited autopilot', '15 competitors', 'Branded reports'],
     },
     {
-      name: 'Scale', price: '\u20B929,999', annualPrice: '\u20B923,999', featured: false,
-      features: ['Unlimited brands', 'Unlimited sprints + creatives', 'Agency Command Center', 'Cross-brand Brain', 'Algorithm-aware planning', 'White-label reports', 'Dedicated CSM'],
+      name: 'Agency', price: '\u20B912,999', annualPrice: '\u20B99,999', featured: false,
+      features: ['Unlimited accounts', 'Unlimited everything', 'Agency Command Center', 'White-label reports', 'API access', 'Dedicated CSM'],
     },
   ];
 

@@ -14,6 +14,24 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+export interface AiBriefingDecision {
+  id: string;
+  type: string;
+  targetName: string;
+  suggestedAction: string;
+  urgency: string;
+}
+
+export interface AiBriefingResponse {
+  briefing: {
+    content: string;
+    completedAt: string;
+    runId: string;
+  } | null;
+  pendingDecisions: AiBriefingDecision[];
+  suggestions: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class AiService {
   private api = inject(ApiService);
@@ -26,5 +44,9 @@ export class AiService {
         table: response.table,
       }))
     );
+  }
+
+  getBriefing(): Observable<AiBriefingResponse> {
+    return this.api.get<AiBriefingResponse>(environment.AI_BRIEFING);
   }
 }

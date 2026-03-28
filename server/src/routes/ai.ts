@@ -10,6 +10,7 @@ import type { MetaTokenRow } from '../types/index.js';
 import { validate, aiChatSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
+import { safeJsonParse } from '../utils/safe-json.js';
 import Anthropic from '@anthropic-ai/sdk';
 
 /** Shape of a Meta Insights API response with a data array of raw insight rows */
@@ -1100,5 +1101,76 @@ export async function aiRoutes(app: FastifyInstance) {
         content: `I ran into an issue fetching your data: ${errorMsg}. Please try again, or check that your ad account is active and accessible.`,
       };
     }
+  });
+
+  // GET /ai/briefing — fetch latest morning briefing + pending decisions for proactive AI Studio
+  app.get('/briefing', { preHandler: [app.authenticate] }, async (request) => {
+    const db = getDb();
+    const userId = request.user.id;
+
+    // Get latest completed morning briefing
+    const briefingRun = db.prepare(
+      `SELECT * FROM agent_runs
+       WHERE user_id = ? AND agent_type = 'morning_briefing' AND status = 'completed'
+       ORDER BY completed_at DESC LIMIT 1`
+    ).get(userId) as { id: string; summary: string; raw_context: string; completed_at: string } | undefined;
+
+    if (!briefingRun) {
+      return { briefing: null, pendingDecisions: [], suggestions: [] };
+    }
+
+    // Get pending watchdog decisions
+    const pendingDecisions = db.prepare(
+      `SELECT id, type, target_name, reasoning, confidence, urgency, suggested_action, estimated_impact
+       FROM agent_decisions
+       WHERE user_id = ? AND status = 'pending'
+       ORDER BY urgency DESC, created_at DESC
+       LIMIT 5`
+    ).all(userId) as { id: string; type: string; target_name: string; reasoning: string; confidence: string; urgency: string; suggested_action: string; estimated_impact: string }[];
+
+    // Build context-aware suggestions from real data
+    const suggestions: string[] = [];
+
+    // From pending decisions
+    for (const d of pendingDecisions.slice(0, 2)) {
+      if (d.type === 'pause' || d.type === 'reduce_budget') {
+        suggestions.push(`Why is ${d.target_name} underperforming?`);
+      } else if (d.type === 'scale' || d.type === 'increase_budget') {
+        suggestions.push(`Scale ${d.target_name} — it's performing well`);
+      }
+    }
+
+    // From briefing content
+    const rawContext = safeJsonParse<Record<string, any>>(briefingRun.raw_context, {});
+    const summary = briefingRun.summary || '';
+
+    // Extract ROAS mentions from summary
+    const roasMatch = summary.match(/ROAS[:\s]+(\d+\.?\d*)/i);
+    if (roasMatch) {
+      const roas = parseFloat(roasMatch[1]);
+      if (roas < 2) suggestions.push(`ROAS is at ${roas}x — what should I change?`);
+      else if (roas > 3) suggestions.push(`ROAS is strong at ${roas}x — how do I scale?`);
+    }
+
+    // Add generic but relevant suggestions to fill up to 4
+    if (suggestions.length < 4) suggestions.push('What should I focus on today?');
+    if (suggestions.length < 4) suggestions.push('Show me my top performing campaigns');
+    if (suggestions.length < 4) suggestions.push('Which creatives need refreshing?');
+
+    return {
+      briefing: {
+        content: briefingRun.summary,
+        completedAt: briefingRun.completed_at,
+        runId: briefingRun.id,
+      },
+      pendingDecisions: pendingDecisions.map(d => ({
+        id: d.id,
+        type: d.type,
+        targetName: d.target_name,
+        suggestedAction: d.suggested_action,
+        urgency: d.urgency,
+      })),
+      suggestions: suggestions.slice(0, 4),
+    };
   });
 }

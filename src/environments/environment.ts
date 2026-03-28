@@ -53,6 +53,7 @@ export const environment = {
   BRAIN_COMPARE: 'brain/compare',
 
   AI_CHAT: 'ai/chat',
+  AI_BRIEFING: 'ai/briefing',
 
   REPORTS_GENERATE: 'reports/generate',
   REPORTS_LIST: 'reports/list',

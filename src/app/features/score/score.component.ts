@@ -353,20 +353,20 @@ export default class ScoreComponent {
     const a = this.analysis();
     if (!a) return;
     const text = `My ad creative scored ${a.score}/100 (${a.grade}) on Cosmisk Score.\n\nHook: ${a.dna.hook.score} | Visual: ${a.dna.visual.score} | Audio: ${a.dna.audio.score}\n\nGet your free score:`;
-    const url = 'https://cosmisk.com/score';
+    const url = `${window.location.origin}/score`;
     window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
   }
 
   shareOnLinkedIn() {
-    const url = 'https://cosmisk.com/score';
+    const url = `${window.location.origin}/score`;
     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`, '_blank');
   }
 
   copyShareLink() {
     const a = this.analysis();
     const text = a
-      ? `I scored ${a.score}/100 on Cosmisk Score (Hook: ${a.dna.hook.score}, Visual: ${a.dna.visual.score}, Audio: ${a.dna.audio.score}). Try it free: https://cosmisk.com/score`
-      : 'https://cosmisk.com/score';
+      ? `I scored ${a.score}/100 on Cosmisk Score (Hook: ${a.dna.hook.score}, Visual: ${a.dna.visual.score}, Audio: ${a.dna.audio.score}). Try it free: ${window.location.origin}/score`
+      : `${window.location.origin}/score`;
     navigator.clipboard.writeText(text).then(() => {
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 2000);

@@ -193,6 +193,8 @@ export class TopbarComponent implements OnInit, OnDestroy {
     '/app/content-bank': { title: 'Content Bank', breadcrumb: 'Create' },
     '/app/settings': { title: 'Settings' },
     '/app/agency': { title: 'Agency Command Center' },
+    '/app/agent': { title: 'Watchdog', breadcrumb: 'Intelligence' },
+    '/app/score': { title: 'Creative Score' },
   };
 
   ngOnInit() {
@@ -212,7 +214,15 @@ export class TopbarComponent implements OnInit, OnDestroy {
 
   private updateTitle(url: string) {
     const base = url.split('?')[0];
-    const match = this.routeTitles[base];
+    // Try exact match first, then try parent route for parameterized paths
+    let match = this.routeTitles[base];
+    if (!match) {
+      const segments = base.split('/');
+      while (segments.length > 2 && !match) {
+        segments.pop();
+        match = this.routeTitles[segments.join('/')];
+      }
+    }
     this.pageTitle = match?.title || 'Dashboard';
     this.breadcrumb = match?.breadcrumb || '';
   }
