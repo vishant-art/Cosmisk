@@ -369,18 +369,69 @@ import { environment } from '../../../environments/environment';
       </div>
     </div>
 
-    <!-- Creative Intelligence Actions -->
-    <div class="grid md:grid-cols-4 gap-5">
-      @for (action of quickActions; track action.title) {
-        <a [routerLink]="action.route" class="card card-lift glow-on-hover !p-5 flex flex-col items-center text-center no-underline group">
-          <div class="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mb-3"
-            [ngClass]="action.bgClass">
-            <lucide-icon [name]="action.icon" [size]="22" [class]="action.iconClass"></lucide-icon>
+    <!-- Agent Activity Feed + Quick Actions -->
+    <div class="grid lg:grid-cols-3 gap-6 mb-8">
+      <!-- Activity Feed -->
+      <div class="lg:col-span-2 card">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <lucide-icon name="activity" [size]="16" class="text-accent"></lucide-icon>
+            <h3 class="text-card-title font-display text-navy m-0">Agent Activity</h3>
+            <span class="live-dot"></span>
           </div>
-          <h4 class="text-sm font-body font-semibold text-navy m-0 mb-1">{{ action.title }}</h4>
-          <p class="text-xs text-gray-500 font-body m-0">{{ action.description }}</p>
-        </a>
-      }
+          <a routerLink="/app/autopilot" class="text-xs text-accent font-body hover:underline no-underline">View All</a>
+        </div>
+        @if (agentActivity().length === 0) {
+          <div class="text-center py-6">
+            <lucide-icon name="bot" [size]="28" class="text-gray-300 mx-auto mb-2"></lucide-icon>
+            <p class="text-sm text-gray-400 font-body m-0">Your AI agents are standing by</p>
+            <p class="text-xs text-gray-300 font-body m-0 mt-1">Activity will appear after the watchdog runs</p>
+          </div>
+        } @else {
+          <div class="space-y-2">
+            @for (activity of agentActivity(); track activity.id) {
+              <div class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                  [ngClass]="{
+                    'bg-green-100': activity.status === 'completed',
+                    'bg-blue-100': activity.status === 'running',
+                    'bg-red-100': activity.status === 'failed'
+                  }">
+                  <lucide-icon
+                    [name]="activity.status === 'completed' ? 'check' : activity.status === 'running' ? 'loader-2' : 'x'"
+                    [size]="14"
+                    [class]="activity.status === 'completed' ? 'text-green-600' : activity.status === 'running' ? 'text-blue-600 animate-spin' : 'text-red-600'">
+                  </lucide-icon>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-body font-medium text-navy m-0">
+                    {{ activity.agentType === 'watchdog' ? 'Watchdog' : activity.agentType === 'briefing' ? 'Morning Briefing' : activity.agentType === 'report' ? 'Report Agent' : activity.agentType === 'content' ? 'Content Agent' : activity.agentType }}
+                  </p>
+                  <p class="text-[11px] text-gray-500 font-body m-0 mt-0.5 truncate">{{ activity.summary || 'Running analysis...' }}</p>
+                </div>
+                <span class="text-[10px] text-gray-400 font-body shrink-0">{{ activity.timeAgo }}</span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Quick Actions Grid -->
+      <div class="space-y-3">
+        <h3 class="text-card-title font-display text-navy m-0 mb-1">Quick Actions</h3>
+        @for (action of quickActions; track action.title) {
+          <a [routerLink]="action.route" class="card card-lift glow-on-hover !p-4 flex items-center gap-3 no-underline group">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              [ngClass]="action.bgClass">
+              <lucide-icon [name]="action.icon" [size]="18" [class]="action.iconClass"></lucide-icon>
+            </div>
+            <div>
+              <h4 class="text-sm font-body font-semibold text-navy m-0">{{ action.title }}</h4>
+              <p class="text-[11px] text-gray-500 font-body m-0">{{ action.description }}</p>
+            </div>
+          </a>
+        }
+      </div>
     </div>
   `
 })
@@ -399,6 +450,7 @@ export default class DashboardComponent implements OnInit {
   error = signal<string | null>(null);
   activeSprints = signal<any[]>([]);
   briefingSummary = signal<string | null>(null);
+  agentActivity = signal<{ id: string; agentType: string; status: string; summary: string; timeAgo: string }[]>([]);
   private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
   kpi = signal({
@@ -575,6 +627,7 @@ export default class DashboardComponent implements OnInit {
   ngOnInit() {
     this.loadActiveSprints();
     this.loadBriefingSummary();
+    this.loadAgentActivity();
   }
 
   retry() {
@@ -629,6 +682,33 @@ export default class DashboardComponent implements OnInit {
       },
       error: () => this.toast.error('Load Failed', 'Could not load sprints'),
     });
+  }
+
+  private loadAgentActivity() {
+    this.api.get<any>(environment.AGENT_RUNS, { limit: 8 }).subscribe({
+      next: (res) => {
+        if (res.success && res.runs) {
+          this.agentActivity.set(res.runs.map((r: any) => ({
+            id: r.id,
+            agentType: r.agent_type,
+            status: r.status,
+            summary: r.summary ? (r.summary.length > 80 ? r.summary.substring(0, 80) + '...' : r.summary) : '',
+            timeAgo: this.getTimeAgo(r.started_at),
+          })));
+        }
+      },
+    });
+  }
+
+  private getTimeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
   }
 
   formatChange(change: number, suffix: string): string {
