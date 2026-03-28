@@ -139,6 +139,36 @@ interface CommandItem {
         </div>
       </div>
     }
+
+    <!-- Keyboard Shortcuts Overlay -->
+    @if (showShortcuts()) {
+      <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] animate-fade-in" (click)="showShortcuts.set(false)"></div>
+      <div class="fixed top-[10%] left-1/2 -translate-x-1/2 w-full max-w-md z-[101] animate-slide-down">
+        <div class="bg-white rounded-xl shadow-modal overflow-hidden border border-gray-200">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h3 class="text-sm font-display font-semibold text-navy m-0">Keyboard Shortcuts</h3>
+            <button (click)="showShortcuts.set(false)" class="p-1 hover:bg-gray-100 rounded border-0 bg-transparent cursor-pointer">
+              <span class="text-gray-400 text-lg">&times;</span>
+            </button>
+          </div>
+          <div class="p-3 max-h-[60vh] overflow-y-auto">
+            @for (s of shortcuts; track s.desc) {
+              <div class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50">
+                <span class="text-sm text-gray-700 font-body">{{ s.desc }}</span>
+                <div class="flex items-center gap-1">
+                  @for (key of s.keys; track key) {
+                    <kbd class="px-2 py-1 bg-gray-100 rounded border border-gray-200 text-xs font-mono text-gray-600 min-w-[28px] text-center">{{ key }}</kbd>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          <div class="px-5 py-3 border-t border-gray-100 bg-gray-50">
+            <p class="text-[10px] text-gray-400 font-body m-0 text-center">Press <kbd class="px-1 py-0.5 bg-white rounded border border-gray-200 text-[10px] font-mono">?</kbd> to toggle this overlay</p>
+          </div>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     @keyframes slide-down {
@@ -367,8 +397,48 @@ export class CommandPaletteComponent implements AfterViewChecked {
     this.aiActions.set([]);
   }
 
+  showShortcuts = signal(false);
+  private gPressed = false;
+  private gTimeout?: ReturnType<typeof setTimeout>;
+
+  shortcuts = [
+    { keys: ['Cmd', 'K'], desc: 'Command bar' },
+    { keys: ['?'], desc: 'Keyboard shortcuts' },
+    { keys: ['G', 'D'], desc: 'Go to Dashboard' },
+    { keys: ['G', 'A'], desc: 'Go to Analytics' },
+    { keys: ['G', 'B'], desc: 'Go to Brain' },
+    { keys: ['G', 'C'], desc: 'Go to Creative Cockpit' },
+    { keys: ['G', 'S'], desc: 'Go to AI Studio' },
+    { keys: ['G', 'E'], desc: 'Go to Creative Engine' },
+    { keys: ['G', 'R'], desc: 'Go to Reports' },
+    { keys: ['G', 'P'], desc: 'Go to Autopilot' },
+    { keys: ['G', 'U'], desc: 'Go to UGC Studio' },
+    { keys: ['Tab'], desc: 'Switch AI/Nav mode (in command bar)' },
+    { keys: ['Esc'], desc: 'Close overlay' },
+  ];
+
+  private gNavMap: Record<string, string> = {
+    d: '/app/dashboard',
+    a: '/app/analytics',
+    b: '/app/brain',
+    c: '/app/creative-cockpit',
+    s: '/app/ai-studio',
+    e: '/app/creative-engine',
+    r: '/app/reports',
+    p: '/app/autopilot',
+    u: '/app/ugc-studio',
+    l: '/app/director-lab',
+    t: '/app/settings',
+    w: '/app/swipe-file',
+    x: '/app/audit',
+  };
+
   @HostListener('window:keydown', ['$event'])
   onKeydown(event: KeyboardEvent) {
+    const target = event.target as HTMLElement;
+    const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+    // Cmd+K always works
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
       if (this.open()) {
@@ -378,6 +448,40 @@ export class CommandPaletteComponent implements AfterViewChecked {
         this.shouldFocus = true;
       }
       return;
+    }
+
+    // Don't process shortcuts when typing in an input
+    if (isInput || this.open()) return;
+
+    // ? for shortcuts overlay
+    if (event.key === '?' || (event.shiftKey && event.key === '/')) {
+      event.preventDefault();
+      this.showShortcuts.set(!this.showShortcuts());
+      return;
+    }
+
+    // Escape closes shortcuts
+    if (event.key === 'Escape' && this.showShortcuts()) {
+      this.showShortcuts.set(false);
+      return;
+    }
+
+    // G+key navigation (vim-style "go to")
+    if (event.key === 'g' && !this.gPressed) {
+      this.gPressed = true;
+      clearTimeout(this.gTimeout);
+      this.gTimeout = setTimeout(() => { this.gPressed = false; }, 500);
+      return;
+    }
+
+    if (this.gPressed) {
+      this.gPressed = false;
+      clearTimeout(this.gTimeout);
+      const route = this.gNavMap[event.key];
+      if (route) {
+        event.preventDefault();
+        this.router.navigate([route]);
+      }
     }
   }
 }
