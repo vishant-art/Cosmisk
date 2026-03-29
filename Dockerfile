@@ -32,13 +32,13 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:22-alpine AS production
 
-# Native modules need these at runtime
-RUN apk add --no-cache python3 make g++
+# Native build tools for better-sqlite3 compilation + libstdc++ for runtime
+RUN apk add --no-cache python3 make g++ libstdc++
 
 WORKDIR /app
 
 COPY --from=builder /app/package.json /app/package-lock.json* ./
-RUN npm ci --omit=dev && apk del python3 make g++
+RUN npm ci --omit=dev && apk del python3 make g++ && apk add --no-cache libstdc++
 
 # Backend
 COPY --from=builder /app/dist/ ./dist/
