@@ -54,7 +54,4 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
-  CMD wget -qO- http://localhost:3000/health || exit 1
-
 CMD ["node", "dist/index.js"]
