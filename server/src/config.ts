@@ -82,6 +82,8 @@ if (config.nodeEnv === 'production') {
   const required: [string, string][] = [
     ['anthropicApiKey', 'ANTHROPIC_API_KEY'],
     ['metaAppSecret', 'META_APP_SECRET'],
+  ];
+  const optional: [string, string][] = [
     ['stripeSecretKey', 'STRIPE_SECRET_KEY'],
     ['stripeWebhookSecret', 'STRIPE_WEBHOOK_SECRET'],
   ];
@@ -89,6 +91,11 @@ if (config.nodeEnv === 'production') {
     if (!config[key as keyof typeof config]) {
       console.error(`FATAL: ${envName} is not set. Required in production.`);
       process.exit(1);
+    }
+  }
+  for (const [, envName] of optional) {
+    if (!env[envName]) {
+      console.warn(`WARNING: ${envName} is not set. Related features (billing) will be disabled.`);
     }
   }
 }
