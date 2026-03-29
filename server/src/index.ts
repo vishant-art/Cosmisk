@@ -126,6 +126,7 @@ app.get('/health', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } 
     db: dbOk ? 'connected' : 'error',
     node: process.version,
     env: config.nodeEnv,
+    version: '2026-03-29.2',
   };
 });
 
