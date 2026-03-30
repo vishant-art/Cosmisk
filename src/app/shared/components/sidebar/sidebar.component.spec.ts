@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { SidebarComponent } from './sidebar.component';
 import { AutopilotBadgeService } from '../../../core/services/autopilot-badge.service';
-import { signal } from '@angular/core';
 
 describe('SidebarComponent', () => {
   let component: SidebarComponent;
@@ -21,7 +21,14 @@ describe('SidebarComponent', () => {
         { provide: AutopilotBadgeService, useValue: mockBadgeService },
       ],
       schemas: [NO_ERRORS_SCHEMA],
-    }).compileComponents();
+    })
+    .overrideComponent(SidebarComponent, {
+      set: {
+        imports: [CommonModule],
+        schemas: [NO_ERRORS_SCHEMA],
+      }
+    })
+    .compileComponents();
 
     fixture = TestBed.createComponent(SidebarComponent);
     component = fixture.componentInstance;
@@ -80,7 +87,7 @@ describe('SidebarComponent', () => {
   });
 
   it('should call badgeService.refresh on init', () => {
-    fixture.detectChanges(); // triggers ngOnInit
+    fixture.detectChanges();
     expect(mockBadgeService.refresh).toHaveBeenCalled();
   });
 

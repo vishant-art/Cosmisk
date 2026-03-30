@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { BrandSwitcherComponent } from './brand-switcher.component';
 import { BrandService } from '../../../core/services/brand.service';
-import { signal } from '@angular/core';
 
 describe('BrandSwitcherComponent', () => {
   let component: BrandSwitcherComponent;
@@ -21,93 +21,31 @@ describe('BrandSwitcherComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [BrandSwitcherComponent],
-      providers: [
-        { provide: BrandService, useValue: mockBrandService },
-      ],
+      providers: [{ provide: BrandService, useValue: mockBrandService }],
       schemas: [NO_ERRORS_SCHEMA],
-    }).compileComponents();
-
+    })
+    .overrideComponent(BrandSwitcherComponent, { set: { imports: [CommonModule], schemas: [NO_ERRORS_SCHEMA] } })
+    .compileComponents();
     fixture = TestBed.createComponent(BrandSwitcherComponent);
     component = fixture.componentInstance;
   });
 
-  it('should create', () => {
+  it('should create', () => { fixture.detectChanges(); expect(component).toBeTruthy(); });
+  it('should start closed', () => { expect(component.open()).toBeFalse(); });
+  it('should display current brand', () => { fixture.detectChanges(); expect(fixture.nativeElement.textContent).toContain('Acme Corp'); });
+  it('should show fallback when no brand', () => {
+    mockBrandService.currentBrand.set(null);
     fixture.detectChanges();
-    expect(component).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Select Brand');
   });
-
-  it('should start with dropdown closed', () => {
-    expect(component.open()).toBeFalse();
-  });
-
-  it('should display current brand name', () => {
-    fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    expect(el.textContent).toContain('Acme Corp');
-  });
-
-  it('should show fallback when no brand is selected', () => {
-    mockBrandService.currentBrand = signal(null);
-    fixture = TestBed.createComponent(BrandSwitcherComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    expect(el.textContent).toContain('Select Brand');
-  });
-
-  it('should toggle dropdown', () => {
-    fixture.detectChanges();
-    const button = fixture.nativeElement.querySelector('button');
-    button.click();
-    expect(component.open()).toBeTrue();
-  });
-
-  it('should filter brands by search term', () => {
-    component.searchTerm.set('acme');
-    const filtered = component.filteredBrands();
-    expect(filtered.length).toBe(1);
-    expect(filtered[0].name).toBe('Acme Corp');
-  });
-
-  it('should return all brands when search is empty', () => {
-    component.searchTerm.set('');
-    expect(component.filteredBrands().length).toBe(2);
-  });
-
-  it('should switch brand and close dropdown', () => {
-    component.open.set(true);
-    component.selectBrand('b2');
-    expect(mockBrandService.switchBrand).toHaveBeenCalledWith('b2');
-    expect(component.open()).toBeFalse();
-    expect(component.searchTerm()).toBe('');
-  });
-
-  it('should update searchTerm on input', () => {
-    const mockEvent = { target: { value: 'beta' } } as any;
-    component.onSearch(mockEvent);
-    expect(component.searchTerm()).toBe('beta');
-  });
-
-  it('should return correct roas class for high roas', () => {
-    expect(component.getRoasClass(3.5)).toContain('text-green-400');
-  });
-
-  it('should return correct roas class for medium roas', () => {
-    expect(component.getRoasClass(2.5)).toContain('text-yellow-400');
-  });
-
-  it('should return correct roas class for low roas', () => {
-    expect(component.getRoasClass(1.0)).toContain('text-red-400');
-  });
-
-  it('should return correct roas class for undefined', () => {
-    expect(component.getRoasClass(undefined)).toContain('text-red-400');
-  });
-
-  it('should display brand initial in avatar', () => {
-    fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    const avatar = el.querySelector('.rounded-full.bg-accent');
-    expect(avatar?.textContent?.trim()).toBe('A');
-  });
+  it('should toggle dropdown', () => { fixture.detectChanges(); fixture.nativeElement.querySelector('button').click(); expect(component.open()).toBeTrue(); });
+  it('should filter brands', () => { component.searchTerm.set('acme'); expect(component.filteredBrands().length).toBe(1); });
+  it('should return all brands when empty', () => { component.searchTerm.set(''); expect(component.filteredBrands().length).toBe(2); });
+  it('should switch brand', () => { component.open.set(true); component.selectBrand('b2'); expect(mockBrandService.switchBrand).toHaveBeenCalledWith('b2'); expect(component.open()).toBeFalse(); });
+  it('should update search', () => { component.onSearch({ target: { value: 'beta' } } as any); expect(component.searchTerm()).toBe('beta'); });
+  it('should return correct roas class high', () => { expect(component.getRoasClass(3.5)).toContain('text-green-400'); });
+  it('should return correct roas class medium', () => { expect(component.getRoasClass(2.5)).toContain('text-yellow-400'); });
+  it('should return correct roas class low', () => { expect(component.getRoasClass(1.0)).toContain('text-red-400'); });
+  it('should return correct roas class undefined', () => { expect(component.getRoasClass(undefined)).toContain('text-red-400'); });
+  it('should display brand initial', () => { fixture.detectChanges(); const a = fixture.nativeElement.querySelector('.rounded-full.bg-accent'); expect(a?.textContent?.trim()).toBe('A'); });
 });

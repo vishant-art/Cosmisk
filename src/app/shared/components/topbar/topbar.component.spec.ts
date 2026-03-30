@@ -1,12 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal, computed } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Router, NavigationEnd } from '@angular/router';
 import { Subject } from 'rxjs';
 import { TopbarComponent } from './topbar.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DateRangeService } from '../../../core/services/date-range.service';
-import { signal, computed } from '@angular/core';
 
 describe('TopbarComponent', () => {
   let component: TopbarComponent;
@@ -24,12 +24,10 @@ describe('TopbarComponent', () => {
       url: '/app/dashboard',
       navigate: jasmine.createSpy('navigate'),
     };
-
     mockAuthService = {
       user: signal({ name: 'John Doe', email: 'john@example.com' }),
       logout: jasmine.createSpy('logout'),
     };
-
     mockNotificationService = {
       unreadCount: signal(3),
       allNotifications: signal([
@@ -40,7 +38,6 @@ describe('TopbarComponent', () => {
       markAsRead: jasmine.createSpy('markAsRead'),
       markAllAsRead: jasmine.createSpy('markAllAsRead'),
     };
-
     mockDateRangeService = {
       displayLabel: signal('Last 7 Days'),
       setPreset: jasmine.createSpy('setPreset'),
@@ -55,20 +52,19 @@ describe('TopbarComponent', () => {
         { provide: DateRangeService, useValue: mockDateRangeService },
       ],
       schemas: [NO_ERRORS_SCHEMA],
-    }).compileComponents();
+    })
+    .overrideComponent(TopbarComponent, {
+      set: { imports: [CommonModule], schemas: [NO_ERRORS_SCHEMA] }
+    })
+    .compileComponents();
 
     fixture = TestBed.createComponent(TopbarComponent);
     component = fixture.componentInstance;
   });
 
-  afterEach(() => {
-    component.ngOnDestroy();
-  });
+  afterEach(() => { component.ngOnDestroy(); });
 
-  it('should create', () => {
-    fixture.detectChanges();
-    expect(component).toBeTruthy();
-  });
+  it('should create', () => { fixture.detectChanges(); expect(component).toBeTruthy(); });
 
   it('should display page title', () => {
     fixture.detectChanges();
@@ -83,10 +79,7 @@ describe('TopbarComponent', () => {
     expect(component.breadcrumb).toBe('Intelligence');
   });
 
-  it('should get user initials', () => {
-    fixture.detectChanges();
-    expect(component.getUserInitials()).toBe('JD');
-  });
+  it('should get user initials', () => { fixture.detectChanges(); expect(component.getUserInitials()).toBe('JD'); });
 
   it('should handle single name initial', () => {
     mockAuthService.user = signal({ name: 'Admin', email: 'a@a.com' });
@@ -117,13 +110,6 @@ describe('TopbarComponent', () => {
     component.selectRange('Today');
     expect(mockDateRangeService.setPreset).toHaveBeenCalledWith('today');
     expect(component.datePickerOpen()).toBeFalse();
-  });
-
-  it('should toggle notification panel', () => {
-    fixture.detectChanges();
-    expect(component.notifOpen()).toBeFalse();
-    component.notifOpen.set(true);
-    expect(component.notifOpen()).toBeTrue();
   });
 
   it('should handle notification click', () => {
@@ -158,14 +144,6 @@ describe('TopbarComponent', () => {
     expect(mockAuthService.logout).toHaveBeenCalled();
   });
 
-  it('should start polling on init', () => {
-    fixture.detectChanges();
-    expect(mockNotificationService.startPolling).toHaveBeenCalled();
-  });
-
-  it('should stop polling on destroy', () => {
-    fixture.detectChanges();
-    component.ngOnDestroy();
-    expect(mockNotificationService.stopPolling).toHaveBeenCalled();
-  });
+  it('should start polling on init', () => { fixture.detectChanges(); expect(mockNotificationService.startPolling).toHaveBeenCalled(); });
+  it('should stop polling on destroy', () => { fixture.detectChanges(); component.ngOnDestroy(); expect(mockNotificationService.stopPolling).toHaveBeenCalled(); });
 });

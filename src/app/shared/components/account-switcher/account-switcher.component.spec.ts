@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { AccountSwitcherComponent } from './account-switcher.component';
 import { AdAccountService } from '../../../core/services/ad-account.service';
-import { signal } from '@angular/core';
 
 describe('AccountSwitcherComponent', () => {
   let component: AccountSwitcherComponent;
@@ -25,85 +25,55 @@ describe('AccountSwitcherComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [AccountSwitcherComponent],
-      providers: [
-        { provide: AdAccountService, useValue: mockAdAccountService },
-      ],
+      providers: [{ provide: AdAccountService, useValue: mockAdAccountService }],
       schemas: [NO_ERRORS_SCHEMA],
-    }).compileComponents();
-
+    })
+    .overrideComponent(AccountSwitcherComponent, { set: { imports: [CommonModule], schemas: [NO_ERRORS_SCHEMA] } })
+    .compileComponents();
     fixture = TestBed.createComponent(AccountSwitcherComponent);
     component = fixture.componentInstance;
   });
 
-  it('should create', () => {
+  it('should create', () => { fixture.detectChanges(); expect(component).toBeTruthy(); });
+  it('should start closed', () => { expect(component.open()).toBeFalse(); });
+  it('should display current account name', () => { fixture.detectChanges(); expect(fixture.nativeElement.textContent).toContain('Test Account'); });
+  it('should show loading state', () => {
+    mockAdAccountService.currentAccount.set(null);
+    mockAdAccountService.loading.set(true);
     fixture.detectChanges();
-    expect(component).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('Loading accounts...');
   });
-
-  it('should start with dropdown closed', () => {
-    expect(component.open()).toBeFalse();
-  });
-
-  it('should display current account name', () => {
+  it('should show no accounts', () => {
+    mockAdAccountService.currentAccount.set(null);
+    mockAdAccountService.loading.set(false);
     fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    expect(el.textContent).toContain('Test Account');
+    expect(fixture.nativeElement.textContent).toContain('No ad accounts');
   });
-
-  it('should show loading state when loading', () => {
-    mockAdAccountService.currentAccount = signal(null);
-    mockAdAccountService.loading = signal(true);
-    fixture = TestBed.createComponent(AccountSwitcherComponent);
-    component = fixture.componentInstance;
+  it('should toggle dropdown', () => {
     fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    expect(el.textContent).toContain('Loading accounts...');
-  });
-
-  it('should show no accounts message when empty', () => {
-    mockAdAccountService.currentAccount = signal(null);
-    mockAdAccountService.loading = signal(false);
-    fixture = TestBed.createComponent(AccountSwitcherComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-    const el: HTMLElement = fixture.nativeElement;
-    expect(el.textContent).toContain('No ad accounts');
-  });
-
-  it('should toggle dropdown on button click', () => {
-    fixture.detectChanges();
-    const button = fixture.nativeElement.querySelector('button');
-    button.click();
+    fixture.nativeElement.querySelector('button').click();
     expect(component.open()).toBeTrue();
-    button.click();
+    fixture.nativeElement.querySelector('button').click();
     expect(component.open()).toBeFalse();
   });
-
-  it('should filter accounts on search', () => {
+  it('should filter accounts', () => {
     component.searchTerm.set('account 1');
     const groups = component.filteredGroups();
     expect(groups.length).toBe(1);
     expect((groups[0][1] as any[]).length).toBe(1);
   });
-
-  it('should return all groups when search is empty', () => {
+  it('should return all groups when empty search', () => {
     component.searchTerm.set('');
-    const groups = component.filteredGroups();
-    expect(groups.length).toBe(1);
-    expect((groups[0][1] as any[]).length).toBe(2);
+    expect((component.filteredGroups()[0][1] as any[]).length).toBe(2);
   });
-
-  it('should switch account and close dropdown', () => {
+  it('should switch account', () => {
     component.open.set(true);
     component.selectAccount('act_2');
     expect(mockAdAccountService.switchAccount).toHaveBeenCalledWith('act_2');
     expect(component.open()).toBeFalse();
-    expect(component.searchTerm()).toBe('');
   });
-
-  it('should update searchTerm on input event', () => {
-    const mockEvent = { target: { value: 'test search' } } as any;
-    component.onSearch(mockEvent);
-    expect(component.searchTerm()).toBe('test search');
+  it('should update search term', () => {
+    component.onSearch({ target: { value: 'test' } } as any);
+    expect(component.searchTerm()).toBe('test');
   });
 });

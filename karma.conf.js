@@ -1,6 +1,4 @@
-// Karma configuration file, see link for more information
-// https://karma-runner.github.io/1.0/config/configuration-file.html
-
+// Karma configuration file
 module.exports = function (config) {
   config.set({
     basePath: '',
@@ -20,10 +18,9 @@ module.exports = function (config) {
       suppressAll: true
     },
     coverageReporter: {
-      dir: require('path').join(__dirname, './coverage/cosmisk'),
+      dir: require('path').join(__dirname, './coverage'),
       subdir: '.',
       reporters: [
-        { type: 'html' },
         { type: 'text-summary' }
       ]
     },
@@ -35,6 +32,7 @@ module.exports = function (config) {
         flags: ['--no-sandbox']
       }
     },
-    restartOnFileChange: true
+    singleRun: true,
+    restartOnFileChange: false
   });
 };
