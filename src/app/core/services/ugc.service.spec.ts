@@ -3,7 +3,8 @@ import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { UgcService } from './ugc.service';
 import { ApiService } from './api.service';
 import { AdAccountService } from './ad-account.service';
-import { of, signal } from 'rxjs';
+import { of } from 'rxjs';
+import { signal } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { AdAccount } from '../models/ad-account.model';
 

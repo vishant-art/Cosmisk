@@ -67,7 +67,7 @@ describe('MediaGenService', () => {
   describe('pollVideoStatus', () => {
     it('should poll api.get and emit until completed', (done) => {
       let callCount = 0;
-      apiSpy.get.and.callFake(() => {
+      apiSpy.get.and.callFake((): any => {
         callCount++;
         if (callCount < 3) {
           return of({ success: true, status: 'processing' as const, progress: 50 });
