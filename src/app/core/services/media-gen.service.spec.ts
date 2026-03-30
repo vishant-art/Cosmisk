@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick, discardPeriodicTasks } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { MediaGenService } from './media-gen.service';
 import { ApiService } from './api.service';
@@ -65,7 +65,7 @@ describe('MediaGenService', () => {
   });
 
   describe('pollVideoStatus', () => {
-    it('should poll api.get and emit until completed', (done) => {
+    it('should poll api.get and emit until completed', fakeAsync(() => {
       let callCount = 0;
       apiSpy.get.and.callFake((): any => {
         callCount++;
@@ -78,11 +78,22 @@ describe('MediaGenService', () => {
       const results: any[] = [];
       service.pollVideoStatus('v1').subscribe({
         next: res => results.push(res),
-        complete: () => {
-          expect(results.length).toBeGreaterThanOrEqual(1);
-          done();
-        },
       });
-    });
+
+      // First emission at t=0
+      tick(0);
+      expect(results.length).toBe(1);
+
+      // Second emission at t=5000
+      tick(5000);
+      expect(results.length).toBe(2);
+
+      // Third emission at t=10000 - completed, should complete the observable
+      tick(5000);
+      expect(results.length).toBe(3);
+      expect(results[2].status).toBe('completed');
+
+      discardPeriodicTasks();
+    }));
   });
 });
