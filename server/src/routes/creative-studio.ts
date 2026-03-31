@@ -8,6 +8,7 @@ import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { FluxProvider } from '../services/api-providers.js';
 import { extractText } from '../utils/claude-helpers.js';
+import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 
 /* ------------------------------------------------------------------ */
 /*  Creative Studio Routes                                             */
@@ -173,6 +174,7 @@ Return ONLY valid JSON, no markdown.`,
           outputs: outputs.map(o => ({
             ...o,
             output: o.output_json ? JSON.parse(o.output_json) : null,
+            score_json: o.score_json ? JSON.parse(o.score_json) : null,
           })),
         },
       };
@@ -203,6 +205,55 @@ Return ONLY valid JSON, no markdown.`,
       return internalError(reply, err, 'creative-studio/generations failed');
     }
   });
+
+  // POST /score — score a creative on demand
+  app.post('/score', {
+    preHandler: [app.authenticate],
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { format, hook_type, dna_tags, script_text, meta_account_id } = request.body as {
+      format: string;
+      hook_type?: string;
+      dna_tags?: any;
+      script_text?: string;
+      meta_account_id?: string;
+    };
+
+    if (!format) {
+      return reply.status(400).send({ success: false, error: 'format is required' });
+    }
+
+    try {
+      const score = await scoreCreative({
+        userId: request.user.id,
+        format,
+        hookType: hook_type,
+        dnaTags: dna_tags,
+        scriptText: script_text,
+        platform: 'meta',
+        metaAccountId: meta_account_id,
+      });
+
+      return { success: true, score };
+    } catch (err: any) {
+      return internalError(reply, err, 'creative-studio/score failed');
+    }
+  });
+
+  // GET /accuracy — prediction accuracy stats
+  app.get('/accuracy', {
+    preHandler: [app.authenticate],
+  }, async (request, reply) => {
+    try {
+      // Resolve any pending predictions first
+      resolveScorePredictions();
+
+      const stats = getAccuracyStats(request.user.id);
+      return { success: true, ...stats };
+    } catch (err: any) {
+      return internalError(reply, err, 'creative-studio/accuracy failed');
+    }
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -218,6 +269,11 @@ async function processGeneration(
   outputIds: Record<string, string>,
 ): Promise<void> {
   const now = () => new Date().toISOString();
+
+  // Look up userId from generation record
+  const genRow = db.prepare('SELECT user_id, meta_account_id FROM studio_generations WHERE id = ?').get(generationId) as { user_id: string; meta_account_id: string | null } | undefined;
+  const userId = genRow?.user_id || '';
+  const metaAccountId = genRow?.meta_account_id || undefined;
 
   const updateOutput = (outputId: string, status: string, outputJson?: string, errorMessage?: string, costCents?: number) => {
     db.prepare(`
@@ -261,7 +317,38 @@ Each script object must have:
           const rawText = extractText(response, '[]');
           const cleanText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
           const scripts = JSON.parse(cleanText);
-          updateOutput(outputId, 'completed', JSON.stringify(scripts), undefined, 5);
+
+          // Score each script
+          const scoredScripts = await Promise.all(scripts.map(async (script: any) => {
+            try {
+              const score = await scoreCreative({
+                userId,
+                format: 'scripts',
+                scriptText: [script.hook, script.body, script.cta, script.visual_notes].filter(Boolean).join('\n'),
+                platform: 'meta',
+                metaAccountId,
+              });
+              // Insert prediction record
+              db.prepare(`
+                INSERT INTO score_predictions (id, user_id, studio_output_id, format, dna_tags, predicted_score, predicted_roas_mid, score_breakdown, confidence)
+                VALUES (?, ?, ?, 'scripts', ?, ?, ?, ?, ?)
+              `).run(
+                randomUUID(), userId, outputId,
+                JSON.stringify(score.matchedPatterns),
+                score.total,
+                score.predictedRoasRange?.p50 || null,
+                JSON.stringify(score.dimensions),
+                score.confidence,
+              );
+              return { ...script, score };
+            } catch {
+              return script; // scoring failed — return unscored
+            }
+          }));
+
+          const scoreJson = JSON.stringify(scoredScripts.map((s: any) => s.score).filter(Boolean));
+          updateOutput(outputId, 'completed', JSON.stringify(scoredScripts), undefined, 5);
+          db.prepare('UPDATE studio_outputs SET score_json = ? WHERE id = ?').run(scoreJson, outputId);
           break;
         }
 
@@ -282,6 +369,18 @@ Each script object must have:
               status: result.status,
             });
           }
+
+          // Score the static format
+          try {
+            const staticScore = await scoreCreative({
+              userId, format: 'static', platform: 'meta', metaAccountId,
+            });
+            db.prepare('UPDATE studio_outputs SET score_json = ? WHERE id = ?').run(JSON.stringify([staticScore]), outputId);
+            db.prepare(`
+              INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
+              VALUES (?, ?, ?, 'static', ?, ?, ?, ?)
+            `).run(randomUUID(), userId, outputId, staticScore.total, staticScore.predictedRoasRange?.p50 || null, JSON.stringify(staticScore.dimensions), staticScore.confidence);
+          } catch { /* scoring non-critical */ }
 
           updateOutput(outputId, 'completed', JSON.stringify(images), undefined, 16);
           break;
@@ -317,6 +416,18 @@ Each script object must have:
               status: result.status,
             });
           }
+
+          // Score the carousel format
+          try {
+            const carouselScore = await scoreCreative({
+              userId, format: 'carousel', platform: 'meta', metaAccountId,
+            });
+            db.prepare('UPDATE studio_outputs SET score_json = ? WHERE id = ?').run(JSON.stringify([carouselScore]), outputId);
+            db.prepare(`
+              INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
+              VALUES (?, ?, ?, 'carousel', ?, ?, ?, ?)
+            `).run(randomUUID(), userId, outputId, carouselScore.total, carouselScore.predictedRoasRange?.p50 || null, JSON.stringify(carouselScore.dimensions), carouselScore.confidence);
+          } catch { /* scoring non-critical */ }
 
           updateOutput(outputId, 'completed', JSON.stringify(slides), undefined, 100);
           break;

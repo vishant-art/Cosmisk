@@ -435,6 +435,25 @@ export function createTables(db: Database.Database): void {
       FOREIGN KEY (generation_id) REFERENCES studio_generations(id)
     );
     CREATE INDEX IF NOT EXISTS idx_studio_outputs_gen ON studio_outputs(generation_id);
+
+    CREATE TABLE IF NOT EXISTS score_predictions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      studio_output_id TEXT,
+      format TEXT NOT NULL,
+      dna_tags TEXT,
+      predicted_score REAL NOT NULL,
+      predicted_roas_mid REAL,
+      score_breakdown TEXT NOT NULL,
+      confidence TEXT NOT NULL,
+      actual_roas REAL,
+      actual_ctr REAL,
+      accuracy_error REAL,
+      created_at TEXT DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_score_predictions_user ON score_predictions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_score_predictions_unresolved ON score_predictions(resolved_at) WHERE resolved_at IS NULL;
   `);
 
   // --- Safe migrations ---
@@ -457,4 +476,7 @@ export function createTables(db: Database.Database): void {
   ensureColumn(db, 'subscriptions', 'razorpay_subscription_id', 'TEXT');
   ensureColumn(db, 'subscriptions', 'razorpay_customer_id', 'TEXT');
   ensureColumn(db, 'subscriptions', 'trial_ends_at', 'TEXT');
+
+  // Creative scoring
+  ensureColumn(db, 'studio_outputs', 'score_json', 'TEXT');
 }

@@ -21,6 +21,28 @@ export interface StudioBrief {
   price?: string;
 }
 
+export interface ScoreDimension {
+  score: number;
+  label: string;
+  detail: string;
+}
+
+export interface CreativeScore {
+  total: number;
+  dimensions: {
+    patternMatch: ScoreDimension;
+    hookQuality: ScoreDimension;
+    formatSignal: ScoreDimension;
+    dataConfidence: ScoreDimension;
+    novelty: ScoreDimension;
+  };
+  confidence: 'low' | 'moderate' | 'high';
+  predictedRoasRange?: { p25: number; p50: number; p75: number };
+  matchedPatterns: string[];
+  warnings: string[];
+  topInsight: string;
+}
+
 export interface StudioOutput {
   id: string;
   generation_id: string;
@@ -28,6 +50,7 @@ export interface StudioOutput {
   status: string;
   output: any;
   output_json: string;
+  score_json: CreativeScore[] | null;
   cost_cents: number;
   error_message: string | null;
   created_at: string;
@@ -64,5 +87,13 @@ export class CreativeStudioService {
 
   getGenerations(): Observable<{ success: boolean; generations: StudioGeneration[] }> {
     return this.api.get('creative-studio/generations');
+  }
+
+  scoreCreative(body: { format: string; hook_type?: string; script_text?: string; meta_account_id?: string }): Observable<{ success: boolean; score: CreativeScore }> {
+    return this.api.post('creative-studio/score', body);
+  }
+
+  getAccuracy(): Observable<{ success: boolean; totalPredictions: number; resolvedPredictions: number; meanAbsoluteError: number | null; trend: string }> {
+    return this.api.get('creative-studio/accuracy');
   }
 }
