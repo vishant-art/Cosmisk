@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { runReportAgentAll, runReportAgent } from '../services/report-agent.js';
 import { runContentAgentAll, runContentAgent } from '../services/content-agent.js';
 import { getSalesContext, runSalesAgentAll } from '../services/sales-agent.js';
+import { runMetaWarmup } from '../services/meta-warmup.js';
 import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js';
 import { validate, agentRunsQuerySchema, agentDecisionsQuerySchema, idParamSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
@@ -116,7 +117,18 @@ function startAgentCrons() {
     }
   });
 
-  logger.info('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, decay Sun 3:00 UTC');
+  // Meta API warmup: daily at 4:00 AM UTC — generates API calls across all 4 permissions for App Review
+  cron.schedule('0 4 * * *', async () => {
+    logger.info('[MetaWarmup] Starting daily Meta API warmup...');
+    try {
+      const result = await runMetaWarmup();
+      logger.info(`[MetaWarmup] Complete: ${result.usersProcessed} users, ${result.totalCalls} calls, ${result.errors.length} errors`);
+    } catch (err: unknown) {
+      logger.error({ err: err instanceof Error ? err.message : err }, '[MetaWarmup] Failed');
+    }
+  });
+
+  logger.info('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, warmup 4:00 UTC daily, decay Sun 3:00 UTC');
 }
 
 /* ------------------------------------------------------------------ */
@@ -355,6 +367,17 @@ export async function agentRoutes(app: FastifyInstance) {
     }
     const count = await runSalesAgentAll();
     return { success: true, contexts: count };
+  });
+
+  // POST /agent/meta-warmup/run — manual trigger (admin only, 2/min)
+  app.post('/meta-warmup/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const db = getDb();
+    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    if (!userRow || userRow.role !== 'admin') {
+      return reply.status(403).send({ success: false, error: 'Admin access required' });
+    }
+    const result = await runMetaWarmup();
+    return { success: true, ...result };
   });
 
   // GET /agent/sales/context — sales context for n8n integration
