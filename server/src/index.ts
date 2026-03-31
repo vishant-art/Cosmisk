@@ -32,6 +32,7 @@ import { scoreRoutes } from './routes/score.js';
 import { agentRoutes } from './routes/agent.js';
 import { swipeFileRoutes } from './routes/swipe-file.js';
 import { teamRoutes } from './routes/team.js';
+import { creativeStudioRoutes } from './routes/creative-studio.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -233,6 +234,7 @@ await app.register(scoreRoutes, { prefix: '/score' });
 await app.register(agentRoutes, { prefix: '/agent' });
 await app.register(swipeFileRoutes, { prefix: '/swipe-file' });
 await app.register(teamRoutes, { prefix: '/team' });
+await app.register(creativeStudioRoutes, { prefix: '/creative-studio' });
 
 // Serve generated audio files from data/audio/
 import { existsSync, mkdirSync } from 'node:fs';

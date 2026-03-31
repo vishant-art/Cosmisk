@@ -404,6 +404,37 @@ export function createTables(db: Database.Database): void {
       advertiser_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS url_analysis_cache (
+      url TEXT PRIMARY KEY,
+      result_json TEXT NOT NULL,
+      analyzed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS studio_generations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      brief_json TEXT NOT NULL,
+      formats TEXT NOT NULL,
+      meta_account_id TEXT,
+      status TEXT NOT NULL DEFAULT 'generating',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS studio_outputs (
+      id TEXT PRIMARY KEY,
+      generation_id TEXT NOT NULL,
+      format TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      output_json TEXT,
+      cost_cents INTEGER DEFAULT 0,
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (generation_id) REFERENCES studio_generations(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_studio_outputs_gen ON studio_outputs(generation_id);
   `);
 
   // --- Safe migrations ---

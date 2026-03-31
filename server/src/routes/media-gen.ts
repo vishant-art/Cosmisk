@@ -4,6 +4,7 @@ import { validate, imageGenerateSchema, videoGenerateSchema } from '../validatio
 import { safeJson } from '../utils/safe-fetch.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
+import { FluxProvider } from '../services/api-providers.js';
 
 /* ------------------------------------------------------------------ */
 /*  Media Generation Routes                                            */
@@ -157,6 +158,44 @@ export async function mediaGenRoutes(app: FastifyInstance) {
       };
     } catch (err: any) {
       return internalError(reply, err, 'media/video-status failed');
+    }
+  });
+
+  // POST /media/generate-image-flux — Flux (BFL) image generation
+  app.post('/generate-image-flux', {
+    preHandler: [app.authenticate],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const { prompt, aspect_ratio } = request.body as { prompt: string; aspect_ratio?: string };
+    if (!prompt) return reply.status(400).send({ success: false, error: 'prompt is required' });
+
+    try {
+      const flux = new FluxProvider();
+      const result = await flux.generate({ format: 'static', prompt, aspect_ratio: aspect_ratio || '1:1' });
+
+      if (result.status === 'processing' && result.job_id) {
+        return { success: true, status: 'processing', job_id: result.job_id };
+      }
+      if (result.status === 'completed') {
+        return { success: true, status: 'completed', image_url: result.output_url };
+      }
+      return reply.status(502).send({ success: false, error: result.error || 'Image generation failed' });
+    } catch (err: any) {
+      return internalError(reply, err, 'media/generate-image-flux failed');
+    }
+  });
+
+  // GET /media/image-status — Poll Flux image generation status
+  app.get('/image-status', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { job_id } = request.query as { job_id: string };
+    if (!job_id) return reply.status(400).send({ success: false, error: 'job_id is required' });
+
+    try {
+      const flux = new FluxProvider();
+      const result = await flux.checkStatus(job_id);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return internalError(reply, err, 'media/image-status failed');
     }
   });
 }

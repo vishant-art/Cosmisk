@@ -167,6 +167,16 @@ export const environment = {
   AGENT_CONTENT_RUN: 'agent/content/run',
   AGENT_SALES_CONTEXT: 'agent/sales/context',
 
+  // Creative Studio
+  STUDIO_ANALYZE_URL: 'creative-studio/analyze-url',
+  STUDIO_GENERATE: 'creative-studio/generate',
+  STUDIO_GENERATION: 'creative-studio/generation',
+  STUDIO_GENERATIONS: 'creative-studio/generations',
+
+  // Media (Flux)
+  MEDIA_GENERATE_IMAGE_FLUX: 'media/generate-image-flux',
+  MEDIA_IMAGE_STATUS: 'media/image-status',
+
   // Swipe File
   SWIPE_FILE_LIST: 'swipe-file/list',
   SWIPE_FILE_SAVE: 'swipe-file/save',
