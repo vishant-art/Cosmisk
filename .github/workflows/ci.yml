@@ -19,6 +19,18 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npx ng build --configuration production
 
+  frontend-unit-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npx ng test --watch=false --browsers=ChromeHeadless
+
   smoke-test:
     name: Smoke Test (Playwright)
     runs-on: ubuntu-latest
@@ -56,6 +68,25 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
+      - name: Generate coverage report
+        run: npx vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
+      - name: Audit backend dependencies
+        run: cd server && npm audit --audit-level=high
+        continue-on-error: true
 
   docker:
     name: Docker Build
