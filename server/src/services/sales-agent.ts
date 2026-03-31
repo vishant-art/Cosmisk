@@ -1,17 +1,23 @@
 /**
- * Sales Pipeline Agent — provides memory-enriched context for n8n sales workflows.
+ * Sales Pipeline Agent — analyzes usage, billing, and performance data per user,
+ * synthesizes with Claude to produce actionable sales/success intelligence.
  *
- * Aggregates: client performance history, usage patterns, upsell opportunities,
- * competitor intel, and recent agent decisions. Fed to n8n Agent 5 for
- * intelligent client conversations.
+ * Detects upsell opportunities and churn risks, notifies via Slack/email,
+ * and stores episodes for memory-enriched future context.
  */
 
 import { getDb } from '../db/index.js';
 import { buildContextWindow, recordEpisode } from './agent-memory.js';
+import { notifyAlert } from './notifications.js';
+import { config } from '../config.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { PLAN_LIMITS } from '../routes/billing.js';
-import type { SubscriptionRow, UserUsageRow } from '../types/index.js';
+import type { SubscriptionRow, UserUsageRow, MetaTokenRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+
+const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -46,6 +52,37 @@ export interface SalesContext {
   };
   upsellSignals: string[];
   churnRiskSignals: string[];
+  synthesis: SalesSynthesis | null;
+}
+
+export interface SalesSynthesis {
+  executiveSummary: string;
+  talkingPoints: string[];
+  upsellNarrative: string | null;
+  retentionRisk: string | null;
+  nextBestAction: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Run sales agent for all users                                      */
+/* ------------------------------------------------------------------ */
+
+export async function runSalesAgentAll(): Promise<number> {
+  const db = getDb();
+  const users = db.prepare(`
+    SELECT id FROM users WHERE onboarding_complete = 1
+  `).all() as { id: string }[];
+
+  let completed = 0;
+  for (const user of users) {
+    try {
+      await getSalesContext(user.id);
+      completed++;
+    } catch (err: unknown) {
+      logger.error({ err }, `[SalesAgent] Failed for user ${user.id}`);
+    }
+  }
+  return completed;
 }
 
 /* ------------------------------------------------------------------ */
@@ -109,6 +146,24 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
       "SELECT COUNT(*) as c FROM agent_decisions WHERE user_id = ? AND created_at > datetime('now', '-30 days')"
     ).get(userId) as { c: number }).c;
 
+    // Try to enrich ad performance from Meta insights cache
+    let totalAdSpend7d = 0;
+    let avgRoas7d = 0;
+    try {
+      const recentInsights = db.prepare(`
+        SELECT raw_context FROM agent_runs
+        WHERE user_id = ? AND agent_type = 'report' AND status = 'completed'
+        ORDER BY completed_at DESC LIMIT 1
+      `).get(userId) as { raw_context: string } | undefined;
+      if (recentInsights?.raw_context) {
+        const reportData = JSON.parse(recentInsights.raw_context);
+        totalAdSpend7d = reportData.metrics?.week?.spend || 0;
+        avgRoas7d = reportData.metrics?.week?.roas || 0;
+      }
+    } catch {
+      // Fail gracefully — keep defaults of 0
+    }
+
     // Detect upsell signals
     const upsellSignals: string[] = [];
     const churnRiskSignals: string[] = [];
@@ -160,6 +215,33 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
       }
     }
 
+    // Claude synthesis
+    let synthesis: SalesSynthesis | null = null;
+    try {
+      synthesis = await synthesizeWithClaude({
+        userName: user?.name || 'Unknown',
+        plan: user?.plan || 'free',
+        memberSince: user?.created_at || '',
+        trialActive,
+        trialEndsAt: sub?.trial_ends_at || null,
+        period,
+        usage,
+        sprintCount,
+        totalSpend: totalSpendRow.total / 100,
+        accountCount,
+        totalAdSpend7d,
+        avgRoas7d,
+        activeAutomations,
+        watchdogDecisions30d,
+        upsellSignals,
+        churnRiskSignals,
+        recentDecisions: recentDecisions.map(d => ({ type: d.type, targetName: d.target_name, outcome: d.outcome })),
+        memoryContext,
+      });
+    } catch (err: unknown) {
+      logger.warn({ err: err instanceof Error ? err.message : err }, '[SalesAgent] Claude synthesis failed, returning raw context');
+    }
+
     const context: SalesContext = {
       runId,
       memoryContext,
@@ -186,29 +268,59 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
       },
       performanceSnapshot: {
         accountCount,
-        totalAdSpend7d: 0, // Would need Meta API call — omitted for speed
-        avgRoas7d: 0,
+        totalAdSpend7d,
+        avgRoas7d,
         activeAutomations,
         watchdogDecisions30d,
       },
       upsellSignals,
       churnRiskSignals,
+      synthesis,
     };
+
+    const summaryText = synthesis
+      ? `Sales intel for ${context.clientProfile.name}: ${synthesis.executiveSummary}. Next action: ${synthesis.nextBestAction}`
+      : `Sales context: ${upsellSignals.length} upsell signals, ${churnRiskSignals.length} churn risks. Plan: ${context.clientProfile.plan}`;
 
     db.prepare(`
       UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
       summary = ?, raw_context = ? WHERE id = ?
-    `).run(
-      `Sales context: ${upsellSignals.length} upsell signals, ${churnRiskSignals.length} churn risks. Plan: ${context.clientProfile.plan}`,
-      JSON.stringify(context),
-      runId,
-    );
+    `).run(summaryText, JSON.stringify(context), runId);
 
+    // Record episodes for individual signals
+    for (const signal of upsellSignals) {
+      await recordEpisode(userId, 'sales', `Upsell signal: ${signal}`).catch(
+        (err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in sales-agent'),
+      );
+    }
+    for (const signal of churnRiskSignals) {
+      await recordEpisode(userId, 'sales', `Churn risk: ${signal}`).catch(
+        (err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in sales-agent'),
+      );
+    }
+
+    // Main episode
     await recordEpisode(
       userId, 'sales',
-      `Provided sales context. Upsell signals: ${upsellSignals.join('; ') || 'none'}. Churn risks: ${churnRiskSignals.join('; ') || 'none'}`,
+      `Sales analysis complete. ${upsellSignals.length} upsell signals, ${churnRiskSignals.length} churn risks. ${synthesis ? `Next action: ${synthesis.nextBestAction}` : 'No synthesis available.'}`,
     ).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in sales-agent'));
 
+    // Notify if actionable signals found
+    if (upsellSignals.length > 0 || churnRiskSignals.length > 0) {
+      const severity = churnRiskSignals.length > 0 ? 'warning' as const : 'info' as const;
+      const title = churnRiskSignals.length > 0
+        ? `Churn Risk — ${context.clientProfile.name}`
+        : `Upsell Opportunity — ${context.clientProfile.name}`;
+      const content = synthesis
+        ? `${synthesis.executiveSummary}\n\nNext action: ${synthesis.nextBestAction}`
+        : `Upsell: ${upsellSignals.join('; ') || 'none'}. Churn: ${churnRiskSignals.join('; ') || 'none'}`;
+
+      await notifyAlert(userId, { type: 'sales_intel', title, content, severity }).catch(
+        (err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'notifyAlert failed in sales-agent'),
+      );
+    }
+
+    logger.info(`[SalesAgent] Completed for ${context.clientProfile.name} (${userId}): ${upsellSignals.length} upsell, ${churnRiskSignals.length} churn`);
     return context;
 
   } catch (err: unknown) {
@@ -219,4 +331,110 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
     `).run(`Error: ${message}`, runId);
     throw err;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Claude synthesis                                                   */
+/* ------------------------------------------------------------------ */
+
+interface SynthesisInput {
+  userName: string;
+  plan: string;
+  memberSince: string;
+  trialActive: boolean;
+  trialEndsAt: string | null;
+  period: string;
+  usage: UserUsageRow | undefined;
+  sprintCount: number;
+  totalSpend: number;
+  accountCount: number;
+  totalAdSpend7d: number;
+  avgRoas7d: number;
+  activeAutomations: number;
+  watchdogDecisions30d: number;
+  upsellSignals: string[];
+  churnRiskSignals: string[];
+  recentDecisions: Array<{ type: string; targetName: string; outcome: string | null }>;
+  memoryContext: string;
+}
+
+function buildSalesPrompt(input: SynthesisInput): string {
+  const decisionsStr = input.recentDecisions.length > 0
+    ? input.recentDecisions.map(d => `- ${d.type}: ${d.targetName} -> ${d.outcome || 'pending'}`).join('\n')
+    : 'No recent decisions.';
+
+  return `You are a SaaS customer success strategist for Cosmisk, an AI-powered creative intelligence platform for agencies.
+
+Analyze this client and provide actionable sales intelligence.
+
+CLIENT PROFILE:
+- Name: ${input.userName}
+- Plan: ${input.plan}
+- Member since: ${input.memberSince || 'Unknown'}
+- Trial active: ${input.trialActive}${input.trialEndsAt ? ` (expires ${input.trialEndsAt})` : ''}
+
+USAGE THIS MONTH (${input.period}):
+- Chats: ${input.usage?.chat_count || 0}
+- Images generated: ${input.usage?.image_count || 0}
+- Videos generated: ${input.usage?.video_count || 0}
+- Creatives: ${input.usage?.creative_count || 0}
+- Sprints created (all time): ${input.sprintCount}
+- Platform spend: $${input.totalSpend.toFixed(2)}
+
+AD PERFORMANCE:
+- Connected ad accounts: ${input.accountCount}
+- Ad spend (7d): $${input.totalAdSpend7d.toFixed(2)}
+- Average ROAS (7d): ${input.avgRoas7d.toFixed(2)}x
+- Active automations: ${input.activeAutomations}
+- Watchdog decisions (30d): ${input.watchdogDecisions30d}
+
+RECENT AGENT DECISIONS:
+${decisionsStr}
+
+DETECTED UPSELL SIGNALS:
+${input.upsellSignals.length > 0 ? input.upsellSignals.map(s => `- ${s}`).join('\n') : 'None detected.'}
+
+DETECTED CHURN RISKS:
+${input.churnRiskSignals.length > 0 ? input.churnRiskSignals.map(s => `- ${s}`).join('\n') : 'None detected.'}
+
+AGENT MEMORY (past sales interactions):
+${input.memoryContext || 'No prior context.'}
+
+Respond in JSON:
+{
+  "executiveSummary": "2-3 sentence overview of this client's situation, health, and trajectory",
+  "talkingPoints": ["specific things to mention in a sales/success call — reference actual data"],
+  "upsellNarrative": "how to frame an upgrade conversation based on their actual usage, or null if no upsell opportunity",
+  "retentionRisk": "specific churn mitigation strategy based on their behavior, or null if healthy",
+  "nextBestAction": "the single most important action to take with this client right now"
+}`;
+}
+
+async function synthesizeWithClaude(input: SynthesisInput): Promise<SalesSynthesis> {
+  const prompt = buildSalesPrompt(input);
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1000,
+    temperature: 0.4,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const rawText = extractText(response);
+
+  let parsed: Partial<SalesSynthesis> = {};
+  try {
+    const match = rawText.match(/\{[\s\S]*\}/);
+    if (match) parsed = JSON.parse(match[0]);
+  } catch {
+    parsed.executiveSummary = rawText?.slice(0, 300) || 'Sales analysis generated';
+  }
+
+  return {
+    executiveSummary: parsed.executiveSummary || 'Sales analysis generated',
+    talkingPoints: parsed.talkingPoints || [],
+    upsellNarrative: parsed.upsellNarrative || null,
+    retentionRisk: parsed.retentionRisk || null,
+    nextBestAction: parsed.nextBestAction || 'Review client usage patterns',
+  };
 }
