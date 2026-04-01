@@ -6,6 +6,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { MetaOAuthService } from '../../core/services/meta-oauth.service';
+import { GoogleAdsOAuthService } from '../../core/services/google-ads-oauth.service';
 import { ApiService } from '../../core/services/api.service';
 import { environment } from '../../../environments/environment';
 
@@ -164,6 +165,47 @@ import { environment } from '../../../environments/environment';
                   </button>
                 }
                 @if (metaOAuth.connectionStatus() === 'loading') {
+                  <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Google Ads — OAuth -->
+          <div class="bg-white rounded-card shadow-card p-5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="w-10 h-10 rounded-full flex items-center justify-center text-xl" style="background-color: #fff3e0">
+                  A
+                </span>
+                <div>
+                  <h3 class="text-sm font-body font-semibold text-navy m-0">Google Ads</h3>
+                  @if (googleAdsOAuth.connectionStatus() === 'loading') {
+                    <p class="text-xs text-gray-400 font-body m-0 mt-0.5">Checking connection...</p>
+                  }
+                  @if (googleAdsOAuth.connectionStatus() === 'connected') {
+                    <p class="text-xs text-green-600 font-body m-0 mt-0.5">{{ googleAdsOAuth.connectedAccountCount() }} customer ID(s) connected</p>
+                  }
+                  @if (googleAdsOAuth.connectionStatus() === 'expired') {
+                    <p class="text-xs text-amber-600 font-body m-0 mt-0.5">Token expired — please reconnect</p>
+                  }
+                  @if (googleAdsOAuth.connectionStatus() === 'disconnected') {
+                    <p class="text-xs text-gray-500 font-body m-0 mt-0.5">Cross-platform campaign management</p>
+                  }
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                @if (googleAdsOAuth.connectionStatus() === 'connected') {
+                  <button (click)="disconnectGoogleAds()" class="px-4 py-2 rounded-pill text-xs font-body font-semibold border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 transition-colors">
+                    Disconnect
+                  </button>
+                }
+                @if (googleAdsOAuth.connectionStatus() === 'disconnected' || googleAdsOAuth.connectionStatus() === 'expired') {
+                  <button (click)="connectPlatform('Google Ads')" class="px-4 py-2 rounded-pill text-xs font-body font-semibold bg-accent text-white hover:bg-accent/90 transition-colors">
+                    {{ googleAdsOAuth.connectionStatus() === 'expired' ? 'Reconnect' : 'Connect' }}
+                  </button>
+                }
+                @if (googleAdsOAuth.connectionStatus() === 'loading') {
                   <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
                 }
               </div>
@@ -446,6 +488,7 @@ export default class SettingsComponent implements OnInit {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
   metaOAuth = inject(MetaOAuthService);
+  googleAdsOAuth = inject(GoogleAdsOAuthService);
 
   activeTab = signal('profile');
   billingPlan = signal('free');
@@ -473,7 +516,6 @@ export default class SettingsComponent implements OnInit {
 
   // Other connected accounts (non-Meta)
   otherAccounts = [
-    { name: 'Google Ads', icon: 'A', bg: '#fff3e0', description: 'Cross-platform campaign management', available: true },
     { name: 'TikTok Ads', icon: 'T', bg: '#f0f0f0', description: 'TikTok campaign analytics and optimization', available: true },
     { name: 'Google Analytics', icon: 'G', bg: '#fef3e2', description: 'Website analytics and conversion tracking', available: false },
     { name: 'Shopify', icon: 'S', bg: '#e8f5e9', description: 'E-commerce data and product catalog', available: false },
@@ -590,6 +632,12 @@ export default class SettingsComponent implements OnInit {
     this.metaOAuth.disconnect();
     this.toast.info('Disconnected', 'Meta Ads account has been disconnected');
     this.adAccountService.loadAccounts();
+  }
+
+  disconnectGoogleAds() {
+    if (!confirm('Disconnect Google Ads? You will lose access to all Google Ads data until you reconnect.')) return;
+    this.googleAdsOAuth.disconnect();
+    this.toast.info('Disconnected', 'Google Ads account has been disconnected');
   }
 
   saveProfile() {

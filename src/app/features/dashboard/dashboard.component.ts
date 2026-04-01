@@ -1,6 +1,7 @@
 const _BUILD_VER = '2026-03-04-v1';
 import { Component, signal, computed, inject, OnInit, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { KpiCardComponent } from '../../shared/components/kpi-card/kpi-card.component';
 import { InsightCardComponent } from '../../shared/components/insight-card/insight-card.component';
@@ -17,12 +18,13 @@ import { AiService } from '../../core/services/ai.service';
 import { ToastService } from '../../core/services/toast.service';
 import { CreativeEngineService } from '../../core/services/creative-engine.service';
 import { DateRangeService } from '../../core/services/date-range.service';
+import { GoogleAdsOAuthService } from '../../core/services/google-ads-oauth.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
   template: `
     <!-- Hero: Generate Creative Assets -->
     <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4338ca] p-8 mb-8">
@@ -218,6 +220,137 @@ import { environment } from '../../../environments/environment';
         </a>
       }
     </div>
+
+    <!-- Google Ads Section -->
+    @if (googleAdsOAuth.isConnected()) {
+      <div class="mb-8">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+              <span class="text-sm font-bold text-orange-600">G</span>
+            </div>
+            <h3 class="text-sm font-display font-semibold text-navy m-0">Google Ads</h3>
+            @if (googleAdsLoading()) {
+              <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+            }
+          </div>
+          <div class="flex items-center gap-2">
+            @if (googleAdsOAuth.customerIds().length > 1) {
+              <select
+                [ngModel]="selectedGoogleCustomerId()"
+                (ngModelChange)="selectGoogleCustomer($event)"
+                class="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none">
+                @for (cid of googleAdsOAuth.customerIds(); track cid) {
+                  <option [value]="cid">{{ cid }}</option>
+                }
+              </select>
+            } @else if (googleAdsOAuth.customerIds().length === 1) {
+              <span class="text-xs text-gray-500 font-body font-mono">{{ googleAdsOAuth.customerIds()[0] }}</span>
+            }
+            <button (click)="analyzeGoogleAds()"
+              [disabled]="googleAdsAnalyzing()"
+              class="px-3 py-1.5 text-xs font-body font-semibold rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors flex items-center gap-1">
+              <lucide-icon name="sparkles" [size]="12"></lucide-icon>
+              {{ googleAdsAnalyzing() ? 'Analyzing...' : 'Analyze' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Google KPI Cards -->
+        @if (googleAdsLoading()) {
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+            @for (i of [1,2,3,4,5,6]; track i) {
+              <div class="bg-white rounded-card shadow-card p-4 animate-pulse">
+                <div class="h-3 bg-gray-200 rounded w-16 mb-2"></div>
+                <div class="h-5 bg-gray-200 rounded w-20"></div>
+              </div>
+            }
+          </div>
+        } @else if (googleKpis()) {
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+            <div class="bg-white rounded-card shadow-card p-4">
+              <span class="text-[11px] text-gray-500 font-body block mb-1">Spend</span>
+              <span class="text-lg font-display text-navy">{{ formatGoogleCurrency(googleKpis()!.cost_micros) }}</span>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4">
+              <span class="text-[11px] text-gray-500 font-body block mb-1">Impressions</span>
+              <span class="text-lg font-display text-navy">{{ formatGoogleNumber(googleKpis()!.impressions) }}</span>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4">
+              <span class="text-[11px] text-gray-500 font-body block mb-1">Clicks</span>
+              <span class="text-lg font-display text-navy">{{ formatGoogleNumber(googleKpis()!.clicks) }}</span>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4">
+              <span class="text-[11px] text-gray-500 font-body block mb-1">Conversions</span>
+              <span class="text-lg font-display text-navy">{{ (googleKpis()!.conversions || 0).toFixed(1) }}</span>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4">
+              <span class="text-[11px] text-gray-500 font-body block mb-1">ROAS</span>
+              <span class="text-lg font-display" [ngClass]="(googleKpis()!.roas || 0) >= 3 ? 'text-green-600' : (googleKpis()!.roas || 0) >= 2 ? 'text-amber-600' : 'text-red-600'">
+                {{ (googleKpis()!.roas || 0).toFixed(2) }}x
+              </span>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4">
+              <span class="text-[11px] text-gray-500 font-body block mb-1">CPA</span>
+              <span class="text-lg font-display text-navy">{{ formatGoogleCurrency(googleKpis()!.cpa_micros || 0) }}</span>
+            </div>
+          </div>
+        }
+
+        <!-- Google Campaigns Table -->
+        @if (googleCampaigns().length > 0) {
+          <div class="bg-white rounded-card shadow-card overflow-hidden">
+            <div class="px-5 py-3 border-b border-gray-100">
+              <h4 class="text-xs font-display text-navy m-0">Top Campaigns</h4>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm font-body">
+                <thead>
+                  <tr class="border-b border-gray-100">
+                    <th class="text-left py-2.5 px-4 text-xs text-gray-500 font-medium">Campaign</th>
+                    <th class="text-right py-2.5 px-4 text-xs text-gray-500 font-medium">Spend</th>
+                    <th class="text-right py-2.5 px-4 text-xs text-gray-500 font-medium">Clicks</th>
+                    <th class="text-right py-2.5 px-4 text-xs text-gray-500 font-medium">Conv.</th>
+                    <th class="text-right py-2.5 px-4 text-xs text-gray-500 font-medium">ROAS</th>
+                    <th class="text-left py-2.5 px-4 text-xs text-gray-500 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (camp of googleCampaigns(); track camp.id) {
+                    <tr class="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td class="py-2.5 px-4 text-sm text-navy font-medium truncate max-w-[200px]">{{ camp.name }}</td>
+                      <td class="py-2.5 px-4 text-right font-mono text-xs text-gray-600">{{ formatGoogleCurrency(camp.cost_micros) }}</td>
+                      <td class="py-2.5 px-4 text-right font-mono text-xs text-gray-600">{{ formatGoogleNumber(camp.clicks) }}</td>
+                      <td class="py-2.5 px-4 text-right font-mono text-xs text-gray-600">{{ (camp.conversions || 0).toFixed(1) }}</td>
+                      <td class="py-2.5 px-4 text-right font-mono text-xs font-bold" [ngClass]="(camp.roas || 0) >= 3 ? 'text-green-600' : (camp.roas || 0) >= 2 ? 'text-amber-600' : 'text-red-600'">
+                        {{ (camp.roas || 0).toFixed(2) }}x
+                      </td>
+                      <td class="py-2.5 px-4">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-body font-medium"
+                          [ngClass]="camp.status === 'ENABLED' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'">
+                          {{ camp.status || 'UNKNOWN' }}
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+
+        <!-- Claude Analysis -->
+        @if (googleAnalysis()) {
+          <div class="mt-4 bg-gradient-to-r from-violet-50 to-indigo-50 border border-accent/20 rounded-xl p-4">
+            <div class="flex items-center gap-2 mb-2">
+              <lucide-icon name="sparkles" [size]="14" class="text-accent"></lucide-icon>
+              <h4 class="text-xs font-display text-navy m-0">AI Analysis</h4>
+            </div>
+            <p class="text-xs text-gray-700 font-body m-0 leading-relaxed whitespace-pre-line">{{ googleAnalysis() }}</p>
+          </div>
+        }
+      </div>
+    }
 
     <!-- Chart + AI Insights Row -->
     <div class="grid lg:grid-cols-5 gap-6 mb-8">
@@ -444,6 +577,7 @@ export default class DashboardComponent implements OnInit {
   private router = inject(Router);
 
   private aiService = inject(AiService);
+  googleAdsOAuth = inject(GoogleAdsOAuthService);
 
   loading = signal(true);
   insightsLoading = signal(true);
@@ -452,6 +586,14 @@ export default class DashboardComponent implements OnInit {
   briefingSummary = signal<string | null>(null);
   agentActivity = signal<{ id: string; agentType: string; status: string; summary: string; timeAgo: string }[]>([]);
   private loadingTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Google Ads
+  selectedGoogleCustomerId = signal('');
+  googleAdsLoading = signal(false);
+  googleAdsAnalyzing = signal(false);
+  googleKpis = signal<any>(null);
+  googleCampaigns = signal<any[]>([]);
+  googleAnalysis = signal<string | null>(null);
 
   kpi = signal({
     spend: { value: 0, change: 0, sparkline: [] as number[] },
@@ -623,6 +765,16 @@ export default class DashboardComponent implements OnInit {
     const suffixes: Record<string, string> = { ROAS: 'x', CTR: '%', CPA: '', Spend: 'K' };
     return suffixes[this.activeChartMetric()] || '';
   });
+
+  private googleAdsEffect = effect(() => {
+    if (this.googleAdsOAuth.isConnected()) {
+      const ids = this.googleAdsOAuth.customerIds();
+      if (ids.length > 0 && !this.selectedGoogleCustomerId()) {
+        this.selectedGoogleCustomerId.set(ids[0]);
+        this.loadGoogleAdsData(ids[0]);
+      }
+    }
+  }, { allowSignalWrites: true });
 
   ngOnInit() {
     this.loadActiveSprints();
@@ -943,6 +1095,74 @@ export default class DashboardComponent implements OnInit {
 
   onCreativeClick(creative: Creative) {
     this.router.navigate(['/app/creative-cockpit'], { queryParams: { ad: creative.id } });
+  }
+
+  // --- Google Ads ---
+
+  selectGoogleCustomer(customerId: string) {
+    this.selectedGoogleCustomerId.set(customerId);
+    this.googleAnalysis.set(null);
+    this.loadGoogleAdsData(customerId);
+  }
+
+  private loadGoogleAdsData(customerId: string) {
+    this.googleAdsLoading.set(true);
+    this.googleKpis.set(null);
+    this.googleCampaigns.set([]);
+
+    this.api.get<any>(environment.GOOGLE_ADS_KPIS, { customer_id: customerId, date_preset: 'last_7d' }).subscribe({
+      next: (res) => {
+        if (res.success && res.kpis) {
+          this.googleKpis.set(res.kpis);
+        }
+        this.googleAdsLoading.set(false);
+      },
+      error: () => {
+        this.googleAdsLoading.set(false);
+        this.toast.error('Google Ads', 'Failed to load KPIs');
+      },
+    });
+
+    this.api.get<any>(environment.GOOGLE_ADS_CAMPAIGNS, { customer_id: customerId, date_preset: 'last_7d' }).subscribe({
+      next: (res) => {
+        if (res.success && res.campaigns) {
+          this.googleCampaigns.set(res.campaigns.slice(0, 8));
+        }
+      },
+    });
+  }
+
+  analyzeGoogleAds() {
+    const cid = this.selectedGoogleCustomerId();
+    if (!cid) return;
+    this.googleAdsAnalyzing.set(true);
+    this.googleAnalysis.set(null);
+
+    this.api.get<any>(environment.GOOGLE_ADS_ANALYZE, { customer_id: cid, date_preset: 'last_7d' }).subscribe({
+      next: (res) => {
+        if (res.success && res.analysis) {
+          this.googleAnalysis.set(res.analysis);
+        }
+        this.googleAdsAnalyzing.set(false);
+      },
+      error: () => {
+        this.googleAdsAnalyzing.set(false);
+        this.toast.error('Analysis Failed', 'Could not analyze Google Ads data');
+      },
+    });
+  }
+
+  formatGoogleCurrency(micros: number): string {
+    const val = (micros || 0) / 1_000_000;
+    if (val >= 100_000) return '$' + (val / 1000).toFixed(1) + 'K';
+    return '$' + val.toFixed(2);
+  }
+
+  formatGoogleNumber(num: number): string {
+    if (!num) return '0';
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
+    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'K';
+    return num.toLocaleString();
   }
 
 }

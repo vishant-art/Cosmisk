@@ -60,6 +60,13 @@ export const routes: Routes = [
     loadComponent: () => import('./features/settings/meta-callback/meta-callback.component'),
   },
 
+  // Google OAuth callback (auth required, but NOT onboarding guard)
+  {
+    path: 'app/settings/google-callback',
+    canActivate: [authGuard],
+    loadComponent: () => import('./features/settings/google-callback/google-callback.component'),
+  },
+
   // App (auth + onboarding required)
   {
     path: 'app',

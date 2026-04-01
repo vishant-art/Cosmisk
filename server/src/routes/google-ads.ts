@@ -61,7 +61,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
       saveGoogleToken(request.user.id, accessToken, refreshToken, expiresAt, customerIds);
 
-      return { success: true, customer_ids: customerIds };
+      return { success: true, customer_ids: customerIds, accountCount: customerIds.length };
     } catch (err: any) {
       logger.error({ err: err.message }, 'google-ads/oauth-exchange failed');
       return reply.status(400).send({ success: false, error: err.message });
