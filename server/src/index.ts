@@ -1017,6 +1017,13 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
     role: updatedUser.role,
   });
 
+  // Log activity
+  try {
+    db.prepare('INSERT INTO activity_log (user_id, action, category, details) VALUES (?, ?, ?, ?)').run(
+      request.user.id, 'Updated profile', 'account', updates.map(u => u.split(' = ')[0]).join(', ')
+    );
+  } catch { /* activity log is best-effort */ }
+
   return {
     success: true,
     token: newToken,
@@ -1026,6 +1033,41 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
       email: updatedUser.email,
     },
   };
+});
+
+// POST /settings/change-password — authenticated password change
+app.post('/settings/change-password', { preHandler: [app.authenticate] }, async (request, reply) => {
+  const { changePasswordSchema } = await import('./validation/schemas.js');
+  const parsed = validate(changePasswordSchema, request.body, reply);
+  if (!parsed) return;
+
+  const db = getDb();
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(request.user.id) as { password_hash: string } | undefined;
+  if (!user) return reply.status(404).send({ success: false, error: 'User not found' });
+
+  const bcryptMod = await import('bcryptjs');
+  if (!bcryptMod.default.compareSync(parsed.currentPassword, user.password_hash)) {
+    return reply.status(400).send({ success: false, error: 'Current password is incorrect' });
+  }
+
+  const newHash = bcryptMod.default.hashSync(parsed.newPassword, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, request.user.id);
+
+  // Log activity
+  db.prepare('INSERT INTO activity_log (user_id, action, category) VALUES (?, ?, ?)').run(
+    request.user.id, 'Changed password', 'security'
+  );
+
+  return { success: true };
+});
+
+// GET /settings/activity — recent activity log
+app.get('/settings/activity', { preHandler: [app.authenticate] }, async (request) => {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT id, action, category, details, created_at FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
+  ).all(request.user.id);
+  return { success: true, activities: rows };
 });
 
 // Team routes now at /team/* via teamRoutes plugin

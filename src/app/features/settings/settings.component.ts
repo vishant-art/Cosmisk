@@ -26,7 +26,7 @@ import { environment } from '../../../environments/environment';
         <div class="flex gap-0 -mb-px overflow-x-auto">
           @for (tab of tabs; track tab.id) {
             <button
-              (click)="activeTab.set(tab.id)"
+              (click)="switchTab(tab.id)"
               class="px-4 py-3 text-sm font-body whitespace-nowrap border-b-2 transition-colors"
               [ngClass]="activeTab() === tab.id
                 ? 'border-accent text-accent font-semibold'
@@ -449,6 +449,72 @@ import { environment } from '../../../environments/environment';
         </div>
       }
 
+      <!-- Security Tab -->
+      @if (activeTab() === 'security') {
+        <div class="space-y-4">
+          <!-- Change Password -->
+          <div class="bg-white rounded-card shadow-card p-6">
+            <h3 class="text-sm font-display text-navy mb-4 mt-0">Change Password</h3>
+            <div class="space-y-3 max-w-md">
+              <div>
+                <label class="text-xs font-body font-semibold text-gray-700 block mb-1">Current Password</label>
+                <input [(ngModel)]="currentPassword" type="password" placeholder="Enter current password"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none" />
+              </div>
+              <div>
+                <label class="text-xs font-body font-semibold text-gray-700 block mb-1">New Password</label>
+                <input [(ngModel)]="newPassword" type="password" placeholder="Min 8 characters"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none" />
+              </div>
+              <div>
+                <label class="text-xs font-body font-semibold text-gray-700 block mb-1">Confirm New Password</label>
+                <input [(ngModel)]="confirmPassword" type="password" placeholder="Repeat new password"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none" />
+              </div>
+              <button (click)="changePassword()" [disabled]="changingPassword"
+                class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 disabled:opacity-50 transition-colors">
+                {{ changingPassword ? 'Updating...' : 'Update Password' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="bg-white rounded-card shadow-card p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-sm font-display text-navy m-0">Recent Activity</h3>
+              <button (click)="loadActivity()" class="text-xs text-accent font-body hover:underline border-0 bg-transparent cursor-pointer">Refresh</button>
+            </div>
+            @if (activityLoading) {
+              <div class="flex items-center justify-center py-6 gap-2">
+                <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-sm text-gray-500 font-body">Loading activity...</span>
+              </div>
+            } @else if (activities.length === 0) {
+              <p class="text-sm text-gray-400 font-body text-center py-6 m-0">No activity recorded yet</p>
+            } @else {
+              <div class="space-y-2">
+                @for (act of activities; track act.id) {
+                  <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <span class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                      [ngClass]="act.category === 'security' ? 'bg-red-100' : 'bg-blue-100'">
+                      <lucide-icon [name]="act.category === 'security' ? 'shield' : 'activity'" [size]="14"
+                        [class]="act.category === 'security' ? 'text-red-600' : 'text-blue-600'"></lucide-icon>
+                    </span>
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-body font-medium text-navy m-0">{{ act.action }}</p>
+                      @if (act.details) {
+                        <p class="text-xs text-gray-500 font-body m-0 mt-0.5">{{ act.details }}</p>
+                      }
+                    </div>
+                    <span class="text-xs text-gray-400 font-body whitespace-nowrap">{{ formatActivityTime(act.created_at) }}</span>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+
       <!-- Notifications Tab -->
       @if (activeTab() === 'notifications') {
         <div class="bg-white rounded-card shadow-card p-6">
@@ -502,6 +568,7 @@ export default class SettingsComponent implements OnInit {
     { id: 'accounts', label: 'Connected Accounts' },
     { id: 'team', label: 'Team' },
     { id: 'billing', label: 'Billing' },
+    { id: 'security', label: 'Security' },
     { id: 'notifications', label: 'Notifications' },
   ];
 
@@ -529,6 +596,14 @@ export default class SettingsComponent implements OnInit {
   inviteRole = 'viewer';
   inviting = false;
 
+  // Security
+  currentPassword = '';
+  newPassword = '';
+  confirmPassword = '';
+  changingPassword = false;
+  activities: { id: number; action: string; category: string; details: string; created_at: string }[] = [];
+  activityLoading = false;
+
   // Notifications
   notificationPrefs = [
     { label: 'Campaign Alerts', description: 'Budget exhausted, CPA spikes, campaign errors', email: true, push: true },
@@ -542,6 +617,13 @@ export default class SettingsComponent implements OnInit {
     this.loadProfile();
     this.loadNotificationPrefs();
     this.loadBilling();
+  }
+
+  switchTab(id: string) {
+    this.activeTab.set(id);
+    if (id === 'security' && this.activities.length === 0) {
+      this.loadActivity();
+    }
   }
 
   private loadProfile() {
@@ -894,6 +976,64 @@ export default class SettingsComponent implements OnInit {
       },
       error: (err) => this.toast.error('Error', err.error?.error || 'Could not update role'),
     });
+  }
+
+  changePassword() {
+    if (!this.currentPassword) {
+      this.toast.error('Required', 'Enter your current password');
+      return;
+    }
+    if (this.newPassword.length < 8) {
+      this.toast.error('Too Short', 'New password must be at least 8 characters');
+      return;
+    }
+    if (this.newPassword !== this.confirmPassword) {
+      this.toast.error('Mismatch', 'New passwords do not match');
+      return;
+    }
+    this.changingPassword = true;
+    this.api.post<any>(environment.SETTINGS_CHANGE_PASSWORD, {
+      currentPassword: this.currentPassword,
+      newPassword: this.newPassword,
+    }).subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Updated', 'Your password has been changed');
+          this.currentPassword = '';
+          this.newPassword = '';
+          this.confirmPassword = '';
+          this.loadActivity();
+        }
+        this.changingPassword = false;
+      },
+      error: (err) => {
+        this.toast.error('Failed', err.error?.error || 'Could not change password');
+        this.changingPassword = false;
+      },
+    });
+  }
+
+  loadActivity() {
+    this.activityLoading = true;
+    this.api.get<any>(environment.SETTINGS_ACTIVITY).subscribe({
+      next: (res) => {
+        this.activities = res.activities || [];
+        this.activityLoading = false;
+      },
+      error: () => {
+        this.activityLoading = false;
+      },
+    });
+  }
+
+  formatActivityTime(iso: string): string {
+    const d = new Date(iso + 'Z');
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
   }
 
   resendInvite(member: { id: string; email: string }) {

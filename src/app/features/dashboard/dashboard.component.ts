@@ -191,6 +191,15 @@ import { environment } from '../../../environments/environment';
     }
 
     <!-- Performance KPIs -->
+    @if (lastRefreshed()) {
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs font-body font-semibold text-gray-500 uppercase tracking-wide m-0">Performance</h3>
+        <span class="text-[10px] font-mono text-gray-400 flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+          Updated {{ formatTimeSince(lastRefreshed()!) }}
+        </span>
+      </div>
+    }
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       @if (loading()) {
         @for (i of [1,2,3,4]; track i) {
@@ -601,6 +610,7 @@ export default class DashboardComponent implements OnInit {
   insightsLoading = signal(true);
   error = signal<string | null>(null);
   hasAdAccount = computed(() => !!this.adAccountService.currentAccount());
+  lastRefreshed = signal<Date | null>(null);
   activeSprints = signal<any[]>([]);
   briefingSummary = signal<string | null>(null);
   agentActivity = signal<{ id: string; agentType: string; status: string; summary: string; timeAgo: string }[]>([]);
@@ -886,6 +896,13 @@ export default class DashboardComponent implements OnInit {
     return (change >= 0 ? '+' : '') + change.toFixed(1) + suffix;
   }
 
+  formatTimeSince(date: Date): string {
+    const diff = Date.now() - date.getTime();
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    return `${Math.floor(diff / 3600000)}h ago`;
+  }
+
   private loadKpis(accountId: string, credentialGroup: string, datePreset: string) {
     this.loading.set(true);
     if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
@@ -912,6 +929,7 @@ export default class DashboardComponent implements OnInit {
           });
         }
         this.loading.set(false);
+        this.lastRefreshed.set(new Date());
       },
       error: (err) => {
         this.loading.set(false);

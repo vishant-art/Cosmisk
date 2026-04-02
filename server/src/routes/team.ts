@@ -116,6 +116,13 @@ export async function teamRoutes(app: FastifyInstance) {
     const ownerName = owner?.email ? (db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name: string })?.name : 'Someone';
     await sendTeamInviteEmail(email.toLowerCase(), name || email.split('@')[0], ownerName || 'Your team lead', token);
 
+    // Log activity
+    try {
+      db.prepare('INSERT INTO activity_log (user_id, action, category, details) VALUES (?, ?, ?, ?)').run(
+        userId, 'Invited team member', 'team', email
+      );
+    } catch { /* best-effort */ }
+
     return {
       success: true,
       id: memberId,

@@ -31,6 +31,13 @@ export async function authRoutes(app: FastifyInstance) {
 
     const token = app.jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role });
 
+    // Log login activity
+    try {
+      db.prepare('INSERT INTO activity_log (user_id, action, category) VALUES (?, ?, ?)').run(
+        user.id, 'Logged in', 'security'
+      );
+    } catch { /* best-effort */ }
+
     return {
       token,
       user: {

@@ -80,6 +80,8 @@ export const environment = {
   AUTOMATIONS_RUN: 'automations/run',
 
   SETTINGS_PROFILE: 'settings/profile',
+  SETTINGS_CHANGE_PASSWORD: 'settings/change-password',
+  SETTINGS_ACTIVITY: 'settings/activity',
   SETTINGS_TEAM: 'settings/team',
   SETTINGS_BILLING: 'settings/billing',
 

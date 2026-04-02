@@ -479,4 +479,18 @@ export function createTables(db: Database.Database): void {
 
   // Creative scoring
   ensureColumn(db, 'studio_outputs', 'score_json', 'TEXT');
+
+  // Activity log — audit trail for user actions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      details TEXT,
+      ip TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at DESC);
+  `);
 }
