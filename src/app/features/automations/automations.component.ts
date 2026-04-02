@@ -6,6 +6,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ConfirmDialogService } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { environment } from '../../../environments/environment';
 
 interface AutomationRule {
@@ -301,6 +302,7 @@ export default class AutomationsComponent {
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  private confirmDialog = inject(ConfirmDialogService);
 
   loading = signal(true);
   activityLoading = signal(true);
@@ -511,8 +513,14 @@ export default class AutomationsComponent {
     });
   }
 
-  deleteRule(id: string) {
-    if (!confirm('Delete this automation rule? This cannot be undone.')) return;
+  async deleteRule(id: string) {
+    const ok = await this.confirmDialog.confirm({
+      title: 'Delete Automation Rule?',
+      message: 'This rule will be permanently removed and cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     this.api.delete<any>(`${environment.AUTOMATIONS_DELETE}?id=${id}`).subscribe({
       next: (res) => {
         if (res.success) {

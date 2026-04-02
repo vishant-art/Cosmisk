@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { ToastService } from '../../core/services/toast.service';
+import { ConfirmDialogService } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { MetaOAuthService } from '../../core/services/meta-oauth.service';
 import { GoogleAdsOAuthService } from '../../core/services/google-ads-oauth.service';
@@ -570,6 +571,7 @@ import { environment } from '../../../environments/environment';
 })
 export default class SettingsComponent implements OnInit {
   private toast = inject(ToastService);
+  private confirm = inject(ConfirmDialogService);
   private adAccountService = inject(AdAccountService);
   private api = inject(ApiService);
   metaOAuth = inject(MetaOAuthService);
@@ -730,15 +732,27 @@ export default class SettingsComponent implements OnInit {
     this.metaOAuth.openOAuthPopup();
   }
 
-  disconnectMeta() {
-    if (!confirm('Disconnect Meta Ads? You will lose access to all ad account data until you reconnect.')) return;
+  async disconnectMeta() {
+    const ok = await this.confirm.confirm({
+      title: 'Disconnect Meta Ads?',
+      message: 'You will lose access to all ad account data until you reconnect.',
+      confirmText: 'Disconnect',
+      variant: 'danger',
+    });
+    if (!ok) return;
     this.metaOAuth.disconnect();
     this.toast.info('Disconnected', 'Meta Ads account has been disconnected');
     this.adAccountService.loadAccounts();
   }
 
-  disconnectGoogleAds() {
-    if (!confirm('Disconnect Google Ads? You will lose access to all Google Ads data until you reconnect.')) return;
+  async disconnectGoogleAds() {
+    const ok = await this.confirm.confirm({
+      title: 'Disconnect Google Ads?',
+      message: 'You will lose access to all Google Ads data until you reconnect.',
+      confirmText: 'Disconnect',
+      variant: 'danger',
+    });
+    if (!ok) return;
     this.googleAdsOAuth.disconnect();
     this.toast.info('Disconnected', 'Google Ads account has been disconnected');
   }
@@ -896,8 +910,14 @@ export default class SettingsComponent implements OnInit {
     });
   }
 
-  cancelSubscription() {
-    if (!confirm('Are you sure you want to cancel your subscription? You will be downgraded to the Free plan.')) return;
+  async cancelSubscription() {
+    const ok = await this.confirm.confirm({
+      title: 'Cancel Subscription?',
+      message: 'You will be downgraded to the Free plan immediately.',
+      confirmText: 'Cancel Subscription',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     this.api.post<any>(environment.BILLING_CANCEL, {}).subscribe({
       next: (res) => {
@@ -971,8 +991,14 @@ export default class SettingsComponent implements OnInit {
     });
   }
 
-  removeMember(member: { id: string; name: string }) {
-    if (!confirm(`Remove ${member.name} from your team?`)) return;
+  async removeMember(member: { id: string; name: string }) {
+    const ok = await this.confirm.confirm({
+      title: 'Remove Team Member?',
+      message: `${member.name} will lose access to this workspace.`,
+      confirmText: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
     this.api.delete<any>(`${environment.TEAM_MEMBERS}/${member.id}`).subscribe({
       next: (res) => {
         if (res.success) {

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
 import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
+import { ConfirmDialogService } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { environment } from '../../../environments/environment';
 
 interface ContentItem {
@@ -357,6 +358,7 @@ interface ContentItem {
 export default class ContentBankComponent implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
+  private confirmDialog = inject(ConfirmDialogService);
 
   items = signal<ContentItem[]>([]);
   total = signal(0);
@@ -472,8 +474,14 @@ export default class ContentBankComponent implements OnInit {
     });
   }
 
-  deleteContent(id: string) {
-    if (!confirm('Delete this content? This cannot be undone.')) return;
+  async deleteContent(id: string) {
+    const ok = await this.confirmDialog.confirm({
+      title: 'Delete Content?',
+      message: 'This content will be permanently removed from your bank.',
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     this.api.delete<any>(`${environment.CONTENT_BANK}/${id}`).subscribe({
       next: () => {
         this.items.update(prev => prev.filter(i => i.id !== id));

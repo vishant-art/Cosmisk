@@ -19,6 +19,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { CreativeEngineService } from '../../core/services/creative-engine.service';
 import { DateRangeService } from '../../core/services/date-range.service';
 import { GoogleAdsOAuthService } from '../../core/services/google-ads-oauth.service';
+import { AuthService } from '../../core/services/auth.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -34,7 +35,7 @@ import { environment } from '../../../environments/environment';
       </div>
       <div class="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
-          <h2 class="text-2xl md:text-3xl font-display text-white m-0 mb-2">What will you create today?</h2>
+          <h2 class="text-2xl md:text-3xl font-display text-white m-0 mb-2">{{ greeting() }}</h2>
           <p class="text-sm text-indigo-200 font-body m-0 max-w-lg">
             Generate ad scripts, video concepts, static creatives, and carousels — all powered by your brand's performance intelligence.
           </p>
@@ -615,8 +616,15 @@ export default class DashboardComponent implements OnInit {
   loading = signal(true);
   insightsLoading = signal(true);
   error = signal<string | null>(null);
+  private authService = inject(AuthService);
   hasAdAccount = computed(() => !!this.adAccountService.currentAccount());
   lastRefreshed = signal<Date | null>(null);
+  greeting = computed(() => {
+    const hour = new Date().getHours();
+    const name = this.authService.user()?.name?.split(' ')[0] || '';
+    const prefix = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    return name ? `${prefix}, ${name}` : `${prefix}! What will you create today?`;
+  });
   activeSprints = signal<any[]>([]);
   briefingSummary = signal<string | null>(null);
   agentActivity = signal<{ id: string; agentType: string; status: string; summary: string; timeAgo: string }[]>([]);

@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { ToastService } from '../../core/services/toast.service';
+import { ConfirmDialogService } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { environment } from '../../../environments/environment';
@@ -142,6 +143,7 @@ export default class SwipeFileComponent implements OnInit {
   private adAccountService = inject(AdAccountService);
   private router = inject(Router);
   private toast = inject(ToastService);
+  private confirmDialog = inject(ConfirmDialogService);
 
   loading = signal(true);
   savedAds = signal<SwipeAd[]>([]);
@@ -379,8 +381,14 @@ export default class SwipeFileComponent implements OnInit {
   }
 
   /** Remove a persisted ad from the backend */
-  removeAd(ad: SwipeAd) {
-    if (!confirm('Remove this ad from your swipe file?')) return;
+  async removeAd(ad: SwipeAd) {
+    const ok = await this.confirmDialog.confirm({
+      title: 'Remove from Swipe File?',
+      message: 'This ad will be removed from your saved collection.',
+      confirmText: 'Remove',
+      variant: 'warning',
+    });
+    if (!ok) return;
     this.api.delete<any>(`${environment.SWIPE_FILE_DELETE}/${ad.id}`).subscribe({
       next: (res) => {
         if (res.success) {

@@ -7,13 +7,14 @@ import { TopbarComponent } from '../../shared/components/topbar/topbar.component
 import { ToastComponent } from '../../shared/components/toast/toast.component';
 import { CommandPaletteComponent } from '../../shared/components/command-palette/command-palette.component';
 import { WelcomeTourComponent } from '../../shared/components/welcome-tour/welcome-tour.component';
+import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 
 @Component({
   selector: 'app-app-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, LucideAngularModule],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, ConfirmDialogComponent, LucideAngularModule],
   template: `
     <div class="min-h-screen bg-[#F7F8FA] pb-7">
       <!-- Route Loading Bar -->
@@ -71,6 +72,7 @@ import { AdAccountService } from '../../core/services/ad-account.service';
       <app-toast />
       <app-command-palette />
       <app-welcome-tour />
+      <app-confirm-dialog />
     </div>
   `
 })
