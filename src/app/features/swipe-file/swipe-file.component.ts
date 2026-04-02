@@ -167,7 +167,10 @@ export default class SwipeFileComponent implements OnInit {
   private startLoadingTimeout() {
     if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
     this.loadingTimeout = setTimeout(() => {
-      if (this.loading()) this.loading.set(false);
+      if (this.loading()) {
+        this.loading.set(false);
+        this.toast.error('Slow Response', 'Swipe file is taking longer than expected.');
+      }
     }, 8000);
   }
 

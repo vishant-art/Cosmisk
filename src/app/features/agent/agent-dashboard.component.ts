@@ -46,7 +46,12 @@ interface Briefing {
   } | null;
 }
 
-type TabKey = 'decisions' | 'briefing' | 'runs';
+interface MemoryCore { agent_type: string; key: string; value: string; updated_at: string }
+interface MemoryEpisode { id: string; agent_type: string; event: string; context: string | null; outcome: string | null; relevance_score: number; reinforcement_count: number; created_at: string }
+interface MemoryEntity { entity_type: string; entity_name: string; mention_count: number; first_seen: string; last_seen: string }
+interface MemoryStats { totalCoreMemories: number; totalEpisodes: number; totalEntities: number }
+
+type TabKey = 'decisions' | 'briefing' | 'runs' | 'memory';
 
 @Component({
   selector: 'app-agent-dashboard',
@@ -414,6 +419,153 @@ type TabKey = 'decisions' | 'briefing' | 'runs';
           </div>
         }
       }
+
+      <!-- Memory Tab -->
+      @if (activeTab() === 'memory') {
+        @if (loadingMemory()) {
+          <div class="space-y-3">
+            @for (i of [1,2,3]; track i) {
+              <div class="bg-white rounded-card shadow-card p-5 animate-pulse">
+                <div class="h-4 bg-gray-200 rounded w-1/4 mb-3"></div>
+                <div class="h-3 bg-gray-200 rounded w-2/3 mb-2"></div>
+                <div class="h-3 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            }
+          </div>
+        } @else {
+          <!-- Memory Stats -->
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="bg-white rounded-card shadow-card p-4 text-center">
+              <span class="text-2xl font-display font-bold text-navy">{{ memoryStats().totalCoreMemories }}</span>
+              <p class="text-xs font-body text-gray-500 m-0 mt-1">Core Memories</p>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4 text-center">
+              <span class="text-2xl font-display font-bold text-navy">{{ memoryStats().totalEpisodes }}</span>
+              <p class="text-xs font-body text-gray-500 m-0 mt-1">Episodes</p>
+            </div>
+            <div class="bg-white rounded-card shadow-card p-4 text-center">
+              <span class="text-2xl font-display font-bold text-navy">{{ memoryStats().totalEntities }}</span>
+              <p class="text-xs font-body text-gray-500 m-0 mt-1">Entities</p>
+            </div>
+          </div>
+
+          <!-- Memory Sub-tabs -->
+          <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit mb-4">
+            @for (sub of memorySubTabs; track sub) {
+              <button
+                (click)="activeMemorySubTab.set(sub)"
+                class="px-3 py-1.5 text-xs font-body font-medium rounded-lg transition-all cursor-pointer border-0"
+                [class]="activeMemorySubTab() === sub ? 'bg-white text-navy shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-700'">
+                {{ sub }}
+              </button>
+            }
+          </div>
+
+          <!-- Core Memories -->
+          @if (activeMemorySubTab() === 'Core') {
+            @if (memoryCore().length > 0) {
+              <div class="space-y-2">
+                @for (mem of memoryCore(); track mem.key + mem.agent_type) {
+                  <div class="bg-white rounded-card shadow-card p-4">
+                    <div class="flex items-center justify-between mb-1">
+                      <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 text-[10px] font-mono rounded-full"
+                          [class]="getAgentTypeClass(mem.agent_type)">
+                          {{ mem.agent_type }}
+                        </span>
+                        <span class="text-sm font-display font-semibold text-navy">{{ mem.key }}</span>
+                      </div>
+                      <span class="text-[10px] font-body text-gray-400">{{ getRelativeTime(mem.updated_at) }}</span>
+                    </div>
+                    <p class="text-sm font-body text-gray-600 m-0 leading-relaxed">{{ mem.value }}</p>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="bg-white rounded-card shadow-card p-8 text-center">
+                <lucide-icon name="brain" [size]="28" class="text-gray-300 mx-auto mb-2"></lucide-icon>
+                <p class="text-sm font-body text-gray-500 m-0">No core memories yet. Run the watchdog agent to start building memory.</p>
+              </div>
+            }
+          }
+
+          <!-- Episodes -->
+          @if (activeMemorySubTab() === 'Episodes') {
+            @if (memoryEpisodes().length > 0) {
+              <div class="space-y-2">
+                @for (ep of memoryEpisodes(); track ep.id) {
+                  <div class="bg-white rounded-card shadow-card p-4 border-l-4"
+                    [class]="ep.relevance_score >= 2 ? 'border-l-emerald-400' : ep.relevance_score >= 1 ? 'border-l-blue-400' : 'border-l-gray-300'">
+                    <div class="flex items-center justify-between mb-1">
+                      <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 text-[10px] font-mono rounded-full"
+                          [class]="getAgentTypeClass(ep.agent_type)">
+                          {{ ep.agent_type }}
+                        </span>
+                        <div class="flex items-center gap-1">
+                          <span class="text-[10px] font-mono text-gray-400">relevance: {{ ep.relevance_score.toFixed(1) }}</span>
+                          @if (ep.reinforcement_count > 0) {
+                            <span class="text-[10px] font-mono text-emerald-500">+{{ ep.reinforcement_count }} reinforced</span>
+                          }
+                        </div>
+                      </div>
+                      <span class="text-[10px] font-body text-gray-400">{{ getRelativeTime(ep.created_at) }}</span>
+                    </div>
+                    <p class="text-sm font-body text-navy m-0 font-medium">{{ ep.event }}</p>
+                    @if (ep.outcome) {
+                      <p class="text-xs font-body text-gray-500 m-0 mt-1">
+                        Outcome: {{ ep.outcome }}
+                      </p>
+                    }
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="bg-white rounded-card shadow-card p-8 text-center">
+                <lucide-icon name="history" [size]="28" class="text-gray-300 mx-auto mb-2"></lucide-icon>
+                <p class="text-sm font-body text-gray-500 m-0">No episodes recorded yet. Episodes are created as agents analyze and act on your accounts.</p>
+              </div>
+            }
+          }
+
+          <!-- Entities -->
+          @if (activeMemorySubTab() === 'Entities') {
+            @if (memoryEntities().length > 0) {
+              <div class="bg-white rounded-card shadow-card overflow-hidden">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="border-b border-gray-100 bg-gray-50">
+                      <th class="px-4 py-3 text-xs font-body font-semibold text-gray-500 uppercase tracking-wider">Entity</th>
+                      <th class="px-4 py-3 text-xs font-body font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                      <th class="px-4 py-3 text-xs font-body font-semibold text-gray-500 uppercase tracking-wider text-right">Mentions</th>
+                      <th class="px-4 py-3 text-xs font-body font-semibold text-gray-500 uppercase tracking-wider text-right">Last Seen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (e of memoryEntities(); track e.entity_name + e.entity_type) {
+                      <tr class="border-b border-gray-50 hover:bg-gray-25">
+                        <td class="px-4 py-3 text-sm font-body font-medium text-navy">{{ e.entity_name }}</td>
+                        <td class="px-4 py-3">
+                          <span class="px-2 py-0.5 text-[10px] font-mono rounded-full bg-gray-100 text-gray-600">
+                            {{ e.entity_type }}
+                          </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-600 text-right">{{ e.mention_count }}</td>
+                        <td class="px-4 py-3 text-xs font-body text-gray-400 text-right">{{ getRelativeTime(e.last_seen) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else {
+              <div class="bg-white rounded-card shadow-card p-8 text-center">
+                <lucide-icon name="users" [size]="28" class="text-gray-300 mx-auto mb-2"></lucide-icon>
+                <p class="text-sm font-body text-gray-500 m-0">No entities discovered yet. Entities are extracted from agent episodes (campaigns, audiences, creatives).</p>
+              </div>
+            }
+          }
+        }
+      }
     </div>
   `,
 })
@@ -437,7 +589,17 @@ export default class AgentDashboardComponent implements OnInit {
     { key: 'decisions', label: 'Decisions' },
     { key: 'briefing', label: 'Briefing' },
     { key: 'runs', label: 'Runs' },
+    { key: 'memory', label: 'Memory' },
   ];
+
+  // Memory tab
+  memorySubTabs = ['Core', 'Episodes', 'Entities'] as const;
+  activeMemorySubTab = signal<'Core' | 'Episodes' | 'Entities'>('Core');
+  loadingMemory = signal(true);
+  memoryCore = signal<MemoryCore[]>([]);
+  memoryEpisodes = signal<MemoryEpisode[]>([]);
+  memoryEntities = signal<MemoryEntity[]>([]);
+  memoryStats = signal<MemoryStats>({ totalCoreMemories: 0, totalEpisodes: 0, totalEntities: 0 });
 
   pendingCount = computed(() => this.decisions().filter(d => d.status === 'pending').length);
   executedCount = computed(() => this.decisions().filter(d => d.status === 'executed').length);
@@ -447,6 +609,7 @@ export default class AgentDashboardComponent implements OnInit {
     this.fetchDecisions();
     this.fetchRuns();
     this.fetchBriefing();
+    this.fetchMemory();
   }
 
   fetchDecisions() {
@@ -492,8 +655,39 @@ export default class AgentDashboardComponent implements OnInit {
       },
       error: () => {
         this.loadingBriefing.set(false);
+        this.toast.error('Briefing Failed', 'Could not load morning briefing.');
       },
     });
+  }
+
+  fetchMemory() {
+    this.loadingMemory.set(true);
+    this.api.get<{ success: boolean; core: MemoryCore[]; episodes: MemoryEpisode[]; entities: MemoryEntity[]; stats: MemoryStats }>(
+      environment.AGENT_MEMORY_STRUCTURED
+    ).subscribe({
+      next: (res) => {
+        this.memoryCore.set(res.core ?? []);
+        this.memoryEpisodes.set(res.episodes ?? []);
+        this.memoryEntities.set(res.entities ?? []);
+        this.memoryStats.set(res.stats ?? { totalCoreMemories: 0, totalEpisodes: 0, totalEntities: 0 });
+        this.loadingMemory.set(false);
+      },
+      error: () => {
+        this.loadingMemory.set(false);
+        this.toast.error('Memory Failed', 'Could not load agent memory.');
+      },
+    });
+  }
+
+  getAgentTypeClass(agentType: string): string {
+    const map: Record<string, string> = {
+      'watchdog': 'bg-amber-100 text-amber-700',
+      'briefing': 'bg-blue-100 text-blue-700',
+      'report': 'bg-purple-100 text-purple-700',
+      'content': 'bg-emerald-100 text-emerald-700',
+      'sales': 'bg-orange-100 text-orange-700',
+    };
+    return map[agentType] || 'bg-gray-100 text-gray-600';
   }
 
   triggerWatchdog() {

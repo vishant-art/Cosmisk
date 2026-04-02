@@ -172,6 +172,24 @@ import { environment } from '../../../environments/environment';
       </div>
     }
 
+    <!-- No Ad Account Connected -->
+    @if (!loading() && !hasAdAccount() && !googleAdsOAuth.isConnected()) {
+      <div class="mb-8 bg-gradient-to-br from-indigo-50 to-violet-50 border border-accent/20 rounded-xl p-8 text-center">
+        <div class="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4">
+          <lucide-icon name="plug-zap" [size]="28" class="text-accent"></lucide-icon>
+        </div>
+        <h3 class="text-lg font-display font-bold text-navy m-0 mb-2">Connect an Ad Account</h3>
+        <p class="text-sm font-body text-gray-600 m-0 mb-5 max-w-md mx-auto">
+          Link your Meta Ads or Google Ads account to see real-time KPIs, trends, and AI-powered insights.
+        </p>
+        <a routerLink="/app/settings"
+          class="inline-flex items-center gap-2 px-6 py-2.5 bg-accent text-white rounded-full text-sm font-body font-semibold hover:bg-accent/90 transition-colors no-underline">
+          <lucide-icon name="settings" [size]="16"></lucide-icon>
+          Go to Settings
+        </a>
+      </div>
+    }
+
     <!-- Performance KPIs -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       @if (loading()) {
@@ -582,6 +600,7 @@ export default class DashboardComponent implements OnInit {
   loading = signal(true);
   insightsLoading = signal(true);
   error = signal<string | null>(null);
+  hasAdAccount = computed(() => !!this.adAccountService.currentAccount());
   activeSprints = signal<any[]>([]);
   briefingSummary = signal<string | null>(null);
   agentActivity = signal<{ id: string; agentType: string; status: string; summary: string; timeAgo: string }[]>([]);
@@ -871,7 +890,10 @@ export default class DashboardComponent implements OnInit {
     this.loading.set(true);
     if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
     this.loadingTimeout = setTimeout(() => {
-      if (this.loading()) this.loading.set(false);
+      if (this.loading()) {
+        this.loading.set(false);
+        this.toast.error('Slow Response', 'Dashboard data is taking longer than expected.');
+      }
       if (this.insightsLoading()) this.insightsLoading.set(false);
     }, 8000);
     this.api.get<any>(environment.AD_ACCOUNT_KPIS, {

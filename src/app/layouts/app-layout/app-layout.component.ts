@@ -1,6 +1,7 @@
-import { Component, signal, ViewChild, OnInit, inject } from '@angular/core';
+import { Component, signal, ViewChild, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterOutlet } from '@angular/router';
+import { Router, RouterOutlet, NavigationStart, NavigationEnd, NavigationCancel, NavigationError } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { SidebarComponent } from '../../shared/components/sidebar/sidebar.component';
 import { TopbarComponent } from '../../shared/components/topbar/topbar.component';
 import { ToastComponent } from '../../shared/components/toast/toast.component';
@@ -15,6 +16,13 @@ import { AdAccountService } from '../../core/services/ad-account.service';
   imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, LucideAngularModule],
   template: `
     <div class="min-h-screen bg-[#F7F8FA] pb-7">
+      <!-- Route Loading Bar -->
+      @if (navigating()) {
+        <div class="fixed top-0 left-0 right-0 z-50 h-[3px]">
+          <div class="h-full bg-gradient-to-r from-accent via-violet-400 to-accent rounded-r-full animate-loading-bar"></div>
+        </div>
+      }
+
       <app-sidebar (collapsedChange)="sidebarCollapsed.set($event)" />
 
       <div class="transition-all duration-300"
@@ -65,17 +73,32 @@ import { AdAccountService } from '../../core/services/ad-account.service';
     </div>
   `
 })
-export class AppLayoutComponent implements OnInit {
+export class AppLayoutComponent implements OnInit, OnDestroy {
   @ViewChild(WelcomeTourComponent) tour!: WelcomeTourComponent;
+  private router = inject(Router);
   adAccountService = inject(AdAccountService);
 
   sidebarCollapsed = signal(false);
+  navigating = signal(false);
   routeKey = 0;
+  private routerSub!: Subscription;
 
   ngOnInit() {
     if (!localStorage.getItem('cosmisk_tour_seen')) {
       setTimeout(() => this.tour?.show(), 800);
     }
+
+    this.routerSub = this.router.events.subscribe(event => {
+      if (event instanceof NavigationStart) {
+        this.navigating.set(true);
+      } else if (event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError) {
+        this.navigating.set(false);
+      }
+    });
+  }
+
+  ngOnDestroy() {
+    this.routerSub?.unsubscribe();
   }
 
   onRouteActivate() {

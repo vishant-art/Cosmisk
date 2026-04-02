@@ -3,7 +3,7 @@ import cron from 'node-cron';
 import { getDb } from '../db/index.js';
 import { runWatchdog, executeDecision, checkOutcomes } from '../services/ad-watchdog.js';
 import { handleSlackAction, verifySlackSignature } from '../services/slack-interactive.js';
-import { buildContextWindow, runDecay } from '../services/agent-memory.js';
+import { buildContextWindow, runDecay, getCoreMemory } from '../services/agent-memory.js';
 import { runMorningBriefing } from '../services/morning-briefing.js';
 import { config } from '../config.js';
 import { runReportAgentAll, runReportAgent } from '../services/report-agent.js';
@@ -386,11 +386,53 @@ export async function agentRoutes(app: FastifyInstance) {
     return { success: true, ...context };
   });
 
-  // GET /agent/memory/:agentType
+  // GET /agent/memory/:agentType — context window string
   app.get('/memory/:agentType', { preHandler: [app.authenticate] }, async (request) => {
     const { agentType } = request.params as { agentType: AgentType };
     const context = buildContextWindow(request.user.id, agentType);
     return { success: true, context };
+  });
+
+  // GET /agent/memory-structured — structured memory for UI display
+  app.get('/memory-structured', { preHandler: [app.authenticate] }, async (request) => {
+    const db = getDb();
+    const userId = request.user.id;
+
+    // Core memories across all agent types
+    const coreRows = db.prepare(
+      'SELECT agent_type, key, value, updated_at FROM agent_core_memory WHERE user_id = ? ORDER BY updated_at DESC'
+    ).all(userId) as { agent_type: string; key: string; value: string; updated_at: string }[];
+
+    // Recent episodes (top 20 by relevance)
+    const episodes = db.prepare(`
+      SELECT id, agent_type, event, context, outcome, relevance_score, reinforcement_count, created_at
+      FROM agent_episodes
+      WHERE user_id = ? AND relevance_score > 0.2
+      ORDER BY relevance_score DESC, created_at DESC
+      LIMIT 20
+    `).all(userId) as { id: string; agent_type: string; event: string; context: string | null; outcome: string | null; relevance_score: number; reinforcement_count: number; created_at: string }[];
+
+    // Known entities (top 30 by mention count)
+    const entities = db.prepare(`
+      SELECT entity_type, entity_name, mention_count, first_seen, last_seen
+      FROM agent_entities
+      WHERE user_id = ?
+      ORDER BY mention_count DESC, last_seen DESC
+      LIMIT 30
+    `).all(userId) as { entity_type: string; entity_name: string; mention_count: number; first_seen: string; last_seen: string }[];
+
+    // Memory stats
+    const totalEpisodes = (db.prepare('SELECT COUNT(*) as cnt FROM agent_episodes WHERE user_id = ?').get(userId) as any)?.cnt || 0;
+    const totalEntities = (db.prepare('SELECT COUNT(*) as cnt FROM agent_entities WHERE user_id = ?').get(userId) as any)?.cnt || 0;
+    const totalCoreMemories = coreRows.length;
+
+    return {
+      success: true,
+      core: coreRows,
+      episodes,
+      entities,
+      stats: { totalCoreMemories, totalEpisodes, totalEntities },
+    };
   });
 
   // GET /agent/briefing/latest

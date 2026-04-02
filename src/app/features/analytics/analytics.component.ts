@@ -56,6 +56,24 @@ interface BreakdownRow {
         </div>
       </div>
 
+      <!-- No Account Connected -->
+      @if (!loading() && !hasAccount()) {
+        <div class="mb-6 bg-gradient-to-br from-indigo-50 to-violet-50 border border-accent/20 rounded-xl p-8 text-center">
+          <div class="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4">
+            <lucide-icon name="bar-chart-3" [size]="28" class="text-accent"></lucide-icon>
+          </div>
+          <h3 class="text-lg font-display font-bold text-navy m-0 mb-2">Connect an Ad Account</h3>
+          <p class="text-sm font-body text-gray-600 m-0 mb-5 max-w-md mx-auto">
+            Link your Meta Ads or Google Ads account to see detailed analytics, trends, and breakdowns.
+          </p>
+          <a routerLink="/app/settings"
+            class="inline-flex items-center gap-2 px-6 py-2.5 bg-accent text-white rounded-full text-sm font-body font-semibold hover:bg-accent/90 transition-colors no-underline">
+            <lucide-icon name="settings" [size]="16"></lucide-icon>
+            Go to Settings
+          </a>
+        </div>
+      }
+
       <!-- Row 1: KPI Cards -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         @if (loading()) {
@@ -314,6 +332,7 @@ export default class AnalyticsComponent {
   unitEconomics = signal<{ label: string; value: string; change: number }[]>([]);
   breakdownData = signal<BreakdownRow[]>([]);
 
+  hasAccount = computed(() => !!this.adAccountService.currentAccount());
   private campaignBreakdown: BreakdownRow[] = [];
   private audienceBreakdown: BreakdownRow[] = [];
 
@@ -409,7 +428,10 @@ export default class AnalyticsComponent {
           this.generateChartFromKpis(datePreset);
         }
       },
-      error: () => { this.loading.set(false); },
+      error: () => {
+        this.loading.set(false);
+        this.toast.error('Analytics Failed', 'Could not load performance data. Check your ad account connection.');
+      },
     });
 
     // Load chart data (reuse dashboard chart endpoint)

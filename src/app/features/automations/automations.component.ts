@@ -479,6 +479,7 @@ export default class AutomationsComponent {
         if (res.success && res.automation) {
           this.rules.set([res.automation, ...this.rules()]);
           this.resetBuilder();
+          this.toast.success('Rule Created', 'Automation rule is now active.');
         }
         this.saving.set(false);
       },
@@ -501,6 +502,7 @@ export default class AutomationsComponent {
           this.rules.set(
             this.rules().map(r => r.id === rule.id ? res.automation : r)
           );
+          this.toast.success('Updated', `Rule ${newStatus ? 'activated' : 'paused'}.`);
         }
       },
       error: () => {
@@ -515,6 +517,7 @@ export default class AutomationsComponent {
       next: (res) => {
         if (res.success) {
           this.rules.set(this.rules().filter(r => r.id !== id));
+          this.toast.success('Deleted', 'Automation rule removed.');
         }
       },
       error: () => {

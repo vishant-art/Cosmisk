@@ -352,7 +352,6 @@ export default class ReportsComponent implements OnInit {
       error: (err) => {
         this.loading.set(false);
         this.loadError.set(true);
-        console.error('Failed to load reports:', err);
       },
     });
   }
@@ -464,50 +463,118 @@ export default class ReportsComponent implements OnInit {
       return;
     }
 
-    // Build readable text from report data
     const data = report.data;
-    let content = `# ${report.name}\n`;
-    content += `Type: ${report.type} | Period: ${report.dateRange} | Generated: ${report.createdAt}\n\n`;
+    const sections: string[] = [];
 
-    if (data.strategy_report) content += `${data.strategy_report}\n\n`;
-    if (data.summary) content += `## Summary\n${data.summary}\n\n`;
-    if (data.narrative?.executive_summary) content += `## Executive Summary\n${data.narrative.executive_summary}\n\n`;
+    // Executive Summary
+    if (data.narrative?.executive_summary) {
+      sections.push(`<div class="section"><h2>Executive Summary</h2><p>${this.escapeHtml(data.narrative.executive_summary)}</p></div>`);
+    }
+    if (data.strategy_report) {
+      sections.push(`<div class="section"><h2>Strategy Report</h2><p>${this.escapeHtml(data.strategy_report).replace(/\n/g, '<br>')}</p></div>`);
+    }
+    if (data.summary) {
+      sections.push(`<div class="section"><h2>Summary</h2><p>${this.escapeHtml(data.summary).replace(/\n/g, '<br>')}</p></div>`);
+    }
+
+    // Key Takeaways
     if (data.narrative?.key_takeaways?.length) {
-      content += `## Key Takeaways\n`;
-      for (const t of data.narrative.key_takeaways) { content += `- ${t}\n`; }
-      content += '\n';
+      const items = data.narrative.key_takeaways.map((t: string) => `<li>${this.escapeHtml(t)}</li>`).join('');
+      sections.push(`<div class="section"><h2>Key Takeaways</h2><ul>${items}</ul></div>`);
     }
-    if (data.kpis) {
-      content += `## Key Metrics\n`;
-      for (const [key, val] of Object.entries(data.kpis || {})) {
-        content += `- ${key}: ${val}\n`;
-      }
-      content += '\n';
+
+    // KPIs Table
+    if (data.kpis && Object.keys(data.kpis).length > 0) {
+      const rows = Object.entries(data.kpis).map(([k, v]) =>
+        `<tr><td class="metric-label">${this.escapeHtml(k)}</td><td class="metric-value">${this.escapeHtml(String(v))}</td></tr>`
+      ).join('');
+      sections.push(`<div class="section"><h2>Key Metrics</h2><table class="kpi-table"><tbody>${rows}</tbody></table></div>`);
     }
+
+    // Campaign Narratives
+    if (data.narrative?.campaign_narratives?.length) {
+      const rows = data.narrative.campaign_narratives.map((c: any) =>
+        `<tr><td>${this.escapeHtml(c.name)}</td><td>${c.roas}</td><td>${this.escapeHtml(String(c.spend))}</td><td><span class="verdict verdict-${(c.verdict || '').toLowerCase().includes('scale') ? 'good' : (c.verdict || '').toLowerCase().includes('cut') ? 'bad' : 'neutral'}">${this.escapeHtml(c.verdict)}</span></td></tr>`
+      ).join('');
+      sections.push(`<div class="section"><h2>Campaign Performance</h2><table class="campaign-table"><thead><tr><th>Campaign</th><th>ROAS</th><th>Spend</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+    }
+
+    // Recommendations
     if (data.recommendations?.length) {
-      content += `## Recommendations\n`;
-      for (const rec of data.recommendations) {
-        content += `- ${typeof rec === 'string' ? rec : rec.title || rec.message || JSON.stringify(rec)}\n`;
-      }
-      content += '\n';
+      const items = data.recommendations.map((rec: any) => {
+        const text = typeof rec === 'string' ? rec : rec.title || rec.message || JSON.stringify(rec);
+        return `<li>${this.escapeHtml(text)}</li>`;
+      }).join('');
+      sections.push(`<div class="section"><h2>Recommendations</h2><ol class="recommendations">${items}</ol></div>`);
     }
+
+    // Custom sections
     if (data.sections) {
       for (const [section, value] of Object.entries(data.sections || {})) {
-        content += `## ${section}\n${typeof value === 'string' ? value : JSON.stringify(value, null, 2)}\n\n`;
+        const content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+        sections.push(`<div class="section"><h2>${this.escapeHtml(section)}</h2><p>${this.escapeHtml(content).replace(/\n/g, '<br>')}</p></div>`);
       }
     }
 
-    // Fallback: dump entire data as formatted JSON
-    if (content.length < 200) {
-      content += JSON.stringify(data, null, 2);
-    }
+    // Build the PDF HTML document
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${this.escapeHtml(report.name)}</title>
+<style>
+  @page { margin: 1in 0.75in; size: A4; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e; line-height: 1.6; }
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #2d2b55 100%); color: white; padding: 40px; margin: -1in -0.75in 0; }
+  .header h1 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .header .meta { font-size: 12px; opacity: 0.8; }
+  .header .meta span { margin-right: 16px; }
+  .brand { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; opacity: 0.6; margin-bottom: 12px; }
+  .section { margin-top: 28px; page-break-inside: avoid; }
+  .section h2 { font-size: 16px; font-weight: 700; color: #1a1a2e; border-bottom: 2px solid #6c63ff; padding-bottom: 6px; margin-bottom: 12px; }
+  .section p { font-size: 13px; color: #4a4a6a; }
+  .section ul, .section ol { padding-left: 20px; font-size: 13px; color: #4a4a6a; }
+  .section li { margin-bottom: 6px; }
+  .recommendations li { margin-bottom: 8px; }
+  .kpi-table { width: 100%; border-collapse: collapse; }
+  .kpi-table td { padding: 10px 16px; border-bottom: 1px solid #eee; font-size: 13px; }
+  .kpi-table .metric-label { font-weight: 600; color: #1a1a2e; width: 40%; }
+  .kpi-table .metric-value { color: #6c63ff; font-weight: 700; font-size: 15px; }
+  .campaign-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .campaign-table th { background: #f8f8fc; padding: 8px 12px; text-align: left; font-weight: 600; color: #1a1a2e; border-bottom: 2px solid #e2e2f0; }
+  .campaign-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f5; }
+  .verdict { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .verdict-good { background: #e8f5e9; color: #2e7d32; }
+  .verdict-bad { background: #fce4ec; color: #c62828; }
+  .verdict-neutral { background: #f3e5f5; color: #6a1b9a; }
+  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #eee; font-size: 10px; color: #999; text-align: center; }
+</style></head><body>
+<div class="header">
+  <div class="brand">Cosmisk</div>
+  <h1>${this.escapeHtml(report.name)}</h1>
+  <div class="meta">
+    <span>${this.escapeHtml(report.type)}</span>
+    <span>${this.escapeHtml(report.dateRange)}</span>
+    <span>Generated: ${this.escapeHtml(report.createdAt)}</span>
+  </div>
+</div>
+${sections.join('\n')}
+<div class="footer">Generated by Cosmisk &mdash; AI-Powered Creative Intelligence</div>
+</body></html>`;
 
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${report.name.replace(/\s+/g, '-').toLowerCase()}-${report.createdAt?.split(',')[0]?.trim() || 'report'}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Open in new window for print-to-PDF
+    const printWindow = window.open('', '_blank', 'width=800,height=1000');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+        this.toast.success('PDF Ready', 'Use your browser\'s print dialog to save as PDF.');
+      }, 300);
+    }
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 }

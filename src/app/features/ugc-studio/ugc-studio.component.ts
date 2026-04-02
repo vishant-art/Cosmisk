@@ -424,8 +424,14 @@ export default class UgcStudioComponent implements OnInit {
                 if (pollRes.generation.status !== 'generating') {
                   clearInterval(this.pollTimer);
                   this.pollTimer = null;
+                  this.toast.success('Complete', 'Creative generation finished.');
                   this.fetchHistory();
                 }
+              },
+              error: () => {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
+                this.toast.error('Poll Failed', 'Lost connection to generation. Refresh to check status.');
               },
             });
           }, 3000);

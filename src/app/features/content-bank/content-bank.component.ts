@@ -468,6 +468,7 @@ export default class ContentBankComponent implements OnInit {
           i.id === id ? { ...i, status, posted_at: body.posted_at || i.posted_at } : i
         ));
       },
+      error: () => this.toast.error('Update Failed', 'Could not update content status.'),
     });
   }
 
@@ -477,7 +478,9 @@ export default class ContentBankComponent implements OnInit {
       next: () => {
         this.items.update(prev => prev.filter(i => i.id !== id));
         this.total.update(t => t - 1);
+        this.toast.success('Deleted', 'Content removed.');
       },
+      error: () => this.toast.error('Delete Failed', 'Could not delete content. Try again.'),
     });
   }
 
@@ -551,8 +554,10 @@ export default class ContentBankComponent implements OnInit {
         this.composerBody = '';
         this.composerHashtags = '';
         this.composerTopic = '';
+        this.toast.success('Saved', 'Content added to your bank.');
         this.loadContent();
       },
+      error: () => this.toast.error('Save Failed', 'Could not save content. Try again.'),
     });
   }
 

@@ -14,6 +14,7 @@ import { AdAccountService } from '../../core/services/ad-account.service';
 import { ApiService } from '../../core/services/api.service';
 import { DateRangeService } from '../../core/services/date-range.service';
 import { CreativeEngineService } from '../../core/services/creative-engine.service';
+import { ToastService } from '../../core/services/toast.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -203,10 +204,22 @@ import { environment } from '../../../environments/environment';
 
     @if (!loading() && filteredCreatives().length === 0) {
       <div class="flex flex-col items-center justify-center py-20 text-center">
-        <span class="text-5xl mb-4"><lucide-icon name="search" [size]="48"></lucide-icon></span>
-        <h3 class="text-section-title font-display text-navy mb-2">No creatives match your filters</h3>
-        <p class="text-sm text-gray-500 font-body mb-4">Try adjusting your filters to see results.</p>
-        <button (click)="clearFilters()" class="btn-outline">Clear all filters</button>
+        @if (allCreatives().length === 0) {
+          <div class="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <lucide-icon name="plug-zap" [size]="28" class="text-accent"></lucide-icon>
+          </div>
+          <h3 class="text-section-title font-display text-navy mb-2">No creatives yet</h3>
+          <p class="text-sm text-gray-500 font-body mb-4 max-w-sm">Connect an ad account in Settings to see your live creatives, or generate new ones with the Creative Engine.</p>
+          <div class="flex gap-3">
+            <a routerLink="/app/settings" class="px-5 py-2 bg-accent text-white rounded-full text-sm font-body font-semibold no-underline hover:bg-accent/90">Connect Account</a>
+            <a routerLink="/app/creative-engine" class="px-5 py-2 border border-accent text-accent rounded-full text-sm font-body font-semibold no-underline hover:bg-accent/5">Creative Engine</a>
+          </div>
+        } @else {
+          <lucide-icon name="search" [size]="48" class="text-gray-300 mb-4"></lucide-icon>
+          <h3 class="text-section-title font-display text-navy mb-2">No creatives match your filters</h3>
+          <p class="text-sm text-gray-500 font-body mb-4">Try adjusting your filters to see results.</p>
+          <button (click)="clearFilters()" class="btn-outline">Clear all filters</button>
+        }
       </div>
     }
 
@@ -545,6 +558,7 @@ export default class CreativeCockpitComponent {
   private api = inject(ApiService);
   private dateRangeService = inject(DateRangeService);
   private engineService = inject(CreativeEngineService);
+  private toast = inject(ToastService);
   private router = inject(Router);
 
   loading = signal(true);
@@ -569,7 +583,10 @@ export default class CreativeCockpitComponent {
     this.loading.set(true);
     if (this.loadingTimeout) clearTimeout(this.loadingTimeout);
     this.loadingTimeout = setTimeout(() => {
-      if (this.loading()) this.loading.set(false);
+      if (this.loading()) {
+        this.loading.set(false);
+        this.toast.error('Slow Response', 'Ad data is taking longer than expected. Try refreshing.');
+      }
     }, 8000);
     this.api.get<any>(environment.AD_ACCOUNT_TOP_ADS, {
       account_id: accountId,
@@ -623,6 +640,7 @@ export default class CreativeCockpitComponent {
       },
       error: () => {
         this.loading.set(false);
+        this.toast.error('Load Failed', 'Could not fetch ad creatives. Check your ad account connection.');
       },
     });
   }
@@ -662,6 +680,7 @@ export default class CreativeCockpitComponent {
       },
       error: () => {
         this.analyzingDna.set(false);
+        this.toast.error('DNA Analysis Failed', 'Could not analyze creative DNA. Try again later.');
       },
     });
   }

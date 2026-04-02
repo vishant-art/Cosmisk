@@ -451,6 +451,7 @@ export default class CreativeEngineComponent implements OnInit {
       next: (res) => {
         if (res.success) this.usage.set(res.usage);
       },
+      error: () => this.toast.error('Load Failed', 'Could not load usage data.'),
     });
   }
 
@@ -465,6 +466,7 @@ export default class CreativeEngineComponent implements OnInit {
       next: (res) => {
         if (res.success) this.templates.set(res.templates);
       },
+      error: () => {},
     });
   }
 
@@ -473,6 +475,7 @@ export default class CreativeEngineComponent implements OnInit {
       next: (res) => {
         if (res.success) this.analytics.set(res.analytics);
       },
+      error: () => {},
     });
   }
 
