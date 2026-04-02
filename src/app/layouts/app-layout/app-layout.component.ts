@@ -24,11 +24,11 @@ import { AdAccountService } from '../../core/services/ad-account.service';
         </div>
       }
 
-      <app-sidebar (collapsedChange)="sidebarCollapsed.set($event)" />
+      <app-sidebar #sidebar (collapsedChange)="sidebarCollapsed.set($event)" />
 
-      <div class="transition-all duration-300"
+      <div class="transition-all duration-300 max-lg:!ml-0"
         [style.margin-left.px]="sidebarCollapsed() ? 72 : 260">
-        <app-topbar />
+        <app-topbar (menuToggle)="sidebar.openMobile()" />
 
         <main class="p-4 md:p-8">
           <div class="route-animate" [attr.data-route]="routeKey">
@@ -38,7 +38,7 @@ import { AdAccountService } from '../../core/services/ad-account.service';
       </div>
 
       <!-- System Status Bar -->
-      <div class="fixed bottom-0 left-0 right-0 h-7 bg-[#0F0F1A] border-t border-white/[0.06] flex items-center justify-between px-4 z-30 transition-all duration-300"
+      <div class="fixed bottom-0 left-0 right-0 h-7 bg-[#0F0F1A] border-t border-white/[0.06] flex items-center justify-between px-4 z-30 transition-all duration-300 max-lg:!pl-4"
         [style.padding-left.px]="sidebarCollapsed() ? 80 : 268">
         <div class="flex items-center gap-4">
           <div class="flex items-center gap-1.5">

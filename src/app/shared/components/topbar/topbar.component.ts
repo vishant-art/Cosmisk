@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, HostListener, ElementRef } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, HostListener, ElementRef, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
@@ -276,7 +276,9 @@ export class TopbarComponent implements OnInit, OnDestroy {
     this.authService.logout();
   }
 
+  @Output() menuToggle = new EventEmitter<void>();
+
   onMenuToggle() {
-    // Emit event for mobile sidebar toggle
+    this.menuToggle.emit();
   }
 }

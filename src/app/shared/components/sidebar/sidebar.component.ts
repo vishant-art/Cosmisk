@@ -1,6 +1,7 @@
 import { Component, signal, HostListener, Output, EventEmitter, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
+import { filter } from 'rxjs';
 import { BrandSwitcherComponent } from '../brand-switcher/brand-switcher.component';
 import { AccountSwitcherComponent } from '../account-switcher/account-switcher.component';
 import { LucideAngularModule } from 'lucide-angular';
@@ -31,7 +32,7 @@ interface NavGroup {
   template: `
     <aside
       class="fixed left-0 top-0 h-full z-40 flex flex-col transition-all duration-300 overflow-hidden sidebar-shell"
-      [class]="collapsed() ? 'w-[72px]' : 'w-[260px]'">
+      [ngClass]="mobileOpen() ? 'w-[260px] translate-x-0' : (collapsed() ? 'w-[72px] max-lg:-translate-x-full' : 'w-[260px] max-lg:-translate-x-full')">
 
       <!-- Logo -->
       <div class="flex items-center h-16 px-4 shrink-0" [class.justify-center]="collapsed()">
@@ -207,18 +208,25 @@ interface NavGroup {
 })
 export class SidebarComponent implements OnInit, OnDestroy {
   badgeService = inject(AutopilotBadgeService);
+  private router = inject(Router);
   collapsed = signal(false);
   mobileOpen = signal(false);
   @Output() collapsedChange = new EventEmitter<boolean>();
   private badgeInterval: ReturnType<typeof setInterval> | null = null;
+  private routerSub: any;
 
   ngOnInit() {
     this.badgeService.refresh();
     this.badgeInterval = setInterval(() => this.badgeService.refresh(), 60_000);
+    // Close mobile sidebar on navigation
+    this.routerSub = this.router.events.pipe(filter(e => e instanceof NavigationEnd)).subscribe(() => {
+      this.mobileOpen.set(false);
+    });
   }
 
   ngOnDestroy() {
     if (this.badgeInterval) clearInterval(this.badgeInterval);
+    this.routerSub?.unsubscribe();
   }
 
   navGroups: NavGroup[] = [
