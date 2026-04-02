@@ -260,13 +260,13 @@ describe('Autopilot Engine — confidence scoring integration', () => {
   it('high spend + high conversions = high confidence', () => {
     const conf = assessConfidence({ spend: 500, totalAccountSpend: 2000, conversions: 50, impressions: 100000 });
     expect(conf.shouldRecommendAction).toBe(true);
-    expect(conf.score).toBeGreaterThanOrEqual(60);
+    expect(conf.level).toBe('high');
   });
 
   it('tiny spend is not actionable', () => {
     const conf = assessConfidence({ spend: 2, totalAccountSpend: 5000, conversions: 0, impressions: 50 });
     expect(conf.shouldRecommendAction).toBe(false);
-    expect(conf.score).toBeLessThan(50);
+    expect(conf.level).toBe('insufficient');
   });
 
   it('moderate spend with decent conversions is actionable', () => {
