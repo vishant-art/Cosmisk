@@ -56,7 +56,11 @@ import { AdAccountService } from '../../core/services/ad-account.service';
           }
           <div class="flex items-center gap-1.5">
             <lucide-icon name="bot" [size]="10" class="text-gray-600"></lucide-icon>
-            <span class="text-[10px] font-mono text-gray-500">6 agents active</span>
+            <span class="text-[10px] font-mono text-gray-500">7 agents active</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+            <span class="text-[10px] font-mono text-gray-500">AI Ready</span>
           </div>
         </div>
         <div class="flex items-center gap-4">
