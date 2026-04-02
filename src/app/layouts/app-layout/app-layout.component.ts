@@ -64,6 +64,7 @@ import { AdAccountService } from '../../core/services/ad-account.service';
             <kbd class="px-1 py-0.5 bg-white/[0.06] rounded text-[9px] border border-white/[0.08]">?</kbd>
             <span>Shortcuts</span>
           </div>
+          <span class="text-[9px] font-mono text-gray-700">v1.4.0</span>
         </div>
       </div>
 

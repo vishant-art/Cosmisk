@@ -194,10 +194,16 @@ import { environment } from '../../../environments/environment';
     @if (lastRefreshed()) {
       <div class="flex items-center justify-between mb-2">
         <h3 class="text-xs font-body font-semibold text-gray-500 uppercase tracking-wide m-0">Performance</h3>
-        <span class="text-[10px] font-mono text-gray-400 flex items-center gap-1">
-          <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-          Updated {{ formatTimeSince(lastRefreshed()!) }}
-        </span>
+        <div class="flex items-center gap-3">
+          <button (click)="exportDashboardCsv()" class="text-[10px] font-mono text-gray-400 hover:text-accent transition-colors flex items-center gap-1 border-0 bg-transparent cursor-pointer">
+            <lucide-icon name="download" [size]="10"></lucide-icon>
+            Export
+          </button>
+          <span class="text-[10px] font-mono text-gray-400 flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+            Updated {{ formatTimeSince(lastRefreshed()!) }}
+          </span>
+        </div>
       </div>
     }
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -901,6 +907,26 @@ export default class DashboardComponent implements OnInit {
     if (diff < 60000) return 'just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     return `${Math.floor(diff / 3600000)}h ago`;
+  }
+
+  exportDashboardCsv() {
+    const k = this.kpi();
+    const rows = [
+      ['Metric', 'Value', 'Change'],
+      ['Total Spend', k.spend.value.toString(), `${k.spend.change}%`],
+      ['Revenue', k.revenue.value.toString(), `${k.revenue.change}%`],
+      ['ROAS', k.roas.value.toString(), `${k.roas.change}x`],
+      ['Active Creatives', k.activeCreatives.value.toString(), ''],
+    ];
+    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cosmisk-dashboard-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.toast.success('Exported', 'Dashboard KPIs downloaded as CSV');
   }
 
   private loadKpis(accountId: string, credentialGroup: string, datePreset: string) {
