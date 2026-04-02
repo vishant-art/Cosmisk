@@ -40,9 +40,14 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
           case 404:
             // Component handles empty state
             break;
-          case 429:
-            toast.warning('Rate Limited', "Too many requests. Please wait a moment.");
+          case 429: {
+            const retryAfter = error.headers?.get('retry-after');
+            const waitSec = retryAfter ? parseInt(retryAfter, 10) : 0;
+            toast.warning('Rate Limited', waitSec > 0
+              ? `Too many requests. Try again in ${waitSec} seconds.`
+              : 'Too many requests. Please wait a moment.');
             break;
+          }
           case 0:
             toast.error('Connection Lost', 'Could not reach the server. Check your internet connection.');
             break;

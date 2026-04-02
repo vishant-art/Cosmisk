@@ -27,7 +27,7 @@ export class ToastService {
   }
 
   error(title: string, message?: string) {
-    this.show({ type: 'error', title, message });
+    this.show({ type: 'error', title, message, duration: 8000 });
   }
 
   warning(title: string, message?: string) {
