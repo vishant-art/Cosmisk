@@ -118,8 +118,13 @@ import { environment } from '../../../environments/environment';
                 </div>
               </div>
               <div class="flex justify-end mt-6">
-                <button (click)="saveProfile()" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
-                  Save Changes
+                <button (click)="saveProfile()" [disabled]="savingProfile" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 disabled:opacity-50 transition-colors flex items-center gap-2">
+                  @if (savingProfile) {
+                    <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Saving...
+                  } @else {
+                    Save Changes
+                  }
                 </button>
               </div>
             </div>
@@ -540,8 +545,13 @@ import { environment } from '../../../environments/environment';
             }
           </div>
           <div class="flex justify-end mt-4">
-            <button (click)="saveNotifications()" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 transition-colors">
-              Save Preferences
+            <button (click)="saveNotifications()" [disabled]="savingNotifs" class="px-5 py-2 bg-accent text-white rounded-pill text-sm font-body font-semibold hover:bg-accent/90 disabled:opacity-50 transition-colors flex items-center gap-2">
+              @if (savingNotifs) {
+                <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Saving...
+              } @else {
+                Save Preferences
+              }
             </button>
           </div>
         </div>
@@ -580,6 +590,7 @@ export default class SettingsComponent implements OnInit {
   language = 'en';
   currency = 'INR';
   dateFormat = 'DD/MM/YYYY';
+  savingProfile = false;
 
   // Other connected accounts (non-Meta)
   otherAccounts = [
@@ -605,6 +616,7 @@ export default class SettingsComponent implements OnInit {
   activityLoading = false;
 
   // Notifications
+  savingNotifs = false;
   notificationPrefs = [
     { label: 'Campaign Alerts', description: 'Budget exhausted, CPA spikes, campaign errors', email: true, push: true },
     { label: 'Creative Performance', description: 'Winner/loser notifications, fatigue alerts', email: true, push: true },
@@ -723,7 +735,7 @@ export default class SettingsComponent implements OnInit {
   }
 
   saveProfile() {
-    // Save all profile fields to server
+    this.savingProfile = true;
     this.api.post<any>(environment.SETTINGS_PROFILE, {
       name: this.profileName,
       email: this.profileEmail,
@@ -735,32 +747,35 @@ export default class SettingsComponent implements OnInit {
     }).subscribe({
       next: (res) => {
         if (res.success) {
-          // Update JWT if server returns new token
           if (res.token) {
             localStorage.setItem('cosmisk_token', res.token);
           }
           this.toast.success('Saved', 'Your profile has been updated');
         }
+        this.savingProfile = false;
       },
       error: () => {
         this.toast.error('Save Failed', 'Could not save profile to server. Preferences saved locally only.');
+        this.savingProfile = false;
       },
     });
   }
 
   saveNotifications() {
+    this.savingNotifs = true;
     const prefs = this.notificationPrefs.map(p => ({ label: p.label, email: p.email, push: p.push }));
-    // Persist to server
     this.api.post<any>(environment.SETTINGS_PROFILE, {
       notification_preferences: JSON.stringify(prefs),
     }).subscribe({
       next: () => {
         localStorage.setItem('cosmisk_notification_prefs', JSON.stringify(prefs));
         this.toast.success('Saved', 'Notification preferences updated');
+        this.savingNotifs = false;
       },
       error: () => {
         localStorage.setItem('cosmisk_notification_prefs', JSON.stringify(prefs));
         this.toast.success('Saved', 'Preferences saved locally');
+        this.savingNotifs = false;
       },
     });
   }

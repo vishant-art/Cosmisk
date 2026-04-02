@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, HostListener, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
@@ -87,6 +87,13 @@ import { LucideAngularModule } from 'lucide-angular';
                 </button>
               </div>
               <div class="max-h-80 overflow-y-auto">
+                @if (notificationService.allNotifications().length === 0) {
+                  <div class="py-8 text-center">
+                    <lucide-icon name="bell-off" [size]="24" class="text-gray-300 mx-auto mb-2"></lucide-icon>
+                    <p class="text-sm text-gray-400 font-body m-0">No notifications yet</p>
+                    <p class="text-xs text-gray-300 font-body m-0 mt-1">Alerts from your ad accounts will appear here</p>
+                  </div>
+                }
                 @for (notif of notificationService.allNotifications(); track notif.id) {
                   <div
                     class="flex gap-3 px-4 py-3 border-b border-divider hover:bg-cream transition-colors cursor-pointer"
@@ -103,7 +110,10 @@ import { LucideAngularModule } from 'lucide-angular';
                     </span>
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-body font-medium text-navy m-0 truncate">{{ notif.title }}</p>
-                      <p class="text-xs text-gray-500 m-0 mt-0.5">{{ notif.createdAt | relativeTime }}</p>
+                      @if (notif.description) {
+                        <p class="text-xs text-gray-600 font-body m-0 mt-0.5 line-clamp-2">{{ notif.description }}</p>
+                      }
+                      <p class="text-[10px] text-gray-400 m-0 mt-1">{{ notif.createdAt | relativeTime }}</p>
                     </div>
                   </div>
                 }
@@ -148,7 +158,17 @@ export class TopbarComponent implements OnInit, OnDestroy {
   notificationService = inject(NotificationService);
   private dateRangeService = inject(DateRangeService);
   private router = inject(Router);
+  private el = inject(ElementRef);
   private routerSub: any;
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent) {
+    if (!this.el.nativeElement.contains(event.target)) {
+      this.datePickerOpen.set(false);
+      this.notifOpen.set(false);
+      this.userMenuOpen.set(false);
+    }
+  }
 
   pageTitle = 'Dashboard';
   breadcrumb = '';
