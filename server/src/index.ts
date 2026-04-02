@@ -1070,6 +1070,30 @@ app.get('/settings/activity', { preHandler: [app.authenticate] }, async (request
   return { success: true, activities: rows };
 });
 
+// DELETE /settings/account — permanently delete user account
+app.delete('/settings/account', { preHandler: [app.authenticate] }, async (request) => {
+  const db = getDb();
+  const userId = request.user.id;
+
+  db.transaction(() => {
+    // Delete all user data across tables
+    const tables = [
+      'meta_tokens', 'google_tokens', 'tiktok_tokens', 'reports', 'automations',
+      'autopilot_alerts', 'creative_sprints', 'creative_jobs', 'creative_assets',
+      'cost_ledger', 'content_bank', 'agent_runs', 'agent_decisions',
+      'agent_core_memory', 'agent_episodes', 'agent_entities', 'swipe_file',
+      'team_members', 'team_invitations', 'password_reset_tokens', 'subscriptions',
+      'user_usage', 'activity_log', 'studio_generations', 'score_predictions',
+    ];
+    for (const table of tables) {
+      try { db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId); } catch { /* table may not exist */ }
+    }
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  })();
+
+  return { success: true };
+});
+
 // Team routes now at /team/* via teamRoutes plugin
 
 // GET /settings/billing — return user's plan + usage from DB

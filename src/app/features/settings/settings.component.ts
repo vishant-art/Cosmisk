@@ -517,6 +517,15 @@ import { environment } from '../../../environments/environment';
               </div>
             }
           </div>
+
+          <!-- Danger Zone -->
+          <div class="bg-white rounded-card shadow-card p-6 border border-red-100">
+            <h3 class="text-sm font-display text-red-600 mb-2 mt-0">Danger Zone</h3>
+            <p class="text-xs text-gray-500 font-body mb-4 m-0">Permanently delete your account and all associated data. This action cannot be undone.</p>
+            <button (click)="deleteAccount()" class="px-4 py-2 border border-red-300 text-red-600 rounded-pill text-xs font-body font-semibold hover:bg-red-50 transition-colors">
+              Delete My Account
+            </button>
+          </div>
         </div>
       }
 
@@ -1049,6 +1058,24 @@ export default class SettingsComponent implements OnInit {
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+  }
+
+  deleteAccount() {
+    const confirmed = prompt('Type "DELETE" to permanently delete your account:');
+    if (confirmed !== 'DELETE') {
+      if (confirmed !== null) this.toast.info('Cancelled', 'Account deletion cancelled');
+      return;
+    }
+    this.api.delete<any>('settings/account').subscribe({
+      next: (res) => {
+        if (res.success) {
+          this.toast.success('Account Deleted', 'Your account has been permanently deleted');
+          localStorage.clear();
+          window.location.href = '/login';
+        }
+      },
+      error: () => this.toast.error('Failed', 'Could not delete account. Contact support@cosmisk.ai'),
+    });
   }
 
   resendInvite(member: { id: string; email: string }) {
