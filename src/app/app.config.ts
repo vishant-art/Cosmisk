@@ -26,7 +26,7 @@ import {
   BellRing, FileUp, LayoutGrid, List, CircleDot,
   CheckCircle, ClipboardList, IndianRupee, MapPin, Scan, XCircle,
   Rocket, Film, Mic, ShoppingBag, Columns, Link, ImageOff, LayoutTemplate,
-  PlugZap, ScanEye, NotebookPen, Gift, ArrowUp
+  PlugZap, ScanEye, NotebookPen, Gift, ArrowUp, Wifi, WifiOff
 } from 'lucide-angular';
 
 export const appConfig: ApplicationConfig = {
@@ -57,7 +57,7 @@ export const appConfig: ApplicationConfig = {
         BellRing, FileUp, LayoutGrid, List, CircleDot,
         CheckCircle, ClipboardList, IndianRupee, MapPin, Scan, XCircle,
         Rocket, Film, Mic, ShoppingBag, Columns, Link, ImageOff, LayoutTemplate,
-        PlugZap, ScanEye, NotebookPen, Gift, ArrowUp
+        PlugZap, ScanEye, NotebookPen, Gift, ArrowUp, Wifi, WifiOff
       })
     ),
   ]

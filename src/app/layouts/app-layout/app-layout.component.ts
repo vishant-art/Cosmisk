@@ -10,13 +10,14 @@ import { WelcomeTourComponent } from '../../shared/components/welcome-tour/welco
 import { WhatsNewComponent } from '../../shared/components/whats-new/whats-new.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ScrollTopComponent } from '../../shared/components/scroll-top/scroll-top.component';
+import { OfflineBannerComponent } from '../../shared/components/offline-banner/offline-banner.component';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 
 @Component({
   selector: 'app-app-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, WhatsNewComponent, ConfirmDialogComponent, ScrollTopComponent, LucideAngularModule],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, WhatsNewComponent, ConfirmDialogComponent, ScrollTopComponent, OfflineBannerComponent, LucideAngularModule],
   template: `
     <div class="min-h-screen bg-[#F7F8FA] pb-7">
       <!-- Route Loading Bar -->
@@ -44,8 +45,8 @@ import { AdAccountService } from '../../core/services/ad-account.service';
         [style.padding-left.px]="sidebarCollapsed() ? 80 : 268">
         <div class="flex items-center gap-4">
           <div class="flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
-            <span class="text-[10px] font-mono text-gray-500">Connected</span>
+            <span class="w-1.5 h-1.5 rounded-full" [ngClass]="isOnline() ? 'bg-green-400' : 'bg-red-400 animate-pulse'"></span>
+            <span class="text-[10px] font-mono" [ngClass]="isOnline() ? 'text-gray-500' : 'text-red-400'">{{ isOnline() ? 'Connected' : 'Offline' }}</span>
           </div>
           @if (adAccountService.currentAccount(); as acc) {
             <div class="flex items-center gap-1.5">
@@ -77,6 +78,7 @@ import { AdAccountService } from '../../core/services/ad-account.service';
       <app-whats-new #whatsNew />
       <app-confirm-dialog />
       <app-scroll-top />
+      <app-offline-banner />
     </div>
   `
 })
@@ -88,8 +90,11 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   sidebarCollapsed = signal(false);
   navigating = signal(false);
+  isOnline = signal(navigator.onLine);
   routeKey = 0;
   private routerSub!: Subscription;
+  private onlineHandler = () => this.isOnline.set(true);
+  private offlineHandler = () => this.isOnline.set(false);
 
   ngOnInit() {
     if (!localStorage.getItem('cosmisk_tour_seen')) {
@@ -98,6 +103,9 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
       // Only show changelog if tour is already seen
       setTimeout(() => this.whatsNew?.checkAndShow(), 1200);
     }
+
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
 
     this.routerSub = this.router.events.subscribe(event => {
       if (event instanceof NavigationStart) {
@@ -110,6 +118,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.routerSub?.unsubscribe();
+    window.removeEventListener('online', this.onlineHandler);
+    window.removeEventListener('offline', this.offlineHandler);
   }
 
   onRouteActivate() {
