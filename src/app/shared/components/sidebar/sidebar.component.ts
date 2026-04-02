@@ -242,6 +242,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
         { label: 'Analytics', icon: 'bar-chart-3', route: '/app/analytics' },
         { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio', live: true },
         { label: 'Reports', icon: 'file-text', route: '/app/reports' },
+        { label: 'Creative Score', icon: 'target', route: '/app/score' },
       ]
     },
     {

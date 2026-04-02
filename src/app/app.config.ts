@@ -1,4 +1,5 @@
-import { ApplicationConfig, importProvidersFrom } from '@angular/core';
+import { ApplicationConfig, ErrorHandler, importProvidersFrom } from '@angular/core';
+import { GlobalErrorHandler } from './core/services/global-error-handler';
 import { provideRouter, withViewTransitions } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes } from './app.routes';
@@ -12,7 +13,7 @@ import {
   Gauge, GitBranch, Shield, Workflow, Settings, ChevronLeft, ChevronDown,
   ChevronRight, PanelLeft, Menu, X, MoreVertical, ExternalLink,
   // Actions
-  Search, Bell, Calendar, Plus, Filter, Check, Copy, Trash2, PenLine,
+  Search, Bell, BellOff, Calendar, Plus, Filter, Check, Copy, Trash2, PenLine,
   Download, Upload, Send, RefreshCw, RotateCcw, Play, Pause,
   // Status & Info
   AlertCircle, AlertTriangle, CheckCircle2, Info, Crown, Sparkles,
@@ -24,11 +25,13 @@ import {
   Building2, MonitorPlay, Wand2, Bot, Briefcase, DollarSign,
   BellRing, FileUp, LayoutGrid, List, CircleDot,
   CheckCircle, ClipboardList, IndianRupee, MapPin, Scan, XCircle,
-  Rocket, Film, Mic, ShoppingBag, Columns, Link, ImageOff, LayoutTemplate
+  Rocket, Film, Mic, ShoppingBag, Columns, Link, ImageOff, LayoutTemplate,
+  PlugZap, ScanEye, NotebookPen
 } from 'lucide-angular';
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideRouter(routes, withViewTransitions()),
     provideHttpClient(
       withInterceptors([authInterceptor, errorInterceptor])
@@ -41,7 +44,7 @@ export const appConfig: ApplicationConfig = {
         Gauge, GitBranch, Shield, Workflow, Settings, ChevronLeft, ChevronDown,
         ChevronRight, PanelLeft, Menu, X, MoreVertical, ExternalLink,
         // Actions
-        Search, Bell, Calendar, Plus, Filter, Check, Copy, Trash2, PenLine,
+        Search, Bell, BellOff, Calendar, Plus, Filter, Check, Copy, Trash2, PenLine,
         Download, Upload, Send, RefreshCw, RotateCcw, Play, Pause,
         // Status & Info
         AlertCircle, AlertTriangle, CheckCircle2, Info, Crown, Sparkles,
@@ -53,7 +56,8 @@ export const appConfig: ApplicationConfig = {
         Building2, MonitorPlay, Wand2, Bot, Briefcase, DollarSign,
         BellRing, FileUp, LayoutGrid, List, CircleDot,
         CheckCircle, ClipboardList, IndianRupee, MapPin, Scan, XCircle,
-        Rocket, Film, Mic, ShoppingBag, Columns, Link, ImageOff, LayoutTemplate
+        Rocket, Film, Mic, ShoppingBag, Columns, Link, ImageOff, LayoutTemplate,
+        PlugZap, ScanEye, NotebookPen
       })
     ),
   ]
