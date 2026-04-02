@@ -492,7 +492,10 @@ export default class AgencyCommandCenterComponent implements OnInit {
           })));
         }
       },
-      error: (err: any) => console.error('Failed to load team members:', err),
+      error: (err: any) => {
+        console.error('Failed to load team members:', err);
+        this.toast.warning('Team Load Failed', 'Could not load team members.');
+      },
     });
   }
 }

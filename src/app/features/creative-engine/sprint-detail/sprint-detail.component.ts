@@ -6,6 +6,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { Subscription } from 'rxjs';
 import { CreativeEngineService } from '../../../core/services/creative-engine.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { ConfirmDialogService } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { AdAccountService } from '../../../core/services/ad-account.service';
 import { ApiService } from '../../../core/services/api.service';
 import { environment } from '../../../../environments/environment';
@@ -631,6 +632,7 @@ import { getFormatMeta } from '../../../core/models/creative-engine.model';
 export default class SprintDetailComponent implements OnInit, OnDestroy {
   private engineService = inject(CreativeEngineService);
   private toast = inject(ToastService);
+  private confirmDialog = inject(ConfirmDialogService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private adAccountService = inject(AdAccountService);
@@ -926,10 +928,16 @@ export default class SprintDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  deleteSprint() {
+  async deleteSprint() {
     const s = this.sprint();
     if (!s) return;
-    if (!confirm(`Delete sprint "${s.name}"? This cannot be undone.`)) return;
+    const confirmed = await this.confirmDialog.confirm({
+      title: 'Delete Sprint',
+      message: `Delete sprint "${s.name}"? This cannot be undone.`,
+      confirmText: 'Delete',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
     this.engineService.deleteSprint(s.id).subscribe({
       next: () => {
         this.toast.success('Deleted', 'Sprint deleted.');

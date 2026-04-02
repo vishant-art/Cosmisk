@@ -1,6 +1,7 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
+import { ToastService } from '../../core/services/toast.service';
 
 @Component({
   selector: 'app-pitch-deck',
@@ -793,6 +794,7 @@ import { LucideAngularModule } from 'lucide-angular';
   `
 })
 export default class PitchDeckComponent {
+  private toast = inject(ToastService);
   isGeneratingPdf = signal(false);
 
   chatDemo = [
@@ -1204,6 +1206,7 @@ export default class PitchDeckComponent {
       pdf.save('Cosmisk-Investor-Deck.pdf');
     } catch (err) {
       console.error('PDF generation failed:', err);
+      this.toast.error('PDF Failed', 'Could not generate the PDF. Please try again.');
     } finally {
       this.isGeneratingPdf.set(false);
     }
