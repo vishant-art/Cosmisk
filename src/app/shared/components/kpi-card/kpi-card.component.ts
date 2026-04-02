@@ -1,14 +1,18 @@
-import { Component, Input, OnInit, OnChanges, SimpleChanges, signal } from '@angular/core';
+import { Component, Input, OnInit, OnChanges, SimpleChanges, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
 import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
+import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
   selector: 'app-kpi-card',
   standalone: true,
   imports: [CommonModule, LakhCrorePipe, LucideAngularModule],
   template: `
-    <div class="card card-lift glow-on-hover cursor-pointer group">
+    <div class="card card-lift glow-on-hover cursor-pointer group relative" (click)="copyValue()" [title]="'Click to copy: ' + title + ' = ' + formattedValue">
+      @if (copied()) {
+        <div class="absolute top-2 right-2 px-2 py-1 bg-green-500 text-white text-[10px] font-mono rounded-md animate-fade-in z-10">Copied!</div>
+      }
       <div class="flex items-start justify-between mb-3">
         <p class="text-sm text-gray-500 font-body font-medium m-0">{{ title }}</p>
         @if (change !== undefined) {
@@ -48,6 +52,7 @@ import { LakhCrorePipe } from '../../pipes/lakh-crore.pipe';
   `
 })
 export class KpiCardComponent implements OnInit, OnChanges {
+  private toast = inject(ToastService);
   @Input({ required: true }) title = '';
   @Input({ required: true }) value: number = 0;
   @Input() change?: number;
@@ -60,6 +65,7 @@ export class KpiCardComponent implements OnInit, OnChanges {
 
   displayValue = signal(0);
   displayCurrencyValue = signal(0);
+  copied = signal(false);
   private animInterval: any;
 
   ngOnInit() {
@@ -98,6 +104,14 @@ export class KpiCardComponent implements OnInit, OnChanges {
         this.displayCurrencyValue.set(Math.round(current));
       }
     }, duration / steps);
+  }
+
+  copyValue() {
+    const text = `${this.title}: ${this.formattedValue}`;
+    navigator.clipboard.writeText(text).then(() => {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 1500);
+    });
   }
 
   get formattedValue(): string {

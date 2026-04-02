@@ -7,14 +7,16 @@ import { TopbarComponent } from '../../shared/components/topbar/topbar.component
 import { ToastComponent } from '../../shared/components/toast/toast.component';
 import { CommandPaletteComponent } from '../../shared/components/command-palette/command-palette.component';
 import { WelcomeTourComponent } from '../../shared/components/welcome-tour/welcome-tour.component';
+import { WhatsNewComponent } from '../../shared/components/whats-new/whats-new.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { ScrollTopComponent } from '../../shared/components/scroll-top/scroll-top.component';
 import { LucideAngularModule } from 'lucide-angular';
 import { AdAccountService } from '../../core/services/ad-account.service';
 
 @Component({
   selector: 'app-app-layout',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, ConfirmDialogComponent, LucideAngularModule],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, TopbarComponent, ToastComponent, CommandPaletteComponent, WelcomeTourComponent, WhatsNewComponent, ConfirmDialogComponent, ScrollTopComponent, LucideAngularModule],
   template: `
     <div class="min-h-screen bg-[#F7F8FA] pb-7">
       <!-- Route Loading Bar -->
@@ -72,12 +74,15 @@ import { AdAccountService } from '../../core/services/ad-account.service';
       <app-toast />
       <app-command-palette />
       <app-welcome-tour />
+      <app-whats-new #whatsNew />
       <app-confirm-dialog />
+      <app-scroll-top />
     </div>
   `
 })
 export class AppLayoutComponent implements OnInit, OnDestroy {
   @ViewChild(WelcomeTourComponent) tour!: WelcomeTourComponent;
+  @ViewChild('whatsNew') whatsNew!: WhatsNewComponent;
   private router = inject(Router);
   adAccountService = inject(AdAccountService);
 
@@ -89,6 +94,9 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   ngOnInit() {
     if (!localStorage.getItem('cosmisk_tour_seen')) {
       setTimeout(() => this.tour?.show(), 800);
+    } else {
+      // Only show changelog if tour is already seen
+      setTimeout(() => this.whatsNew?.checkAndShow(), 1200);
     }
 
     this.routerSub = this.router.events.subscribe(event => {
