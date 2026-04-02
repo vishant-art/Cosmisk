@@ -70,6 +70,7 @@ import { environment } from '../../../environments/environment';
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
               <h3 class="text-sm font-display font-semibold text-navy m-0">Morning Briefing</h3>
+              <span class="px-1.5 py-0.5 bg-accent/10 text-accent text-[9px] font-mono font-bold rounded">AI</span>
               <span class="live-dot"></span>
             </div>
             <p class="text-xs text-gray-700 font-body m-0 leading-relaxed line-clamp-3" [innerHTML]="briefingSummary()"></p>
@@ -151,6 +152,7 @@ import { environment } from '../../../environments/environment';
         <div class="flex items-center gap-2 mb-3">
           <lucide-icon name="lightbulb" [size]="16" class="text-amber-500"></lucide-icon>
           <h3 class="text-sm font-display font-semibold text-navy m-0">Recommended Actions</h3>
+          <span class="px-1.5 py-0.5 bg-accent/10 text-accent text-[9px] font-mono font-bold rounded">AI</span>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           @for (action of smartActions(); track action.id) {
