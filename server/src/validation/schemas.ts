@@ -217,7 +217,7 @@ export const campaignLocalCreateSchema = z.object({
 /* ------------------------------------------------------------------ */
 
 export const agentRunsQuerySchema = z.object({
-  agent_type: z.enum(['watchdog', 'briefing', 'report', 'content', 'sales']).optional(),
+  agent_type: z.enum(['watchdog', 'briefing', 'report', 'content', 'sales', 'creative_strategist']).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 

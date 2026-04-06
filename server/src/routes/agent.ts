@@ -10,6 +10,8 @@ import { runReportAgentAll, runReportAgent } from '../services/report-agent.js';
 import { runContentAgentAll, runContentAgent } from '../services/content-agent.js';
 import { getSalesContext, runSalesAgentAll } from '../services/sales-agent.js';
 import { runMetaWarmup } from '../services/meta-warmup.js';
+import { runCreativeStrategist, processConceptFeedback, seedCreativeStrategistMemory } from '../services/creative-strategist.js';
+import { setCoreMemory } from '../services/agent-memory.js';
 import type { AgentRunRow, AgentDecisionRow, AgentType } from '../types/index.js';
 import { validate, agentRunsQuerySchema, agentDecisionsQuerySchema, idParamSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
@@ -384,6 +386,110 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get('/sales/context', { preHandler: [app.authenticate] }, async (request) => {
     const context = await getSalesContext(request.user.id);
     return { success: true, ...context };
+  });
+
+  // POST /agent/creative-strategist/run — run the creative strategist
+  app.post('/creative-strategist/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const body = request.body as {
+      brandName?: string;
+      products?: Array<{ name: string; price: string; url?: string }>;
+      targetAudience?: string;
+      market?: string;
+      category?: string;
+      brief?: string;
+      accountId?: string;
+      numConcepts?: number;
+    };
+
+    if (!body.brandName || !body.products?.length || !body.targetAudience || !body.market || !body.category) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Required: brandName, products (array), targetAudience, market, category',
+      });
+    }
+
+    const runId = await runCreativeStrategist(request.user.id, {
+      brandName: body.brandName,
+      products: body.products,
+      targetAudience: body.targetAudience,
+      market: body.market,
+      category: body.category,
+      brief: body.brief,
+      accountId: body.accountId,
+      numConcepts: body.numConcepts,
+    });
+
+    // Fetch the completed run to return output
+    const db = getDb();
+    const run = db.prepare('SELECT * FROM agent_runs WHERE id = ?').get(runId) as AgentRunRow;
+
+    return {
+      success: true,
+      runId,
+      summary: run.summary,
+      output: run.raw_context ? safeJsonParse(run.raw_context, null) : null,
+    };
+  });
+
+  // POST /agent/creative-strategist/feedback — learn from concept outcomes
+  app.post('/creative-strategist/feedback', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const body = request.body as {
+      runId?: string;
+      conceptIndex?: number;
+      outcome?: string;
+      reason?: string;
+    };
+
+    if (!body.runId || body.conceptIndex === undefined || !body.outcome) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Required: runId, conceptIndex, outcome (approved|rejected)',
+      });
+    }
+
+    if (body.outcome !== 'approved' && body.outcome !== 'rejected') {
+      return reply.status(400).send({
+        success: false,
+        error: 'outcome must be "approved" or "rejected"',
+      });
+    }
+
+    processConceptFeedback(
+      request.user.id,
+      body.runId,
+      body.conceptIndex,
+      body.outcome,
+      body.reason,
+    );
+
+    return { success: true, message: `Concept #${body.conceptIndex} marked as ${body.outcome}` };
+  });
+
+  // POST /agent/creative-strategist/teach — write directly to core memory
+  app.post('/creative-strategist/teach', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const body = request.body as { key?: string; value?: string };
+
+    if (!body.key || !body.value) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Required: key, value',
+      });
+    }
+
+    setCoreMemory(request.user.id, 'creative_strategist', body.key, body.value);
+    return { success: true, message: `Core memory "${body.key}" saved` };
+  });
+
+  // POST /agent/creative-strategist/seed — seed initial memory (admin only)
+  app.post('/creative-strategist/seed', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const db = getDb();
+    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    if (!userRow || userRow.role !== 'admin') {
+      return reply.status(403).send({ success: false, error: 'Admin access required' });
+    }
+
+    seedCreativeStrategistMemory(request.user.id);
+    return { success: true, message: 'Creative strategist memory seeded' };
   });
 
   // GET /agent/memory/:agentType — context window string

@@ -330,7 +330,7 @@ export interface CostLedgerRow {
   created_at: string;
 }
 
-export type AgentType = 'watchdog' | 'briefing' | 'report' | 'content' | 'sales';
+export type AgentType = 'watchdog' | 'briefing' | 'report' | 'content' | 'sales' | 'creative_strategist';
 export type AgentRunStatus = 'running' | 'completed' | 'failed';
 export type DecisionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'expired';
 export type DecisionUrgency = 'low' | 'medium' | 'high' | 'critical';
