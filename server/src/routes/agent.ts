@@ -117,9 +117,9 @@ function startAgentCrons() {
     }
   });
 
-  // Meta API warmup: every 4 hours — generates API calls across all 4 permissions for App Review
-  cron.schedule('0 */4 * * *', async () => {
-    logger.info('[MetaWarmup] Starting daily Meta API warmup...');
+  // Meta API warmup: every 2 hours — ~120 calls/run × 12 runs/day = ~1,500 calls/day for App Review
+  cron.schedule('0 */2 * * *', async () => {
+    logger.info('[MetaWarmup] Starting Meta API warmup...');
     try {
       const result = await runMetaWarmup();
       logger.info(`[MetaWarmup] Complete: ${result.usersProcessed} users, ${result.totalCalls} calls, ${result.errors.length} errors`);
@@ -128,7 +128,7 @@ function startAgentCrons() {
     }
   });
 
-  logger.info('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, warmup every 4h, decay Sun 3:00 UTC');
+  logger.info('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, warmup every 2h, decay Sun 3:00 UTC');
 }
 
 /* ------------------------------------------------------------------ */
