@@ -262,7 +262,9 @@ function buildReportPrompt(
     try {
       const prev = JSON.parse(lastReport.data);
       lastReportContext = `Last report (${lastReport.generated_at}): ROAS was ${prev.metrics?.week?.roas?.toFixed(2) || '?'}x, Spend was $${prev.metrics?.week?.spend?.toFixed(0) || '?'}. Insights: ${(prev.keyInsights || []).join('; ')}`;
-    } catch { /* ignore parse errors */ }
+    } catch (err) {
+      logger.debug({ err: err instanceof Error ? err.message : err }, 'Failed to parse last report data');
+    }
   }
 
   const creativeDna = creatives.slice(0, 5).map(c => {

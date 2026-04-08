@@ -78,10 +78,14 @@ export async function automationRoutes(app: FastifyInstance) {
 
   // GET /automations/list — Get user's automation rules
   app.get('/list', { preHandler: [app.authenticate] }, async (request) => {
+    const { limit = '50', offset = '0' } = request.query as { limit?: string; offset?: string };
+    const limitNum = Math.min(parseInt(limit, 10) || 50, 100);
+    const offsetNum = parseInt(offset, 10) || 0;
+
     const db = getDb();
     const rows = db.prepare(
-      'SELECT * FROM automations WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(request.user.id) as AutomationRow[];
+      'SELECT * FROM automations WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).all(request.user.id, limitNum, offsetNum) as AutomationRow[];
 
     const automations = rows.map(row => ({
       id: row.id,
@@ -250,7 +254,9 @@ export async function automationRoutes(app: FastifyInstance) {
       try {
         const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
         if (accInfo?.currency) setCurrency(accInfo.currency);
-      } catch { /* keep default */ }
+      } catch (err) {
+        logger.debug({ err: err instanceof Error ? err.message : err, account_id }, 'Currency detection failed, using default');
+      }
 
       // Fetch account-level averages + 7d ads + daily breakdown for trend analysis
       const [accountInsights, adsRaw, adsDailyRaw] = await Promise.all([

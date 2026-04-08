@@ -278,7 +278,9 @@ export function buildContextWindow(
             const attrStr = Object.entries(attrs).map(([k, v]) => `${k}=${v}`).join(', ');
             if (attrStr) line += ` [${attrStr}]`;
           }
-        } catch { /* ignore parse errors */ }
+        } catch {
+          // Malformed JSON in entity attributes - skip silently
+        }
       }
       sections.push(line);
     }

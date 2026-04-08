@@ -466,13 +466,26 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
   /* ---- GET /sprints ---- */
   app.get('/sprints', { preHandler: [app.authenticate] }, async (request) => {
+    const { limit = '50', offset = '0' } = request.query as { limit?: string; offset?: string };
+    const limitNum = Math.min(parseInt(limit, 10) || 50, 100);
+    const offsetNum = parseInt(offset, 10) || 0;
+
     const db = getDb();
+
+    const countRow = db.prepare('SELECT COUNT(*) as total FROM creative_sprints WHERE user_id = ?').get(request.user.id) as { total: number };
+
     const sprints = db.prepare(
-      'SELECT * FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(request.user.id) as SprintRow[];
+      'SELECT * FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+    ).all(request.user.id, limitNum, offsetNum) as SprintRow[];
 
     return {
       success: true,
+      pagination: {
+        total: countRow.total,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + sprints.length < countRow.total,
+      },
       sprints: sprints.map(s => ({
         ...s,
         plan: safeJsonParse(s.plan, null),

@@ -310,13 +310,27 @@ export async function reportRoutes(app: FastifyInstance) {
 
   // GET /reports/list
   app.get('/list', { preHandler: [app.authenticate] }, async (request) => {
+    const { limit = '50', offset = '0' } = request.query as { limit?: string; offset?: string };
+    const limitNum = Math.min(parseInt(limit, 10) || 50, 100); // Max 100 per page
+    const offsetNum = parseInt(offset, 10) || 0;
+
     const db = getDb();
+
+    // Get total count for pagination
+    const countRow = db.prepare('SELECT COUNT(*) as total FROM reports WHERE user_id = ?').get(request.user.id) as { total: number };
+
     const reports = db.prepare(
-      'SELECT * FROM reports WHERE user_id = ? ORDER BY generated_at DESC'
-    ).all(request.user.id) as ReportRow[];
+      'SELECT * FROM reports WHERE user_id = ? ORDER BY generated_at DESC LIMIT ? OFFSET ?'
+    ).all(request.user.id, limitNum, offsetNum) as ReportRow[];
 
     return {
       success: true,
+      pagination: {
+        total: countRow.total,
+        limit: limitNum,
+        offset: offsetNum,
+        hasMore: offsetNum + reports.length < countRow.total,
+      },
       reports: reports.map(r => {
         const parsedData = safeJsonParse(r.data, null);
         const dataSize = r.data ? Buffer.byteLength(r.data, 'utf-8') : 0;
@@ -412,7 +426,9 @@ export async function reportRoutes(app: FastifyInstance) {
       try {
         const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
         if (accInfo?.currency) setCurrency(accInfo.currency);
-      } catch { /* keep default */ }
+      } catch (err) {
+        logger.debug({ err: err instanceof Error ? err.message : err, account_id }, 'Currency detection failed, using default');
+      }
 
       // Fetch real data based on report type and generate narratives
       switch (type) {
@@ -488,7 +504,9 @@ async function generateWeeklyStrategyReport(userId: string, accountId: string, t
     try {
       const accInfo = await meta.get<any>(`/${accountId}`, { fields: 'currency' });
       if (accInfo?.currency) setCurrency(accInfo.currency);
-    } catch { /* keep default */ }
+    } catch (err) {
+      logger.debug({ err: err instanceof Error ? err.message : err, accountId }, 'Currency detection failed, using default');
+    }
 
     // Fetch this week + last week for comparison
     const [thisWeekData, lastWeekData, campaignData, dailyData] = await Promise.all([

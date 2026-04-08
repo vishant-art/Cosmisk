@@ -92,7 +92,9 @@ export async function brainRoutes(app: FastifyInstance) {
         try {
           const accInfo = await meta.get<any>(`/${targetAccountId}`, { fields: 'currency' });
           if (accInfo?.currency) setCurrency(accInfo.currency);
-        } catch { /* keep default */ }
+        } catch (err) {
+          // Currency detection failed, using default - non-critical
+        }
 
         try {
           // Fetch 30d aggregate + 7d daily for trend/momentum detection

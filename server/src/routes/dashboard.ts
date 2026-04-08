@@ -8,6 +8,7 @@ import { computeTrend, assessConfidence } from '../services/trend-analyzer.js';
 import type { MetaTokenRow, InsightItem } from '../types/index.js';
 import { validate, accountQuerySchema, accountIdQuerySchema } from '../validation/schemas.js';
 import { internalError } from '../utils/error-response.js';
+import { logger } from '../utils/logger.js';
 
 interface CountRow {
   c: number;
@@ -79,7 +80,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
       try {
         const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
         if (accInfo?.currency) setCurrency(accInfo.currency);
-      } catch { /* keep default */ }
+      } catch (err) {
+        logger.debug({ err: err instanceof Error ? err.message : err, account_id }, 'Currency detection failed, using default');
+      }
 
       // Get account-level + campaign-level + daily trend data in parallel
       const [last7, last14, campaignData, dailyData] = await Promise.all([

@@ -320,7 +320,9 @@ export async function campaignRoutes(app: FastifyInstance) {
       try {
         const accInfo = await meta.get<any>(`/${account_id}`, { fields: 'currency' });
         if (accInfo?.currency) setCurrency(accInfo.currency);
-      } catch { /* keep default */ }
+      } catch (err) {
+        // Currency detection failed, using default - non-critical
+      }
 
       // Fetch 30d aggregate + 7d daily for trend analysis (2 calls in parallel)
       const [campaignData, recentDailyData] = await Promise.all([
