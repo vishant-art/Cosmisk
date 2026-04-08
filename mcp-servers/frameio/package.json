@@ -1,0 +1,14 @@
+{
+  "name": "frameio-mcp-server",
+  "version": "1.0.0",
+  "description": "Frame.io MCP server for video review comments",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^4.3.6"
+  }
+}

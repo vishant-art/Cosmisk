@@ -1,0 +1,88 @@
+UGC_NotShy_C5_R1v2_April'26
+Based on Concept 5: Gynaecologist — "Yeh Main Apni Patients Ko Bolti Hoon"
+Product: Soft Spott Intimate Gel (Rs 699) | Gynaecologist Reviewed
+Product URL: https://notshy.in/products/intimate-gel-with-amla-hyaluronic-acid-hormone-free-ph-balanced-relief-for-vaginal-dryness-irritation-gynaecologist-reviewed-60ml
+Creator: [TBD — Female, 35-45, gynaecologist/doctor persona]
+
+
+Not Shy | UGC Script #5 — Gynaecologist — "Soap Mat Lagao"
+
+
+Product: Soft Spott Intimate Gel (Rs 699)
+Format: UGC Authority — Gynaecologist Talking Head | Duration: 55-60 sec
+Language: Hinglish (Hindi-dominant, medical terms in English naturally)
+
+
+Concept: A gynaecologist explains what she tells EVERY patient — stop using soap down there. But this version goes DEEP. She doesn't just say "pH balance" — she explains the entire vaginal ecosystem: Lactobacillus bacteria maintaining acidity, how soap's alkaline pH (9-10) kills these protective bacteria, creating an environment where harmful bacteria and yeast thrive. Then she walks through WHY most intimate washes fail — they add fragrance, parabens, and synthetic chemicals that further disrupt the microbiome. Then she examines Soft Spott's formulation ingredient by ingredient: Amla Superfruit (documented antioxidant, vitamin C for tissue repair — this is Ayurvedic medicine meeting modern intimate care), Hyaluronic Acid (moisture retention at the cellular level — proven in dermatology, now applied to intimate care for the first time in this combination), Xylitol (prebiotic that actually FEEDS healthy bacteria instead of killing them), Betaine (osmolyte that maintains cell hydration under stress). She explains why this East-meets-West formulation is different from anything she's seen — Ayurvedic Amla combined with clinical Hyaluronic Acid. The authority figure makes every claim land. This is a medical education — the viewer leaves understanding their own body.
+
+Source: Concept Discussion Call (Seema insisted on doctor/authority), Product Page (ingredient specifics, gynecologist-reviewed claim), Brand Strategy (education as moat).
+
+
+COSTUMES
+  * Smart professional: white blouse or structured shirt (NOT lab coat — too clinical)
+  * Minimal jewellery, professional grooming
+  * Clean, credible — health professional who educates, not intimidates
+
+
+PROPS
+  * Soft Spott tube (brand visible)
+  * Home office or study — desk, bookshelves, soft professional lighting
+  * Optional: notepad/pen (doctor context)
+  * NOT a hospital or clinic setting — warm, approachable professional
+
+
+REFERENCES
+  * Female doctor explaining intimate health — calm authority, zero judgement
+  * Ref: foreplay.co/brief/gynaecologist
+  * Seema co-founder insisted on doctor/authority angle for intimate care credibility
+  * Product link: https://notshy.in/products/intimate-gel-with-amla-hyaluronic-acid-hormone-free-ph-balanced-relief-for-vaginal-dryness-irritation-gynaecologist-reviewed-60ml
+
+
+PRODUCTION SCRIPT
+
+
+
+#	Type	Voiceover / Dialogue	Visual Direction
+1	Hook 1	[TALKING HEAD] Main ek gynaecologist hoon. Aur yeh woh cheez hai jo main apni har patient ko bolti hoon — wahan soap mat lagao. Soap aapko clean nahi kar raha — woh aapke body ka defense system todh raha hai.	Doctor at clean home office desk. Bookshelves behind. Warm but professional. Direct to camera. Calm authority.
+2	Hook 2	[TALKING HEAD] Aapki intimate area mein ek poora ecosystem hai. Healthy bacteria hai — Lactobacillus. Yeh bacteria acidity maintain karti hain. Jab aap soap lagati ho — yeh bacteria marr jaati hain. Aur phir sab problems shuru hoti hain.	Doctor leaning forward slightly. Genuine concern. Text: "Lactobacillus = your body's defense. Soap kills it."
+3	Hook 3	[TALKING HEAD] Itching. Dryness. Infections. Meri 10 mein se 7 patients ko yeh complaints hoti hain. Aur jab main poochti hoon kya use karti ho — jawab hota hai soap ya random intimate wash. Yahi problem hai.	Doctor to camera. Calm, knowing expression. Not lecturing — sharing a pattern she sees daily.
+4	D1	[TALKING HEAD] Samjhte hain kya hota hai. Intimate area ka natural pH 3.5 se 4.5 hai — slightly acidic. Yeh acidity protective hai — harmful bacteria aur yeast ko grow nahi hone deti. Soap ka pH 9 se 10 hota hai — highly alkaline. Jab aap soap lagate ho, aap us acidic environment ko alkaline bana rahi ho. Protective bacteria marr jaati hain. Harmful organisms ko jagah milti hai. Itching, irritation, infections — sab isi imbalance se aata hai.	Doctor explaining methodically. Hand gestures for emphasis. Text: "Natural pH: 3.5-4.5 (acidic = protective)" → "Soap pH: 9-10 (alkaline = destructive)" → "Result: bacteria die → infections grow"
+5	D2	[TALKING HEAD] Ab market mein "intimate washes" hain — par sab same nahi hain. Bahut saare mein fragrance hai — fragrance irritant hai. Parabens hain — endocrine disruptors hain. Petroleum derivatives hain. Woh pH balanced label lagaate hain — par ingredients dekho toh body ko aur disturb kar rahe hain. Fragrance de rahe hain, solution nahi.	Doctor slightly firm. Listing on fingers. Text: "Fragrance = irritant. Parabens = endocrine disruptors. 'pH balanced' label ≠ safe ingredients."
+6	D3	[TALKING HEAD + PRODUCT] Soft Spott — this is what I actually find interesting. Amla Superfruit — Emblica Officinalis. Ayurveda mein 3,000 saal se use hota hai. Documented antioxidant hai, Vitamin C concentrate hai, tissue repair karta hai. Ab isko combine kiya hai Hyaluronic Acid ke saath — jo dermatology mein gold standard hai moisture retention ke liye. Yeh combination pehli baar kisi intimate care product mein hai — Eastern Ayurveda meets Western clinical science.	Picks up Soft Spott tube. Examines it professionally. Text: "Amla Superfruit — 3,000 yrs Ayurveda, antioxidant, Vit C, tissue repair" → "Hyaluronic Acid — dermatology gold standard, cellular moisture"
+7	D4	[TALKING HEAD + PRODUCT] Par jo mujhe sabse zyada impress karta hai — Xylitol. Yeh prebiotic hai. Matlab yeh healthy bacteria ko FEED karta hai — maarta nahi. Yeh fundamental difference hai. Aur Betaine — osmolyte hai — cells ko hydrated rakhta hai stress mein bhi. Hormone-free hai. Paraben-free. Phthalate-free. Oral-safe — matlab formulation itni gentle hai. Aur gynecologist reviewed — matlab kisi doctor ne actually is formulation ko evaluate kiya hai.	Points to ingredient details on tube. Text: "Xylitol — prebiotic, FEEDS healthy bacteria" → "Betaine — osmolyte, cell hydration" → "Hormone-free | Paraben-free | Oral-safe | Gynecologist reviewed"
+8	D5	[TALKING HEAD] Results typically ek hafte mein dikhte hain — dryness kam, irritation kam, comfort wapas. Yeh koi magic nahi hai — yeh formulation hai jo body ke saath kaam karti hai, against nahi. As a doctor, main yahi dekhti hoon — kya product body ke natural system ko support karta hai ya disrupt karta hai. Yeh support karta hai.	Doctor direct to camera. Genuine professional endorsement. Text: "Works WITH your body, not against it. Results in 1 week."
+9	CTA	[TALKING HEAD] Intimate hygiene ke baare mein baat karna sharam ki baat nahi hai — health ki baat hai. Rs 699. Buy 2 get 1 free. Link neeche hai.	Product on desk. Doctor warm, direct. Text: "Rs 699 | Buy 2 Get 1 Free | Link in bio"
+
+
+ON-SCREEN TEXT OVERLAYS
+  * Lactobacillus = defense. Soap pH 9-10 kills it. Intimate pH 3.5-4.5.
+  * Most intimate washes: fragrance + parabens + petroleum. Label ≠ ingredients.
+  * Amla Superfruit (3,000 yrs, antioxidant) + Hyaluronic Acid (moisture gold standard)
+  * Xylitol: prebiotic — feeds healthy bacteria. Betaine: cell hydration.
+  * Hormone-free. Paraben-free. Oral-safe. Gynecologist reviewed. 1 week.
+
+
+THUMBNAIL FRAME
+Doctor at desk, Soft Spott tube in hand, professional home office background. Text: "GYNAECOLOGIST — Soap Mat Lagao"
+
+
+CREATOR NOTES
+FEMALE CREATOR (35-45) AS GYNAECOLOGIST. Must be credible — professional but warm attire (white blouse/structured shirt, NOT lab coat), clean grooming, calm confident delivery. Language: Hinglish (Hindi-dominant, medical/scientific terms in English naturally — pH, Lactobacillus, Hyaluronic Acid, antioxidant, prebiotic, osmolyte). Tone: warm authority — a doctor who genuinely cares, sharing what she tells patients daily. NOT lecturing from above — educating at eye level. Setting: home office/study (bookshelves, desk, warm lighting). NOT a hospital set. THIS IS THE DEEPEST INTIMATE CARE EDUCATION SCRIPT. Key educational sequence: (1) vaginal ecosystem explained — Lactobacillus bacteria maintain acidity as defense, (2) soap pH 9-10 destroys this acidic environment, killing protective bacteria, (3) most intimate washes fail too — fragrance (irritant), parabens (endocrine disruptors), petroleum — "pH balanced" label means nothing if ingredients are harmful, (4) ingredient-by-ingredient: Amla Superfruit (3,000 year Ayurvedic history, antioxidant, Vitamin C, tissue repair) + Hyaluronic Acid (dermatology gold standard, cellular moisture) = first-ever combination in intimate care, (5) Xylitol as PREBIOTIC (feeds healthy bacteria, doesn't kill them — fundamental difference), Betaine as osmolyte (cell hydration under stress), (6) hormone-free, paraben-free, phthalate-free, oral-safe = credibility stack. The line "yeh healthy bacteria ko FEED karta hai — maarta nahi" is the script's turning point — it reframes the entire category. NEVER say "cure" or "guarantee." NEVER rush. Let each scientific fact land. The education IS the selling.
+
+Product facts: Soft Spott Intimate Gel — Ingredients: Amla Superfruit (Emblica Officinalis, antioxidant, Vitamin C, tissue repair), Hyaluronic Acid (cellular moisture retention), Xylitol (prebiotic, supports healthy bacteria), Betaine (osmolyte, cell hydration). pH balanced 3.5-4.5. Hormone-free. Paraben-free. Phthalate-free. No artificial fragrances. Oral-safe. Gynecologist reviewed. 60ml. Rs 699. Buy 2 Get 1 Free (Rs 1,398). Results in 1 week. International: US, Canada. Indications: vaginal dryness, irritation, pH imbalance, intimate hygiene.
+
+
+FULL SCRIPT
+Main ek gynaecologist hoon. Aur yeh woh cheez hai jo main apni har patient ko bolti hoon — wahan soap mat lagao. Soap aapko clean nahi kar raha — woh aapke body ka defense system todh raha hai.
+
+Samjhte hain kya hota hai. Intimate area ka natural pH 3.5 se 4.5 hai — slightly acidic. Yeh acidity protective hai — harmful bacteria aur yeast ko grow nahi hone deti. Soap ka pH 9 se 10 hota hai. Jab aap soap lagate ho — protective bacteria marr jaati hain. Harmful organisms ko jagah milti hai. Itching, irritation, infections — sab isi imbalance se.
+
+Market mein intimate washes hain — par sab same nahi hain. Bahut saare mein fragrance hai — irritant hai. Parabens hain — endocrine disruptors hain. pH balanced label lagaate hain — ingredients dekho toh body ko aur disturb kar rahe hain.
+
+Soft Spott — Amla Superfruit hai. Ayurveda mein 3,000 saal se use hota hai. Documented antioxidant, Vitamin C, tissue repair. Combine kiya hai Hyaluronic Acid ke saath — dermatology mein gold standard hai moisture retention ke liye. Yeh combination pehli baar kisi intimate care product mein hai.
+
+Xylitol — yeh prebiotic hai. Yeh healthy bacteria ko feed karta hai — maarta nahi. Yeh fundamental difference hai. Betaine — cells ko hydrated rakhta hai. Hormone-free. Paraben-free. Oral-safe. Gynecologist reviewed.
+
+Results ek hafte mein dikhte hain. Yeh formulation body ke saath kaam karti hai, against nahi.
+
+Intimate hygiene ke baare mein baat karna sharam nahi — health hai. Rs 699. Buy 2 get 1 free. Link neeche hai.

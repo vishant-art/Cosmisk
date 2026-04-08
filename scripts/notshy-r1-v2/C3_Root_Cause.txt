@@ -1,0 +1,97 @@
+UGC_NotShy_C3_R1v2_April'26
+Based on Concept 3: Root Cause — "Varicose Veins Kyun Hoti Hain?"
+Product: Penikosete Kit (Cream + Oil, 50% Off) | FDA Maharashtra Approved
+Product URL: https://notshy.in/products/penikosete-ayurvedic-cream
+Creator: [TBD — Male, 28-32, nutritionist/health educator persona]
+
+
+Not Shy | UGC Script #3 — Root Cause — Nutritionist Explains
+
+
+Product: Penikosete Kit — Cream + Oil (50% Off)
+Format: UGC Authority/Expert — Nutritionist | Duration: 55-60 sec
+Language: Hinglish (natural mix, medical terms in English)
+
+
+Concept: A nutritionist/health educator breaks down the ROOT CAUSE of varicose veins — weak vein valves, gravity, blood pooling — and explains why most treatments (compression stockings, surgery) only address symptoms. Then walks through Penikosete's specific formulation ingredient by ingredient: what each does, why the combination works, and why cream is the anatomically correct delivery format for a superficial, localised condition. The authority figure makes every claim credible. This is the "science lesson" — the viewer leaves understanding varicose veins AND the product at a molecular level.
+
+Source: Competitive Intelligence Report (ingredient profiles, anatomical argument, formulation > format), Brand Strategy Framework (education as moat).
+
+
+COSTUMES
+  * Smart casual: plain blazer or structured shirt (navy/dark grey)
+  * Clean grooming — trimmed beard, neat hair
+  * Professional but not clinical — health educator, not hospital doctor
+
+
+PROPS
+  * Penikosete Kit (cream tube + oil bottle)
+  * Clean desk/table setup (professional but warm)
+  * Whiteboard or large notepad (for drawing simple vein diagram)
+  * Natural or soft professional lighting
+
+
+REFERENCES
+  * Nutritionist/health educator explaining a condition — calm authority
+  * Ref: foreplay.co/brief/root-cause + Drive video references
+  * RK said: "without authority figure, audience won't believe ingredient claims"
+  * Product link: https://notshy.in/products/penikosete-ayurvedic-cream
+
+
+PRODUCTION SCRIPT
+
+
+
+#	Type	Voiceover / Dialogue	Visual Direction
+1	Hook 1	[TALKING HEAD] Varicose veins ka root cause kya hai? Compression stockings nahi batayenge. Surgery nahi batayegi. Kyunki dono symptoms treat karti hain — cause nahi.	Nutritionist at clean desk. Smart casual. Direct to camera. Calm authority. Sets the frame immediately.
+2	Hook 2	[TALKING HEAD] Aapki veins mein tiny gates hote hain — valves. Jab woh fail hote hain, blood pool hota hai. Yahi varicose veins hai. Ab sawaal yeh hai — kya koi actually in valves ko address kar raha hai?	Creator draws quick circle on notepad — "valve." Looks at camera.
+3	Hook 3	[TALKING HEAD] Main ek nutritionist hoon. Aaj main aapko varicose veins ka root cause samjhaunga — aur woh EK formulation jo isko address karti hai.	Medium shot, warm authority. Holds up Penikosete kit.
+4	D1	[TALKING HEAD + DIAGRAM] Samjhte hain. Aapke legs mein veins hain — inke andar chote chote valves hain, ek tarah ke one-way gates. Inka kaam hai blood ko gravity ke against upar push karna, heart ki taraf. Jab yeh valves weak hote hain — blood neeche settle hota hai. Pool hota hai. Veins swell karti hain. Yahi varicose veins hai.	Creator draws simple vein on whiteboard/notepad: arrow up (normal), arrow pooling down (varicose). Text: "Healthy valve → blood flows UP" then "Weak valve → blood POOLS → vein swells"
+5	D2	[TALKING HEAD] Ab — compression stockings blood ko upar push karti hain externally. Surgery damaged veins remove karti hai. Dono symptoms manage karti hain. Par valves ko strengthen karna, blood circulation improve karna, inflammation reduce karna — yeh root cause hai. Aur yahan Ayurveda ka approach alag hai.	Creator listing on fingers. Calm, methodical. Text: "Stockings = external pressure (symptom)" → "Surgery = vein removal (symptom)" → "Root cause = valve strength + circulation + inflammation"
+6	D3	[TALKING HEAD + PRODUCT] Penikosete Kit — dekhte hain kya hai ismein. Cream mein 6 Ayurvedic actives hain. Number 1 — Ashwagandha. Iske withanolides documented anti-inflammatory hain aur vascular walls ko protect karte hain. Yeh koi naya claim nahi hai — Ashwagandha ka yeh role studied hai.	Picks up cream tube. Close-up. Text: "#1 Ashwagandha — Withanolides: anti-inflammatory + vascular-protective"
+7	D4	[TALKING HEAD + PRODUCT] Number 2 — Bala. Sida Cordifolia. Vein elasticity improve karta hai — veins ko flexible rakhta hai taki woh swell na karein. Number 3 — Laksha. Anti-inflammatory hai aur specifically swelling reduce karta hai. Shatavari, Mimosa Pudica, Sesame Oil base — sab milke 6 ingredients ek targeted formulation banate hain.	Points to each ingredient as he names them. Text stack: "#2 Bala — vein elasticity" → "#3 Laksha — reduces swelling" → "#4-6 Shatavari, Mimosa, Sesame Oil"
+8	D5	[TALKING HEAD + PRODUCT] Ab cream kyun — kyunki varicose veins superficial hain. 1-3mm skin ke neeche. Cream directly us tissue layer pe absorb hoti hai jahan problem hai. Oil kit mein aata hai — massage se blood circulation improve hota hai. Cream + Oil = symptoms + root cause dono address. Aur yeh formulation FDA Maharashtra approved hai. Metal tube mein aata hai — actives oxidise nahi hote.	Shows cream + oil side by side. Text: "Cream → direct to tissue (1-3mm)" → "Oil → blood circulation via massage" → "FDA Maharashtra Approved | Metal tube = potency preserved"
+9	CTA	[TALKING HEAD] 26 din mein visible results. Kit pe 50% off hai. Formulation dekho, format nahi. Link neeche hai.	Product kit on desk. Creator confident, direct. Text: "26 days | Kit 50% Off | Link in bio". Clean close.
+
+
+ON-SCREEN TEXT OVERLAYS
+  * Healthy valve → blood UP. Weak valve → blood POOLS.
+  * Compression + surgery = symptoms. Root cause = valve strength + circulation.
+  * Ashwagandha withanolides: anti-inflammatory + vascular-protective
+  * Bala: elasticity. Laksha: swelling. 6 actives total.
+  * Cream: direct tissue delivery. Oil: circulation. FDA approved.
+
+
+THUMBNAIL FRAME
+Nutritionist at desk with simple vein diagram drawn, holding Penikosete Kit. Text: "ROOT CAUSE — Varicose Veins Kyun Hoti Hain?"
+
+
+CREATOR NOTES
+MALE CREATOR (30-35) AS NUTRITIONIST/HEALTH EDUCATOR. Must look credible — smart casual, clean grooming, calm delivery. Language: Hinglish (medical terms in English naturally). THIS IS THE DEEPEST PRODUCT SCIENCE SCRIPT. Every ingredient is named, its role explained, and its mechanism described. The whiteboard/notepad diagram is NOT optional — the visual of the valve mechanism makes the science tangible. Key educational sequence: (1) valve mechanism explained visually, (2) why existing treatments only manage symptoms, (3) ingredient-by-ingredient breakdown with specific mechanisms — Ashwagandha (withanolides, anti-inflammatory, vascular-protective), Bala (vein elasticity), Laksha (swelling reduction), (4) why cream format is anatomically correct for superficial conditions, (5) oil for circulation = root cause. The line "Formulation dekho, format nahi" is from the brand strategy — "The vehicle doesn't heal. The molecule does." FDA + international + metal tube = credibility stack. NEVER rush. Let each ingredient land. NEVER name competitors. The education IS the moat.
+
+
+Product facts: Penikosete Kit — Cream: Ashwagandha (Withania Somnifera, withanolides), Bala (Sida Cordifolia, vein elasticity), Laksha (Laccifer Lacca, anti-inflammatory/swelling), Shatavari (Asparagus Racemosus), Mimosa Pudica, Sesame Oil base. Oil: blood circulation via massage. FDA Maharashtra approved. GMP-certified. Metal tube packaging. International: Amazon US, Walmart. 26-day results. Kit 50% off. Expanded indications: varicose veins, spider veins, varicocele.
+
+
+FULL SCRIPT
+Varicose veins ka root cause kya hai? Compression stockings nahi batayenge. Surgery nahi batayegi. Kyunki dono symptoms treat karti hain — cause nahi.
+
+Samjhte hain. Aapke legs mein veins hain — inke andar chote chote valves hain, ek tarah ke one-way gates. Inka kaam hai blood ko gravity ke against upar push karna. Jab yeh valves weak hote hain — blood neeche settle hota hai. Pool hota hai. Veins swell karti hain. Yahi varicose veins hai.
+
+Compression stockings blood ko upar push karti hain externally. Surgery damaged veins remove karti hai. Dono symptoms manage karti hain. Par valves ko strengthen karna, circulation improve karna, inflammation reduce karna — yeh root cause hai.
+
+Penikosete Kit — dekhte hain kya hai ismein. Cream mein 6 Ayurvedic actives hain.
+
+Ashwagandha — iske withanolides documented anti-inflammatory hain aur vascular walls ko protect karte hain.
+
+Bala — vein elasticity improve karta hai taki veins swell na karein.
+
+Laksha — specifically swelling reduce karta hai.
+
+Plus Shatavari, Mimosa Pudica, Sesame Oil base — 6 ingredients, ek targeted formulation.
+
+Cream kyun — kyunki varicose veins superficial hain. 1-3mm neeche. Cream directly wahan absorb hoti hai. Oil massage se blood circulation improve hota hai. Cream + Oil saath — symptoms + root cause dono.
+
+FDA Maharashtra approved. Metal tube — actives oxidise nahi hote. 26 din mein visible results. Kit pe 50% off.
+
+Formulation dekho, format nahi. Link neeche hai.

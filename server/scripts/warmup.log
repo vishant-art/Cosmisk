@@ -1,0 +1,1025 @@
+===== Tue Mar 10 01:12:13 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Mar 10 14:47:30 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Mar 11 01:16:48 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Mar 11 15:05:04 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Thu Mar 12 20:24:31 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sat Mar 14 00:35:25 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sat Mar 14 16:36:23 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Mon Mar 16 01:47:27 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Mar 17 01:32:20 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Mar 17 19:03:36 IST 2026 — Meta API Warmup =====
+  [000] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [000] GET /act_115495618939167/campaigns
+  [000] GET /act_115495618939167/insights (account, 7d)
+  [000] GET /act_115495618939167/insights (campaign, 7d)
+  [000] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [000] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [000] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Mar 18 17:34:58 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Fri Mar 20 01:19:50 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Fri Mar 20 20:24:39 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Mar 24 03:18:33 IST 2026 — Meta API Warmup =====
+  [000] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [000] GET /act_115495618939167/campaigns
+  [000] GET /act_115495618939167/insights (account, 7d)
+  [000] GET /act_115495618939167/insights (campaign, 7d)
+  [000] GET /act_115495618939167/adsets
+  [000] GET /act_115495618939167/ads
+  [000] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [000] GET /act_1207555757835371/campaigns
+  [000] GET /act_1207555757835371/insights (account, 7d)
+  [000] GET /act_1207555757835371/insights (campaign, 7d)
+  [000] GET /act_1207555757835371/adsets
+  [000] GET /act_1207555757835371/ads
+  [000] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [000] GET /act_866091634263757/campaigns
+  [000] GET /act_866091634263757/insights (account, 7d)
+  [000] GET /act_866091634263757/insights (campaign, 7d)
+  [000] GET /act_866091634263757/adsets
+  [000] GET /act_866091634263757/ads
+  [000] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Mar 25 11:45:56 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Mar 25 18:53:10 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Thu Mar 26 14:56:13 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Fri Mar 27 11:53:15 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Fri Mar 27 18:38:29 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sat Mar 28 12:16:41 IST 2026 — Meta API Warmup =====
+  [000] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sun Mar 29 01:33:44 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sun Mar 29 08:49:07 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Mon Mar 30 01:08:47 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Mon Mar 30 17:05:15 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Mar 31 14:59:54 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Apr  1 11:13:03 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Apr  1 17:13:54 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Apr  1 23:14:45 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Thu Apr  2 05:15:36 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Thu Apr  2 11:51:29 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Thu Apr  2 17:52:25 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Fri Apr  3 15:07:49 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sat Apr  4 03:44:04 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sat Apr  4 16:18:23 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sat Apr  4 22:19:13 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Sun Apr  5 14:46:01 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Mon Apr  6 14:26:58 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Apr  7 13:46:06 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Tue Apr  7 20:51:26 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Wed Apr  8 12:21:18 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [400] GET /act_115495618939167/adsets
+  [400] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [400] GET /act_866091634263757/adsets
+  [400] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+
+===== Thu Apr  9 01:33:43 IST 2026 — Meta API Warmup =====
+  [200] GET /me/adaccounts
+  --- act_115495618939167 ---
+  [200] GET /act_115495618939167/campaigns
+  [200] GET /act_115495618939167/insights (account, 7d)
+  [200] GET /act_115495618939167/insights (campaign, 7d)
+  [200] GET /act_115495618939167/adsets
+  [200] GET /act_115495618939167/ads
+  [200] GET /act_115495618939167/insights (daily, 14d)
+  --- act_1207555757835371 ---
+  [200] GET /act_1207555757835371/campaigns
+  [200] GET /act_1207555757835371/insights (account, 7d)
+  [200] GET /act_1207555757835371/insights (campaign, 7d)
+  [200] GET /act_1207555757835371/adsets
+  [200] GET /act_1207555757835371/ads
+  [200] GET /act_1207555757835371/insights (daily, 14d)
+  --- act_866091634263757 ---
+  [200] GET /act_866091634263757/campaigns
+  [200] GET /act_866091634263757/insights (account, 7d)
+  [200] GET /act_866091634263757/insights (campaign, 7d)
+  [200] GET /act_866091634263757/adsets
+  [200] GET /act_866091634263757/ads
+  [200] GET /act_866091634263757/insights (daily, 14d)
+  DONE: 19 API calls completed
+

@@ -60,3 +60,14 @@ e2e/screenshots/
 # Environment
 .env
 *.env.local
+
+# MCP servers
+mcp-servers/**/node_modules/
+mcp-servers/**/*-token.json
+mcp-servers/**/*.token.json
+
+# MCP config (contains secrets)
+.mcp.json
+
+# Shopify tokens
+scripts/shopify-auth/.shopify-token*.json
