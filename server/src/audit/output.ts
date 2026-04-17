@@ -301,6 +301,81 @@ export function generateJSON(audit: AuditOutput): string {
   return JSON.stringify(audit, null, 2);
 }
 
+/**
+ * Generate compact summary report
+ */
+export function generateSummary(audit: AuditOutput): string {
+  const lines: string[] = [];
+
+  // Header
+  const healthEmoji = audit.summary.healthScore >= 80 ? '🟢' :
+                      audit.summary.healthScore >= 60 ? '🟡' :
+                      audit.summary.healthScore >= 40 ? '🟠' : '🔴';
+
+  lines.push(`**${audit.brandName} Audit Report**`);
+  lines.push('');
+  lines.push(`**Health: ${audit.summary.healthScore}/100** ${healthEmoji}`);
+  lines.push('');
+
+  // Quick stats table
+  lines.push('| Metric | Value |');
+  lines.push('|--------|-------|');
+  lines.push(`| Total Winners | ${audit.creativeAnalysis.winners.length} |`);
+  lines.push(`| Total Losers | ${audit.creativeAnalysis.losers.length} |`);
+  lines.push(`| Wasted Spend | ₹${formatNumber(audit.summary.wastedSpend)} |`);
+  lines.push(`| Best CPA | ₹${formatNumber(audit.summary.bestCpa)} |`);
+  lines.push('');
+
+  // Top Winners
+  if (audit.creativeAnalysis.winners.length > 0) {
+    lines.push('**Top Winners:**');
+    lines.push('| Creative | Spend | Conv | CPA | ROAS |');
+    lines.push('|----------|-------|------|-----|------|');
+    for (const w of audit.creativeAnalysis.winners.slice(0, 5)) {
+      lines.push(`| ${truncate(w.creative.adName, 20)} | ₹${formatNumber(w.creative.spend)} | ${w.creative.purchases} | ₹${formatNumber(w.creative.cpa)} | ${w.creative.roas.toFixed(1)}x |`);
+    }
+    lines.push('');
+  }
+
+  // Key Insight
+  if (audit.creativeAnalysis.insights.length > 0) {
+    const topInsight = audit.creativeAnalysis.insights[0];
+    lines.push(`**Key Insight:** ${topInsight.detail.slice(0, 100)}${topInsight.detail.length > 100 ? '...' : ''}`);
+    lines.push('');
+  }
+
+  // Wasted spend
+  if (audit.creativeAnalysis.wastedSpend.total > 0) {
+    lines.push(`**Wasted:** ₹${formatNumber(audit.creativeAnalysis.wastedSpend.total)} on ${audit.creativeAnalysis.wastedSpend.creatives.length} creatives`);
+    lines.push('');
+  }
+
+  // Top Actions
+  const highPriority = audit.creativeAnalysis.recommendations.filter(r => r.priority === 'high');
+  if (highPriority.length > 0) {
+    lines.push('**Actions This Week:**');
+    highPriority.slice(0, 3).forEach((r, i) => {
+      lines.push(`${i + 1}. ${r.title}`);
+    });
+    lines.push('');
+  }
+
+  // Comparison if available
+  if (audit.comparison) {
+    const trend = audit.comparison.overallTrend === 'improving' ? '📈 Improving' :
+                  audit.comparison.overallTrend === 'declining' ? '📉 Declining' : '➡️ Stable';
+    lines.push(`**Trend:** ${trend}`);
+    if (audit.comparison.improvements.length > 0) {
+      lines.push(`✅ ${audit.comparison.improvements[0]}`);
+    }
+    if (audit.comparison.regressions.length > 0) {
+      lines.push(`⚠️ ${audit.comparison.regressions[0]}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 // ============ HELPERS ============
 
 function formatNumber(num: number): string {

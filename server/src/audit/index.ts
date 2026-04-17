@@ -10,7 +10,7 @@ import { fetchShopifySnapshot } from './shopify-ingestion.js';
 import { analyzeWebsite } from './website-analysis.js';
 import { runCreativeAudit } from './audit-agent.js';
 import { validateAuditQuality, formatQAResult } from './qa-validator.js';
-import { generateMarkdown, generateJSON } from './output.js';
+import { generateMarkdown, generateJSON, generateSummary } from './output.js';
 import type { Brand, BrandContext, AuditInput, AuditOutput, AuditConfig, ShopifySnapshot, WebsiteSnapshot, GoogleAdsSnapshot, AuditComparison } from './types.js';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -27,6 +27,7 @@ interface AuditResult {
   audit: AuditOutput;
   markdown?: string;
   json?: string;
+  summary?: string;
 }
 
 /**
@@ -191,6 +192,9 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
     result.json = generateJSON(audit);
   }
 
+  // Always generate summary
+  result.summary = generateSummary(audit);
+
   // 13. Save to disk if requested
   if (saveToDisk) {
     const fs = await import('fs');
@@ -215,6 +219,11 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
       fs.writeFileSync(jsonPath, result.json);
       console.log(`📄 Saved: ${jsonPath}`);
     }
+
+    // Save summary
+    const summaryPath = path.join(outputPath, `${baseName}-summary.md`);
+    fs.writeFileSync(summaryPath, result.summary);
+    console.log(`📋 Saved: ${summaryPath}`);
   }
 
   // 14. Save audit to database

@@ -33,8 +33,16 @@ interface AuditCategory {
         <div class="flex gap-3">
           <button
             (click)="generateFullReport()"
-            class="px-4 py-2 border border-accent text-accent rounded-pill text-sm font-body font-semibold hover:bg-accent/5 transition-colors">
-            Generate Full Audit Report
+            [disabled]="generatingReport()"
+            class="px-4 py-2 border border-accent text-accent rounded-pill text-sm font-body font-semibold hover:bg-accent/5 transition-colors disabled:opacity-40">
+            @if (generatingReport()) {
+              <span class="inline-flex items-center gap-1.5">
+                <span class="w-3 h-3 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></span>
+                Generating...
+              </span>
+            } @else {
+              Generate Full Audit Report
+            }
           </button>
           <button
             (click)="fixIssues()"
@@ -219,6 +227,167 @@ interface AuditCategory {
           }
         </div>
       }
+
+      <!-- Full Report Modal -->
+      @if (showReportModal()) {
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" (click)="closeReportModal()">
+          <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden" (click)="$event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-4 border-b">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center"
+                  [ngClass]="fullReport()?.audit?.summary?.healthScore >= 70 ? 'bg-green-100' : fullReport()?.audit?.summary?.healthScore >= 40 ? 'bg-amber-100' : 'bg-red-100'">
+                  <span class="text-lg font-bold"
+                    [ngClass]="fullReport()?.audit?.summary?.healthScore >= 70 ? 'text-green-600' : fullReport()?.audit?.summary?.healthScore >= 40 ? 'text-amber-600' : 'text-red-600'">
+                    {{ fullReport()?.audit?.summary?.healthScore }}
+                  </span>
+                </div>
+                <div>
+                  <h2 class="text-lg font-display text-navy m-0">Full Audit Report</h2>
+                  <p class="text-xs text-gray-500 m-0">{{ fullReport()?.audit?.brandName }}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button (click)="downloadReport()" class="px-3 py-1.5 text-sm bg-accent text-white rounded-lg hover:bg-accent/90">
+                  Download Report
+                </button>
+                <button (click)="closeReportModal()" class="p-2 hover:bg-gray-100 rounded-lg">
+                  <lucide-icon name="x" [size]="20" class="text-gray-500"></lucide-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              @if (fullReport()?.audit) {
+                <!-- Summary Stats -->
+                <div class="grid grid-cols-4 gap-4 mb-6">
+                  <div class="bg-gray-50 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-navy">{{ fullReport()?.audit?.summary?.healthScore }}/100</div>
+                    <div class="text-xs text-gray-500">Health Score</div>
+                  </div>
+                  <div class="bg-gray-50 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-red-600">₹{{ (fullReport()?.audit?.summary?.wastedSpend || 0).toLocaleString('en-IN') }}</div>
+                    <div class="text-xs text-gray-500">Wasted Spend</div>
+                  </div>
+                  <div class="bg-gray-50 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-green-600">{{ fullReport()?.audit?.creativeAnalysis?.winners?.length || 0 }}</div>
+                    <div class="text-xs text-gray-500">Winners</div>
+                  </div>
+                  <div class="bg-gray-50 rounded-lg p-4 text-center">
+                    <div class="text-2xl font-bold text-amber-600">{{ fullReport()?.audit?.creativeAnalysis?.losers?.length || 0 }}</div>
+                    <div class="text-xs text-gray-500">Losers</div>
+                  </div>
+                </div>
+
+                <!-- Top Priority -->
+                @if (fullReport()?.audit?.summary?.topPriority) {
+                  <div class="bg-accent/10 border border-accent/20 rounded-lg p-4 mb-6">
+                    <div class="flex items-center gap-2 mb-1">
+                      <lucide-icon name="target" [size]="16" class="text-accent"></lucide-icon>
+                      <span class="text-xs font-semibold text-accent uppercase">Top Priority</span>
+                    </div>
+                    <p class="text-sm text-navy m-0 font-medium">{{ fullReport()?.audit?.summary?.topPriority }}</p>
+                  </div>
+                }
+
+                <!-- Key Findings -->
+                <div class="mb-6">
+                  <h3 class="text-sm font-semibold text-navy mb-3">Key Findings</h3>
+                  <ul class="space-y-2">
+                    @for (finding of fullReport()?.audit?.summary?.topFindings || []; track finding) {
+                      <li class="flex items-start gap-2 text-sm text-gray-700">
+                        <lucide-icon name="alert-circle" [size]="16" class="text-amber-500 mt-0.5 shrink-0"></lucide-icon>
+                        {{ finding }}
+                      </li>
+                    }
+                  </ul>
+                </div>
+
+                <!-- Winners -->
+                @if (fullReport()?.audit?.creativeAnalysis?.winners?.length > 0) {
+                  <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-navy mb-3">✅ Top Winners</h3>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="text-left p-2 font-medium text-gray-600">Creative</th>
+                            <th class="text-right p-2 font-medium text-gray-600">Spend</th>
+                            <th class="text-right p-2 font-medium text-gray-600">Conv</th>
+                            <th class="text-right p-2 font-medium text-gray-600">CPA</th>
+                            <th class="text-right p-2 font-medium text-gray-600">ROAS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (w of fullReport()?.audit?.creativeAnalysis?.winners?.slice(0, 5) || []; track w.creative.adId) {
+                            <tr class="border-b">
+                              <td class="p-2 text-gray-800 truncate max-w-[200px]">{{ w.creative.adName }}</td>
+                              <td class="p-2 text-right text-gray-600">₹{{ w.creative.spend.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }}</td>
+                              <td class="p-2 text-right text-gray-600">{{ w.creative.purchases }}</td>
+                              <td class="p-2 text-right text-green-600 font-medium">₹{{ w.creative.cpa.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }}</td>
+                              <td class="p-2 text-right text-green-600 font-medium">{{ w.creative.roas.toFixed(1) }}x</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                }
+
+                <!-- Losers -->
+                @if (fullReport()?.audit?.creativeAnalysis?.losers?.length > 0) {
+                  <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-navy mb-3">❌ Underperformers</h3>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="text-left p-2 font-medium text-gray-600">Creative</th>
+                            <th class="text-right p-2 font-medium text-gray-600">Spend</th>
+                            <th class="text-left p-2 font-medium text-gray-600">Issue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (l of fullReport()?.audit?.creativeAnalysis?.losers?.slice(0, 5) || []; track l.creative.adId) {
+                            <tr class="border-b">
+                              <td class="p-2 text-gray-800 truncate max-w-[200px]">{{ l.creative.adName }}</td>
+                              <td class="p-2 text-right text-red-600 font-medium">₹{{ l.creative.spend.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }}</td>
+                              <td class="p-2 text-gray-600 truncate max-w-[250px]">{{ l.whyItFails }}</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                }
+
+                <!-- Action Plan -->
+                @if (fullReport()?.audit?.creativeAnalysis?.recommendations?.length > 0) {
+                  <div>
+                    <h3 class="text-sm font-semibold text-navy mb-3">📋 Action Plan</h3>
+                    <div class="space-y-3">
+                      @for (rec of fullReport()?.audit?.creativeAnalysis?.recommendations?.slice(0, 4) || []; track rec.title) {
+                        <div class="border rounded-lg p-3"
+                          [ngClass]="rec.priority === 'high' ? 'border-red-200 bg-red-50' : rec.priority === 'medium' ? 'border-amber-200 bg-amber-50' : 'border-gray-200'">
+                          <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                              [ngClass]="rec.priority === 'high' ? 'bg-red-100 text-red-700' : rec.priority === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-700'">
+                              {{ rec.priority | uppercase }}
+                            </span>
+                            <span class="text-sm font-medium text-navy">{{ rec.title }}</span>
+                          </div>
+                          <p class="text-xs text-gray-600 m-0">{{ rec.description }}</p>
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `
 })
@@ -230,6 +399,11 @@ export default class AuditComponent implements OnInit {
   fixing = signal(false);
   loading = signal(true);
   expandedCategory = signal<string | null>(null);
+
+  // Full report state
+  generatingReport = signal(false);
+  showReportModal = signal(false);
+  fullReport = signal<any>(null);
 
   overallScore = 0;
 
@@ -259,7 +433,52 @@ export default class AuditComponent implements OnInit {
   }
 
   generateFullReport() {
-    this.toast.info('Generating Report', 'Full audit report will be ready in your Reports section');
+    const acc = this.adAccountService.currentAccount();
+    if (!acc) {
+      this.toast.error('No Account', 'Select an ad account first');
+      return;
+    }
+
+    this.generatingReport.set(true);
+    this.toast.info('Generating Report', 'AI is analyzing your ad account. This may take 30-60 seconds...');
+
+    this.api.post<any>(environment.AUDIT_RUN, {
+      brandId: acc.id,
+      datePreset: 'last_30d',
+      outputFormat: 'both',
+    }).subscribe({
+      next: (res) => {
+        this.generatingReport.set(false);
+        if (res.audit) {
+          this.fullReport.set(res);
+          this.showReportModal.set(true);
+          this.toast.success('Report Ready', `Health Score: ${res.audit.summary.healthScore}/100`);
+        } else {
+          this.toast.error('Error', 'Failed to generate report');
+        }
+      },
+      error: (err) => {
+        this.generatingReport.set(false);
+        this.toast.error('Error', err.error?.error || 'Failed to generate report');
+      },
+    });
+  }
+
+  closeReportModal() {
+    this.showReportModal.set(false);
+  }
+
+  downloadReport() {
+    const report = this.fullReport();
+    if (!report?.markdown) return;
+
+    const blob = new Blob([report.markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-report-${new Date().toISOString().split('T')[0]}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   fixIssues() {

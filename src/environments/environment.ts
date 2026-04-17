@@ -79,6 +79,12 @@ export const environment = {
   AUTOMATIONS_ACTIVITY: 'automations/activity',
   AUTOMATIONS_RUN: 'automations/run',
 
+  // Audit System
+  AUDIT_RUN: 'audits/run',
+  AUDIT_LIST: 'audits',
+  AUDIT_DETAIL: 'audits',
+  AUDIT_HISTORY: 'audits/brand',
+
   SETTINGS_PROFILE: 'settings/profile',
   SETTINGS_CHANGE_PASSWORD: 'settings/change-password',
   SETTINGS_ACTIVITY: 'settings/activity',
