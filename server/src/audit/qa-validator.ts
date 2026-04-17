@@ -326,13 +326,13 @@ function validateDataIntegrity(audit: AuditOutput): DataIntegrityResult {
   const sanityViolations: SanityViolation[] = [];
 
   // Collect all creatives for validation
-  const allCreatives: CreativePerformance[] = [
+  const displayedCreatives: CreativePerformance[] = [
     ...audit.creativeAnalysis.winners.map(w => w.creative),
     ...audit.creativeAnalysis.losers.map(l => l.creative),
   ];
 
   // 1. Cross-check CPA calculations for each creative
-  for (const creative of allCreatives) {
+  for (const creative of displayedCreatives) {
     const { spend, purchases, cpa } = creative;
     const conversions = purchases; // purchases are the conversions
 
@@ -454,25 +454,41 @@ function validateDataIntegrity(audit: AuditOutput): DataIntegrityResult {
     }
   }
 
-  // 4. Validate summary totals
-  const totalWastedFromLosers = audit.creativeAnalysis.losers.reduce(
+  // 4. Validate wasted spend consistency
+  // Note: wastedSpend.total includes ALL creatives with 0-1 purchases
+  // wastedSpend.creatives is limited to top 10 for display
+  // losers is limited to top 5 with high spend threshold (different criteria)
+
+  const listedWastedSum = audit.creativeAnalysis.wastedSpend.creatives.reduce(
+    (sum, c) => sum + c.amount,
+    0
+  );
+
+  // The total should be >= sum of listed creatives (since listed is a subset)
+  if (audit.creativeAnalysis.wastedSpend.total > 0 && listedWastedSum > 0) {
+    if (listedWastedSum > audit.creativeAnalysis.wastedSpend.total * 1.01) { // 1% tolerance
+      calculationErrors.push({
+        field: 'Wasted Spend',
+        expected: audit.creativeAnalysis.wastedSpend.total,
+        actual: listedWastedSum,
+        message: `Wasted spend inconsistency: listed creatives sum (₹${listedWastedSum.toFixed(2)}) exceeds total (₹${audit.creativeAnalysis.wastedSpend.total.toFixed(2)})`,
+      });
+    }
+  }
+
+  // Verify loser spend is included in wasted spend (losers should be subset of wasted)
+  const totalLoserSpend = audit.creativeAnalysis.losers.reduce(
     (sum, l) => sum + l.creative.spend,
     0
   );
 
-  const wastedSpendTolerance = 0.05; // 5% tolerance
-  if (audit.creativeAnalysis.wastedSpend.total > 0) {
-    const diff = Math.abs(totalWastedFromLosers - audit.creativeAnalysis.wastedSpend.total);
-    const percentDiff = diff / audit.creativeAnalysis.wastedSpend.total;
-
-    if (percentDiff > wastedSpendTolerance) {
-      calculationErrors.push({
-        field: 'Wasted Spend',
-        expected: totalWastedFromLosers,
-        actual: audit.creativeAnalysis.wastedSpend.total,
-        message: `Wasted spend mismatch: sum of loser spend is ₹${totalWastedFromLosers.toFixed(2)}, but reported total is ₹${audit.creativeAnalysis.wastedSpend.total.toFixed(2)}`,
-      });
-    }
+  if (totalLoserSpend > audit.creativeAnalysis.wastedSpend.total * 1.01) {
+    calculationErrors.push({
+      field: 'Loser Spend',
+      expected: audit.creativeAnalysis.wastedSpend.total,
+      actual: totalLoserSpend,
+      message: `Loser spend (₹${totalLoserSpend.toFixed(2)}) exceeds total wasted (₹${audit.creativeAnalysis.wastedSpend.total.toFixed(2)}) - losers should be subset of wasted`,
+    });
   }
 
   // 5. Validate health score range
@@ -506,11 +522,18 @@ function flagForHumanReview(audit: AuditOutput): { required: boolean; reasons: s
   }
 
   // 2. High wasted spend percentage
-  const allCreatives = [
+  // Note: winners + losers don't represent ALL creatives (they're limited subsets)
+  // wastedSpend.total is the accurate total of all non-performing spend
+  const displayedCreatives = [
     ...audit.creativeAnalysis.winners.map(w => w.creative),
     ...audit.creativeAnalysis.losers.map(l => l.creative),
   ];
-  const totalSpend = allCreatives.reduce((sum, c) => sum + c.spend, 0);
+  const displayedSpend = displayedCreatives.reduce((sum, c) => sum + c.spend, 0);
+
+  // Use the larger of displayed spend or wasted spend as denominator
+  // (wasted can exceed displayed since displayed only shows top performers)
+  const estimatedTotalSpend = Math.max(displayedSpend, audit.creativeAnalysis.wastedSpend.total);
+  const totalSpend = estimatedTotalSpend;
 
   if (totalSpend > 0) {
     const wastedPercent = (audit.creativeAnalysis.wastedSpend.total / totalSpend) * 100;
@@ -530,7 +553,7 @@ function flagForHumanReview(audit: AuditOutput): { required: boolean; reasons: s
   }
 
   // 5. Extreme CPA variations
-  const cpas = allCreatives.filter(c => c.cpa > 0).map(c => c.cpa);
+  const cpas = displayedCreatives.filter(c => c.cpa > 0).map(c => c.cpa);
   if (cpas.length >= 2) {
     const minCpa = Math.min(...cpas);
     const maxCpa = Math.max(...cpas);
@@ -540,13 +563,13 @@ function flagForHumanReview(audit: AuditOutput): { required: boolean; reasons: s
   }
 
   // 6. Very high or low ROAS
-  const roasValues = allCreatives.filter(c => c.roas !== undefined && c.roas > 0).map(c => c.roas!);
+  const roasValues = displayedCreatives.filter(c => c.roas !== undefined && c.roas > 0).map(c => c.roas!);
   if (roasValues.some(r => r > 20)) {
     reasons.push(`ROAS exceeds 20x for some creatives - verify tracking accuracy`);
   }
 
   // 7. Low data volume
-  const totalConversions = allCreatives.reduce((sum, c) => sum + c.purchases, 0);
+  const totalConversions = displayedCreatives.reduce((sum, c) => sum + c.purchases, 0);
   if (totalConversions < 10 && totalSpend > 10000) {
     reasons.push(`Only ${totalConversions} purchases despite ₹${totalSpend.toFixed(0)} spend - low statistical significance`);
   }
