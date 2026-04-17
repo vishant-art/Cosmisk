@@ -1,7 +1,8 @@
 /**
- * Audit Agent - Analyzes Meta Ads data using Claude
+ * Audit Agent - Analyzes Meta Ads data using AI (Gemini primary, Claude fallback)
  */
 
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   DEFAULT_AUDIT_CONFIG,
@@ -17,9 +18,20 @@ import {
 } from './types.js';
 
 // Lazy initialization to ensure env vars are loaded
+let gemini: GoogleGenerativeAI | null = null;
 let anthropic: Anthropic | null = null;
-function getAnthropic(): Anthropic {
-  if (!anthropic) {
+
+function getGemini(): GoogleGenerativeAI | null {
+  const apiKey = process.env['GOOGLE_AI_API_KEY'];
+  if (!gemini && apiKey) {
+    gemini = new GoogleGenerativeAI(apiKey);
+  }
+  return gemini;
+}
+
+function getAnthropic(): Anthropic | null {
+  const apiKey = process.env['ANTHROPIC_API_KEY'];
+  if (!anthropic && apiKey) {
     anthropic = new Anthropic();
   }
   return anthropic;
@@ -60,7 +72,7 @@ export async function runCreativeAudit(
   // 1. Identify winners and losers
   const { winners, losers, wastedSpend } = analyzeCreatives(metaData.creatives, config);
 
-  // 2. Generate insights - try Claude first, fallback to rule-based
+  // 2. Generate insights - try Gemini, then Claude, then rule-based fallback
   let insights: AuditInsight[];
   let recommendations: AuditRecommendation[];
   let winnerReasons: string[];
@@ -68,14 +80,14 @@ export async function runCreativeAudit(
 
   try {
     const analysisPrompt = buildAnalysisPrompt(input, winners, losers, wastedSpend);
-    const claudeResponse = await analyzeWithClaude(analysisPrompt);
-    const parsed = parseClaudeResponse(claudeResponse, winners, losers);
+    const aiResponse = await analyzeWithAI(analysisPrompt);
+    const parsed = parseClaudeResponse(aiResponse, winners, losers);
     insights = parsed.insights;
     recommendations = parsed.recommendations;
     winnerReasons = parsed.winnerReasons;
     loserReasons = parsed.loserReasons;
   } catch (error) {
-    console.log('   ⚠️ Claude API unavailable, using rule-based analysis');
+    console.log('   ⚠️ AI unavailable, using rule-based analysis');
     const fallback = generateFallbackAnalysis(input, winners, losers, wastedSpend);
     insights = fallback.insights;
     recommendations = fallback.recommendations;
@@ -235,8 +247,10 @@ function generateFallbackAnalysis(
   }
 
   // Check for funnel issues
-  const avgLpvToAtc = metaData?.creatives.filter(c => c.landingPageViews > 0)
-    .reduce((sum, c) => sum + c.lpvToAtcRate, 0) / (metaData?.creatives.filter(c => c.landingPageViews > 0).length || 1);
+  const creativesWithLpv = metaData?.creatives?.filter(c => c.landingPageViews > 0) || [];
+  const avgLpvToAtc = creativesWithLpv.length > 0
+    ? creativesWithLpv.reduce((sum, c) => sum + c.lpvToAtcRate, 0) / creativesWithLpv.length
+    : 0;
 
   if (avgLpvToAtc < 5) {
     insights.push({
@@ -461,13 +475,35 @@ CRITICAL RULES:
 }
 
 /**
- * Call Claude for analysis
+ * Call Gemini for analysis (primary - free tier)
+ */
+async function analyzeWithGemini(prompt: string): Promise<string> {
+  const genAI = getGemini();
+  if (!genAI) {
+    throw new Error('Gemini API key not configured');
+  }
+
+  const cleanPrompt = sanitizeText(prompt, prompt);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  const result = await model.generateContent(cleanPrompt);
+  const response = result.response;
+  return response.text();
+}
+
+/**
+ * Call Claude for analysis (fallback)
  */
 async function analyzeWithClaude(prompt: string): Promise<string> {
+  const client = getAnthropic();
+  if (!client) {
+    throw new Error('Anthropic API key not configured');
+  }
+
   // Sanitize the entire prompt to remove invalid unicode
   const cleanPrompt = sanitizeText(prompt, prompt);
 
-  const response = await getAnthropic().messages.create({
+  const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2000,
     messages: [{ role: 'user', content: cleanPrompt }],
@@ -479,6 +515,33 @@ async function analyzeWithClaude(prompt: string): Promise<string> {
   }
 
   return content.text;
+}
+
+/**
+ * Analyze with AI - tries Gemini first, then Claude, then fallback
+ */
+async function analyzeWithAI(prompt: string): Promise<string> {
+  // Try Gemini first (free tier)
+  if (process.env['GOOGLE_AI_API_KEY']) {
+    try {
+      console.log('   Using Gemini (free tier)...');
+      return await analyzeWithGemini(prompt);
+    } catch (error) {
+      console.log('   Gemini failed, trying Claude...');
+    }
+  }
+
+  // Try Claude as fallback
+  if (process.env['ANTHROPIC_API_KEY']) {
+    try {
+      console.log('   Using Claude...');
+      return await analyzeWithClaude(prompt);
+    } catch (error) {
+      console.log('   Claude failed, using rule-based analysis...');
+    }
+  }
+
+  throw new Error('No AI provider available');
 }
 
 /**
