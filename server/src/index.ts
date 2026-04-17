@@ -33,6 +33,9 @@ import { agentRoutes } from './routes/agent.js';
 import { swipeFileRoutes } from './routes/swipe-file.js';
 import { teamRoutes } from './routes/team.js';
 import { creativeStudioRoutes } from './routes/creative-studio.js';
+import { auditRoutes } from './routes/audits.js';
+import { scheduleRoutes } from './routes/schedules.js';
+import { initializeScheduler } from './services/audit-scheduler.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -235,6 +238,15 @@ await app.register(agentRoutes, { prefix: '/agent' });
 await app.register(swipeFileRoutes, { prefix: '/swipe-file' });
 await app.register(teamRoutes, { prefix: '/team' });
 await app.register(creativeStudioRoutes, { prefix: '/creative-studio' });
+await app.register(auditRoutes, { prefix: '/audits' });
+await app.register(scheduleRoutes, { prefix: '/schedules' });
+
+// Initialize audit scheduler
+try {
+  initializeScheduler();
+} catch (error) {
+  app.log.warn({ err: error }, 'Failed to initialize audit scheduler');
+}
 
 // Serve generated audio files from data/audio/
 import { existsSync, mkdirSync } from 'node:fs';
