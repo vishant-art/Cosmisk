@@ -16,6 +16,15 @@ export function generateMarkdown(audit: AuditOutput): string {
   lines.push(`> **Generated:** ${new Date(audit.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
   lines.push(`> **Period:** ${audit.dateRange.start} to ${audit.dateRange.end}`);
   lines.push(`> **Confidence:** ${audit.confidence.level.toUpperCase()} - ${audit.confidence.reason}`);
+
+  // QA Status (if available)
+  if (audit.qa) {
+    const qaIcon = audit.qa.dataIntegrityPassed ? '✅' : '⚠️';
+    lines.push(`> **Data Integrity:** ${qaIcon} ${audit.qa.dataIntegrityPassed ? 'Verified' : 'Review Required'} (Score: ${audit.qa.score}/100)`);
+    if (audit.qa.humanReviewRequired) {
+      lines.push(`> **Review Notes:** ${audit.qa.humanReviewReasons.join('; ')}`);
+    }
+  }
   lines.push('');
 
   // Health Score Visual

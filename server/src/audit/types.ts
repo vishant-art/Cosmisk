@@ -134,6 +134,22 @@ export interface AuditOutput {
     level: 'high' | 'medium' | 'low';
     reason: string;
   };
+
+  // QA Validation Result (added for data integrity tracking)
+  qa?: AuditQAResult;
+}
+
+export interface AuditQAResult {
+  passed: boolean;
+  score: number;
+  dataIntegrityPassed: boolean;
+  humanReviewRequired: boolean;
+  humanReviewReasons: string[];
+  issueCount: {
+    critical: number;
+    warning: number;
+    minor: number;
+  };
 }
 
 export interface AuditComparison {

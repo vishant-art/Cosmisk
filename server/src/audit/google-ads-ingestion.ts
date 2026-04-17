@@ -42,7 +42,7 @@ export async function fetchGoogleAdsSnapshot(options: GoogleAdsIngestionOptions)
   let accessToken = tokenData.accessToken;
 
   // Check if token is expired and refresh
-  if (new Date(tokenData.expiresAt) < new Date()) {
+  if (tokenData.expiresAt && new Date(tokenData.expiresAt) < new Date()) {
     const refreshed = await refreshGoogleToken(tokenData.refreshToken);
     accessToken = refreshed.accessToken;
   }

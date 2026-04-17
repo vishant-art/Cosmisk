@@ -173,13 +173,49 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
     console.log('   No previous audit found (first audit for this brand)');
   }
 
-  // 11. QA validation
+  // 11. QA validation with data integrity checks
   console.log('\n🔍 Running QA validation...');
   const qaResult = validateAuditQuality(audit);
   console.log(formatQAResult(qaResult));
-  if (!qaResult.passed) {
-    console.log('   ⚠️ QA failed but proceeding with output');
+
+  // Log data integrity status prominently
+  if (!qaResult.dataIntegrity.passed) {
+    console.log('\n   ❌ DATA INTEGRITY ISSUES DETECTED:');
+    for (const error of qaResult.dataIntegrity.calculationErrors) {
+      console.log(`      • ${error.message}`);
+    }
+    for (const violation of qaResult.dataIntegrity.sanityViolations.filter(v => v.value < 0)) {
+      console.log(`      • ${violation.field} is negative: ${violation.value}`);
+    }
+  } else {
+    console.log('\n   ✅ Data integrity verified - all calculations match');
   }
+
+  // Log human review flags
+  if (qaResult.humanReviewRequired) {
+    console.log('\n   ⚠️ MANUAL REVIEW RECOMMENDED:');
+    for (const reason of qaResult.humanReviewReasons) {
+      console.log(`      • ${reason}`);
+    }
+  }
+
+  if (!qaResult.passed) {
+    console.log('\n   ⚠️ QA failed but proceeding with output');
+  }
+
+  // Add QA result to audit for tracking
+  audit.qa = {
+    passed: qaResult.passed,
+    score: qaResult.score,
+    dataIntegrityPassed: qaResult.dataIntegrity.passed,
+    humanReviewRequired: qaResult.humanReviewRequired,
+    humanReviewReasons: qaResult.humanReviewReasons,
+    issueCount: {
+      critical: qaResult.issues.filter(i => i.severity === 'critical').length,
+      warning: qaResult.issues.filter(i => i.severity === 'warning').length,
+      minor: qaResult.issues.filter(i => i.severity === 'minor').length,
+    },
+  };
 
   // 12. Generate outputs
   const result: AuditResult = { audit };
@@ -347,7 +383,7 @@ function getShopifyAccessToken(brandId: string): string | null {
 }
 
 function getEncryptionKey(): Buffer {
-  const key = process.env.TOKEN_ENCRYPTION_KEY || 'change-me-to-a-random-32-byte-hex-string';
+  const key = process.env['TOKEN_ENCRYPTION_KEY'] || 'change-me-to-a-random-32-byte-hex-string';
   const buf = Buffer.alloc(32);
   Buffer.from(key).copy(buf);
   return buf;
@@ -575,5 +611,5 @@ export { fetchGoogleAdsSnapshot } from './google-ads-ingestion.js';
 export { fetchShopifySnapshot } from './shopify-ingestion.js';
 export { analyzeWebsite } from './website-analysis.js';
 export { runCreativeAudit } from './audit-agent.js';
-export { validateAuditQuality, formatQAResult } from './qa-validator.js';
+export { validateAuditQuality, formatQAResult, isAuditDataValid, getHumanReviewFlags } from './qa-validator.js';
 export { generateMarkdown, generateJSON } from './output.js';
