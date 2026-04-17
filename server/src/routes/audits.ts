@@ -3,7 +3,8 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { runAudit, getAuditHistory } from '../audit/index.js';
+import { runAudit, getAuditHistory, generateMarkdown } from '../audit/index.js';
+import { generatePDF } from '../audit/pdf-export.js';
 import { getDb } from '../db/index.js';
 import type { AuditConfig } from '../audit/types.js';
 
@@ -252,6 +253,41 @@ export async function auditRoutes(app: FastifyInstance) {
         })),
         count: rows.length,
       };
+    }
+  );
+
+  /**
+   * GET /audits/:auditId/pdf
+   * Download audit as PDF
+   */
+  app.get<{ Params: GetAuditParams }>(
+    '/:auditId/pdf',
+    { preHandler: [app.authenticate] },
+    async (request: FastifyRequest<{ Params: GetAuditParams }>, reply: FastifyReply) => {
+      const { auditId } = request.params;
+
+      const db = getDb();
+      const row = db.prepare(`
+        SELECT brand_name, full_output FROM audits WHERE id = ?
+      `).get(auditId) as any;
+
+      if (!row) {
+        return reply.status(404).send({ error: 'Audit not found' });
+      }
+
+      try {
+        const auditData = JSON.parse(row.full_output);
+        const markdown = generateMarkdown(auditData);
+        const pdf = await generatePDF(markdown, row.brand_name);
+
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `attachment; filename="${row.brand_name}-audit-${new Date().toISOString().split('T')[0]}.pdf"`);
+
+        return reply.send(pdf);
+      } catch (error: any) {
+        console.error('PDF generation failed:', error);
+        return reply.status(500).send({ error: 'Failed to generate PDF' });
+      }
     }
   );
 }
