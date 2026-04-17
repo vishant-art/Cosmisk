@@ -82,10 +82,11 @@ async function fetchCreativePerformance(
   accessToken: string,
   datePreset: string
 ): Promise<CreativePerformance[]> {
-  // First get all ads with their creatives
+  // First get all ads with their creatives - limit fields to reduce data
   const adsUrl = `${BASE_URL}/${adAccountId}/ads?` +
-    `fields=id,name,creative{id,object_story_spec,title,body}&` +
-    `limit=200&` +
+    `fields=id,name,creative{id,title,body}&` +
+    `effective_status=["ACTIVE","PAUSED"]&` +
+    `limit=100&` +
     `access_token=${accessToken}`;
 
   const adsResp = await fetch(adsUrl);
@@ -95,13 +96,14 @@ async function fetchCreativePerformance(
     throw new Error(`Meta API Error: ${adsData.error.message}`);
   }
 
-  // Get insights at ad level
+  // Get insights at ad level - use filtering to reduce data volume
   const insightsUrl = `${BASE_URL}/${adAccountId}/insights?` +
-    `fields=ad_id,ad_name,spend,impressions,clicks,ctr,cpc,actions,action_values,cost_per_action_type&` +
+    `fields=ad_id,ad_name,spend,impressions,clicks,actions,action_values&` +
     `level=ad&` +
     `date_preset=${datePreset}&` +
     `sort=spend_descending&` +
-    `limit=100&` +
+    `filtering=[{"field":"spend","operator":"GREATER_THAN","value":"100"}]&` +
+    `limit=50&` +
     `access_token=${accessToken}`;
 
   const insightsResp = await fetch(insightsUrl);

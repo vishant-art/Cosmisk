@@ -60,16 +60,28 @@ export async function runCreativeAudit(
   // 1. Identify winners and losers
   const { winners, losers, wastedSpend } = analyzeCreatives(metaData.creatives, config);
 
-  // 2. Generate insights using Claude
-  const analysisPrompt = buildAnalysisPrompt(input, winners, losers, wastedSpend);
-  const claudeResponse = await analyzeWithClaude(analysisPrompt);
+  // 2. Generate insights - try Claude first, fallback to rule-based
+  let insights: AuditInsight[];
+  let recommendations: AuditRecommendation[];
+  let winnerReasons: string[];
+  let loserReasons: { reason: string; recommendation: string }[];
 
-  // 3. Parse Claude's response
-  const { insights, recommendations, winnerReasons, loserReasons } = parseClaudeResponse(
-    claudeResponse,
-    winners,
-    losers
-  );
+  try {
+    const analysisPrompt = buildAnalysisPrompt(input, winners, losers, wastedSpend);
+    const claudeResponse = await analyzeWithClaude(analysisPrompt);
+    const parsed = parseClaudeResponse(claudeResponse, winners, losers);
+    insights = parsed.insights;
+    recommendations = parsed.recommendations;
+    winnerReasons = parsed.winnerReasons;
+    loserReasons = parsed.loserReasons;
+  } catch (error) {
+    console.log('   ⚠️ Claude API unavailable, using rule-based analysis');
+    const fallback = generateFallbackAnalysis(input, winners, losers, wastedSpend);
+    insights = fallback.insights;
+    recommendations = fallback.recommendations;
+    winnerReasons = fallback.winnerReasons;
+    loserReasons = fallback.loserReasons;
+  }
 
   // 4. Build creative analysis section
   const creativeAnalysis: CreativeAnalysisSection = {
@@ -167,6 +179,142 @@ function analyzeCreatives(
   };
 
   return { winners, losers, wastedSpend };
+}
+
+/**
+ * Generate fallback analysis when Claude API is unavailable
+ */
+function generateFallbackAnalysis(
+  input: AuditInput,
+  winners: CreativePerformance[],
+  losers: CreativePerformance[],
+  wastedSpend: { total: number; creatives: any[] }
+): {
+  insights: AuditInsight[];
+  recommendations: AuditRecommendation[];
+  winnerReasons: string[];
+  loserReasons: { reason: string; recommendation: string }[];
+} {
+  const { metaData, brand } = input;
+  const insights: AuditInsight[] = [];
+  const recommendations: AuditRecommendation[] = [];
+
+  // Generate insights based on data patterns
+  if (wastedSpend.total > 5000) {
+    insights.push({
+      severity: 'critical',
+      title: 'High Wasted Spend Detected',
+      detail: `₹${wastedSpend.total.toLocaleString('en-IN')} spent on creatives with 0-1 conversions. This represents a significant optimization opportunity.`,
+      dataPoints: { wastedAmount: wastedSpend.total, creativesAffected: wastedSpend.creatives.length },
+    });
+  }
+
+  if (winners.length === 0) {
+    insights.push({
+      severity: 'critical',
+      title: 'No Clear Winners',
+      detail: 'No creatives are performing above the efficiency threshold. Consider testing new creative concepts or reviewing targeting.',
+      dataPoints: { totalCreatives: metaData?.creatives.length || 0 },
+    });
+  } else if (winners.length >= 3) {
+    insights.push({
+      severity: 'info',
+      title: 'Multiple Winning Creatives',
+      detail: `${winners.length} creatives are performing well. Consider scaling budget on top performers.`,
+      dataPoints: { winnerCount: winners.length, avgCpa: winners.reduce((s, w) => s + w.cpa, 0) / winners.length },
+    });
+  }
+
+  if (losers.length > 3) {
+    insights.push({
+      severity: 'warning',
+      title: 'Multiple Underperformers Active',
+      detail: `${losers.length} creatives have high spend but poor conversion rates. Pausing these could save budget.`,
+      dataPoints: { loserCount: losers.length, potentialSavings: losers.reduce((s, l) => s + l.spend, 0) },
+    });
+  }
+
+  // Check for funnel issues
+  const avgLpvToAtc = metaData?.creatives.filter(c => c.landingPageViews > 0)
+    .reduce((sum, c) => sum + c.lpvToAtcRate, 0) / (metaData?.creatives.filter(c => c.landingPageViews > 0).length || 1);
+
+  if (avgLpvToAtc < 5) {
+    insights.push({
+      severity: 'warning',
+      title: 'Low Add-to-Cart Rate',
+      detail: `Average LPV to ATC rate is ${avgLpvToAtc.toFixed(1)}%. Industry benchmark is 8-12%. Consider landing page optimization.`,
+      dataPoints: { avgLpvToAtcRate: avgLpvToAtc },
+    });
+  }
+
+  // Generate recommendations
+  if (losers.length > 0) {
+    recommendations.push({
+      priority: 'high',
+      title: `Pause ${losers.length} Underperforming Creatives`,
+      description: `These creatives have spent ₹${losers.reduce((s, l) => s + l.spend, 0).toLocaleString('en-IN')} with minimal conversions.`,
+      expectedImpact: 'Immediate budget savings and improved overall ROAS',
+      effort: 'low',
+    });
+  }
+
+  if (winners.length > 0) {
+    recommendations.push({
+      priority: 'high',
+      title: 'Scale Top Performers',
+      description: `Increase budget allocation to your ${winners.length} winning creatives with avg CPA of ₹${(winners.reduce((s, w) => s + w.cpa, 0) / winners.length).toFixed(0)}.`,
+      expectedImpact: 'Increased conversions at efficient CPA',
+      effort: 'low',
+    });
+  }
+
+  recommendations.push({
+    priority: 'medium',
+    title: 'Test New Creative Concepts',
+    description: 'Based on winning creative patterns, develop 3-5 new variations to expand your creative library.',
+    expectedImpact: 'Discover new winning creatives and reduce creative fatigue',
+    effort: 'medium',
+  });
+
+  if (avgLpvToAtc < 8) {
+    recommendations.push({
+      priority: 'medium',
+      title: 'Optimize Landing Page',
+      description: 'Low add-to-cart rates suggest friction in the landing experience. Review page load speed, mobile UX, and product presentation.',
+      expectedImpact: 'Higher conversion rates from existing traffic',
+      effort: 'medium',
+    });
+  }
+
+  // Generate winner reasons
+  const winnerReasons = winners.map(w => {
+    if (w.roas >= 3) return `Strong ROAS of ${w.roas.toFixed(1)}x with efficient spend`;
+    if (w.cpa < 500) return `Excellent CPA of ₹${w.cpa.toFixed(0)} - significantly below average`;
+    if (w.purchases >= 5) return `High conversion volume (${w.purchases} purchases) showing consistent performance`;
+    return `Efficient conversion rate with good cost metrics`;
+  });
+
+  // Generate loser reasons
+  const loserReasons = losers.map(l => {
+    if (l.purchases === 0) {
+      return {
+        reason: `Zero conversions despite ₹${l.spend.toFixed(0)} spend`,
+        recommendation: 'Pause immediately and reallocate budget',
+      };
+    }
+    if (l.cpa > 2000) {
+      return {
+        reason: `Very high CPA of ₹${l.cpa.toFixed(0)} - inefficient spend`,
+        recommendation: 'Pause or significantly reduce budget',
+      };
+    }
+    return {
+      reason: `Poor conversion rate with ${l.purchases} purchase(s) on ₹${l.spend.toFixed(0)} spend`,
+      recommendation: 'Test new creative angle or pause',
+    };
+  });
+
+  return { insights, recommendations, winnerReasons, loserReasons };
 }
 
 /**

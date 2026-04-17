@@ -221,9 +221,13 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
   console.log('\n💾 Saving audit to database...');
   saveAudit(audit);
 
-  // 15. Extract and save learnings
+  // 15. Extract and save learnings (optional - may fail for ad-hoc audits)
   console.log('🧠 Extracting learnings...');
-  await extractAndSaveLearnings(audit, brand.id);
+  try {
+    await extractAndSaveLearnings(audit, brand.id);
+  } catch (error) {
+    console.log('   ⚠️ Could not save learnings (brand may not be in database)');
+  }
 
   console.log('\n✅ Audit complete!');
 
