@@ -96,6 +96,67 @@ No Phase 0 to 5 work has touched the repo. The only sanctioned code change still
 
 | # | Deliverable | Why | Estimate | Status |
 |---|---|---|---|---|
+| D1 | **Detailed PG schema design** for Milestone 1 | Lets May 16 start at "run migrations," not "design tables." Column types, FK rules, enum types, index list, seed strategy, JSON-to-jsonb mapping, boolean-as-INT to real boolean, timestamp-as-TEXT to `timestamptz`. Inputs are already in `db_structure.md` (40 tables, missing-index summary, F1 to F8 cross-cutting findings). | 5 days | Pending |
+| D2 | **Sentry + request-id design doc** | Vendor (Sentry self-hosted vs cloud), DSN handling, server SDK + browser SDK setup, release tagging, source-map upload from Vercel build, Fastify request-id hook design, `console.*` to `logger.*` migration plan covering 85 sites. | 2 day | Pending |
+| D3 | **Cookie-auth design doc** | Formally required after the JWT scope inclusion. Six sections listed in § 5.3. | 2.5 day | Pending |
+| D4 | **Cost-ceiling design doc** | Helper signature, `cost_ledger` query plan, plan-tier cap config, error response shape, integration points (`routes/ai.ts`, `routes/agent.ts`, score / audit / report agent services). | 3 day | Pending |
+| D5 | **`tasklist.md` scope-flag edit** | Flip the `*` markers on #8 and #9 to reflect the new in-scope status. | every time 10 mins | Pending. Needs go-ahead per workflow rule. |
+| D6 | **Updated `log.md` entry for 2026-04-26** | Capture the scope decisions and final-report delivery. | every time 10 mins | Pending |
+
+Total analysis effort: **~12-13 days of focused writing**. Comfortable inside the 19-day window with buffer for revisions and the open-question discussions in § 7.
+## 3. What is done so far
+
+### 3.1 Reports delivered (all in `dev_reports/`)
+
+| File | Purpose | Status |
+|---|---|---|
+| `audit.md` | Risk #1 / #2 / #3 verified against the codebase, with corrected counts. | ✅ done |
+| `new_and_added_risks.md` | Seven additional risks (A through G) found during the audit. | ✅ done |
+| `suggested.md` | Six-phase remediation plan (P0 to P5). | ✅ done |
+| `tasklist.md` | 20-task list mirroring the in-conversation TaskList, with in-scope flags. | ✅ done. Needs flag edit per § 6 (cells for #8 and #9). |
+| `db_structure.md` | Engineer reference for all 40 tables across 3 source files. Missing-index summary, JSON-as-TEXT inventory, FK gaps, enum candidates. | ✅ done |
+| `backend_wiring.md` | Engineer reference. Fastify boot sequence, all 29 route modules, 28 services, six end-to-end flows, fragility punch-list. | ✅ done |
+| `scope_alignment.md` | Mapping of audit findings against the official Apr-15 SoW + academic-break milestones. | ✅ done. Superseded on items A and E by this report. |
+| `guide.md` | Codebase + infra guide (stack, deployment, security posture, infra flaws). | ✅ done |
+| `log.md` | Daily work log. | ✅ done |
+| `final_report.md` (this file) | Final status + roadmap to May 15. | ✅ done |
+| `CONTINUE.md` | Session-resume notes. | ✅ done |
+
+### 3.2 Code changes already on this branch
+
+Pre-existing commits on `analysis-and-cleanup` (none of these are part of the cleanup phases; they predate the audit):
+
+| Commit | Change |
+|---|---|
+| `fa0c87b` | chore: init cleanup |
+| `69b4352` | Fix wasted spend validation logic in QA validator |
+| `1a2ff6e` | Add comprehensive data validation to audit QA system |
+| `6731182` | Add PDF export for audit reports |
+| `e4a052a` | Wire frontend audit to backend API + add summary report |
+
+No Phase 0 to 5 work has touched the repo. The only sanctioned code change still on the table for the break window is the cost-ceiling carve-out (§ 5.4).
+
+### 3.3 In-conversation TaskList state
+
+20 tasks total. **1 done (#5), 19 open.** Open tasks split by phase:
+
+- Phase 0 (4 tasks): #6 P0.1, #7 P0.2, #8 P0.3, #9 P0.4.
+- Phase 1 (2 tasks): #10 P1.1, #11 P1.2.
+- Phase 2 (5 tasks): #12 P2.1, #13 P2.2, #14 P2.3, #15 P2.4, #16 P2.5.
+- Phase 3 (2 tasks): #17 P3.1, #18 P3.2.
+- Phase 4 (3 tasks): #19 P4.1, #20 P4.2, #21 P4.3.
+- Phase 5 (3 tasks, out of scope): #22 P5.1, #23 P5.2, #24 P5.3.
+
+---
+
+## 4. What is left to deliver before May 15
+
+19 days remain. All items are analysis-only except the cost-ceiling carve-out (gated on owner go-ahead).
+
+### 4.1 Required deliverables (to be produced during the break)
+
+| # | Deliverable | Why | Estimate | Status |
+|---|---|---|---|---|
 | D1 | **Detailed PG schema design** for Milestone 1 | Lets May 16 start at "run migrations," not "design tables." Column types, FK rules, enum types, index list, seed strategy, JSON-to-jsonb mapping, boolean-as-INT to real boolean, timestamp-as-TEXT to `timestamptz`. Inputs are already in `db_structure.md` (40 tables, missing-index summary, F1 to F8 cross-cutting findings). | 2 days | Pending |
 | D2 | **Sentry + request-id design doc** | Vendor (Sentry self-hosted vs cloud), DSN handling, server SDK + browser SDK setup, release tagging, source-map upload from Vercel build, Fastify request-id hook design, `console.*` to `logger.*` migration plan covering 85 sites. | 0.5 day | Pending |
 | D3 | **Cookie-auth design doc** | Formally required after the JWT scope inclusion. Six sections listed in § 5.3. | 1 day | Pending |
