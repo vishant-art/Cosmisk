@@ -96,14 +96,14 @@ No Phase 0 to 5 work has touched the repo. The only sanctioned code change still
 
 | # | Deliverable | Why | Estimate | Status |
 |---|---|---|---|---|
-| D1 | **Detailed PG schema design** for Milestone 1 | Lets May 16 start at "run migrations," not "design tables." Column types, FK rules, enum types, index list, seed strategy, JSON-to-jsonb mapping, boolean-as-INT to real boolean, timestamp-as-TEXT to `timestamptz`. Inputs are already in `db_structure.md` (40 tables, missing-index summary, F1 to F8 cross-cutting findings). | 2 days | Pending |
-| D2 | **Sentry + request-id design doc** | Vendor (Sentry self-hosted vs cloud), DSN handling, server SDK + browser SDK setup, release tagging, source-map upload from Vercel build, Fastify request-id hook design, `console.*` to `logger.*` migration plan covering 85 sites. | 0.5 day | Pending |
-| D3 | **Cookie-auth design doc** | Formally required after the JWT scope inclusion. Six sections listed in § 5.3. | 1 day | Pending |
-| D4 | **Cost-ceiling design doc** | Helper signature, `cost_ledger` query plan, plan-tier cap config, error response shape, integration points (`routes/ai.ts`, `routes/agent.ts`, score / audit / report agent services). | 0.5 day | Pending |
-| D5 | **`tasklist.md` scope-flag edit** | Flip the `*` markers on #8 and #9 to reflect the new in-scope status. | 5 min | Pending. Needs go-ahead per workflow rule. |
-| D6 | **Updated `log.md` entry for 2026-04-26** | Capture the scope decisions and final-report delivery. | 5 min | Pending |
+| D1 | **Detailed PG schema design** for Milestone 1 | Lets May 16 start at "run migrations," not "design tables." Column types, FK rules, enum types, index list, seed strategy, JSON-to-jsonb mapping, boolean-as-INT to real boolean, timestamp-as-TEXT to `timestamptz`. Inputs are already in `db_structure.md` (40 tables, missing-index summary, F1 to F8 cross-cutting findings). | 5 days | Pending |
+| D2 | **Sentry + request-id design doc** | Vendor (Sentry self-hosted vs cloud), DSN handling, server SDK + browser SDK setup, release tagging, source-map upload from Vercel build, Fastify request-id hook design, `console.*` to `logger.*` migration plan covering 85 sites. | 2 day | Pending |
+| D3 | **Cookie-auth design doc** | Formally required after the JWT scope inclusion. Six sections listed in § 5.3. | 2.5 day | Pending |
+| D4 | **Cost-ceiling design doc** | Helper signature, `cost_ledger` query plan, plan-tier cap config, error response shape, integration points (`routes/ai.ts`, `routes/agent.ts`, score / audit / report agent services). | 3 day | Pending |
+| D5 | **`tasklist.md` scope-flag edit** | Flip the `*` markers on #8 and #9 to reflect the new in-scope status. | every time 10 mins | Pending. Needs go-ahead per workflow rule. |
+| D6 | **Updated `log.md` entry for 2026-04-26** | Capture the scope decisions and final-report delivery. | every time 10 mins | Pending |
 
-Total analysis effort: **~4 days of focused writing**. Comfortable inside the 19-day window with buffer for revisions and the open-question discussions in § 7.
+Total analysis effort: **~12-13 days of focused writing**. Comfortable inside the 19-day window with buffer for revisions and the open-question discussions in § 7.
 
 ### 4.2 Optional carve-out (gated on explicit go)
 
