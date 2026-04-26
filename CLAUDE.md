@@ -934,41 +934,12 @@ interface StyleBrief {
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+**IMPORTANT: This project has a knowledge graph. ALWAYS call code-review-graph MCP tools
+before Grep/Glob/Read for codebase exploration, impact analysis, or code
+review. Fall back to Grep/Read only when the graph doesn't cover the need.
 
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
-Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+See `.claude/code-review-graph-usage.md` for tool reference, phase-by-phase
+guidance, and prompt patterns.
 
 ---
 
@@ -1024,70 +995,7 @@ Full workflows documented in: `mcp-servers/bridge-service-workflows.md`
 
 ### Workflow
 
-```
-Raw UGC → Frame.io → Claude reviews with timestamped notes
-                   → Adyaj makes rough cut
-                   → Claude reviews again
-                   → Descript API (auto-captions)
-                   → Adobe Reframe API (resizing) [PENDING]
-                   → Final assets for Meta Ads
-```
-
-### Available Tools
-
-| Step | Tool | Status |
-|------|------|--------|
-| Video review | Frame.io MCP | ✅ Ready |
-| Timestamped notes | Frame.io post_comments_batch | ✅ Ready |
-| Auto-captions | Descript MCP | ✅ Built (needs API key) |
-| Resizing (9:16→1:1→16:9) | Adobe Reframe API | 🔧 Pending |
-
-
-# cosmisk — Project Context
-
-**Stack:** angular, fastify | none | typescript
-**Monorepo:** descript-mcp, frameio-mcp-server, shopify-auth, cosmisk-server, cosmisk-videos
-
-213 routes | 0 models | 51 env vars | 1191 import links
-
-**API areas:** /, /pricing, /for-agencies, /contact, /blog, /pitch-deck, /score, /waitlist, /privacy-policy, /data-deletion
-
-**High-impact files** (change carefully):
-- videos/src/brand.ts (imported by 55 files)
-- src/environments/environment.ts (imported by 49 files)
-- src/app/core/services/api.service.ts (imported by 48 files)
-- server/src/services/meta-api.ts (imported by 46 files)
-- server/src/db/index.ts (imported by 43 files)
-
-**Required env vars:** CI, DATABASE_URL, DESCRIPT_API_TOKEN, FRAMEIO_CLIENT_ID, FRAMEIO_CLIENT_SECRET, FRAMEIO_TOKEN, GEMINI_API_KEY, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_REDIRECT_URI, GOOGLE_AI_API_KEY, META_ACCESS_TOKEN, N8N_BRIEFING_WEBHOOK, N8N_HOST, RESEND_API_KEY, SHOPIFY_CLIENT_ID, SHOPIFY_CLIENT_SECRET, SHOPIFY_SHOP, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET, SLACK_WEBHOOK_URL
-
----
-
-## Instructions for Claude Code
-
-### Two-Step Rule (mandatory)
-**Step 1 — Orient:** Use wiki articles to find WHERE things live.
-**Step 2 — Verify:** Read the actual source files listed in the wiki article BEFORE writing any code.
-
-Wiki articles are structural summaries extracted by AST. They show routes, models, and file locations.
-They do NOT show full function logic, middleware internals, or dynamic runtime behavior.
-**Never write or modify code based solely on wiki content — always read source files first.**
-
-Read in order at session start:
-1. `.codesight/wiki/index.md` — orientation map (~200 tokens)
-2. `.codesight/wiki/overview.md` — architecture overview (~500 tokens)
-3. Domain article (e.g. `.codesight/wiki/auth.md`) → check "Source Files" section → read those files
-4. `.codesight/CODESIGHT.md` — full context map for deep exploration
-
-Routes marked `[inferred]` in wiki articles were detected via regex — verify against source before trusting.
-If any source file shows ⚠ in the wiki, re-run `npx codesight --wiki` before proceeding.
-
-Or use the codesight MCP server for on-demand queries:
-   - `codesight_get_wiki_article` — read a specific wiki article by name
-   - `codesight_get_wiki_index` — get the wiki index
-   - `codesight_get_summary` — quick project overview
-   - `codesight_get_routes --prefix /api/users` — filtered routes
-   - `codesight_get_blast_radius --file src/lib/db.ts` — impact analysis before changes
-   - `codesight_get_schema --model users` — specific model details
-
-Only open specific files after consulting codesight context. This saves ~1,51,573 tokens per conversation.
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

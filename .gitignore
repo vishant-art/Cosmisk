@@ -71,3 +71,11 @@ mcp-servers/**/*.token.json
 
 # Shopify tokens
 scripts/shopify-auth/.shopify-token*.json
+# Added by code-review-graph
+.code-review-graph/
+
+#cluade
+.claude/
+
+#dev internal reports
+dev_reports/
