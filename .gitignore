@@ -76,6 +76,11 @@ scripts/shopify-auth/.shopify-token*.json
 
 #cluade
 .claude/
+# Added by code-review-graph
+.code-review-graph/
+
+#cluade
+.claude/
 
 #dev internal reports
 dev_reports/
