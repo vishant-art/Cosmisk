@@ -38,6 +38,14 @@ export interface GoogleTokenRow {
   created_at: string;
 }
 
+export interface ShopifyTokenRow {
+  user_id: string;
+  encrypted_access_token: string;
+  shop_domain: string;
+  shop_name: string | null;
+  created_at: string;
+}
+
 export interface ReportRow {
   id: string;
   user_id: string;

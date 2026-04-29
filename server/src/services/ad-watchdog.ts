@@ -11,8 +11,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEpisode } from './agent-memory.js';
-import type { MetaTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
+import type { MetaTokenRow, ShopifyTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { runOOSCheck } from './oos-detector.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -502,6 +503,37 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
               });
 
               const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext);
+
+              // OOS Detection: Check for ads spending on out-of-stock products
+              const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(user.id) as ShopifyTokenRow | undefined;
+              if (shopifyRow) {
+                try {
+                  const shopifyToken = decryptToken(shopifyRow.encrypted_access_token);
+                  const oosResult = await runOOSCheck({
+                    shopDomain: shopifyRow.shop_domain,
+                    shopifyToken,
+                    metaAccountId: account.id,
+                    metaToken: token,
+                    days: 7,
+                  });
+
+                  if (oosResult.hasIssues && oosResult.wastedSpend > 100) {
+                    const topAd = oosResult.topMatches[0];
+                    decisions.push({
+                      type: 'oos_wasted_spend',
+                      targetId: topAd?.adId || account.id,
+                      targetName: topAd ? `${topAd.adName} → ${topAd.productTitle}` : 'Multiple ads',
+                      reasoning: oosResult.summary,
+                      confidence: 'high',
+                      urgency: oosResult.wastedSpend > 1000 ? 'high' : 'medium',
+                      suggestedAction: 'pause',
+                      estimatedImpact: `Save Rs ${oosResult.wastedSpend.toFixed(0)}/week`,
+                    });
+                  }
+                } catch (oosErr: any) {
+                  logger.warn({ err: oosErr.message }, '[Watchdog] OOS check failed, continuing');
+                }
+              }
 
               for (const decision of decisions) {
                 const decisionId = uuidv4();

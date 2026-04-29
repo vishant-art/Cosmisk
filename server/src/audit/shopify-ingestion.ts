@@ -6,6 +6,27 @@ import type { ShopifySnapshot, ProductPerformance, AuditConfig } from './types.j
 
 const API_VERSION = '2024-01';
 
+// OOS Detection Types
+export interface OOSProduct {
+  productId: string;
+  variantId: string;
+  title: string;
+  variantTitle: string;
+  sku: string;
+  inventoryQuantity: number;
+  handle: string;
+  productUrl: string;
+}
+
+export interface InventorySnapshot {
+  capturedAt: string;
+  shopDomain: string;
+  totalProducts: number;
+  totalVariants: number;
+  oosProducts: OOSProduct[];
+  lowStockProducts: OOSProduct[]; // inventory < 5
+}
+
 interface ShopifyIngestionOptions {
   shopDomain: string;
   accessToken: string;
@@ -173,6 +194,177 @@ async function fetchTopProducts(
         : 0,
       variantCount: p.variants.size,
     }));
+}
+
+// ============ OOS DETECTION ============
+
+interface FetchInventoryOptions {
+  shopDomain: string;
+  accessToken: string;
+  lowStockThreshold?: number; // default 5
+}
+
+/**
+ * Fetch all products and identify OOS/low stock items
+ * Ported from Agency-automation-smashed ShopifyPull
+ */
+export async function fetchInventorySnapshot(options: FetchInventoryOptions): Promise<InventorySnapshot> {
+  const { shopDomain, accessToken, lowStockThreshold = 5 } = options;
+
+  const baseUrl = `https://${shopDomain}/admin/api/${API_VERSION}`;
+  const headers = {
+    'X-Shopify-Access-Token': accessToken,
+    'Content-Type': 'application/json',
+  };
+
+  const oosProducts: OOSProduct[] = [];
+  const lowStockProducts: OOSProduct[] = [];
+  let totalProducts = 0;
+  let totalVariants = 0;
+
+  let pageInfo: string | null = null;
+  let hasMore = true;
+
+  while (hasMore) {
+    const url: string = pageInfo
+      ? `${baseUrl}/products.json?limit=250&page_info=${pageInfo}`
+      : `${baseUrl}/products.json?limit=250`;
+
+    const resp: Response = await fetch(url, { headers });
+
+    if (!resp.ok) {
+      throw new Error(`Shopify API Error: ${resp.status} ${resp.statusText}`);
+    }
+
+    const data = await resp.json() as { products?: any[] };
+    const products = data.products || [];
+
+    for (const product of products) {
+      totalProducts++;
+      const variants = product.variants || [];
+
+      for (const variant of variants) {
+        totalVariants++;
+        const qty = variant.inventory_quantity ?? 0;
+
+        const oosItem: OOSProduct = {
+          productId: String(product.id),
+          variantId: String(variant.id),
+          title: product.title || 'Unknown',
+          variantTitle: variant.title || 'Default',
+          sku: variant.sku || '',
+          inventoryQuantity: qty,
+          handle: product.handle || '',
+          productUrl: `https://${shopDomain}/products/${product.handle}`,
+        };
+
+        if (qty <= 0) {
+          oosProducts.push(oosItem);
+        } else if (qty < lowStockThreshold) {
+          lowStockProducts.push(oosItem);
+        }
+      }
+    }
+
+    // Handle pagination via Link header
+    const linkHeader: string | null = resp.headers.get('Link');
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      const match: RegExpMatchArray | null = linkHeader.match(/<[^>]*page_info=([^>&]*)[^>]*>;\s*rel="next"/);
+      pageInfo = match ? match[1] : null;
+      hasMore = !!pageInfo;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return {
+    capturedAt: new Date().toISOString(),
+    shopDomain,
+    totalProducts,
+    totalVariants,
+    oosProducts,
+    lowStockProducts,
+  };
+}
+
+/**
+ * Quick check: Get only fully OOS products (all variants out of stock)
+ * More efficient for daily watchdog checks
+ */
+export async function fetchFullyOOSProducts(options: FetchInventoryOptions): Promise<{
+  products: Array<{
+    productId: string;
+    title: string;
+    handle: string;
+    productUrl: string;
+    variantCount: number;
+  }>;
+  totalChecked: number;
+}> {
+  const { shopDomain, accessToken } = options;
+
+  const baseUrl = `https://${shopDomain}/admin/api/${API_VERSION}`;
+  const headers = {
+    'X-Shopify-Access-Token': accessToken,
+    'Content-Type': 'application/json',
+  };
+
+  const fullyOOS: Array<{
+    productId: string;
+    title: string;
+    handle: string;
+    productUrl: string;
+    variantCount: number;
+  }> = [];
+  let totalChecked = 0;
+
+  let pageInfo: string | null = null;
+  let hasMore = true;
+
+  while (hasMore) {
+    const url: string = pageInfo
+      ? `${baseUrl}/products.json?limit=250&page_info=${pageInfo}`
+      : `${baseUrl}/products.json?limit=250`;
+
+    const resp: Response = await fetch(url, { headers });
+
+    if (!resp.ok) {
+      throw new Error(`Shopify API Error: ${resp.status} ${resp.statusText}`);
+    }
+
+    const data = await resp.json() as { products?: any[] };
+    const products = data.products || [];
+
+    for (const product of products) {
+      totalChecked++;
+      const variants = product.variants || [];
+
+      // Check if ALL variants are OOS
+      const allOOS = variants.length > 0 && variants.every((v: any) => (v.inventory_quantity ?? 0) <= 0);
+
+      if (allOOS) {
+        fullyOOS.push({
+          productId: String(product.id),
+          title: product.title || 'Unknown',
+          handle: product.handle || '',
+          productUrl: `https://${shopDomain}/products/${product.handle}`,
+          variantCount: variants.length,
+        });
+      }
+    }
+
+    // Handle pagination
+    const linkHeader: string | null = resp.headers.get('Link');
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      const match: RegExpMatchArray | null = linkHeader.match(/<[^>]*page_info=([^>&]*)[^>]*>;\s*rel="next"/);
+      pageInfo = match ? match[1] : null;
+      hasMore = !!pageInfo;
+    } else {
+      hasMore = false;
+    }
+  }
+
+  return { products: fullyOOS, totalChecked };
 }
 
 // ============ HELPERS ============

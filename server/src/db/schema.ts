@@ -405,6 +405,14 @@ export function createTables(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS shopify_tokens (
+      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      encrypted_access_token TEXT NOT NULL,
+      shop_domain TEXT NOT NULL,
+      shop_name TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS url_analysis_cache (
       url TEXT PRIMARY KEY,
       result_json TEXT NOT NULL,
