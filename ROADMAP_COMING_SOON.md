@@ -36,18 +36,32 @@
 
 ---
 
-### 2. Shopify Integration (P0 - Blocked)
+### 2. Shopify Integration (P0 - Code Ready, OAuth Blocked)
 
 **What LP implies:**
 > Product-level intelligence, OOS detection, wasted spend on wrong products
 
 **What's built:**
-- OOS Detector code exists
-- Matching logic ready
+- ✅ Full ShopifyClient service (ported from smashed.agency)
+  - Products with inventory data
+  - Orders with line items, refunds, discounts
+  - Customers with lifetime value
+  - Abandoned checkouts
+  - Proper pagination + rate limiting
+- ✅ Shopify routes prepared (`/shopify/*`)
+- ✅ OAuth flow code ready (needs SHOPIFY_API_KEY, SHOPIFY_API_SECRET)
+- ✅ OOS Detector integrated with ShopifyClient
+- ✅ Database table `shopify_tokens` exists
 
-**What's missing:**
-- Shopify OAuth flow (blocked by auth security fixes)
-- Live connection to client's Shopify store
+**What's BLOCKED:**
+- Shopify OAuth flow activation (waiting on auth security fix)
+- Once fixed, just add env vars and it works
+
+**Setup when ready:**
+```bash
+SHOPIFY_API_KEY=your_shopify_app_key
+SHOPIFY_API_SECRET=your_shopify_app_secret
+```
 
 **Why it matters for ads:**
 > "We connect to your Shopify. We see which products are out of stock. We automatically stop wasting money on them. No other tool does this."

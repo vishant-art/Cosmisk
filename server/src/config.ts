@@ -52,6 +52,9 @@ export const config = {
   whatsappPhoneNumberId: env['WHATSAPP_PHONE_NUMBER_ID'] || '',
   whatsappBusinessAccountId: env['WHATSAPP_BUSINESS_ACCOUNT_ID'] || '',
   whatsappAccessToken: env['WHATSAPP_ACCESS_TOKEN'] || '',
+  // Shopify OAuth (BLOCKED until auth security fix - see ROADMAP_COMING_SOON.md)
+  shopifyApiKey: env['SHOPIFY_API_KEY'] || '',
+  shopifyApiSecret: env['SHOPIFY_API_SECRET'] || '',
   slackAppToken: env['SLACK_APP_TOKEN'] || '',
   slackSigningSecret: env['SLACK_SIGNING_SECRET'] || '',
   n8nBriefingWebhook: env['N8N_BRIEFING_WEBHOOK'] || '',

@@ -36,6 +36,7 @@ import { creativeStudioRoutes } from './routes/creative-studio.js';
 import { auditRoutes } from './routes/audits.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { adCommandRoutes } from './routes/ad-command.js';
+import { shopifyRoutes } from './routes/shopify.js';
 import { initializeScheduler } from './services/audit-scheduler.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
@@ -242,6 +243,7 @@ await app.register(creativeStudioRoutes, { prefix: '/creative-studio' });
 await app.register(auditRoutes, { prefix: '/audits' });
 await app.register(scheduleRoutes, { prefix: '/schedules' });
 await app.register(adCommandRoutes, { prefix: '/ad-command' });
+await app.register(shopifyRoutes, { prefix: '/shopify' });
 
 // Initialize audit scheduler
 try {
