@@ -75,6 +75,7 @@ export const routes: Routes = [
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       { path: 'dashboard', loadComponent: () => import('./features/dashboard/dashboard.component') },
+      { path: 'ad-command', loadChildren: () => import('./features/ad-command/ad-command.routes') },
       { path: 'creative-cockpit', loadChildren: () => import('./features/creative-cockpit/creative-cockpit.routes') },
       { path: 'director-lab', loadComponent: () => import('./features/director-lab/director-lab.component') },
       { path: 'ugc-studio', loadComponent: () => import('./features/ugc-studio/ugc-studio.component') },

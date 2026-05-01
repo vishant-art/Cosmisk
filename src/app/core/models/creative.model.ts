@@ -14,7 +14,7 @@ export type AudioDnaType =
   | 'Hindi Female VO' | 'Hindi Male VO' | 'English Female VO' | 'English Male VO'
   | 'Upbeat Music' | 'Emotional Music' | 'No Audio';
 
-export type CreativeStatus = 'winning' | 'stable' | 'fatiguing' | 'new';
+export type CreativeStatus = 'winning' | 'stable' | 'fatiguing' | 'new' | 'scaling' | 'healthy' | 'watch' | 'dead';
 export type CreativeFormat = 'video' | 'static' | 'carousel';
 
 export interface CreativeDna {

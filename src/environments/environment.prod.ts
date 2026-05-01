@@ -79,6 +79,12 @@ export const environment = {
   AUTOMATIONS_ACTIVITY: 'automations/activity',
   AUTOMATIONS_RUN: 'automations/run',
 
+  // Audit System
+  AUDIT_RUN: 'audits/run',
+  AUDIT_LIST: 'audits',
+  AUDIT_DETAIL: 'audits',
+  AUDIT_HISTORY: 'audits/brand',
+
   SETTINGS_PROFILE: 'settings/profile',
   SETTINGS_CHANGE_PASSWORD: 'settings/change-password',
   SETTINGS_ACTIVITY: 'settings/activity',
@@ -174,4 +180,11 @@ export const environment = {
   SWIPE_FILE_LIST: 'swipe-file/list',
   SWIPE_FILE_SAVE: 'swipe-file/save',
   SWIPE_FILE_DELETE: 'swipe-file',
+
+  // Ad Command
+  AD_COMMAND_SUMMARY: 'ad-command/summary',
+  AD_COMMAND_CREATIVES: 'ad-command/creatives',
+  AD_COMMAND_FATIGUE: 'ad-command/fatigue',
+  AD_COMMAND_BRIEFS: 'ad-command/briefs',
+  AD_COMMAND_GENERATE_BRIEF: 'ad-command/briefs/generate',
 };

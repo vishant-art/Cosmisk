@@ -501,4 +501,24 @@ export function createTables(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at DESC);
   `);
+
+  // Creative briefs — AI-generated creative briefs for Ad Command
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creative_briefs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_id TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      product_id TEXT,
+      format TEXT NOT NULL,
+      length TEXT,
+      hook_suggestion TEXT NOT NULL,
+      cta_suggestion TEXT,
+      reasoning TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_briefs_user ON creative_briefs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_briefs_account ON creative_briefs(account_id);
+  `);
 }

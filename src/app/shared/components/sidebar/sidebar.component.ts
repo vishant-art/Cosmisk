@@ -89,6 +89,8 @@ interface NavGroup {
                           <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
                           <span class="text-[9px] font-mono text-green-400/70">LIVE</span>
                         </span>
+                      } @else if (item.newBadge) {
+                        <span class="ml-auto px-1.5 py-0.5 text-[9px] font-bold font-mono bg-green-500/15 text-green-500 rounded">NEW</span>
                       } @else if (item.pro) {
                         <span class="ml-auto px-1.5 py-0.5 text-[9px] font-bold font-mono bg-accent/15 text-accent rounded">PRO</span>
                       }
@@ -234,6 +236,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
       title: 'Command',
       items: [
         { label: 'Dashboard', icon: 'layout-dashboard', route: '/app/dashboard' },
+        { label: 'Ad Command', icon: 'command', route: '/app/ad-command', newBadge: true },
         { label: 'Creative Cockpit', icon: 'palette', route: '/app/creative-cockpit' },
         { label: 'Director Lab', icon: 'clapperboard', route: '/app/director-lab' },
         { label: 'Creative Studio', icon: 'video', route: '/app/ugc-studio' },

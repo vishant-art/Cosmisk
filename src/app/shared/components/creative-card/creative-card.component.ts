@@ -104,10 +104,15 @@ export class CreativeCardComponent {
 
   get statusDotClass(): string {
     switch (this.creative.status) {
-      case 'winning': return 'bg-green-500';
-      case 'stable': return 'bg-gray-400';
+      case 'winning':
+      case 'scaling': return 'bg-green-500';
+      case 'stable':
+      case 'healthy': return 'bg-gray-400';
       case 'fatiguing': return 'bg-red-500';
       case 'new': return 'bg-blue-500';
+      case 'watch': return 'bg-yellow-500';
+      case 'dead': return 'bg-red-700';
+      default: return 'bg-gray-400';
     }
   }
 

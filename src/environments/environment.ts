@@ -190,4 +190,11 @@ export const environment = {
   SWIPE_FILE_LIST: 'swipe-file/list',
   SWIPE_FILE_SAVE: 'swipe-file/save',
   SWIPE_FILE_DELETE: 'swipe-file',        // DELETE /:id
+
+  // Ad Command
+  AD_COMMAND_SUMMARY: 'ad-command/summary',
+  AD_COMMAND_CREATIVES: 'ad-command/creatives',
+  AD_COMMAND_FATIGUE: 'ad-command/fatigue',
+  AD_COMMAND_BRIEFS: 'ad-command/briefs',
+  AD_COMMAND_GENERATE_BRIEF: 'ad-command/briefs/generate',
 };

@@ -26,19 +26,29 @@ export class StatusBadgeComponent {
 
   get dotClass(): string {
     switch (this.status) {
-      case 'winning': return 'bg-green-500';
-      case 'stable': return 'bg-gray-400';
+      case 'winning':
+      case 'scaling': return 'bg-green-500';
+      case 'stable':
+      case 'healthy': return 'bg-gray-400';
       case 'fatiguing': return 'bg-red-500';
       case 'new': return 'bg-blue-500';
+      case 'watch': return 'bg-yellow-500';
+      case 'dead': return 'bg-red-700';
+      default: return 'bg-gray-400';
     }
   }
 
   get textClass(): string {
     switch (this.status) {
-      case 'winning': return 'text-green-700';
-      case 'stable': return 'text-gray-600';
+      case 'winning':
+      case 'scaling': return 'text-green-700';
+      case 'stable':
+      case 'healthy': return 'text-gray-600';
       case 'fatiguing': return 'text-red-600';
       case 'new': return 'text-blue-600';
+      case 'watch': return 'text-yellow-600';
+      case 'dead': return 'text-red-800';
+      default: return 'text-gray-600';
     }
   }
 }
