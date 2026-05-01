@@ -28,9 +28,10 @@ function startAgentCrons() {
   if (cronStarted) return;
   cronStarted = true;
 
-  // Watchdog: daily at 1:30 AM UTC (7:00 AM IST)
-  cron.schedule('30 1 * * *', async () => {
-    logger.info('[Brain] Starting daily watchdog...');
+  // Watchdog: every 6 hours for true 24/7 monitoring
+  // Times: 01:30, 07:30, 13:30, 19:30 UTC
+  cron.schedule('30 1,7,13,19 * * *', async () => {
+    logger.info('[Brain] Starting watchdog (24/7 monitoring)...');
     watchdogRunning = true;
     try {
       const result = await runWatchdog();
@@ -130,7 +131,7 @@ function startAgentCrons() {
     }
   });
 
-  logger.info('[Brain] Crons scheduled: watchdog 1:30 UTC, briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, warmup every 2h, decay Sun 3:00 UTC');
+  logger.info('[Brain] Crons scheduled: watchdog every 6h (24/7), briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, warmup every 2h, decay Sun 3:00 UTC');
 }
 
 /* ------------------------------------------------------------------ */

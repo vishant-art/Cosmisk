@@ -16,8 +16,10 @@ function startAutopilotCron() {
   if (cronStarted) return;
   cronStarted = true;
 
-  cron.schedule('0 6 * * *', async () => {
-    logger.info('[Autopilot] Starting daily analysis...');
+  // Run every 4 hours for true 24/7 monitoring
+  // Times: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
+  cron.schedule('0 */4 * * *', async () => {
+    logger.info('[Autopilot] Starting 24/7 monitoring check...');
     try {
       const alertCount = await runAutopilot();
       logger.info(`[Autopilot] Completed. Generated ${alertCount} alerts.`);
@@ -26,7 +28,7 @@ function startAutopilotCron() {
     }
   });
 
-  logger.info('[Autopilot] Cron scheduled for 6:00 AM UTC daily');
+  logger.info('[Autopilot] Cron scheduled every 4 hours (24/7 monitoring)');
 }
 
 /* ------------------------------------------------------------------ */
