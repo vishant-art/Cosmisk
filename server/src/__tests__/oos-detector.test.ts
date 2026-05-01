@@ -32,15 +32,20 @@ vi.mock('../services/meta-api.js', () => ({
 import {
   detectOOSAds,
   detectCatalogOOS,
+  detectEnhancedOOS,
   runOOSCheck,
   type OOSAdMatch,
   type OOSReport,
   type CatalogOOSReport,
+  type EnhancedOOSReport,
 } from '../services/oos-detector.js';
 import { fetchFullyOOSProducts } from '../audit/shopify-ingestion.js';
 
 // Get typed mocks
 const mockFetchFullyOOSProducts = fetchFullyOOSProducts as Mock;
+
+// Mock global fetch for detectEnhancedOOS tests
+const mockFetch = vi.fn();
 
 describe('OOS Detector', () => {
   beforeEach(() => {
@@ -643,8 +648,10 @@ describe('OOS Detector', () => {
       expect(result.topMatches).toHaveLength(5);
     });
 
-    it('includes catalog OOS when catalogId provided', async () => {
-      mockFetchFullyOOSProducts.mockResolvedValueOnce({ products: [] });
+    it('includes catalog OOS when catalogId provided (without Shopify creds)', async () => {
+      // This test uses catalog-only detection (no Shopify verification)
+      // When shopify creds are NOT provided with catalogId, it uses detectCatalogOOS
+      mockFetchFullyOOSProducts.mockResolvedValueOnce({ products: [] }); // For detectOOSAds
       mockMetaGet
         .mockResolvedValueOnce({ data: [] }) // ads for detectOOSAds (no ads = no insights call)
         .mockResolvedValueOnce({
@@ -661,8 +668,12 @@ describe('OOS Detector', () => {
           data: [{ spend: '1000' }],
         }); // catalog insights
 
+      // Use only Meta credentials, no Shopify - to test catalog-only path
       const result = await runOOSCheck({
-        ...baseOptions,
+        shopDomain: '',  // Empty = no Shopify creds
+        shopifyToken: '',
+        metaAccountId: baseOptions.metaAccountId,
+        metaToken: baseOptions.metaToken,
         catalogId: 'catalog_123',
       });
 
@@ -681,7 +692,9 @@ describe('OOS Detector', () => {
       expect(result.summary).toContain('Shopify API down');
     });
 
-    it('continues if catalog check fails', async () => {
+    it('continues if catalog check fails (catalog-only path)', async () => {
+      // This test uses catalog-only detection (no Shopify creds)
+      // When catalog check fails, it should still return name-based results
       mockFetchFullyOOSProducts.mockResolvedValueOnce({
         products: [
           { productId: 'p1', title: 'OOS Product', productUrl: '/products/oos' },
@@ -701,14 +714,324 @@ describe('OOS Detector', () => {
         })
         .mockRejectedValueOnce(new Error('Catalog API error')); // catalog check fails
 
+      // Use only Meta credentials, no Shopify - to test catalog-only path
       const result = await runOOSCheck({
-        ...baseOptions,
+        shopDomain: '',
+        shopifyToken: '',
+        metaAccountId: baseOptions.metaAccountId,
+        metaToken: baseOptions.metaToken,
         catalogId: 'catalog_123',
       });
 
       expect(result.hasIssues).toBe(true);
       expect(result.wastedSpend).toBe(200);
       expect(result.catalogOOS).toBeUndefined();
+    });
+  });
+
+  // ============ ENHANCED OOS DETECTION TESTS ============
+
+  describe('detectEnhancedOOS', () => {
+    const baseOptions = {
+      catalogId: 'catalog_123',
+      metaAccountId: 'act_123',
+      metaToken: 'meta_token',
+      shopDomain: 'test-store.myshopify.com',
+      shopifyToken: 'shopify_token',
+      days: 7, // Use 7 days to minimize weekly chunks
+    };
+
+    // Helper to create mock fetch responses
+    const createMockFetchResponse = (data: any, headers: Record<string, string> = {}) => ({
+      ok: true,
+      json: async () => data,
+      headers: {
+        get: (name: string) => headers[name] || null,
+      },
+    });
+
+    beforeEach(() => {
+      // Use fake timers to skip polling delays
+      vi.useFakeTimers();
+
+      // Reset and setup global fetch mock
+      mockFetch.mockReset();
+      vi.stubGlobal('fetch', mockFetch);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    // Helper to advance timers and flush promises
+    const flushPromisesAndTimers = async () => {
+      await vi.runAllTimersAsync();
+    };
+
+    it('returns enhanced OOS report structure', async () => {
+      // Mock all fetch calls - catalog, async report create, status, results, shopify
+      mockFetch.mockImplementation(async (url: string) => {
+        const urlStr = url.toString();
+        if (urlStr.includes('/products')) {
+          return createMockFetchResponse({
+            data: [
+              { id: 'cat1', name: 'Product A', retailer_id: 'var_1', retailer_product_group_id: 'prod_1', availability: 'out of stock' },
+            ],
+          });
+        }
+        if (urlStr.includes('/insights') && !urlStr.includes('report_')) {
+          return createMockFetchResponse({ report_run_id: 'report_123' });
+        }
+        if (urlStr.includes('report_') && urlStr.includes('async_status')) {
+          return createMockFetchResponse({ async_status: 'Job Completed', async_percent_completion: 100 });
+        }
+        if (urlStr.includes('report_') && urlStr.includes('/insights')) {
+          return createMockFetchResponse({
+            data: [{ product_id: 'var_1', spend: '500', impressions: '5000', clicks: '50' }],
+          });
+        }
+        if (urlStr.includes('/orders.json')) {
+          return createMockFetchResponse({ orders: [] });
+        }
+        return createMockFetchResponse({ data: [] });
+      });
+
+      const resultPromise = detectEnhancedOOS(baseOptions);
+      await flushPromisesAndTimers();
+      const result = await resultPromise;
+
+      expect(result).toHaveProperty('capturedAt');
+      expect(result).toHaveProperty('accountId', 'act_123');
+      expect(result).toHaveProperty('catalogId', 'catalog_123');
+      expect(result).toHaveProperty('dateRange');
+      expect(result).toHaveProperty('totalOOSProducts');
+      expect(result).toHaveProperty('totalAdSpend');
+      expect(result).toHaveProperty('verifiedWastedSpend');
+      expect(result).toHaveProperty('productsWithShopifySales');
+      expect(result).toHaveProperty('productsNoSales');
+      expect(result).toHaveProperty('products');
+    });
+
+    it('identifies OOS products with no Shopify sales as verified wasted', async () => {
+      // Track report ID across calls
+      let reportCreated = false;
+
+      mockFetch.mockImplementation(async (url: string) => {
+        const urlStr = url.toString();
+
+        // Catalog products
+        if (urlStr.includes('/products')) {
+          return createMockFetchResponse({
+            data: [{ id: 'cat1', name: 'OOS Product', retailer_id: 'var_1', retailer_product_group_id: 'prod_1', availability: 'out of stock' }],
+          });
+        }
+
+        // Shopify orders
+        if (urlStr.includes('/orders.json')) {
+          return createMockFetchResponse({ orders: [] });
+        }
+
+        // Create async report (POST to /insights)
+        if (urlStr.includes('/insights') && !reportCreated) {
+          reportCreated = true;
+          return createMockFetchResponse({ report_run_id: 'report_123' });
+        }
+
+        // Report status check (contains report ID and async_status)
+        if (urlStr.includes('async_status')) {
+          return createMockFetchResponse({ async_status: 'Job Completed', async_percent_completion: 100 });
+        }
+
+        // Report results (contains /insights after report ID)
+        if (urlStr.includes('/insights') && reportCreated) {
+          return createMockFetchResponse({
+            data: [{ product_id: 'var_1', spend: '1000', impressions: '10000', clicks: '100' }],
+          });
+        }
+
+        return createMockFetchResponse({ data: [] });
+      });
+
+      const resultPromise = detectEnhancedOOS(baseOptions);
+      await flushPromisesAndTimers();
+      const result = await resultPromise;
+
+      expect(result.totalOOSProducts).toBe(1);
+      expect(result.productsNoSales).toBe(1);
+      expect(result.verifiedWastedSpend).toBe(1000);
+      expect(result.products[0].verifiedWasted).toBe(true);
+    });
+
+    it('does not flag OOS products with Shopify sales as wasted', async () => {
+      let reportCreated = false;
+
+      mockFetch.mockImplementation(async (url: string) => {
+        const urlStr = url.toString();
+
+        if (urlStr.includes('/products')) {
+          return createMockFetchResponse({
+            data: [{ id: 'cat1', name: 'OOS But Sold', retailer_id: 'var_1', retailer_product_group_id: 'prod_1', availability: 'out of stock' }],
+          });
+        }
+
+        if (urlStr.includes('/orders.json')) {
+          return createMockFetchResponse({
+            orders: [{ line_items: [{ product_id: 'prod_1', variant_id: 'var_1', price: '500', quantity: 2 }] }],
+          });
+        }
+
+        if (urlStr.includes('/insights') && !reportCreated) {
+          reportCreated = true;
+          return createMockFetchResponse({ report_run_id: 'report_123' });
+        }
+
+        if (urlStr.includes('async_status')) {
+          return createMockFetchResponse({ async_status: 'Job Completed', async_percent_completion: 100 });
+        }
+
+        if (urlStr.includes('/insights') && reportCreated) {
+          return createMockFetchResponse({
+            data: [{ product_id: 'var_1', spend: '500', impressions: '5000', clicks: '50' }],
+          });
+        }
+
+        return createMockFetchResponse({ data: [] });
+      });
+
+      const resultPromise = detectEnhancedOOS(baseOptions);
+      await flushPromisesAndTimers();
+      const result = await resultPromise;
+
+      expect(result.totalOOSProducts).toBe(1);
+      expect(result.productsWithShopifySales).toBe(1);
+      expect(result.productsNoSales).toBe(0);
+      expect(result.verifiedWastedSpend).toBe(0);
+      expect(result.products[0].verifiedWasted).toBe(false);
+      expect(result.products[0].shopifyOrders).toBeGreaterThan(0);
+    });
+
+    it('skips in-stock products', async () => {
+      let reportCreated = false;
+
+      mockFetch.mockImplementation(async (url: string) => {
+        const urlStr = url.toString();
+
+        if (urlStr.includes('/products')) {
+          return createMockFetchResponse({
+            data: [{ id: 'cat1', name: 'Available Product', retailer_id: 'var_1', retailer_product_group_id: 'prod_1', availability: 'in stock' }],
+          });
+        }
+
+        if (urlStr.includes('/orders.json')) {
+          return createMockFetchResponse({ orders: [] });
+        }
+
+        if (urlStr.includes('/insights') && !reportCreated) {
+          reportCreated = true;
+          return createMockFetchResponse({ report_run_id: 'report_123' });
+        }
+
+        if (urlStr.includes('async_status')) {
+          return createMockFetchResponse({ async_status: 'Job Completed', async_percent_completion: 100 });
+        }
+
+        if (urlStr.includes('/insights') && reportCreated) {
+          return createMockFetchResponse({
+            data: [{ product_id: 'var_1', spend: '1000', impressions: '10000', clicks: '100' }],
+          });
+        }
+
+        return createMockFetchResponse({ data: [] });
+      });
+
+      const resultPromise = detectEnhancedOOS(baseOptions);
+      await flushPromisesAndTimers();
+      const result = await resultPromise;
+
+      expect(result.totalOOSProducts).toBe(0);
+      expect(result.products).toHaveLength(0);
+    });
+
+    it('handles empty catalog gracefully', async () => {
+      let reportCreated = false;
+
+      mockFetch.mockImplementation(async (url: string) => {
+        const urlStr = url.toString();
+
+        if (urlStr.includes('/products')) {
+          return createMockFetchResponse({ data: [] });
+        }
+
+        if (urlStr.includes('/orders.json')) {
+          return createMockFetchResponse({ orders: [] });
+        }
+
+        if (urlStr.includes('/insights') && !reportCreated) {
+          reportCreated = true;
+          return createMockFetchResponse({ report_run_id: 'report_123' });
+        }
+
+        if (urlStr.includes('async_status')) {
+          return createMockFetchResponse({ async_status: 'Job Completed', async_percent_completion: 100 });
+        }
+
+        if (urlStr.includes('/insights') && reportCreated) {
+          return createMockFetchResponse({ data: [] });
+        }
+
+        return createMockFetchResponse({ data: [] });
+      });
+
+      const resultPromise = detectEnhancedOOS(baseOptions);
+      await flushPromisesAndTimers();
+      const result = await resultPromise;
+
+      expect(result.totalOOSProducts).toBe(0);
+      expect(result.totalAdSpend).toBe(0);
+      expect(result.products).toHaveLength(0);
+    });
+
+    it('works without Shopify credentials', async () => {
+      let reportCreated = false;
+
+      mockFetch.mockImplementation(async (url: string) => {
+        const urlStr = url.toString();
+
+        if (urlStr.includes('/products')) {
+          return createMockFetchResponse({
+            data: [{ id: 'cat1', name: 'OOS Product', retailer_id: 'var_1', retailer_product_group_id: 'prod_1', availability: 'out of stock' }],
+          });
+        }
+
+        if (urlStr.includes('/insights') && !reportCreated) {
+          reportCreated = true;
+          return createMockFetchResponse({ report_run_id: 'report_123' });
+        }
+
+        if (urlStr.includes('async_status')) {
+          return createMockFetchResponse({ async_status: 'Job Completed', async_percent_completion: 100 });
+        }
+
+        if (urlStr.includes('/insights') && reportCreated) {
+          return createMockFetchResponse({
+            data: [{ product_id: 'var_1', spend: '500', impressions: '5000', clicks: '50' }],
+          });
+        }
+
+        return createMockFetchResponse({ data: [] });
+      });
+
+      const resultPromise = detectEnhancedOOS({
+        ...baseOptions,
+        shopDomain: undefined,
+        shopifyToken: undefined,
+      });
+      await flushPromisesAndTimers();
+      const result = await resultPromise;
+
+      expect(result.totalOOSProducts).toBe(1);
+      expect(result.verifiedWastedSpend).toBe(500);
     });
   });
 });
