@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
 import { getDb } from '../db/index.js';
 import { runAutopilot } from '../services/autopilot-engine.js';
+import { sendWhatsAppNotification, type Alert } from '../services/notifications.js';
 import type { AutopilotAlertRow } from '../types/index.js';
 import { validate, autopilotAlertsQuerySchema, autopilotMarkReadSchema, idParamSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
@@ -117,5 +118,30 @@ export async function autopilotRoutes(app: FastifyInstance) {
       return reply.status(404).send({ success: false, error: 'Alert not found' });
     }
     return { success: true };
+  });
+
+  // POST /autopilot/test-whatsapp — test WhatsApp notification (admin only)
+  app.post('/test-whatsapp', { preHandler: [app.authenticate] }, async (request, reply) => {
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({ success: false, error: 'Admin access required' });
+    }
+
+    const { phone } = request.body as { phone?: string };
+    if (!phone) {
+      return reply.status(400).send({ success: false, error: 'Phone number required (with country code, e.g., +919876543210)' });
+    }
+
+    const testAlert: Alert = {
+      type: 'test',
+      title: 'WhatsApp Test Alert',
+      content: 'If you received this message, WhatsApp alerts are working correctly.',
+      severity: 'info',
+    };
+
+    const sent = await sendWhatsAppNotification(phone, testAlert);
+    return {
+      success: sent,
+      message: sent ? 'Test message sent successfully' : 'Failed to send test message. Check server logs.',
+    };
   });
 }

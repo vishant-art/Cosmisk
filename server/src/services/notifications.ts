@@ -1,6 +1,11 @@
 /**
- * Notification dispatch — Slack webhooks + email (Resend API).
+ * Notification dispatch — Slack webhooks, email (Resend API), WhatsApp (Meta Business API).
  * Looks up user preferences and sends to configured channels.
+ *
+ * WhatsApp setup:
+ * 1. Create WhatsApp Business account at business.facebook.com
+ * 2. Set env vars: WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN
+ * 3. Users configure their number via notification_preferences JSON
  */
 
 import { config } from '../config.js';
@@ -23,6 +28,8 @@ export interface Alert {
 interface NotificationPreferences {
   slack_webhook?: string;
   email_alerts?: boolean;
+  whatsapp_number?: string;  // User's WhatsApp number (with country code, e.g., +919876543210)
+  whatsapp_alerts?: boolean;
   alert_types?: string[];
 }
 
@@ -114,6 +121,62 @@ async function sendEmailNotification(to: string, alert: Alert): Promise<boolean>
 }
 
 /* ------------------------------------------------------------------ */
+/*  WhatsApp notification (Meta Business API)                          */
+/* ------------------------------------------------------------------ */
+
+export async function sendWhatsAppNotification(toPhone: string, alert: Alert): Promise<boolean> {
+  if (!config.whatsappPhoneNumberId || !config.whatsappAccessToken) {
+    logger.warn('[Notifications] WhatsApp not configured (missing WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN)');
+    return false;
+  }
+
+  // Clean phone number (remove +, spaces, dashes)
+  const cleanPhone = toPhone.replace(/[^\d]/g, '');
+
+  const severityEmoji: Record<string, string> = {
+    info: 'ℹ️',
+    warning: '⚠️',
+    critical: '🚨',
+  };
+
+  const message = `${severityEmoji[alert.severity] || ''} *${alert.title}*\n\n${alert.content}\n\n_Type: ${alert.type} | Severity: ${alert.severity}_`;
+
+  try {
+    const url = `https://graph.facebook.com/v22.0/${config.whatsappPhoneNumberId}/messages`;
+    const resp = await safeFetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.whatsappAccessToken}`,
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'text',
+        text: {
+          preview_url: false,
+          body: message,
+        },
+      }),
+      service: 'WhatsApp Business API',
+      timeoutMs: 15_000,
+    });
+
+    if (!resp.ok) {
+      const errorBody = await resp.text();
+      logger.error({ status: resp.status, body: errorBody }, '[Notifications] WhatsApp API error');
+      return false;
+    }
+
+    return true;
+  } catch (err: unknown) {
+    logger.error({ err }, '[Notifications] WhatsApp send failed');
+    return false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Public: dispatch alert to user's configured channels               */
 /* ------------------------------------------------------------------ */
 
@@ -149,6 +212,12 @@ export async function notifyAlert(userId: string, alert: Alert): Promise<void> {
   const shouldEmail = prefs.email_alerts ?? (alert.severity === 'critical');
   if (shouldEmail && user.email) {
     promises.push(sendEmailNotification(user.email, alert));
+  }
+
+  // WhatsApp: if user has whatsapp_alerts enabled (default true for critical)
+  const shouldWhatsApp = prefs.whatsapp_alerts ?? (alert.severity === 'critical');
+  if (shouldWhatsApp && prefs.whatsapp_number) {
+    promises.push(sendWhatsAppNotification(prefs.whatsapp_number, alert));
   }
 
   if (promises.length > 0) {

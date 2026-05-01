@@ -9,7 +9,7 @@
 
 | # | Function | LP Promises | Current Status | What's Missing |
 |---|----------|-------------|----------------|----------------|
-| 1 | 24/7 Monitoring | "Watches continuously" | ⚠️ Manual trigger | Automated cron jobs |
+| 1 | 24/7 Monitoring | "Watches continuously" | ✅ Built | Every 4-6 hours cron |
 | 2 | Fatigue Prediction | "48-72 hours ahead" | ✅ Built | - |
 | 3 | Pattern Learning | "Learns what works" | ⚠️ Partial | Deeper pattern analysis |
 | 4 | Brief Generation | "Auto-creates briefs" | ✅ Built | - |
@@ -20,19 +20,16 @@
 
 ## What We're Building Next
 
-### 1. True 24/7 Monitoring (P1)
+### 1. True 24/7 Monitoring (P1) ✅ COMPLETE
 
 **What LP says:**
 > "It watches your CTR, CPM, frequency continuously"
 
 **What's built:**
-- Watchdog agent exists but runs on-demand
-- User has to trigger or check dashboard
-
-**What we're adding:**
-- Automated cron job running every 4-6 hours
-- Real-time alerts via WhatsApp when issues detected
-- No manual checking needed
+- ✅ Watchdog agent runs every 6 hours (01:30, 07:30, 13:30, 19:30 UTC)
+- ✅ Autopilot engine runs every 4 hours (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
+- ✅ Automated alerts to WhatsApp, Slack, Email when issues detected
+- ✅ No manual checking needed
 
 **Why it matters for ads:**
 > "You can literally say: The system watches while you sleep. At 3 AM, if your ad starts tanking, you get an alert before you wake up."
@@ -91,24 +88,22 @@
 
 ---
 
-### 4. WhatsApp Alerts (P2)
+### 4. WhatsApp Alerts (P2) ✅ COMPLETE
 
 **What LP says:**
 > "Alerts you before performance drops"
 
 **What's built:**
-- Alert generation logic
-- Slack integration (partial)
+- ✅ WhatsApp Business API integration (Meta Graph API)
+- ✅ Slack webhook integration
+- ✅ Email alerts via Resend API
+- ✅ User can configure phone number in settings
+- ✅ Critical alerts auto-send to WhatsApp by default
+- ✅ Test endpoint for admins (`POST /autopilot/test-whatsapp`)
 
-**What's NOT built:**
-- WhatsApp Business API integration
-- Real-time push notifications
-
-**What we're adding:**
-- Connect WhatsApp Business API
-- Send alerts directly to founder's phone
-- Critical alerts = immediate push
-- Daily summary = morning digest
+**Setup required:**
+- Configure env vars: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`
+- User sets `whatsapp_number` in notification_preferences
 
 **Why it matters for ads:**
 > "You're not checking dashboards. Your phone buzzes. 'Hey, your Summer Sale campaign is fatiguing. We've generated 3 replacement briefs. Tap to approve.'"
@@ -158,14 +153,14 @@
 
 ## Priority Order
 
-| Priority | Feature | Why This Order |
-|----------|---------|----------------|
-| **P0** | Shopify Integration | Unlocks product-level intelligence (core value prop) |
-| **P1** | True 24/7 Monitoring | Makes "always watching" claim real |
-| **P2** | WhatsApp Alerts | Delivers the "alert before you notice" promise |
-| **P2** | Approval Workflow UI | Makes "30 min/week" feel effortless |
-| **P2** | Enhanced Pattern Learning | Deepens the "learns over time" moat |
-| **P3** | Creative Engine | The big one - auto-production |
+| Priority | Feature | Status |
+|----------|---------|--------|
+| **P0** | Shopify Integration | ⏸️ Blocked by auth security fix |
+| **P1** | True 24/7 Monitoring | ✅ COMPLETE (cron every 4-6 hrs) |
+| **P2** | WhatsApp Alerts | ✅ COMPLETE (Meta Business API) |
+| **P2** | Approval Workflow UI | 🔜 NEXT - Makes "30 min/week" effortless |
+| **P2** | Enhanced Pattern Learning | 🔜 Deepens the "learns over time" moat |
+| **P3** | Creative Engine | After Shopify - auto-production |
 
 ---
 

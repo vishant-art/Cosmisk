@@ -48,6 +48,10 @@ export const config = {
   elevenLabsApiKey: env['ELEVENLABS_API_KEY'] || '',
   slackWebhookUrl: env['SLACK_WEBHOOK_URL'] || '',
   resendApiKey: env['RESEND_API_KEY'] || '',
+  // WhatsApp Business API (via Meta Graph API)
+  whatsappPhoneNumberId: env['WHATSAPP_PHONE_NUMBER_ID'] || '',
+  whatsappBusinessAccountId: env['WHATSAPP_BUSINESS_ACCOUNT_ID'] || '',
+  whatsappAccessToken: env['WHATSAPP_ACCESS_TOKEN'] || '',
   slackAppToken: env['SLACK_APP_TOKEN'] || '',
   slackSigningSecret: env['SLACK_SIGNING_SECRET'] || '',
   n8nBriefingWebhook: env['N8N_BRIEFING_WEBHOOK'] || '',
