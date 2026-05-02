@@ -1,0 +1,29 @@
+{
+  "name": "Cosmisk (lean)",
+  "dockerComposeFile": "docker-compose.dev.yml",
+  "service": "cosmisk-dev",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Cosmisk (Fastify + built Angular bundle)",
+      "onAutoForward": "notify"
+    }
+  },
+  "remoteUser": "root",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "Angular.ng-template",
+        "qwtel.sqlite-viewer"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

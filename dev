@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Cosmisk lean devcontainer helper.
+# Run from repo root. Requires: docker, docker compose plugin.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE_FILE="${REPO_ROOT}/.devcontainer/docker-compose.dev.yml"
+SERVICE="cosmisk-dev"
+
+dc() {
+  docker compose -f "${COMPOSE_FILE}" "$@"
+}
+
+dexec() {
+  dc exec -T "${SERVICE}" "$@"
+}
+
+dexec_tty() {
+  dc exec "${SERVICE}" "$@"
+}
+
+ensure_env() {
+  if [ ! -f "${REPO_ROOT}/server/.env" ]; then
+    echo "!! server/.env not found. Bootstrapping from .env.example with random secrets."
+    cp "${REPO_ROOT}/server/.env.example" "${REPO_ROOT}/server/.env"
+    local jwt tek
+    jwt=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+    tek=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${jwt}|" "${REPO_ROOT}/server/.env" || true
+    sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=${tek}|" "${REPO_ROOT}/server/.env" || true
+  fi
+  mkdir -p "${REPO_ROOT}/server/data"
+}
+
+cmd_up() {
+  ensure_env
+  dc up -d --build
+
+  if ! dexec test -d /workspace/node_modules/@angular; then
+    echo "==> First run: installing root deps"
+    dexec bash -lc "cd /workspace && npm install --no-audit --no-fund"
+  fi
+  if ! dexec test -d /workspace/server/node_modules/fastify; then
+    echo "==> First run: installing server deps"
+    dexec bash -lc "cd /workspace/server && npm install --no-audit --no-fund"
+  fi
+
+  if ! dexec test -f /workspace/server/dist/index.js; then
+    cmd_rebuild
+  fi
+
+  cmd_run-migrations || true
+  cmd_start
+  echo
+  echo "==> Cosmisk is up at http://localhost:3000"
+}
+
+cmd_down() {
+  dc down
+}
+
+cmd_rebuild() {
+  echo "==> Rebuilding backend (tsc)"
+  dexec bash -lc "cd /workspace/server && npm run build"
+
+  echo "==> Rebuilding frontend (ng build --configuration production)"
+  dexec bash -lc "cd /workspace && npx ng build --configuration production"
+
+  echo "==> Copying Angular bundle into server/public"
+  dexec bash -lc '
+    mkdir -p /workspace/server/public
+    rm -rf /workspace/server/public/*
+    if [ -d /workspace/dist/cosmisk/browser ]; then
+      cp -r /workspace/dist/cosmisk/browser/* /workspace/server/public/
+    elif [ -d /workspace/dist/cosmisk ]; then
+      cp -r /workspace/dist/cosmisk/* /workspace/server/public/
+    fi
+  '
+  cmd_restart
+}
+
+cmd_start() {
+  echo "==> Starting server (background, inside container)"
+  dexec bash -lc '
+    pkill -f "node dist/index.js" 2>/dev/null || true
+    cd /workspace/server
+    nohup node dist/index.js > /tmp/cosmisk.log 2>&1 &
+    sleep 1
+    echo "    server PID: $(pgrep -f "node dist/index.js" | head -1)"
+  '
+}
+
+cmd_restart() {
+  cmd_start
+}
+
+cmd_stop() {
+  dexec bash -lc 'pkill -f "node dist/index.js" 2>/dev/null || true; echo "    server stopped"'
+}
+
+cmd_logs() {
+  dexec_tty bash -lc 'tail -F /tmp/cosmisk.log'
+}
+
+cmd_shell() {
+  dexec_tty bash -l
+}
+
+cmd_status() {
+  echo "==> Container:"
+  dc ps
+  echo
+  echo "==> Server process:"
+  dexec bash -lc 'pgrep -af "node dist/index.js" || echo "  (not running)"'
+  echo
+  echo "==> Health:"
+  curl -sf http://localhost:3000/health || echo "  (no response on :3000)"
+  echo
+}
+
+cmd_run-migrations() {
+  echo "==> Running one-off schema scripts (idempotent)"
+  dexec bash -lc 'cd /workspace/server && npx tsx scripts/add-audit-tables.ts'
+  dexec bash -lc 'cd /workspace/server && npx tsx scripts/add-shopify-tables.ts'
+}
+
+cmd_reset-db() {
+  read -r -p "!! This wipes server/data/cosmisk.db. Continue? [y/N] " yn
+  case "$yn" in
+    [yY]*)
+      dexec bash -lc 'rm -f /workspace/server/data/cosmisk.db /workspace/server/data/cosmisk.db-shm /workspace/server/data/cosmisk.db-wal'
+      echo "    DB wiped. Run './dev start' to recreate, then './dev run-migrations'."
+      ;;
+    *) echo "    aborted" ;;
+  esac
+}
+
+cmd_test() {
+  dexec bash -lc 'cd /workspace/server && npm test'
+}
+
+cmd_help() {
+  cat <<EOF
+Cosmisk lean devcontainer
+
+Usage: ./dev <command>
+
+Lifecycle:
+  up               build image, install deps (first run), build app, start server
+  down             stop and remove container (volumes + DB persist)
+  rebuild          rebuild backend + frontend, restart server (~45 s)
+  start            (re)start the node server inside the container
+  stop             stop the node server (container keeps running)
+  restart          alias for start
+
+Inspection:
+  status           container + server + /health
+  logs             tail server logs (Ctrl-C to stop)
+  shell            bash shell inside the container
+
+Maintenance:
+  run-migrations   run the one-off audit + shopify table scripts
+  reset-db         wipe SQLite (prompts for confirmation)
+  test             run server vitest suite
+
+Default URL: http://localhost:3000
+EOF
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  up)              cmd_up "$@" ;;
+  down)            cmd_down "$@" ;;
+  rebuild)         cmd_rebuild "$@" ;;
+  start)           cmd_start "$@" ;;
+  stop)            cmd_stop "$@" ;;
+  restart)         cmd_restart "$@" ;;
+  logs)            cmd_logs "$@" ;;
+  shell)           cmd_shell "$@" ;;
+  status)          cmd_status "$@" ;;
+  run-migrations)  cmd_run-migrations "$@" ;;
+  reset-db)        cmd_reset-db "$@" ;;
+  test)            cmd_test "$@" ;;
+  help|-h|--help)  cmd_help ;;
+  *)
+    echo "unknown command: $cmd"
+    echo
+    cmd_help
+    exit 1
+    ;;
+esac
