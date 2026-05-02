@@ -11,9 +11,12 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: production
+      # development: skips the prod boot guard that requires real Anthropic/Meta keys.
+      # The "lean" memory profile comes from skipping tsx watch / ng serve, not from NODE_ENV.
+      NODE_ENV: development
       PORT: "3000"
       DATABASE_PATH: /workspace/server/data/cosmisk.db
+      APP_URL: http://localhost:3000
       PUPPETEER_SKIP_DOWNLOAD: "true"
     env_file:
       - ../server/.env

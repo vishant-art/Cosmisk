@@ -45,6 +45,14 @@ as placeholders — features that need them will error at request time. Edit
 `server/.env` on the host and `./dev rebuild` (or just `./dev start`) to pick
 up changes.
 
+## NODE_ENV
+
+The container runs with `NODE_ENV=development` even though it serves the
+*built* bundle. The strict boot guard in `server/src/config.ts` refuses to
+start in `production` without real `ANTHROPIC_API_KEY` and `META_APP_SECRET`,
+which is the wrong tradeoff for a sandbox. The lean memory profile comes from
+skipping `tsx watch` / `ng serve`, not from `NODE_ENV`.
+
 ## Why no hot reload
 
 `tsx watch` and `ng serve` together hold ~1.2 GB resident. With <2 swaps/week,
