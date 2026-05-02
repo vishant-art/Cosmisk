@@ -80,3 +80,5 @@ scripts/shopify-auth/.shopify-token*.json
 
 #cluade
 .claude/
+
+public/
