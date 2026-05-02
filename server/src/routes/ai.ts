@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
@@ -11,7 +10,7 @@ import { validate, aiChatSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
 import { safeJsonParse } from '../utils/safe-json.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 
 /** Shape of a Meta Insights API response with a data array of raw insight rows */
 interface MetaInsightsResponse {
@@ -25,8 +24,6 @@ interface MetaInsightRow {
   campaign_name?: string;
   date_start?: string;
 }
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -298,6 +295,7 @@ Rules:
 }
 
 async function askClaude(
+  userId: string,
   userMessage: string,
   dataContext: Record<string, any>,
   analysisType: string,
@@ -324,12 +322,16 @@ async function askClaude(
       { role: 'user', content: userMessage },
     ];
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      temperature: 0.7,
-      system: systemPrompt,
-      messages,
+    const response = await createMessage({
+      userId,
+      operation: 'ai.askClaude',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages,
+      },
     });
 
     return extractText(response) || null;
@@ -384,15 +386,19 @@ function detectIntentRegex(message: string): Intent {
 }
 
 async function detectIntentWithClaude(
+  userId: string,
   message: string,
   conversationContext: string,
 ): Promise<{ intent: Intent; params: Record<string, any> }> {
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      temperature: 0,
-      system: `You are an intent classifier for a Meta Ads analytics platform. Classify the user's message into exactly one intent and extract any parameters.
+    const response = await createMessage({
+      userId,
+      operation: 'ai.detectIntentWithClaude',
+      request: {
+        model: 'claude-haiku-4-5',
+        max_tokens: 200,
+        temperature: 0,
+        system: `You are an intent classifier for a Meta Ads analytics platform. Classify the user's message into exactly one intent and extract any parameters.
 
 Intents: roas, spend, audience, creative, cpa, forecast, script, help, overview, comparison
 
@@ -403,12 +409,13 @@ Parameters to extract (if present):
 - metric_focus: specific metric they're asking about
 
 Respond ONLY with valid JSON: {"intent": "...", "params": {...}}`,
-      messages: [{
-        role: 'user',
-        content: conversationContext
-          ? `Previous context: ${conversationContext}\n\nUser message: ${message}`
-          : message,
-      }],
+        messages: [{
+          role: 'user',
+          content: conversationContext
+            ? `Previous context: ${conversationContext}\n\nUser message: ${message}`
+            : message,
+        }],
+      },
     });
 
     const intentText = extractText(response);
@@ -461,7 +468,7 @@ function detectIntentWithContext(message: string, lastAiResponse: string): Inten
 /*  Intent handlers                                                   */
 /* ------------------------------------------------------------------ */
 
-async function handleRoas(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleRoas(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData, dailyCampaignData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -512,7 +519,7 @@ async function handleRoas(meta: MetaApiService, accountId: string, datePreset: s
     summary: { totalCampaigns: withSpend.length, profitable: profitable.length, unprofitable: unprofitable.length, totalSpend },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'roas', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'roas', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'roas');
 
   const chart: AiChart = {
@@ -535,7 +542,7 @@ async function handleRoas(meta: MetaApiService, accountId: string, datePreset: s
   return { content, chart, table };
 }
 
-async function handleSpend(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleSpend(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -578,7 +585,7 @@ async function handleSpend(meta: MetaApiService, accountId: string, datePreset: 
     summary: { totalCampaigns: withSpend.length, totalSpend: totalCampaignSpend },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'spend', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'spend', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'spend');
 
   const chart: AiChart = {
@@ -605,7 +612,7 @@ async function handleSpend(meta: MetaApiService, accountId: string, datePreset: 
   return { content, chart, table };
 }
 
-async function handleAudience(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleAudience(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const audienceData = await meta.get<any>(`/${accountId}/insights`, {
     fields: 'spend,impressions,clicks,actions,action_values,purchase_roas',
     breakdowns: 'age,gender',
@@ -672,7 +679,7 @@ async function handleAudience(meta: MetaApiService, accountId: string, datePrese
     summary: { totalSegments: segments.length, totalSpend, totalConversions, avgCpa },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'audience', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'audience', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'audience');
 
   const chart: AiChart = {
@@ -695,7 +702,7 @@ async function handleAudience(meta: MetaApiService, accountId: string, datePrese
   return { content, chart, table };
 }
 
-async function handleCreative(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleCreative(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const adData = await meta.get<MetaInsightsResponse>(`/${accountId}/insights`, {
     fields: `ad_name,campaign_name,${INSIGHT_FIELDS}`,
     level: 'ad',
@@ -756,7 +763,7 @@ async function handleCreative(meta: MetaApiService, accountId: string, datePrese
     },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'creative', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'creative', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'creative');
 
   const table: AiTable = {
@@ -775,7 +782,7 @@ async function handleCreative(meta: MetaApiService, accountId: string, datePrese
   return { content, table };
 }
 
-async function handleCpa(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleCpa(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData, dailyCampaignData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -832,7 +839,7 @@ async function handleCpa(meta: MetaApiService, accountId: string, datePreset: st
     },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'cpa', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'cpa', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'cpa');
 
   const chart: AiChart = {
@@ -858,7 +865,7 @@ async function handleCpa(meta: MetaApiService, accountId: string, datePreset: st
   return { content, chart, table };
 }
 
-async function handleForecast(meta: MetaApiService, accountId: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
+async function handleForecast(userId: string, meta: MetaApiService, accountId: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[]): Promise<AiResponse> {
   const dailyData = await meta.get<MetaInsightsResponse>(`/${accountId}/insights`, {
     fields: INSIGHT_FIELDS,
     date_preset: 'last_14d',
@@ -934,7 +941,7 @@ async function handleForecast(meta: MetaApiService, accountId: string, userMessa
     averages: { dailySpend: round(avgDailySpend, 2), dailyRevenue: round(avgDailyRevenue, 2), dailyConversions: round(avgDailyConversions, 1), cpa: round(avgCpa, 2) },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'forecast', history);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'forecast', history);
   const content = claudeContent || generateSmartFallback(dataContext, 'forecast');
 
   const chart: AiChart = {
@@ -945,7 +952,7 @@ async function handleForecast(meta: MetaApiService, accountId: string, userMessa
   return { content, chart };
 }
 
-async function handleScript(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleScript(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [adData, campaignData, audienceData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: `ad_name,campaign_name,${INSIGHT_FIELDS}`,
@@ -997,7 +1004,7 @@ async function handleScript(meta: MetaApiService, accountId: string, datePreset:
     requestedContentType: contentType,
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'script', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'script', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'script');
 
   if (topAds.length > 0) {
@@ -1017,7 +1024,7 @@ async function handleScript(meta: MetaApiService, accountId: string, datePreset:
   return { content };
 }
 
-async function handleOverview(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleOverview(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   const [accountData, campaignData, adData, dailyData] = await Promise.all([
     meta.get<any>(`/${accountId}/insights`, {
       fields: INSIGHT_FIELDS,
@@ -1089,7 +1096,7 @@ async function handleOverview(meta: MetaApiService, accountId: string, datePrese
     trends: { roas: roasTrend, spend: spendTrend },
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'overview', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'overview', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'overview');
 
   const chart: AiChart = {
@@ -1116,7 +1123,7 @@ async function handleOverview(meta: MetaApiService, accountId: string, datePrese
   return { content, chart, table };
 }
 
-async function handleComparison(meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, params: Record<string, any>, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
+async function handleComparison(userId: string, meta: MetaApiService, accountId: string, datePreset: string, userMessage: string, params: Record<string, any>, history?: { role: 'user' | 'ai'; content: string }[], campaignFilter?: string): Promise<AiResponse> {
   // Fetch two periods for comparison — current period and previous period
   const currentPreset = datePreset;
   const previousPreset = datePreset === 'last_7d' ? 'last_14d' : 'last_30d';
@@ -1159,7 +1166,7 @@ async function handleComparison(meta: MetaApiService, accountId: string, datePre
     user_params: params,
   };
 
-  const claudeContent = await askClaude(userMessage, dataContext, 'comparison', history, campaignFilter);
+  const claudeContent = await askClaude(userId, userMessage, dataContext, 'comparison', history, campaignFilter);
   const content = claudeContent || generateSmartFallback(dataContext, 'comparison');
 
   const table: AiTable = {
@@ -1204,7 +1211,7 @@ export async function aiRoutes(app: FastifyInstance) {
     let intentParams: Record<string, any> = {};
 
     if (isComplex) {
-      const claudeResult = await detectIntentWithClaude(message, conversationContext);
+      const claudeResult = await detectIntentWithClaude(request.user.id, message, conversationContext);
       intent = claudeResult.intent;
       intentParams = claudeResult.params;
     } else {
@@ -1255,26 +1262,27 @@ export async function aiRoutes(app: FastifyInstance) {
     const campaignFilter: string | undefined = intentParams['campaign_name'] || undefined;
 
     try {
+      const uid = request.user.id;
       switch (intent) {
         case 'roas':
-          return await handleRoas(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleRoas(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'spend':
-          return await handleSpend(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleSpend(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'audience':
-          return await handleAudience(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleAudience(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'creative':
-          return await handleCreative(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleCreative(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'cpa':
-          return await handleCpa(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleCpa(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'forecast':
-          return await handleForecast(meta, account_id, message, history);
+          return await handleForecast(uid, meta, account_id, message, history);
         case 'script':
-          return await handleScript(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleScript(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
         case 'comparison':
-          return await handleComparison(meta, account_id, effectiveDatePreset, message, intentParams, history, campaignFilter);
+          return await handleComparison(uid, meta, account_id, effectiveDatePreset, message, intentParams, history, campaignFilter);
         case 'overview':
         default:
-          return await handleOverview(meta, account_id, effectiveDatePreset, message, history, campaignFilter);
+          return await handleOverview(uid, meta, account_id, effectiveDatePreset, message, history, campaignFilter);
       }
     } catch (err: any) {
       const errorMsg = err.message || 'Unknown error';

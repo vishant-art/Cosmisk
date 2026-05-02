@@ -1,587 +1,338 @@
 /**
- * LLM Gateway - Centralized AI Call Management
+ * LLM gateway — single entry point for every Anthropic Messages call.
  *
- * ALL AI calls MUST go through this gateway.
- * Direct LLM instantiation is FORBIDDEN.
+ * Enforces per-user daily $ caps, org-wide RPM/ITPM via Bottleneck, retries via
+ * the SDK, and writes cost_ledger rows for every successful call.
  *
- * Features:
- * - Budget control (per-client, per-agent)
- * - Rate limiting
- * - Distributed tracing
- * - Fallback routing
- * - Cost estimation
- * - Usage analytics
+ * See dev_reports/rate_limiting/implementation_plan.md for the design contract.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { v4 as uuidv4 } from 'uuid';
+import Anthropic, { RateLimitError as AnthropicRateLimitError } from '@anthropic-ai/sdk';
+import type { Message, MessageCreateParams } from '@anthropic-ai/sdk/resources/messages.js';
+import Bottleneck from 'bottleneck';
+import { config } from '../config.js';
+import { getDb } from '../db/index.js';
 import { logger } from '../utils/logger.js';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+/* ------------------------------------------------------------------ */
+/*  Pricing                                                            */
+/* ------------------------------------------------------------------ */
 
-export type LLMProvider = 'anthropic' | 'gemini';
-export type LLMModel =
-  | 'claude-sonnet-4-20250514'
-  | 'claude-3-5-sonnet-20241022'
-  | 'gemini-2.0-flash'
-  | 'gemini-1.5-pro';
-
-export type Priority = 'low' | 'normal' | 'high' | 'critical';
-
-export interface LLMMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
-export interface LLMRequest {
-  // Identity & Tracing
-  requestId?: string;
-  correlationId: string;
-  source: string;        // Which agent/service (e.g., 'comment-mining')
-  operation: string;     // What operation (e.g., 'classify-comments')
-
-  // Model Selection
-  provider: LLMProvider;
-  model: LLMModel;
-
-  // Request Content
-  messages: LLMMessage[];
-  systemPrompt?: string;
-  maxTokens?: number;
-  temperature?: number;
-
-  // Governance
-  budgetKey: string;     // Budget to charge (e.g., 'client:pratapsons')
-  priority?: Priority;
-  timeout?: number;      // ms
-
-  // Fallback
-  fallbackProvider?: LLMProvider;
-  fallbackModel?: LLMModel;
-}
-
-export interface LLMResponse {
-  requestId: string;
-  content: string;
-
-  // Usage
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  estimatedCost: number;
-
-  // Timing
-  latencyMs: number;
-  queueTimeMs: number;
-
-  // Metadata
-  provider: LLMProvider;
-  model: LLMModel;
-  usedFallback: boolean;
-}
-
-export interface BudgetStatus {
-  budgetKey: string;
-  dailyLimit: number;
-  dailyUsed: number;
-  dailyRemaining: number;
-  percentUsed: number;
-  isWarning: boolean;
-  isBlocked: boolean;
-}
-
-// ============================================================================
-// COST ESTIMATION
-// ============================================================================
-
-const COST_PER_1K_TOKENS: Record<string, { input: number; output: number }> = {
-  'claude-sonnet-4-20250514': { input: 0.003, output: 0.015 },
-  'claude-3-5-sonnet-20241022': { input: 0.003, output: 0.015 },
-  'gemini-2.0-flash': { input: 0.0001, output: 0.0004 },
-  'gemini-1.5-pro': { input: 0.00125, output: 0.005 },
+// Cents per 1M tokens. Source: dev_reports/rate_limiting/anthropic_rate_limits.md.
+// Keys are model-class buckets — every Sonnet 4.x ID resolves to PRICING.sonnet, etc.
+const PRICING: Record<ModelClass, { in: number; out: number; cacheWrite: number; cacheRead: number }> = {
+  opus:   { in: 1500, out: 7500, cacheWrite: 1875, cacheRead: 150 },
+  sonnet: { in: 300,  out: 1500, cacheWrite: 375,  cacheRead: 30 },
+  haiku:  { in: 100,  out: 500,  cacheWrite: 125,  cacheRead: 10 },
 };
 
-function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
-  const pricing = COST_PER_1K_TOKENS[model] || { input: 0.003, output: 0.015 };
-  return (inputTokens / 1000) * pricing.input + (outputTokens / 1000) * pricing.output;
-}
+/* ------------------------------------------------------------------ */
+/*  Tier-driven Anthropic limits                                       */
+/* ------------------------------------------------------------------ */
 
-// ============================================================================
-// BUDGET MANAGEMENT
-// ============================================================================
+interface TierLimits { rpm: number; itpm: number; otpm: number; }
 
-interface BudgetConfig {
-  dailyTokenLimit: number;
-  dailyCostLimit: number;
-  maxTokensPerCall: number;
-  maxCostPerCall: number;
-  warnAt: number;  // 0.8 = 80%
-  blockAt: number; // 1.0 = 100%
-}
-
-const DEFAULT_BUDGETS: Record<string, BudgetConfig> = {
-  // Default for unknown keys
-  'default': {
-    dailyTokenLimit: 1_000_000,
-    dailyCostLimit: 10.00,
-    maxTokensPerCall: 50_000,
-    maxCostPerCall: 1.00,
-    warnAt: 0.8,
-    blockAt: 1.0,
+const LIMITS_BY_TIER: Record<number, Record<ModelClass, TierLimits>> = {
+  1: {
+    sonnet: { rpm: 50,    itpm: 30_000,    otpm: 8_000 },
+    opus:   { rpm: 50,    itpm: 30_000,    otpm: 8_000 },
+    haiku:  { rpm: 50,    itpm: 50_000,    otpm: 10_000 },
   },
-
-  // Per-agent budgets
-  'agent:comment-mining': {
-    dailyTokenLimit: 2_000_000,
-    dailyCostLimit: 20.00,
-    maxTokensPerCall: 100_000,
-    maxCostPerCall: 2.00,
-    warnAt: 0.8,
-    blockAt: 1.0,
+  2: {
+    sonnet: { rpm: 1_000, itpm: 450_000,   otpm: 90_000 },
+    opus:   { rpm: 1_000, itpm: 450_000,   otpm: 90_000 },
+    haiku:  { rpm: 1_000, itpm: 450_000,   otpm: 90_000 },
   },
-
-  'agent:strategic-intel': {
-    dailyTokenLimit: 1_500_000,
-    dailyCostLimit: 15.00,
-    maxTokensPerCall: 100_000,
-    maxCostPerCall: 2.00,
-    warnAt: 0.8,
-    blockAt: 1.0,
+  3: {
+    sonnet: { rpm: 2_000, itpm: 800_000,   otpm: 160_000 },
+    opus:   { rpm: 2_000, itpm: 800_000,   otpm: 160_000 },
+    haiku:  { rpm: 2_000, itpm: 1_000_000, otpm: 200_000 },
   },
-
-  'agent:watchdog': {
-    dailyTokenLimit: 500_000,
-    dailyCostLimit: 5.00,
-    maxTokensPerCall: 20_000,
-    maxCostPerCall: 0.50,
-    warnAt: 0.8,
-    blockAt: 1.0,
-  },
-
-  // Per-client budgets (higher limits)
-  'client:pratapsons': {
-    dailyTokenLimit: 5_000_000,
-    dailyCostLimit: 50.00,
-    maxTokensPerCall: 100_000,
-    maxCostPerCall: 2.00,
-    warnAt: 0.8,
-    blockAt: 1.0,
-  },
-
-  // Development budget
-  'dev:testing': {
-    dailyTokenLimit: 500_000,
-    dailyCostLimit: 5.00,
-    maxTokensPerCall: 20_000,
-    maxCostPerCall: 0.50,
-    warnAt: 0.9,
-    blockAt: 1.0,
+  4: {
+    sonnet: { rpm: 4_000, itpm: 2_000_000, otpm: 400_000 },
+    opus:   { rpm: 4_000, itpm: 2_000_000, otpm: 400_000 },
+    haiku:  { rpm: 4_000, itpm: 4_000_000, otpm: 800_000 },
   },
 };
 
-// In-memory usage tracking (would use Redis in production)
-const usageTracker: Map<string, { tokens: number; cost: number; date: string }> = new Map();
+export type ModelClass = 'sonnet' | 'opus' | 'haiku';
 
-function getUsage(budgetKey: string): { tokens: number; cost: number } {
+export function modelClass(model: string): ModelClass {
+  if (model.startsWith('claude-opus')) return 'opus';
+  if (model.startsWith('claude-haiku')) return 'haiku';
+  if (model.startsWith('claude-sonnet')) return 'sonnet';
+  // Older / undated aliases — best-effort fallback.
+  if (model.includes('opus')) return 'opus';
+  if (model.includes('haiku')) return 'haiku';
+  return 'sonnet';
+}
+
+/* ------------------------------------------------------------------ */
+/*  Plan-tier daily caps (cents)                                       */
+/* ------------------------------------------------------------------ */
+
+export const DAILY_COST_LIMITS: Record<string, number> = {
+  free:   500,
+  solo:   5_000,
+  growth: 20_000,
+  agency: 100_000,
+};
+const DEFAULT_DAILY_LIMIT = 1_000;
+
+interface DailyUsageRow { total_cents: number | null; }
+interface UserPlanRow   { plan: string | null; }
+
+export interface DailyLimitOptions {
+  /** If set, only sum cost_ledger rows for this provider (e.g. 'anthropic'). */
+  apiProvider?: string;
+}
+
+export function getDailySpendCents(userId: string, opts: DailyLimitOptions = {}): number {
+  const db = getDb();
   const today = new Date().toISOString().split('T')[0];
-  const usage = usageTracker.get(budgetKey);
-
-  if (!usage || usage.date !== today) {
-    // Reset for new day
-    usageTracker.set(budgetKey, { tokens: 0, cost: 0, date: today });
-    return { tokens: 0, cost: 0 };
-  }
-
-  return { tokens: usage.tokens, cost: usage.cost };
+  const sql = opts.apiProvider
+    ? `SELECT SUM(cost_cents) as total_cents FROM cost_ledger
+       WHERE user_id = ? AND DATE(created_at) = ? AND api_provider = ?`
+    : `SELECT SUM(cost_cents) as total_cents FROM cost_ledger
+       WHERE user_id = ? AND DATE(created_at) = ?`;
+  const row = (opts.apiProvider
+    ? db.prepare(sql).get(userId, today, opts.apiProvider)
+    : db.prepare(sql).get(userId, today)) as DailyUsageRow;
+  return row.total_cents || 0;
 }
 
-function recordUsage(budgetKey: string, tokens: number, cost: number): void {
-  const today = new Date().toISOString().split('T')[0];
-  const current = usageTracker.get(budgetKey);
+export function getUserDailyLimit(userId: string): number {
+  if (config.llmDailyUsdCapOverride !== null) return config.llmDailyUsdCapOverride;
+  const db = getDb();
+  const row = db.prepare('SELECT plan FROM users WHERE id = ?').get(userId) as UserPlanRow | undefined;
+  const plan = (row?.plan || 'free').toLowerCase();
+  return DAILY_COST_LIMITS[plan] ?? DEFAULT_DAILY_LIMIT;
+}
 
-  if (!current || current.date !== today) {
-    usageTracker.set(budgetKey, { tokens, cost, date: today });
-  } else {
-    usageTracker.set(budgetKey, {
-      tokens: current.tokens + tokens,
-      cost: current.cost + cost,
-      date: today,
+export interface DailyLimitResult {
+  allowed: boolean;
+  spent: number;
+  limit: number;
+  remaining: number;
+}
+
+export function checkDailyLimit(userId: string, opts: DailyLimitOptions = {}): DailyLimitResult {
+  const spent = getDailySpendCents(userId, opts);
+  const limit = getUserDailyLimit(userId);
+  const remaining = Math.max(0, limit - spent);
+  return { allowed: spent < limit, spent, limit, remaining };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared SDK client + per-class limiters                             */
+/* ------------------------------------------------------------------ */
+
+const client = new Anthropic({
+  apiKey: config.anthropicApiKey,
+  maxRetries: 3,         // 429/5xx auto-retry; SDK respects retry-after.
+  timeout: 600_000,      // 10 min — explicit; matches SDK default.
+});
+
+const tier = LIMITS_BY_TIER[config.anthropicTier] ? config.anthropicTier : 1;
+if (tier !== config.anthropicTier) {
+  logger.warn(
+    { configured: config.anthropicTier },
+    `[LLM-Gateway] Unknown ANTHROPIC_TIER, falling back to Tier 1 reservoirs`,
+  );
+}
+
+const limiters: Record<ModelClass, Bottleneck> = (Object.keys(LIMITS_BY_TIER[tier]) as ModelClass[])
+  .reduce((acc, cls) => {
+    const lim = LIMITS_BY_TIER[tier][cls];
+    acc[cls] = new Bottleneck({
+      minTime: Math.ceil(60_000 / lim.rpm),
+      reservoir: lim.itpm,
+      reservoirRefreshAmount: lim.itpm,
+      reservoirRefreshInterval: 60_000,
+      maxConcurrent: 5,
     });
-  }
+    return acc;
+  }, {} as Record<ModelClass, Bottleneck>);
+
+logger.info(
+  { tier, limits: LIMITS_BY_TIER[tier] },
+  '[LLM-Gateway] Initialized with Anthropic Tier reservoirs',
+);
+
+/* ------------------------------------------------------------------ */
+/*  Cost computation                                                   */
+/* ------------------------------------------------------------------ */
+
+interface UsageWithCache {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
 }
 
-function getBudgetConfig(budgetKey: string): BudgetConfig {
-  return DEFAULT_BUDGETS[budgetKey] || DEFAULT_BUDGETS['default'];
+export function computeCostCents(model: string, usage: UsageWithCache): number {
+  const cls = modelClass(model);
+  const p = PRICING[cls];
+  const cacheWrite = usage.cache_creation_input_tokens || 0;
+  const cacheRead  = usage.cache_read_input_tokens || 0;
+  // input_tokens excludes cache reads/writes per Anthropic's usage shape.
+  const cents =
+      (usage.input_tokens  / 1_000_000) * p.in
+    + (usage.output_tokens / 1_000_000) * p.out
+    + (cacheWrite          / 1_000_000) * p.cacheWrite
+    + (cacheRead           / 1_000_000) * p.cacheRead;
+  return Math.ceil(cents);
 }
 
-// ============================================================================
-// RATE LIMITING
-// ============================================================================
+/* ------------------------------------------------------------------ */
+/*  Cost ledger write                                                  */
+/* ------------------------------------------------------------------ */
 
-interface RateLimitEntry {
-  count: number;
-  windowStart: number;
-}
-
-const rateLimits: Map<string, RateLimitEntry> = new Map();
-
-const RATE_LIMITS: Record<Priority, { requestsPerMinute: number }> = {
-  'critical': { requestsPerMinute: 100 },
-  'high': { requestsPerMinute: 60 },
-  'normal': { requestsPerMinute: 30 },
-  'low': { requestsPerMinute: 10 },
-};
-
-async function checkRateLimit(source: string, priority: Priority): Promise<boolean> {
-  const key = `${source}:${priority}`;
-  const limit = RATE_LIMITS[priority].requestsPerMinute;
-  const now = Date.now();
-  const windowMs = 60_000;
-
-  const entry = rateLimits.get(key);
-
-  if (!entry || now - entry.windowStart > windowMs) {
-    rateLimits.set(key, { count: 1, windowStart: now });
-    return true;
-  }
-
-  if (entry.count >= limit) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
-
-// ============================================================================
-// LLM CLIENTS
-// ============================================================================
-
-let anthropicClient: Anthropic | null = null;
-let geminiClient: GoogleGenerativeAI | null = null;
-
-function getAnthropicClient(): Anthropic {
-  if (!anthropicClient) {
-    anthropicClient = new Anthropic();
-  }
-  return anthropicClient;
-}
-
-function getGeminiClient(): GoogleGenerativeAI {
-  if (!geminiClient) {
-    const apiKey = process.env['GEMINI_API_KEY'] || process.env['GOOGLE_AI_API_KEY'];
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
-    }
-    geminiClient = new GoogleGenerativeAI(apiKey);
-  }
-  return geminiClient;
-}
-
-// ============================================================================
-// MAIN GATEWAY
-// ============================================================================
-
-export class LLMGateway {
-  async generate(request: LLMRequest): Promise<LLMResponse> {
-    const requestId = request.requestId || uuidv4();
-    const startTime = Date.now();
-    const priority = request.priority || 'normal';
-
-    const logContext = {
-      requestId,
-      correlationId: request.correlationId,
-      source: request.source,
-      operation: request.operation,
-      provider: request.provider,
-      model: request.model,
-      budgetKey: request.budgetKey,
-    };
-
-    logger.info(logContext, '[LLMGateway] Request started');
-
-    try {
-      // 1. Check budget
-      const budgetConfig = getBudgetConfig(request.budgetKey);
-      const usage = getUsage(request.budgetKey);
-      const estimatedTokens = request.maxTokens || 4000;
-
-      if (usage.tokens + estimatedTokens > budgetConfig.dailyTokenLimit * budgetConfig.blockAt) {
-        logger.error({
-          ...logContext,
-          dailyUsed: usage.tokens,
-          dailyLimit: budgetConfig.dailyTokenLimit,
-        }, '[LLMGateway] Budget exceeded');
-        throw new BudgetExceededError(
-          `Daily budget exceeded for ${request.budgetKey}. Used: ${usage.tokens}, Limit: ${budgetConfig.dailyTokenLimit}`
-        );
-      }
-
-      if (usage.tokens > budgetConfig.dailyTokenLimit * budgetConfig.warnAt) {
-        logger.warn({
-          ...logContext,
-          percentUsed: Math.round((usage.tokens / budgetConfig.dailyTokenLimit) * 100),
-        }, '[LLMGateway] Budget warning');
-      }
-
-      // 2. Check rate limit
-      const rateLimitOk = await checkRateLimit(request.source, priority);
-      if (!rateLimitOk) {
-        logger.warn(logContext, '[LLMGateway] Rate limited');
-        throw new RateLimitError(`Rate limit exceeded for ${request.source}`);
-      }
-
-      // 3. Execute request
-      const queueTimeMs = Date.now() - startTime;
-      let response: LLMResponse;
-
-      try {
-        response = await this.executeRequest(request, requestId);
-      } catch (error) {
-        // 4. Try fallback if configured
-        if (request.fallbackProvider && request.fallbackModel && this.isRetryable(error)) {
-          logger.info({
-            ...logContext,
-            fallbackProvider: request.fallbackProvider,
-            fallbackModel: request.fallbackModel,
-          }, '[LLMGateway] Using fallback');
-
-          const fallbackRequest = {
-            ...request,
-            provider: request.fallbackProvider,
-            model: request.fallbackModel,
-          };
-          response = await this.executeRequest(fallbackRequest, requestId);
-          response.usedFallback = true;
-        } else {
-          throw error;
-        }
-      }
-
-      response.queueTimeMs = queueTimeMs;
-
-      // 5. Record usage
-      recordUsage(request.budgetKey, response.totalTokens, response.estimatedCost);
-
-      // 6. Log success
-      logger.info({
-        ...logContext,
-        inputTokens: response.inputTokens,
-        outputTokens: response.outputTokens,
-        estimatedCost: response.estimatedCost.toFixed(4),
-        latencyMs: response.latencyMs,
-        usedFallback: response.usedFallback,
-      }, '[LLMGateway] Request completed');
-
-      return response;
-
-    } catch (error) {
-      logger.error({
-        ...logContext,
-        error: error instanceof Error ? error.message : String(error),
-        errorType: error instanceof Error ? error.name : 'Unknown',
-      }, '[LLMGateway] Request failed');
-      throw error;
-    }
-  }
-
-  private async executeRequest(request: LLMRequest, requestId: string): Promise<LLMResponse> {
-    const executeStart = Date.now();
-
-    if (request.provider === 'anthropic') {
-      return this.executeAnthropic(request, requestId, executeStart);
-    } else if (request.provider === 'gemini') {
-      return this.executeGemini(request, requestId, executeStart);
-    } else {
-      throw new Error(`Unsupported provider: ${request.provider}`);
-    }
-  }
-
-  private async executeAnthropic(
-    request: LLMRequest,
-    requestId: string,
-    executeStart: number
-  ): Promise<LLMResponse> {
-    const client = getAnthropicClient();
-
-    const messages = request.messages.map(m => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    }));
-
-    const response = await client.messages.create({
-      model: request.model,
-      max_tokens: request.maxTokens || 4096,
-      temperature: request.temperature,
-      system: request.systemPrompt,
-      messages,
-    });
-
-    const content = response.content[0].type === 'text'
-      ? response.content[0].text
-      : '';
-
-    const inputTokens = response.usage.input_tokens;
-    const outputTokens = response.usage.output_tokens;
-
-    return {
-      requestId,
-      content,
-      inputTokens,
-      outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      estimatedCost: estimateCost(request.model, inputTokens, outputTokens),
-      latencyMs: Date.now() - executeStart,
-      queueTimeMs: 0,
-      provider: 'anthropic',
-      model: request.model,
-      usedFallback: false,
-    };
-  }
-
-  private async executeGemini(
-    request: LLMRequest,
-    requestId: string,
-    executeStart: number
-  ): Promise<LLMResponse> {
-    const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: request.model });
-
-    // Build prompt from messages
-    const prompt = request.messages
-      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-      .join('\n\n');
-
-    const fullPrompt = request.systemPrompt
-      ? `${request.systemPrompt}\n\n${prompt}`
-      : prompt;
-
-    const result = await model.generateContent(fullPrompt);
-    const response = result.response;
-    const content = response.text();
-
-    // Gemini doesn't always return usage, estimate
-    const inputTokens = Math.ceil(fullPrompt.length / 4);
-    const outputTokens = Math.ceil(content.length / 4);
-
-    return {
-      requestId,
-      content,
-      inputTokens,
-      outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      estimatedCost: estimateCost(request.model, inputTokens, outputTokens),
-      latencyMs: Date.now() - executeStart,
-      queueTimeMs: 0,
-      provider: 'gemini',
-      model: request.model,
-      usedFallback: false,
-    };
-  }
-
-  private isRetryable(error: unknown): boolean {
-    if (error instanceof BudgetExceededError) return false;
-    if (error instanceof RateLimitError) return true;
-    if (error instanceof Error) {
-      // Retry on transient errors
-      return error.message.includes('timeout') ||
-             error.message.includes('rate') ||
-             error.message.includes('overloaded');
-    }
-    return false;
-  }
-
-  // ============================================================================
-  // BUDGET & USAGE QUERIES
-  // ============================================================================
-
-  getBudgetStatus(budgetKey: string): BudgetStatus {
-    const config = getBudgetConfig(budgetKey);
-    const usage = getUsage(budgetKey);
-
-    const percentUsed = usage.tokens / config.dailyTokenLimit;
-
-    return {
-      budgetKey,
-      dailyLimit: config.dailyTokenLimit,
-      dailyUsed: usage.tokens,
-      dailyRemaining: Math.max(0, config.dailyTokenLimit - usage.tokens),
-      percentUsed: Math.round(percentUsed * 100),
-      isWarning: percentUsed >= config.warnAt,
-      isBlocked: percentUsed >= config.blockAt,
-    };
-  }
-
-  getAllBudgetStatuses(): BudgetStatus[] {
-    const keys = Array.from(usageTracker.keys());
-    return keys.map(key => this.getBudgetStatus(key));
-  }
-}
-
-// ============================================================================
-// ERRORS
-// ============================================================================
-
-export class BudgetExceededError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BudgetExceededError';
-  }
-}
-
-export class RateLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'RateLimitError';
-  }
-}
-
-// ============================================================================
-// SINGLETON EXPORT
-// ============================================================================
-
-export const llmGateway = new LLMGateway();
-
-// ============================================================================
-// CONVENIENCE FUNCTIONS
-// ============================================================================
-
-/**
- * Quick generate for simple use cases
- */
-export async function generate(options: {
-  prompt: string;
-  systemPrompt?: string;
-  source: string;
+interface CostLedgerInsert {
+  userId: string;
   operation: string;
-  correlationId?: string;
-  provider?: LLMProvider;
-  model?: LLMModel;
-  budgetKey?: string;
-  maxTokens?: number;
-}): Promise<string> {
-  const response = await llmGateway.generate({
-    correlationId: options.correlationId || uuidv4(),
-    source: options.source,
-    operation: options.operation,
-    provider: options.provider || 'gemini',
-    model: options.model || 'gemini-2.0-flash',
-    messages: [{ role: 'user', content: options.prompt }],
-    systemPrompt: options.systemPrompt,
-    budgetKey: options.budgetKey || `agent:${options.source}`,
-    maxTokens: options.maxTokens,
+  apiProvider: 'anthropic' | 'gemini';
+  costCents: number;
+  metadata: Record<string, unknown>;
+}
+
+function recordCost(row: CostLedgerInsert): void {
+  if (row.costCents <= 0) return;
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO cost_ledger (user_id, api_provider, operation, cost_cents, metadata)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(row.userId, row.apiProvider, row.operation, row.costCents, JSON.stringify(row.metadata));
+}
+
+/* ------------------------------------------------------------------ */
+/*  Errors surfaced to callers                                         */
+/* ------------------------------------------------------------------ */
+
+export class DailyCapExceededError extends Error {
+  statusCode = 429;
+  cap: DailyLimitResult;
+  constructor(cap: DailyLimitResult) {
+    super('daily_llm_cap');
+    this.name = 'DailyCapExceededError';
+    this.cap = cap;
+  }
+}
+
+export class UpstreamRateLimitedError extends Error {
+  statusCode = 429;
+  retryAfterSeconds: number;
+  cause: AnthropicRateLimitError;
+  constructor(cause: AnthropicRateLimitError) {
+    super('upstream_rate_limited');
+    this.name = 'UpstreamRateLimitedError';
+    this.cause = cause;
+    this.retryAfterSeconds = parseRetryAfter(cause);
+  }
+}
+
+function parseRetryAfter(err: AnthropicRateLimitError): number {
+  // SDK exposes raw headers on APIError as `headers` (Record<string, string> | undefined).
+  // Default to 60s if the header is missing or unparseable.
+  const headers = (err as unknown as { headers?: Record<string, string> }).headers;
+  const raw = headers?.['retry-after'] || headers?.['Retry-After'];
+  if (!raw) return 60;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 60;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Public API                                                         */
+/* ------------------------------------------------------------------ */
+
+export interface CreateMessageOptions {
+  userId: string;
+  /** Caller identifier for cost-ledger audit (e.g. 'creative-strategist.suggestAngles'). */
+  operation: string;
+  request: MessageCreateParams;
+  /** Override SDK default maxRetries for this call. */
+  maxRetries?: number;
+  /**
+   * Skip pre-flight countTokens and use this estimate instead.
+   * Useful in tests or when latency matters more than reservoir accuracy.
+   */
+  estimateTokens?: number;
+}
+
+export async function createMessage(opts: CreateMessageOptions): Promise<Message> {
+  // 1. Per-user, per-provider daily cap
+  const cap = checkDailyLimit(opts.userId, { apiProvider: 'anthropic' });
+  if (!cap.allowed) {
+    logger.warn(
+      { userId: opts.userId, spent: cap.spent, limit: cap.limit, operation: opts.operation },
+      '[LLM-Gateway] Daily Anthropic cap exceeded',
+    );
+    throw new DailyCapExceededError(cap);
+  }
+
+  // 2. Pre-flight token estimate (or caller-supplied override)
+  let inputTokens = opts.estimateTokens;
+  if (inputTokens === undefined) {
+    try {
+      const est = await client.messages.countTokens({
+        model: opts.request.model,
+        messages: opts.request.messages,
+        ...(opts.request.system ? { system: opts.request.system } : {}),
+      });
+      inputTokens = est.input_tokens;
+    } catch (err) {
+      // countTokens is best-effort; fall back to a pessimistic heuristic so we
+      // still reserve roughly proportional capacity.
+      const charCount = JSON.stringify(opts.request.messages).length;
+      inputTokens = Math.ceil(charCount / 3.5);
+      logger.warn({ err, fallback: inputTokens }, '[LLM-Gateway] countTokens failed, using heuristic');
+    }
+  }
+
+  // 3. Rate-limited dispatch
+  const cls = modelClass(opts.request.model);
+  let response: Message;
+  try {
+    // Cast: messages.create returns Message | Stream depending on params.stream;
+    // we never set stream:true so the runtime value is always Message.
+    response = await limiters[cls].schedule<Message>(
+      { weight: Math.max(1, inputTokens), priority: 5 },
+      () => client.messages.create(
+        { ...opts.request, stream: false },
+        opts.maxRetries !== undefined ? { maxRetries: opts.maxRetries } : undefined,
+      ) as Promise<Message>,
+    );
+  } catch (err) {
+    if (err instanceof AnthropicRateLimitError) {
+      logger.warn(
+        { userId: opts.userId, operation: opts.operation, model: opts.request.model },
+        '[LLM-Gateway] Upstream Anthropic rate-limit after SDK retries',
+      );
+      throw new UpstreamRateLimitedError(err);
+    }
+    throw err;
+  }
+
+  // 4. Cost ledger
+  const cost = computeCostCents(opts.request.model, response.usage as UsageWithCache);
+  recordCost({
+    userId: opts.userId,
+    operation: opts.operation,
+    apiProvider: 'anthropic',
+    costCents: cost,
+    metadata: {
+      model: opts.request.model,
+      usage: response.usage,
+      input_estimate: inputTokens,
+    },
   });
 
-  return response.content;
+  return response;
 }
 
-/**
- * Check if budget allows a request
- */
-export function canAfford(budgetKey: string, estimatedTokens: number): boolean {
-  const status = llmGateway.getBudgetStatus(budgetKey);
-  return status.dailyRemaining >= estimatedTokens;
-}
+/* ------------------------------------------------------------------ */
+/*  Test helpers (intentionally exported)                              */
+/* ------------------------------------------------------------------ */
+
+/** Internal: exposed so tests can assert limiter behaviour without re-importing. */
+export const __testing = { client, limiters, PRICING, LIMITS_BY_TIER };

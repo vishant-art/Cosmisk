@@ -5,10 +5,8 @@ import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
 import { validate, oauthCodeSchema, tiktokAdsQuerySchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import { internalError } from '../utils/error-response.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 const TIKTOK_AUTH_URL = 'https://business-api.tiktok.com/portal/auth';
 const TIKTOK_API_URL = 'https://business-api.tiktok.com/open_api/v1.3';
@@ -263,15 +261,19 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
         ctr: parseFloat(item.metrics?.ctr) || 0,
       }));
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        temperature: 0.7,
-        system: 'You are a TikTok Ads strategist at Cosmisk. Analyze performance data and give specific, actionable advice. Reference actual campaign names and numbers. Under 400 words.',
-        messages: [{
-          role: 'user',
-          content: `Analyze this TikTok Ads performance:\n\nAccount: ${JSON.stringify(kpis)}\n\nCampaigns: ${JSON.stringify(campaigns.slice(0, 10))}`,
-        }],
+      const response = await createMessage({
+        userId: request.user.id,
+        operation: 'tiktok-ads.analyze',
+        request: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          temperature: 0.7,
+          system: 'You are a TikTok Ads strategist at Cosmisk. Analyze performance data and give specific, actionable advice. Reference actual campaign names and numbers. Under 400 words.',
+          messages: [{
+            role: 'user',
+            content: `Analyze this TikTok Ads performance:\n\nAccount: ${JSON.stringify(kpis)}\n\nCampaigns: ${JSON.stringify(campaigns.slice(0, 10))}`,
+          }],
+        },
       });
 
       return {

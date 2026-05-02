@@ -9,13 +9,11 @@ import { sendMorningBriefing } from './slack-interactive.js';
 import { recordEpisode } from './agent-memory.js';
 import { getQualityScore } from './quality-gate.js';
 import { generatePredictions, type Prediction } from './learning-engine.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -205,7 +203,7 @@ async function fetchN8nBriefingData(): Promise<any | null> {
 /*  Synthesize briefing with Claude                                    */
 /* ------------------------------------------------------------------ */
 
-async function synthesizeBriefing(sources: BriefingSource, userId: string): Promise<SynthesizedBriefing> {
+async function synthesizeBriefing(userId: string, sources: BriefingSource): Promise<SynthesizedBriefing> {
   const dataContext: string[] = [];
 
   // Generate predictions from learning engine
@@ -266,7 +264,12 @@ ${sources.autopilot.map(a => `- [${a.severity}] ${a.title}`).join('\n')}`);
   }
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await createMessage({
+      userId,
+      operation: 'morning-briefing.synthesizeBriefing',
+      // Cron job — give it more retry headroom than the SDK default.
+      maxRetries: 5,
+      request: {
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       temperature: 0.5,
@@ -295,6 +298,7 @@ Rules:
 5. Connect dots between data points — if CPA spiked AND there's a pending watchdog decision about it, mention both together.
 6. Return ONLY the JSON object.`,
       messages: [{ role: 'user', content: dataContext.join('\n\n') }],
+      },
     });
 
     const rawText = extractText(response);
@@ -359,7 +363,7 @@ export async function runMorningBriefing(): Promise<number> {
       const sources = await gatherBriefingSources(user.id);
 
       // 2. Synthesize with learning engine predictions
-      const briefing = await synthesizeBriefing(sources, user.id);
+      const briefing = await synthesizeBriefing(user.id, sources);
 
       // 3. Send via Slack
       const slackSent = await sendMorningBriefing(briefing);

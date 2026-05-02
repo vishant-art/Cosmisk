@@ -1,5 +1,5 @@
 import { getDb } from '../db/index.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
@@ -7,8 +7,6 @@ import { logger } from '../utils/logger.js';
 import type {
   AgentType, AgentCoreMemoryRow, AgentEpisodeRow, AgentEntityRow,
 } from '../types/index.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Core Memory — always included in agent prompts                     */
@@ -71,7 +69,7 @@ export async function recordEpisode(
   `).run(episodeId, userId, agentType, event, context || null, outcome || null);
 
   // Extract entities in background (fire-and-forget, no blocking Haiku call)
-  extractEntities(event + (context ? ` ${context}` : '')).then(entities => {
+  extractEntities(userId, event + (context ? ` ${context}` : '')).then(entities => {
     if (entities.length > 0) {
       db.prepare('UPDATE agent_episodes SET entities = ? WHERE id = ?')
         .run(JSON.stringify(entities), episodeId);
@@ -116,19 +114,23 @@ function upsertEntity(userId: string, entityStr: string): void {
 /*  Entity extraction via Claude Haiku                                 */
 /* ------------------------------------------------------------------ */
 
-async function extractEntities(text: string): Promise<string[]> {
+async function extractEntities(userId: string, text: string): Promise<string[]> {
   if (!config.anthropicApiKey) return [];
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      temperature: 0,
-      system: `Extract named entities from the text. Return a JSON array of strings in "type:name" format.
+    const response = await createMessage({
+      userId,
+      operation: 'agent-memory.extractEntities',
+      request: {
+        model: 'claude-haiku-4-5',
+        max_tokens: 200,
+        temperature: 0,
+        system: `Extract named entities from the text. Return a JSON array of strings in "type:name" format.
 Types: campaign, adset, ad, brand, metric, pattern, audience.
 Example: ["campaign:Summer Sale 2024", "metric:ROAS", "brand:Nike"]
 Return ONLY the JSON array.`,
-      messages: [{ role: 'user', content: text }],
+        messages: [{ role: 'user', content: text }],
+      },
     });
 
     const extracted = extractText(response);

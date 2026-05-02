@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import { getDb } from '../db/index.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
@@ -9,8 +9,6 @@ import { extractText } from '../utils/claude-helpers.js';
 import { internalError } from '../utils/error-response.js';
 import { runCompetitorCreativeIntel } from '../services/competitor-creative-intel.js';
 import { generateHTMLReport } from '../services/competitor-intel-report.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Meta Ad Library API (public, no auth required)                     */
@@ -75,7 +73,7 @@ export async function searchAdLibrary(query: string, country: string = 'IN', lim
 /*  Claude analysis of competitor ads                                  */
 /* ------------------------------------------------------------------ */
 
-async function analyzeCompetitorAds(brandName: string, ads: AdLibraryAd[]): Promise<string> {
+async function analyzeCompetitorAds(userId: string, brandName: string, ads: AdLibraryAd[]): Promise<string> {
   if (ads.length === 0) {
     return `No active ads found for "${brandName}" in the Meta Ad Library. They may not be running ads currently, or the brand name might be different from their Facebook page name. Try searching with variations.`;
   }
@@ -93,11 +91,14 @@ async function analyzeCompetitorAds(brandName: string, ads: AdLibraryAd[]): Prom
   }));
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      temperature: 0.7,
-      system: `You are a competitive intelligence analyst at Cosmisk. Analyze competitor ads from the Meta Ad Library and provide strategic insights.
+    const response = await createMessage({
+      userId,
+      operation: 'competitor-spy.analyzeCompetitorAds',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        temperature: 0.7,
+        system: `You are a competitive intelligence analyst at Cosmisk. Analyze competitor ads from the Meta Ad Library and provide strategic insights.
 
 Rules:
 - Identify messaging patterns, hook styles, CTAs, and creative strategies
@@ -106,10 +107,11 @@ Rules:
 - Be specific — reference actual ad copy and patterns
 - Keep under 500 words
 - End with 2-3 actionable takeaways`,
-      messages: [{
-        role: 'user',
-        content: `Analyze these ${ads.length} active ads from "${brandName}":\n\n${JSON.stringify(adSummaries, null, 2)}`,
-      }],
+        messages: [{
+          role: 'user',
+          content: `Analyze these ${ads.length} active ads from "${brandName}":\n\n${JSON.stringify(adSummaries, null, 2)}`,
+        }],
+      },
     });
 
     return extractText(response, 'Analysis unavailable.');
@@ -184,7 +186,7 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
     try {
       const userToken = getUserMetaToken(request.user.id);
       const ads = await searchAdLibrary(query, country || 'IN', 25, userToken);
-      const analysis = await analyzeCompetitorAds(query, ads);
+      const analysis = await analyzeCompetitorAds(request.user.id, query, ads);
 
       // Build summary stats
       const totalAds = ads.length;

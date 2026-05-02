@@ -7,7 +7,7 @@ import { round, fmt } from './format-helpers.js';
 import { notifyAlert } from './notifications.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { config } from '../config.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEpisode } from './agent-memory.js';
@@ -35,8 +35,6 @@ import {
   getLoopStatus,
   type RecommendationType,
 } from './recommendation-loop.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -240,6 +238,7 @@ function getPastDecisions(userId: string, accountId: string): AgentDecisionRow[]
 /* ------------------------------------------------------------------ */
 
 async function reasonAboutPerformance(
+  userId: string,
   snapshot: AccountSnapshot,
   pastDecisions: AgentDecisionRow[],
   memoryContext: string,
@@ -315,11 +314,15 @@ If the account is performing well and no action is needed, return an empty array
 Return ONLY the JSON array, no other text.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      temperature: 0.3,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await createMessage({
+      userId,
+      operation: 'ad-watchdog.reasonAboutPerformance',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        temperature: 0.3,
+        messages: [{ role: 'user', content: prompt }],
+      },
     });
 
     const rawText = extractText(response);
@@ -575,7 +578,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
               });
 
               // Pass user.id as clientId for intelligence integration
-              const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext, user.id);
+              const decisions = await reasonAboutPerformance(user.id, snapshot, pastDecisions, memoryContext, user.id);
 
               // OOS Detection + Discount Leakage Detection (requires Shopify connection)
               const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(user.id) as ShopifyTokenRow | undefined;
