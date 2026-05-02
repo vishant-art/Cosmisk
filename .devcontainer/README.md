@@ -83,3 +83,7 @@ to run `npm run dev` + `ng serve`.
   `npx playwright install chromium`.
 - **`node_modules` lives in named Docker volumes**, not the bind mount. To
   fully reset deps: `docker compose -f .devcontainer/docker-compose.dev.yml down -v`.
+
+## Continue claude chat for lean-devcontainer
+
+claude --resume 345ea638-ea23-413d-bf6d-0b211bb98b14
