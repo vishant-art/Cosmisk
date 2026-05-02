@@ -364,7 +364,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       }
 
       // Claude-powered plan generation — analyzes the data and recommends formats
-      const rawPlan = await generateSprintPlan(snapshot, {
+      const rawPlan = await generateSprintPlan(request.user.id, snapshot, {
         budget_cents: preferences?.budget_cents,
         currency: preferences?.currency || 'INR',
         target_formats: preferences?.target_formats,
@@ -737,7 +737,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Generate scripts via Claude (batched)
-    const results = await generateScriptsForJobs(pendingJobs, snapshot, {
+    const results = await generateScriptsForJobs(request.user.id, pendingJobs, snapshot, {
       productName: product_name,
       targetAudience: target_audience,
       brandName: brand_name,

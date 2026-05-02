@@ -3,7 +3,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import {
   DEFAULT_AUDIT_CONFIG,
   CATEGORY_BENCHMARKS,
@@ -19,7 +19,6 @@ import {
 
 // Lazy initialization to ensure env vars are loaded
 let gemini: GoogleGenerativeAI | null = null;
-let anthropic: Anthropic | null = null;
 
 function getGemini(): GoogleGenerativeAI | null {
   const apiKey = process.env['GOOGLE_AI_API_KEY'];
@@ -27,14 +26,6 @@ function getGemini(): GoogleGenerativeAI | null {
     gemini = new GoogleGenerativeAI(apiKey);
   }
   return gemini;
-}
-
-function getAnthropic(): Anthropic | null {
-  const apiKey = process.env['ANTHROPIC_API_KEY'];
-  if (!anthropic && apiKey) {
-    anthropic = new Anthropic();
-  }
-  return anthropic;
 }
 
 /**
@@ -80,7 +71,7 @@ export async function runCreativeAudit(
 
   try {
     const analysisPrompt = buildAnalysisPrompt(input, winners, losers, wastedSpend);
-    const aiResponse = await analyzeWithAI(analysisPrompt);
+    const aiResponse = await analyzeWithAI(analysisPrompt, input.userId);
     const parsed = parseClaudeResponse(aiResponse, winners, losers);
     insights = parsed.insights;
     recommendations = parsed.recommendations;
@@ -494,19 +485,22 @@ async function analyzeWithGemini(prompt: string): Promise<string> {
 /**
  * Call Claude for analysis (fallback)
  */
-async function analyzeWithClaude(prompt: string): Promise<string> {
-  const client = getAnthropic();
-  if (!client) {
+async function analyzeWithClaude(prompt: string, userId: string): Promise<string> {
+  if (!process.env['ANTHROPIC_API_KEY']) {
     throw new Error('Anthropic API key not configured');
   }
 
   // Sanitize the entire prompt to remove invalid unicode
   const cleanPrompt = sanitizeText(prompt, prompt);
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
-    messages: [{ role: 'user', content: cleanPrompt }],
+  const response = await createMessage({
+    userId,
+    operation: 'audit-agent.analyzeWithClaude',
+    request: {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: cleanPrompt }],
+    },
   });
 
   const content = response.content[0];
@@ -520,7 +514,7 @@ async function analyzeWithClaude(prompt: string): Promise<string> {
 /**
  * Analyze with AI - tries Gemini first, then Claude, then fallback
  */
-async function analyzeWithAI(prompt: string): Promise<string> {
+async function analyzeWithAI(prompt: string, userId: string): Promise<string> {
   // Try Gemini first (free tier)
   if (process.env['GOOGLE_AI_API_KEY']) {
     try {
@@ -535,7 +529,7 @@ async function analyzeWithAI(prompt: string): Promise<string> {
   if (process.env['ANTHROPIC_API_KEY']) {
     try {
       console.log('   Using Claude...');
-      return await analyzeWithClaude(prompt);
+      return await analyzeWithClaude(prompt, userId);
     } catch (error) {
       console.log('   Claude failed, using rule-based analysis...');
     }

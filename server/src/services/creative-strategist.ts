@@ -16,14 +16,11 @@ import {
 } from './agent-memory.js';
 import { notifyAlert } from './notifications.js';
 import { CREATIVE_PATTERNS } from './creative-patterns.js';
-import { config } from '../config.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -95,11 +92,15 @@ export async function runCreativeStrategist(
     // 3. Build prompt and call Claude Opus
     const prompt = buildStrategistPrompt(brandContext, memoryContext, adSummary);
 
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 3000,
-      temperature: 0.5,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await createMessage({
+      userId,
+      operation: 'creative-strategist.runCreativeStrategist',
+      request: {
+        model: 'claude-opus-4-6',
+        max_tokens: 3000,
+        temperature: 0.5,
+        messages: [{ role: 'user', content: prompt }],
+      },
     });
 
     const rawText = extractText(response);

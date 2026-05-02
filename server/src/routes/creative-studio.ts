@@ -1,11 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import { FluxProvider } from '../services/api-providers.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
@@ -35,8 +34,6 @@ interface GenerateBody {
 }
 
 export async function creativeStudioRoutes(app: FastifyInstance) {
-  const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
-
   // POST /analyze-url
   app.post('/analyze-url', {
     preHandler: [app.authenticate],
@@ -67,14 +64,17 @@ export async function creativeStudioRoutes(app: FastifyInstance) {
       const truncatedHtml = html.slice(0, 15_000);
 
       // Use Claude Haiku to extract structured data
-      const aiResponse = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: `Analyze this product page HTML and extract structured data:\n\n${truncatedHtml}`,
-        }],
-        system: `You are a product page analyzer. Extract the following from this HTML page content:
+      const aiResponse = await createMessage({
+        userId: request.user.id,
+        operation: 'creative-studio.analyze-url',
+        request: {
+          model: 'claude-haiku-4-5',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: `Analyze this product page HTML and extract structured data:\n\n${truncatedHtml}`,
+          }],
+          system: `You are a product page analyzer. Extract the following from this HTML page content:
 - brand_name: the brand or company name
 - product_name: the main product being promoted
 - product_description: a compelling 2-3 sentence description
@@ -84,6 +84,7 @@ export async function creativeStudioRoutes(app: FastifyInstance) {
 - images: array of up to 3 image URLs from OG tags or product images
 
 Return ONLY valid JSON, no markdown.`,
+        },
       });
 
       const rawText = extractText(aiResponse, '{}');
@@ -138,7 +139,7 @@ Return ONLY valid JSON, no markdown.`,
       reply.send({ success: true, generation_id: generationId });
 
       // Kick off async generation (don't await)
-      processGeneration(db, anthropic, generationId, brief, formats, outputIds).catch(err => {
+      processGeneration(db, generationId, brief, formats, outputIds).catch(err => {
         logger.error({ err: err.message, generationId }, 'Background generation failed');
       });
 
@@ -262,7 +263,6 @@ Return ONLY valid JSON, no markdown.`,
 
 async function processGeneration(
   db: ReturnType<typeof getDb>,
-  anthropic: Anthropic,
   generationId: string,
   brief: Brief,
   formats: string[],
@@ -297,10 +297,13 @@ async function processGeneration(
     try {
       switch (format) {
         case 'scripts': {
-          const response = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 4096,
-            system: `You are an expert ad creative strategist. Generate 6 UGC video ad scripts for the following product. Each script should have a unique angle and hook style. Return ONLY a valid JSON array of scripts, no markdown.
+          const response = await createMessage({
+            userId,
+            operation: 'creative-studio.scripts',
+            request: {
+              model: 'claude-sonnet-4-6',
+              max_tokens: 4096,
+              system: `You are an expert ad creative strategist. Generate 6 UGC video ad scripts for the following product. Each script should have a unique angle and hook style. Return ONLY a valid JSON array of scripts, no markdown.
 
 Each script object must have:
 - title: descriptive script name
@@ -308,10 +311,11 @@ Each script object must have:
 - body: the main content (15-25 seconds)
 - cta: the call to action
 - visual_notes: production guidance for the creator`,
-            messages: [{
-              role: 'user',
-              content: `Generate 6 UGC ad scripts for:\n\n${briefContext}`,
-            }],
+              messages: [{
+                role: 'user',
+                content: `Generate 6 UGC ad scripts for:\n\n${briefContext}`,
+              }],
+            },
           });
 
           const rawText = extractText(response, '[]');
@@ -390,14 +394,18 @@ Each script object must have:
           const flux = new FluxProvider();
 
           // Generate 5 slide prompts with Claude Haiku
-          const slideResponse = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
-            system: 'You are a visual ad designer. Generate 5 image prompts for a carousel ad. Each prompt should create a visually cohesive slide that tells a story. Return ONLY a valid JSON array of 5 strings, no markdown.',
-            messages: [{
-              role: 'user',
-              content: `Create 5 carousel slide image prompts for:\n\n${briefContext}`,
-            }],
+          const slideResponse = await createMessage({
+            userId,
+            operation: 'creative-studio.carousel-prompts',
+            request: {
+              model: 'claude-haiku-4-5',
+              max_tokens: 1024,
+              system: 'You are a visual ad designer. Generate 5 image prompts for a carousel ad. Each prompt should create a visually cohesive slide that tells a story. Return ONLY a valid JSON array of 5 strings, no markdown.',
+              messages: [{
+                role: 'user',
+                content: `Create 5 carousel slide image prompts for:\n\n${briefContext}`,
+              }],
+            },
           });
 
           const slidesRaw = extractText(slideResponse, '[]');

@@ -7,13 +7,11 @@ import { round, fmt } from './format-helpers.js';
 import { notifyAlert } from './notifications.js';
 import { sendMorningBriefing } from './slack-interactive.js';
 import { recordEpisode } from './agent-memory.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -197,7 +195,7 @@ async function fetchN8nBriefingData(): Promise<any | null> {
 /*  Synthesize briefing with Claude                                    */
 /* ------------------------------------------------------------------ */
 
-async function synthesizeBriefing(sources: BriefingSource): Promise<SynthesizedBriefing> {
+async function synthesizeBriefing(userId: string, sources: BriefingSource): Promise<SynthesizedBriefing> {
   const dataContext: string[] = [];
 
   // Ad performance
@@ -248,7 +246,12 @@ ${sources.autopilot.map(a => `- [${a.severity}] ${a.title}`).join('\n')}`);
   }
 
   try {
-    const response = await anthropic.messages.create({
+    const response = await createMessage({
+      userId,
+      operation: 'morning-briefing.synthesizeBriefing',
+      // Cron job — give it more retry headroom than the SDK default.
+      maxRetries: 5,
+      request: {
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
       temperature: 0.5,
@@ -272,6 +275,7 @@ Rules:
 5. Connect dots between data points — if CPA spiked AND there's a pending watchdog decision about it, mention both together.
 6. Return ONLY the JSON object.`,
       messages: [{ role: 'user', content: dataContext.join('\n\n') }],
+      },
     });
 
     const rawText = extractText(response);
@@ -325,7 +329,7 @@ export async function runMorningBriefing(): Promise<number> {
       const sources = await gatherBriefingSources(user.id);
 
       // 2. Synthesize
-      const briefing = await synthesizeBriefing(sources);
+      const briefing = await synthesizeBriefing(user.id, sources);
 
       // 3. Send via Slack
       const slackSent = await sendMorningBriefing(briefing);

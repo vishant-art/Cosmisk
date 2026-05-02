@@ -38,7 +38,6 @@ import { scheduleRoutes } from './routes/schedules.js';
 import { initializeScheduler } from './services/audit-scheduler.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
-import Anthropic from '@anthropic-ai/sdk';
 import { MetaApiService } from './services/meta-api.js';
 import { parseInsightMetrics } from './services/insights-parser.js';
 import type { MetaTokenRow, UserRow } from './types/index.js';
@@ -46,6 +45,7 @@ import { validate, profileUpdateSchema } from './validation/schemas.js';
 import { extractText } from './utils/claude-helpers.js';
 import { logger } from './utils/logger.js';
 import { internalError } from './utils/error-response.js';
+import { DailyCapExceededError, UpstreamRateLimitedError, createMessage } from './services/llm-gateway.js';
 
 const app = Fastify({
   logger: {
@@ -107,6 +107,29 @@ await app.register(usageLimiterPlugin);
 
 // Global error handler — structured error responses for all routes
 app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
+  // LLM-gateway: per-user daily cap exceeded
+  if (error instanceof DailyCapExceededError) {
+    const resetsAt = new Date();
+    resetsAt.setUTCHours(24, 0, 0, 0); // next midnight UTC
+    return reply.status(429).send({
+      success: false,
+      error: 'daily_llm_cap',
+      current_cents: error.cap.spent,
+      cap_cents: error.cap.limit,
+      remaining_cents: error.cap.remaining,
+      resets_at: resetsAt.toISOString(),
+    });
+  }
+  // LLM-gateway: upstream Anthropic rate-limit after SDK retries exhausted
+  if (error instanceof UpstreamRateLimitedError) {
+    reply.header('Retry-After', String(error.retryAfterSeconds));
+    return reply.status(429).send({
+      success: false,
+      error: 'upstream_rate_limited',
+      retry_after_seconds: error.retryAfterSeconds,
+    });
+  }
+
   const statusCode = error.statusCode || 500;
   if (statusCode >= 500) {
     logger.error({ err: error, url: request.url, method: request.method }, 'Internal server error');
@@ -631,8 +654,6 @@ app.post('/creatives/batch-dna', { preHandler: [app.authenticate] }, async (requ
 
   // Claude analysis for uncached ads
   try {
-    const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
-
     // Compute account benchmarks from the batch
     const totalSpend = ads.reduce((s, a) => s + a.spend, 0);
     const avgRoas = ads.filter(a => a.spend > 0).reduce((s, a) => s + a.roas, 0) / Math.max(1, ads.filter(a => a.spend > 0).length);
@@ -640,12 +661,15 @@ app.post('/creatives/batch-dna', { preHandler: [app.authenticate] }, async (requ
 
     const adList = uncached.map((a, i) => `${i + 1}. ID: ${a.id} | Name: "${a.name}" | Format: ${a.format} | ROAS: ${a.roas}x | CTR: ${a.ctr}% | CPA: ${a.cpa} | Spend: ${a.spend} | Conversions: ${a.conversions}`).join('\n');
 
-    const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `You are an ad creative DNA analyst. Analyze these ads and classify each one's creative DNA.
+    const msg = await createMessage({
+      userId: request.user.id,
+      operation: 'creatives.batch-dna',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        messages: [{
+          role: 'user',
+          content: `You are an ad creative DNA analyst. Analyze these ads and classify each one's creative DNA.
 
 Account benchmarks: Avg ROAS ${avgRoas.toFixed(2)}x, Avg CTR ${avgCtr.toFixed(2)}%, Total spend ${totalSpend.toFixed(0)}
 
@@ -668,7 +692,8 @@ Rules:
 
 Return ONLY valid JSON array (no markdown):
 [{"id":"ad_id","hook":["type"],"visual":["type"],"audio":["type"],"reasoning":"brief explanation"}]`
-      }],
+        }],
+      },
     });
 
     const text = extractText(msg);

@@ -14,6 +14,13 @@ export const config = {
   graphApiVersion: 'v22.0',
   graphApiBase: 'https://graph.facebook.com/v22.0',
   anthropicApiKey: env['ANTHROPIC_API_KEY'] || '',
+  // Anthropic Console standard usage tier (1-4). Drives gateway reservoir sizing.
+  // See dev_reports/rate_limiting/anthropic_rate_limits.md § 2.
+  anthropicTier: parseInt(env['ANTHROPIC_TIER'] || '1', 10),
+  // Per-user, per-day USD cap override (in cents). null = use plan-tier defaults.
+  llmDailyUsdCapOverride: env['LLM_DAILY_USD_CAP_OVERRIDE_CENTS']
+    ? parseInt(env['LLM_DAILY_USD_CAP_OVERRIDE_CENTS'], 10)
+    : null,
   geminiApiKey: env['GEMINI_API_KEY'] || '',
   nanoBananaApiKey: env['NANO_BANANA_API_KEY'] || '',
   n8nVideoWebhook: env['N8N_VIDEO_WEBHOOK'] || '',

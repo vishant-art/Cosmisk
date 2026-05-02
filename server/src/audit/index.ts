@@ -138,8 +138,13 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
   }
 
   // 9. Build audit input
+  const userId = getBrandUserId(brandId);
+  if (!userId) {
+    throw new Error(`Cannot run audit: no user owns brand ${brandId} (required for cost-ledger attribution)`);
+  }
   const auditInput: AuditInput = {
     brandId,
+    userId,
     brand,
     context,
     metaData,
