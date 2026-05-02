@@ -47,11 +47,13 @@ up changes.
 
 ## NODE_ENV
 
-The container runs with `NODE_ENV=development` even though it serves the
-*built* bundle. The strict boot guard in `server/src/config.ts` refuses to
-start in `production` without real `ANTHROPIC_API_KEY` and `META_APP_SECRET`,
-which is the wrong tradeoff for a sandbox. The lean memory profile comes from
-skipping `tsx watch` / `ng serve`, not from `NODE_ENV`.
+The container runs with `NODE_ENV=production` because Fastify only mounts the
+static frontend bundle (`server/src/index.ts:265`) when it sees `production`.
+The boot guard in `server/src/config.ts:68-101` is satisfied by the truthy
+placeholder values in `.env.example` for `ANTHROPIC_API_KEY` and
+`META_APP_SECRET` — the server boots cleanly; SDK calls that need real keys
+fail at request time instead. The lean memory profile comes from skipping
+`tsx watch` / `ng serve`, not from `NODE_ENV`.
 
 ## Why no hot reload
 
@@ -63,6 +65,13 @@ to run `npm run dev` + `ng serve`.
 
 ## Caveats
 
+- **Frontend uses the dev environment file, not `environment.prod.ts`.** The
+  prod environment file in this repo is currently out of sync with the dev
+  one (missing keys like `AUDIT_RUN`), which breaks `ng build --configuration
+  production`. The lean container runs plain `ng build`, which uses
+  `environment.ts` and produces a working — if unminified — single bundle in
+  `server/public/`. This is a separate codebase bug; fixing it also unblocks
+  the production Dockerfile.
 - **Puppeteer Chromium download is skipped** (`PUPPETEER_SKIP_DOWNLOAD=true`)
   to keep the image lean. PDF-generation paths in audits will fail until you
   install Chromium inside the container (`apt-get install -y chromium`) and

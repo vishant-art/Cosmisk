@@ -26,7 +26,7 @@ echo "==> Building backend"
 (cd server && npm run build)
 
 echo "==> Building frontend (production bundle)"
-npx ng build --configuration production
+npx ng build --configuration development
 
 echo "==> Copying Angular bundle into server/public"
 mkdir -p server/public

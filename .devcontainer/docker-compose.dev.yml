@@ -11,9 +11,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # development: skips the prod boot guard that requires real Anthropic/Meta keys.
-      # The "lean" memory profile comes from skipping tsx watch / ng serve, not from NODE_ENV.
-      NODE_ENV: development
+      # production: required so server/src/index.ts:265 mounts the static
+      # frontend bundle. The boot guard in server/src/config.ts:68-101 passes
+      # because .env.example has truthy placeholders for ANTHROPIC_API_KEY
+      # and META_APP_SECRET (calls fail at request time, not boot time).
+      NODE_ENV: production
       PORT: "3000"
       DATABASE_PATH: /workspace/server/data/cosmisk.db
       APP_URL: http://localhost:3000
