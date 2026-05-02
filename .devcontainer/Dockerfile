@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         sqlite3 \
+        procps \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

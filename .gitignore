@@ -48,6 +48,10 @@ server/cosmisk.db-wal
 server/cosmisk.db-shm
 server/test-results/
 server/pratap-sons-audit/
+server/data/
+
+# Build artifacts copied into server/public by the lean devcontainer
+server/public/
 
 # SSL certs
 ssl/

@@ -2,7 +2,7 @@
 # Cosmisk lean devcontainer helper.
 # Run from repo root. Requires: docker, docker compose plugin.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/.devcontainer/docker-compose.dev.yml"
@@ -46,12 +46,19 @@ cmd_up() {
     dexec bash -lc "cd /workspace/server && npm install --no-audit --no-fund"
   fi
 
-  if ! dexec test -f /workspace/server/dist/index.js; then
+  # Rebuild if either the backend tsc output OR the frontend bundle is missing.
+  # cmd_rebuild already restarts the server when it finishes; only call cmd_start
+  # in the no-rebuild-needed branch to avoid a duplicate start.
+  if ! dexec test -f /workspace/server/dist/index.js \
+       || ! dexec test -f /workspace/server/public/index.html; then
     cmd_rebuild
+  else
+    cmd_start
   fi
 
-  cmd_run-migrations || true
-  cmd_start
+  # Run migrations after server boot — the scripts touch tables (e.g. users)
+  # that only exist after createTables() runs at server start.
+  cmd_run-migrations
   echo
   echo "==> Cosmisk is up at http://localhost:3000"
 }
@@ -65,7 +72,7 @@ cmd_rebuild() {
   dexec bash -lc "cd /workspace/server && npm run build"
 
   echo "==> Rebuilding frontend (ng build --configuration production)"
-  dexec bash -lc "cd /workspace && npx ng build --configuration production"
+  dexec bash -lc "cd /workspace && npx ng build --configuration development"
 
   echo "==> Copying Angular bundle into server/public"
   dexec bash -lc '
@@ -81,14 +88,27 @@ cmd_rebuild() {
 }
 
 cmd_start() {
-  echo "==> Starting server (background, inside container)"
-  dexec bash -lc '
-    pkill -f "node dist/index.js" 2>/dev/null || true
-    cd /workspace/server
-    nohup node dist/index.js > /tmp/cosmisk.log 2>&1 &
+  echo "==> Starting server (detached, inside container)"
+  # Use docker exec -d so the process survives the exec session teardown.
+  # nohup + & alone gets SIGKILLed when docker exec exits.
+  dexec bash -lc 'pkill -f "[n]ode dist/index.js" 2>/dev/null || true; sleep 0.5'
+  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/server && exec node dist/index.js > /tmp/cosmisk.log 2>&1'
+
+  echo -n "    waiting for /health"
+  for i in $(seq 1 30); do
+    if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+      echo " — up"
+      dexec bash -lc 'echo "    server PID: $(pgrep -f "[n]ode dist/index.js" | head -1)"'
+      return 0
+    fi
+    echo -n "."
     sleep 1
-    echo "    server PID: $(pgrep -f "node dist/index.js" | head -1)"
-  '
+  done
+  echo " — TIMED OUT"
+  echo "!! server did not respond on /health within 30s"
+  echo "   tail of /tmp/cosmisk.log:"
+  dexec bash -lc 'tail -40 /tmp/cosmisk.log 2>/dev/null || echo "   (no log)"'
+  return 1
 }
 
 cmd_restart() {
@@ -96,7 +116,7 @@ cmd_restart() {
 }
 
 cmd_stop() {
-  dexec bash -lc 'pkill -f "node dist/index.js" 2>/dev/null || true; echo "    server stopped"'
+  dexec bash -lc 'pkill -f "[n]ode dist/index.js" 2>/dev/null || true; echo "    server stopped"'
 }
 
 cmd_logs() {
@@ -112,10 +132,10 @@ cmd_status() {
   dc ps
   echo
   echo "==> Server process:"
-  dexec bash -lc 'pgrep -af "node dist/index.js" || echo "  (not running)"'
+  dexec bash -lc 'pgrep -af "[n]ode dist/index.js" || echo "  (not running)"'
   echo
   echo "==> Health:"
-  curl -sf http://localhost:3000/health || echo "  (no response on :3000)"
+  curl -sf http://localhost:3000/health && echo || echo "  (no response on :3000)"
   echo
 }
 
