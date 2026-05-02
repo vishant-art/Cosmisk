@@ -9,15 +9,12 @@
 import { getDb } from '../db/index.js';
 import { buildContextWindow, recordEpisode } from './agent-memory.js';
 import { notifyAlert } from './notifications.js';
-import { config } from '../config.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { PLAN_LIMITS } from '../routes/billing.js';
 import type { SubscriptionRow, UserUsageRow, MetaTokenRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -218,7 +215,7 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
     // Claude synthesis
     let synthesis: SalesSynthesis | null = null;
     try {
-      synthesis = await synthesizeWithClaude({
+      synthesis = await synthesizeWithClaude(userId, {
         userName: user?.name || 'Unknown',
         plan: user?.plan || 'free',
         memberSince: user?.created_at || '',
@@ -410,14 +407,18 @@ Respond in JSON:
 }`;
 }
 
-async function synthesizeWithClaude(input: SynthesisInput): Promise<SalesSynthesis> {
+async function synthesizeWithClaude(userId: string, input: SynthesisInput): Promise<SalesSynthesis> {
   const prompt = buildSalesPrompt(input);
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1000,
-    temperature: 0.4,
-    messages: [{ role: 'user', content: prompt }],
+  const response = await createMessage({
+    userId,
+    operation: 'sales-agent.synthesizeWithClaude',
+    request: {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      temperature: 0.4,
+      messages: [{ role: 'user', content: prompt }],
+    },
   });
 
   const rawText = extractText(response);

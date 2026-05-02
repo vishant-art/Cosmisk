@@ -1,11 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { round, fmt, setCurrency } from './format-helpers.js';
 import type { VideoDNA } from './creative-patterns.js';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -107,6 +104,7 @@ interface CompetitorContext {
 }
 
 export async function generateSprintPlan(
+  userId: string,
   snapshot: AccountSnapshot,
   preferences: {
     budget_cents?: number;
@@ -238,12 +236,16 @@ ${buildCompetitorSection(preferences.competitor_context)}`;
   try {
     // Opus for strategic planning — worth the 5x cost for better format selection
     // Scripts stay on Sonnet (generateScript) since they're execution, not strategy
-    const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 2048,
-      temperature: 0.5,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
+    const response = await createMessage({
+      userId,
+      operation: 'sprint-planner.generateSprintPlan',
+      request: {
+        model: 'claude-opus-4-6',
+        max_tokens: 2048,
+        temperature: 0.5,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      },
     });
 
     const text = extractText(response);
@@ -369,7 +371,7 @@ interface ScriptParams {
   visualAnalysis?: VideoDNA;
 }
 
-export async function generateScript(params: ScriptParams): Promise<{
+export async function generateScript(userId: string, params: ScriptParams): Promise<{
   script: any;
   dna_tags: { hook: string[]; visual: string[]; audio: string[] };
   predicted_score: number;
@@ -444,12 +446,16 @@ ${formatInstructions.requirements}
 Generate a script that would outperform the account average. Predict a performance score (0-100) based on how well it matches winning patterns.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      temperature: 0.7,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
+    const response = await createMessage({
+      userId,
+      operation: 'sprint-planner.generateScript',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      },
     });
 
     const text = extractText(response);
@@ -482,6 +488,7 @@ Generate a script that would outperform the account average. Predict a performan
 /* ------------------------------------------------------------------ */
 
 export async function generateScriptsForJobs(
+  userId: string,
   jobs: { id: string; format: string; source_ads?: { name: string; roas: number }[] }[],
   snapshot: AccountSnapshot,
   preferences: { productName?: string; targetAudience?: string; brandName?: string; currency?: string; visualAnalyses?: Map<string, VideoDNA> },
@@ -504,7 +511,7 @@ export async function generateScriptsForJobs(
         ? preferences.visualAnalyses.get(sourceAd.id)
         : undefined;
 
-      const result = await generateScript({
+      const result = await generateScript(userId, {
         format: job.format,
         snapshot,
         sourceAd,

@@ -104,6 +104,8 @@ export interface CreativePerformance {
 
 export interface AuditInput {
   brandId: string;
+  /** User who owns the brand — required for cost-ledger attribution. */
+  userId: string;
   brand: Brand;
   context: BrandContext | null;
   metaData: MetaSnapshot | null;

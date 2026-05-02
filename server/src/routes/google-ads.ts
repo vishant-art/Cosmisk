@@ -6,11 +6,9 @@ import {
 } from '../services/google-ads-api.js';
 import { validate, oauthCodeSchema, googleAdsQuerySchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Date range mapping                                                 */
@@ -196,15 +194,19 @@ export async function googleAdsRoutes(app: FastifyInstance) {
         service.getCampaignPerformance(mapDatePreset(date_preset)),
       ]);
 
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        temperature: 0.7,
-        system: `You are a Google Ads strategist at Cosmisk. Analyze the performance data and give specific, actionable advice. Reference actual campaign names and numbers. Be conversational, not report-like. Under 400 words.`,
-        messages: [{
-          role: 'user',
-          content: `Analyze this Google Ads performance:\n\nAccount KPIs: ${JSON.stringify(kpis)}\n\nCampaigns: ${JSON.stringify(campaigns.slice(0, 10))}`,
-        }],
+      const response = await createMessage({
+        userId: request.user.id,
+        operation: 'google-ads.analyze',
+        request: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          temperature: 0.7,
+          system: `You are a Google Ads strategist at Cosmisk. Analyze the performance data and give specific, actionable advice. Reference actual campaign names and numbers. Be conversational, not report-like. Under 400 words.`,
+          messages: [{
+            role: 'user',
+            content: `Analyze this Google Ads performance:\n\nAccount KPIs: ${JSON.stringify(kpis)}\n\nCampaigns: ${JSON.stringify(campaigns.slice(0, 10))}`,
+          }],
+        },
       });
 
       return {

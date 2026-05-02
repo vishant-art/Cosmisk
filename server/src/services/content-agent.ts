@@ -13,14 +13,11 @@ import { parseInsightMetrics } from './insights-parser.js';
 import { buildContextWindow, recordEpisode, recordDecisionEpisode } from './agent-memory.js';
 import { notifyAlert } from './notifications.js';
 import { CREATIVE_PATTERNS } from './creative-patterns.js';
-import { config } from '../config.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -148,11 +145,15 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
       swipePatterns, recentAssets, memoryContext,
     );
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      temperature: 0.4,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await createMessage({
+      userId,
+      operation: 'content-agent.runContentAgent',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        temperature: 0.4,
+        messages: [{ role: 'user', content: prompt }],
+      },
     });
 
     const rawText = extractText(response);

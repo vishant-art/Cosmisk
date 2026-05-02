@@ -1,12 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import { validate, creativeScoreSchema, batchScoreSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Cosmisk Score — Free public ad creative analysis                   */
@@ -123,12 +120,18 @@ PLATFORM: ${platform || 'Meta (Facebook/Instagram)'}
 Provide a detailed Cosmisk Score analysis.`;
 
     try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        temperature: 0.3,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+      // Public route — attribute spend to a per-IP synthetic user so the
+      // gateway's per-user daily cap throttles abusive clients.
+      const response = await createMessage({
+        userId: `anon:${request.ip}`,
+        operation: 'score.analyze',
+        request: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          temperature: 0.3,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        },
       });
 
       const text = extractText(response);
@@ -218,12 +221,16 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     ).join('\n\n');
 
     try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        temperature: 0.3,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Compare and rank these ad creatives:\n\n${userMessage}` }],
+      const response = await createMessage({
+        userId: `anon:${request.ip}`,
+        operation: 'score.batch',
+        request: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          temperature: 0.3,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Compare and rank these ad creatives:\n\n${userMessage}` }],
+        },
       });
 
       const text = extractText(response);
