@@ -8,6 +8,7 @@ import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../va
 import { extractText } from '../utils/claude-helpers.js';
 import { internalError } from '../utils/error-response.js';
 import { runCompetitorCreativeIntel } from '../services/competitor-creative-intel.js';
+import { generateHTMLReport } from '../services/competitor-intel-report.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -281,6 +282,32 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
       };
     } catch (err: any) {
       return internalError(reply, err, 'competitor-spy/intel failed');
+    }
+  });
+
+  // GET /competitor-spy/report — generate branded HTML report for client delivery
+  app.get('/report', { preHandler: [app.authenticate], config: { rateLimit: { max: 3, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const parsed = validate(competitorSearchSchema, request.query, reply);
+    if (!parsed) return;
+    const { query, country, limit } = parsed;
+
+    // Optional client name from query params
+    const clientName = (request.query as Record<string, string>)['client'];
+
+    try {
+      const report = await runCompetitorCreativeIntel(query, {
+        userId: request.user.id,
+        country: country || 'IN',
+        limit: limit || 50,
+        analyzeTop: 15,
+      });
+
+      const html = generateHTMLReport(report, clientName);
+
+      reply.header('Content-Type', 'text/html; charset=utf-8');
+      return reply.send(html);
+    } catch (err: any) {
+      return internalError(reply, err, 'competitor-spy/report failed');
     }
   });
 }
