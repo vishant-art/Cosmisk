@@ -275,7 +275,7 @@ async function analyzeCreativeWithAI(ad: AdLibraryAd): Promise<Partial<CreativeA
   // Fallback to Gemini
   if (gemini) {
     try {
-      const model = gemini.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
+      const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const result = await model.generateContent(`${CREATIVE_ANALYSIS_PROMPT}\n\n${userPrompt}`);
       const text = result.response.text();
       const jsonMatch = text.match(/\{[\s\S]*\}/);
