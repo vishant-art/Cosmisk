@@ -14,6 +14,8 @@ import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEp
 import type { MetaTokenRow, ShopifyTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 import { runOOSCheck } from './oos-detector.js';
+import { runDiscountLeakageCheck } from './discount-leakage-detector.js';
+import { quickCohortLTVCheck } from './cohort-ltv-analyzer.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -504,11 +506,13 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
 
               const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext);
 
-              // OOS Detection: Check for ads spending on out-of-stock products
+              // OOS Detection + Discount Leakage Detection (requires Shopify connection)
               const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(user.id) as ShopifyTokenRow | undefined;
               if (shopifyRow) {
+                const shopifyToken = decryptToken(shopifyRow.encrypted_access_token);
+
+                // OOS Detection: Check for ads spending on out-of-stock products
                 try {
-                  const shopifyToken = decryptToken(shopifyRow.encrypted_access_token);
                   const oosResult = await runOOSCheck({
                     shopDomain: shopifyRow.shop_domain,
                     shopifyToken,
@@ -532,6 +536,57 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                   }
                 } catch (oosErr: any) {
                   logger.warn({ err: oosErr.message }, '[Watchdog] OOS check failed, continuing');
+                }
+
+                // Discount Leakage Detection: Check for leaked discount codes
+                try {
+                  const brandName = snapshot.accountName.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+                  if (brandName) {
+                    const leakageResult = await runDiscountLeakageCheck({
+                      shopDomain: shopifyRow.shop_domain,
+                      shopifyToken,
+                      brandName,
+                      userId: user.id,
+                      skipRevenueImpact: false,
+                    });
+
+                    if (leakageResult.success && leakageResult.report && leakageResult.report.leakedCodes.length > 0) {
+                      const report = leakageResult.report;
+                      decisions.push({
+                        type: 'discount_leakage',
+                        targetId: 'discount_codes',
+                        targetName: `${report.leakedCodes.length} leaked discount codes`,
+                        reasoning: `Found ${report.leakedCodes.length} discount codes leaked on coupon sites. Codes: ${report.leakedCodes.slice(0, 3).map(l => l.code).join(', ')}${report.leakedCodes.length > 3 ? '...' : ''}. Estimated revenue leakage: Rs ${report.totalRevenueLeakage.toLocaleString()}`,
+                        confidence: 'high',
+                        urgency: report.severity === 'critical' ? 'critical' : report.severity === 'high' ? 'high' : 'medium',
+                        suggestedAction: 'monitor',
+                        estimatedImpact: `Rs ${report.totalRevenueLeakage.toLocaleString()} leaked this month`,
+                      });
+                    }
+                  }
+                } catch (leakageErr: any) {
+                  logger.warn({ err: leakageErr.message }, '[Watchdog] Discount leakage check failed, continuing');
+                }
+
+                // Cohort LTV Analysis: Check for channel LTV gaps
+                try {
+                  const ltvResult = await quickCohortLTVCheck(user.id);
+
+                  if (ltvResult && ltvResult.hasSignificantGap && ltvResult.topAction) {
+                    const action = ltvResult.topAction;
+                    decisions.push({
+                      type: 'channel_ltv_gap',
+                      targetId: 'budget_allocation',
+                      targetName: `${ltvResult.bestChannel} vs ${ltvResult.worstChannel}`,
+                      reasoning: `${action.insight} ${action.action}`,
+                      confidence: action.priority === 'high' ? 'high' : 'moderate',
+                      urgency: action.priority === 'high' ? 'medium' : 'low',
+                      suggestedAction: action.type === 'budget_shift' ? 'increase_budget' : 'monitor',
+                      estimatedImpact: action.expectedImpact,
+                    });
+                  }
+                } catch (ltvErr: any) {
+                  logger.warn({ err: ltvErr.message }, '[Watchdog] Cohort LTV check failed, continuing');
                 }
               }
 
