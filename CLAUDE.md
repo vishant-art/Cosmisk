@@ -1,4 +1,61 @@
-<!-- PROJECT MEMORY - Updated 2026-05-02 -->
+<!-- PROJECT MEMORY - Updated 2026-05-06 -->
+
+## Karpathy's 4 Principles (AI Coding Discipline)
+
+**Source:** [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills) (109K+ stars)
+
+**Activation:** ALWAYS — these are baseline rules for all code changes.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+### 1. Think Before Coding
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+- State assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them — don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+### 2. Simplicity First
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+**Touch only what you must. Clean up only your own mess.**
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it — don't delete it.
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+**Test:** Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+```
+
+**Working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, clarifying questions come before implementation
+
+---
 
 ## Council Protocol (Anti-Sycophancy)
 
@@ -17,6 +74,56 @@ When triggered, convene 5 advisors:
 Each advisor: 2-3 sentences max. Then provide:
 - **Verdict:** Go / No-Go / Needs More Info
 - **Next Step:** One specific action
+
+---
+
+## Context Handoff Protocol (Session Memory)
+
+**Activation:** `/handoff` or "generate handoff" or "save context" or when ending a long session
+
+When triggered, generate a **HANDOFF PROMPT** that captures the current session state so a fresh Claude window can continue seamlessly.
+
+### What to Capture
+
+```
+## HANDOFF CONTEXT — [Date]
+
+### Git State
+- **Branch:** [current branch]
+- **Recent commits:** [last 5 commits with messages]
+- **Uncommitted changes:** [modified/staged files]
+
+### Files Touched This Session
+[List of files read/edited with brief purpose]
+
+### What We Built/Fixed
+[Bullet list of accomplishments]
+
+### Current Task
+[What was being worked on when session ended]
+
+### Dead Ends (Don't Retry)
+[Approaches that failed, with why]
+
+### Next Steps
+[Specific actions for the next session]
+
+### Key Decisions Made
+[Important choices that shouldn't be revisited]
+```
+
+### Output Format
+
+Output the handoff as a **copyable code block** that starts with:
+```
+Continue this development session. Here's where we left off:
+```
+
+This lets the user paste directly into a fresh Claude window.
+
+### Auto-Trigger
+
+If the conversation has been going for 20+ turns and involves code changes, proactively offer: "Want me to generate a handoff prompt before we run out of context?"
 
 ---
 
