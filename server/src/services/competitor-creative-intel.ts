@@ -116,9 +116,11 @@ export interface CreativeIntelReport {
     basedOn: string;
   }>;
 
-  // Swipe file
+  // Swipe file - organized by hook type with visual links
   swipeFile: Array<{
     category: string;
+    count: number;
+    description: string;
     ads: CreativeAnalysis[];
   }>;
 }
@@ -778,23 +780,55 @@ export async function runCompetitorCreativeIntel(
   // Generate recommendations
   const recommendations = generateRecommendations(competitors, aiAnalyzedAds);
 
-  // Build swipe file
+  // Build swipe file - organized by hook type for easy browsing
   const swipeFile = [
     {
-      category: 'Long-Running (30+ days)',
+      category: 'Long-Running Winners (30+ days)',
+      count: analyzedAds.filter(a => a.daysRunning >= 30).length,
+      description: 'Ads running 30+ days are likely profitable - study these closely',
       ads: analyzedAds.filter(a => a.daysRunning >= 30).slice(0, 10),
     },
     {
-      category: 'High Spend',
-      ads: analyzedAds.filter(a => a.spendUpper && a.spendUpper > 50000).slice(0, 10),
-    },
-    {
-      category: 'UGC Style',
-      ads: aiAnalyzedAds.filter(a => a.creativeFormat === 'ugc_video').slice(0, 10),
+      category: 'Aspiration Hooks',
+      count: aiAnalyzedAds.filter(a => a.hookType === 'aspiration').length,
+      description: 'Dream, achieve, glow, luxury messaging',
+      ads: aiAnalyzedAds.filter(a => a.hookType === 'aspiration').slice(0, 10),
     },
     {
       category: 'Problem-First Hooks',
+      count: aiAnalyzedAds.filter(a => a.hookType === 'problem_first').length,
+      description: 'Pain points, frustrations, struggles',
       ads: aiAnalyzedAds.filter(a => a.hookType === 'problem_first').slice(0, 10),
+    },
+    {
+      category: 'Social Proof Hooks',
+      count: aiAnalyzedAds.filter(a => a.hookType === 'social_proof').length,
+      description: 'Reviews, testimonials, numbers',
+      ads: aiAnalyzedAds.filter(a => a.hookType === 'social_proof').slice(0, 10),
+    },
+    {
+      category: 'Transformation Hooks',
+      count: aiAnalyzedAds.filter(a => a.hookType === 'transformation').length,
+      description: 'Before/after, visible results',
+      ads: aiAnalyzedAds.filter(a => a.hookType === 'transformation').slice(0, 10),
+    },
+    {
+      category: 'Question Hooks',
+      count: aiAnalyzedAds.filter(a => a.hookType === 'question').length,
+      description: 'Engaging questions that pull readers in',
+      ads: aiAnalyzedAds.filter(a => a.hookType === 'question').slice(0, 10),
+    },
+    {
+      category: 'Discount-Led Hooks',
+      count: aiAnalyzedAds.filter(a => a.hookType === 'discount_lead').length,
+      description: 'Offer-first messaging',
+      ads: aiAnalyzedAds.filter(a => a.hookType === 'discount_lead').slice(0, 10),
+    },
+    {
+      category: 'High Spend Ads',
+      count: analyzedAds.filter(a => a.spendUpper && a.spendUpper > 50000).length,
+      description: 'Ads with significant budget behind them',
+      ads: analyzedAds.filter(a => a.spendUpper && a.spendUpper > 50000).slice(0, 10),
     },
   ].filter(s => s.ads.length > 0);
 
@@ -864,11 +898,16 @@ export function formatCreativeIntelReport(report: CreativeIntelReport): string {
 
   for (const comp of report.competitors.slice(0, 5)) {
     lines.push(`📊 ${comp.pageName}`);
-    lines.push(`   Active Ads: ${comp.activeAds} | Avg Age: ${comp.avgAdAge} days`);
-    lines.push(`   Top Hook: ${comp.topHookTypes[0]?.type || 'N/A'} (${comp.topHookTypes[0]?.percentage || 0}%)`);
-    lines.push(`   Top Offer: ${comp.topOfferTypes[0]?.type || 'N/A'}`);
+    lines.push(`   ├─ Active Ads: ${comp.activeAds} | Avg Age: ${comp.avgAdAge} days`);
+    lines.push(`   ├─ Top Hook: ${comp.topHookTypes[0]?.type || 'N/A'} (${comp.topHookTypes[0]?.percentage || 0}%)`);
+    lines.push(`   ├─ Top Offer: ${comp.topOfferTypes[0]?.type || 'N/A'}`);
     if (comp.longestRunningAd) {
-      lines.push(`   Best Performer: Running ${comp.longestRunningAd.daysRunning} days`);
+      lines.push(`   ├─ Best Performer: Running ${comp.longestRunningAd.daysRunning} days`);
+      if (comp.longestRunningAd.hookText || comp.longestRunningAd.primaryText) {
+        const text = comp.longestRunningAd.hookText || comp.longestRunningAd.primaryText || '';
+        lines.push(`   │  "${text.slice(0, 55)}${text.length > 55 ? '...' : ''}"`);
+      }
+      lines.push(`   └─ 👁️ VIEW: ${comp.longestRunningAd.snapshotUrl}`);
     }
     lines.push('');
   }
@@ -887,23 +926,38 @@ export function formatCreativeIntelReport(report: CreativeIntelReport): string {
     lines.push('');
   }
 
-  // Swipe File Summary
+  // Swipe File - Visual Gallery with Links
   if (report.swipeFile.length > 0) {
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    lines.push('                      SWIPE FILE');
+    lines.push('                 🎨 CREATIVE SWIPE FILE (Click to View)');
     lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     lines.push('');
 
     for (const category of report.swipeFile) {
-      lines.push(`📁 ${category.category} (${category.ads.length} ads)`);
-      for (const ad of category.ads.slice(0, 3)) {
-        lines.push(`   • ${ad.pageName}: ${ad.snapshotUrl}`);
-      }
+      lines.push(`┌─────────────────────────────────────────────────────────────────────┐`);
+      lines.push(`│ 📁 ${category.category.padEnd(50)} (${String(category.count).padStart(2)} ads) │`);
+      lines.push(`│    ${category.description.padEnd(61)} │`);
+      lines.push(`└─────────────────────────────────────────────────────────────────────┘`);
       lines.push('');
+
+      for (const ad of category.ads.slice(0, 5)) {
+        lines.push(`  🖼️  ${ad.pageName}`);
+        lines.push(`      ├─ Running: ${ad.daysRunning} days | Hook: ${ad.hookType}`);
+        if (ad.hookText) {
+          lines.push(`      ├─ "${ad.hookText.slice(0, 60)}${ad.hookText.length > 60 ? '...' : ''}"`);
+        } else if (ad.primaryText) {
+          lines.push(`      ├─ "${ad.primaryText.slice(0, 60)}${ad.primaryText.length > 60 ? '...' : ''}"`);
+        }
+        lines.push(`      └─ 👁️ VIEW AD: ${ad.snapshotUrl}`);
+        lines.push('');
+      }
     }
   }
 
   lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  lines.push('');
+  lines.push('💡 TIP: Click any "VIEW AD" link to see the actual creative on Meta Ad Library');
+  lines.push('');
 
   return lines.join('\n');
 }
