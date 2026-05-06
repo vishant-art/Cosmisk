@@ -7,6 +7,7 @@ import { decryptToken } from '../services/token-crypto.js';
 import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { internalError } from '../utils/error-response.js';
+import { runCompetitorCreativeIntel } from '../services/competitor-creative-intel.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -218,6 +219,68 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
       };
     } catch (err: any) {
       return internalError(reply, err, 'competitor-spy/analyze failed');
+    }
+  });
+
+  // GET /competitor-spy/intel — deep creative intelligence report
+  app.get('/intel', { preHandler: [app.authenticate], config: { rateLimit: { max: 3, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const parsed = validate(competitorSearchSchema, request.query, reply);
+    if (!parsed) return;
+    const { query, country, limit } = parsed;
+
+    try {
+      const report = await runCompetitorCreativeIntel(query, {
+        userId: request.user.id,
+        country: country || 'IN',
+        limit: limit || 50,
+        analyzeTop: 15, // AI-analyze top 15 ads
+      });
+
+      return {
+        success: true,
+        query,
+        analyzedAt: report.analyzedAt,
+        totalAds: report.totalAdsAnalyzed,
+        competitors: report.competitors.map(c => ({
+          pageName: c.pageName,
+          pageId: c.pageId,
+          activeAds: c.activeAds,
+          avgAdAge: c.avgAdAge,
+          topHooks: c.topHookTypes.slice(0, 3),
+          topOffers: c.topOfferTypes.slice(0, 3),
+          topFormats: c.topFormats.slice(0, 3),
+          longestRunningAd: c.longestRunningAd ? {
+            daysRunning: c.longestRunningAd.daysRunning,
+            hookText: c.longestRunningAd.hookText || c.longestRunningAd.primaryText?.slice(0, 100),
+            snapshotUrl: c.longestRunningAd.snapshotUrl,
+          } : null,
+        })),
+        industryPatterns: {
+          dominantHooks: report.industryPatterns.dominantHooks,
+          dominantOffers: report.industryPatterns.dominantOffers,
+          avgAdAge: report.industryPatterns.avgAdAge,
+          longestRunningAds: report.industryPatterns.longestRunningAds.slice(0, 5).map(ad => ({
+            pageName: ad.pageName,
+            daysRunning: ad.daysRunning,
+            hookText: ad.hookText || ad.primaryText?.slice(0, 100),
+            snapshotUrl: ad.snapshotUrl,
+          })),
+        },
+        recommendations: report.recommendations,
+        swipeFile: report.swipeFile.map(cat => ({
+          category: cat.category,
+          count: cat.ads.length,
+          ads: cat.ads.slice(0, 5).map(ad => ({
+            pageName: ad.pageName,
+            daysRunning: ad.daysRunning,
+            hookType: ad.hookType,
+            offerType: ad.offerType,
+            snapshotUrl: ad.snapshotUrl,
+          })),
+        })),
+      };
+    } catch (err: any) {
+      return internalError(reply, err, 'competitor-spy/intel failed');
     }
   });
 }
