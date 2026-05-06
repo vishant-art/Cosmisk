@@ -252,6 +252,9 @@ async function analyzeCreativeWithAI(ad: AdLibraryAd): Promise<Partial<CreativeA
 
   const userPrompt = `Analyze this ad:\n\nPrimary Text: ${adContent.primaryText}\n\nHeadline: ${adContent.headline}\n\nCaption: ${adContent.caption}\n\nPlatforms: ${adContent.platforms.join(', ')}`;
 
+  const fullText = `${adContent.primaryText} ${adContent.headline} ${adContent.caption}`.trim();
+  const contentForRules = { text: fullText, platforms: adContent.platforms };
+
   // Try Anthropic first
   try {
     const response = await anthropic.messages.create({
@@ -266,7 +269,7 @@ async function analyzeCreativeWithAI(ad: AdLibraryAd): Promise<Partial<CreativeA
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
-      return parseAnalysisResult(parsed);
+      return parseAnalysisResult(parsed, contentForRules);
     }
   } catch (err) {
     logger.warn({ err }, '[CreativeIntel] Anthropic analysis failed, trying Gemini');
@@ -281,35 +284,155 @@ async function analyzeCreativeWithAI(ad: AdLibraryAd): Promise<Partial<CreativeA
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        return parseAnalysisResult(parsed);
+        return parseAnalysisResult(parsed, contentForRules);
       }
     } catch (err) {
       logger.warn({ err }, '[CreativeIntel] Gemini analysis also failed');
     }
   }
 
-  return {
-    hookType: 'unknown',
-    hookText: '',
-    ctaType: 'unknown',
-    ctaText: '',
-    offerType: 'none',
-    offerDetails: '',
-    creativeFormat: 'unknown',
-    emotionalTriggers: [],
-    targetAudience: 'unknown',
-  };
+  // Pure rule-based fallback when AI completely fails
+  return parseAnalysisResult({}, contentForRules);
 }
 
-function parseAnalysisResult(parsed: Record<string, unknown>): Partial<CreativeAnalysis> {
+// Valid types for normalization
+const VALID_HOOK_TYPES = ['problem_first', 'social_proof', 'discount_lead', 'curiosity', 'fear', 'aspiration', 'transformation', 'testimonial', 'question', 'statistic', 'story', 'other'];
+const VALID_OFFER_TYPES = ['percentage_discount', 'flat_discount', 'free_shipping', 'bundle', 'trial', 'gift', 'bogo', 'none', 'other'];
+const VALID_CTA_TYPES = ['urgency', 'benefit', 'curiosity', 'social_proof', 'scarcity', 'free_offer', 'discount', 'learn_more', 'shop_now', 'other'];
+const VALID_FORMAT_TYPES = ['ugc_video', 'studio_video', 'static_image', 'carousel', 'gif', 'catalog_dpa', 'other'];
+
+// Normalize AI response to valid type
+function normalizeType(value: string | undefined, validTypes: string[], fallback: string): string {
+  if (!value) return fallback;
+  const normalized = value.toLowerCase().replace(/[^a-z_]/g, '').replace(/ /g, '_');
+  if (validTypes.includes(normalized)) return normalized;
+  // Try partial match
+  for (const valid of validTypes) {
+    if (normalized.includes(valid) || valid.includes(normalized)) return valid;
+  }
+  return fallback;
+}
+
+// Rule-based hook classifier (fallback when AI returns unknown)
+function classifyHookByRules(text: string): string {
+  const lower = text.toLowerCase();
+
+  // Problem-first: pain points, struggles, frustrations
+  if (/(?:tired of|sick of|struggling|problem|hate|can't|won't|doesn't work|stop wasting|frustrated|annoying|hard to)/i.test(lower)) {
+    return 'problem_first';
+  }
+
+  // Question hooks
+  if (/^(?:do you|are you|have you|want to|looking for|need|what if|why do|how do|ever wonder)/i.test(lower)) {
+    return 'question';
+  }
+
+  // Social proof: numbers, testimonials, reviews
+  if (/(?:\d+[,\d]*\+?\s*(?:customers?|users?|people|women|men|reviews?|sold|happy)|trusted by|as seen|featured in|rated|#1|best seller|everyone)/i.test(lower)) {
+    return 'social_proof';
+  }
+
+  // Testimonial: quotes, personal stories
+  if (/(?:^[""]|^i was|^i used|^my skin|^my hair|^after using|^before i|^this product|^i've been|^finally found|^game changer|^life changing)/i.test(lower)) {
+    return 'testimonial';
+  }
+
+  // Transformation: before/after, results
+  if (/(?:transform|before.{0,20}after|results in|days? to|weeks? to|in just|within \d|see the difference|visible results|real results|glow up)/i.test(lower)) {
+    return 'transformation';
+  }
+
+  // Discount lead: starts with offer
+  if (/^(?:flat|extra|\d+%|save|free|bogo|buy \d|limited time|today only|sale|offer|deal|discount)/i.test(lower)) {
+    return 'discount_lead';
+  }
+
+  // Curiosity: secrets, reveals, surprising
+  if (/(?:secret|nobody tells|they don't want|little known|surprising|shocking|unbelievable|discover|revealed|truth about|the real reason|what nobody|you won't believe)/i.test(lower)) {
+    return 'curiosity';
+  }
+
+  // Fear/urgency
+  if (/(?:don't miss|last chance|running out|limited stock|selling fast|almost gone|hurry|act now|before it's|ends soon|final hours)/i.test(lower)) {
+    return 'fear';
+  }
+
+  // Aspiration: dreams, goals
+  if (/(?:dream|achieve|become|unlock|level up|elevate|premium|luxury|deserve|treat yourself|self.?care|pamper|indulge|glow|radiant|flawless)/i.test(lower)) {
+    return 'aspiration';
+  }
+
+  // Statistic: numbers and data
+  if (/(?:\d+%\s+(?:of|more|less|better|faster|improvement)|clinical|proven|study|research|dermatologist|doctor)/i.test(lower)) {
+    return 'statistic';
+  }
+
+  // Story: narrative structure
+  if (/(?:^when i|^last year|^one day|^it all started|my journey|my story|^i never thought|^years ago)/i.test(lower)) {
+    return 'story';
+  }
+
+  return 'other';
+}
+
+// Rule-based offer classifier
+function classifyOfferByRules(text: string): string {
+  const lower = text.toLowerCase();
+
+  if (/\d+%\s*off/i.test(lower)) return 'percentage_discount';
+  if (/(?:flat|₹|rs\.?|inr)\s*\d+\s*off/i.test(lower)) return 'flat_discount';
+  if (/free\s*(?:shipping|delivery)/i.test(lower)) return 'free_shipping';
+  if (/(?:buy\s*\d|bundle|combo|pack of|set of)/i.test(lower)) return 'bundle';
+  if (/(?:free\s*(?:trial|sample)|try\s*(?:free|for))/i.test(lower)) return 'trial';
+  if (/(?:free\s*gift|gift\s*(?:with|on)|bonus|freebie)/i.test(lower)) return 'gift';
+  if (/(?:buy\s*\d+\s*get|bogo|b\d+g\d+)/i.test(lower)) return 'bogo';
+
+  // Check if there's any offer mention
+  if (/(?:offer|deal|discount|save|sale|off|free)/i.test(lower)) return 'other';
+
+  return 'none';
+}
+
+// Rule-based format classifier
+function classifyFormatByRules(platforms: string[], text: string): string {
+  const lower = text.toLowerCase();
+
+  // Check for catalog indicators
+  if (/(?:shop now|view product|add to cart|see more)/i.test(lower) && platforms.includes('facebook')) {
+    return 'catalog_dpa';
+  }
+
+  // Default to static for text-heavy content
+  return 'static_image';
+}
+
+function parseAnalysisResult(parsed: Record<string, unknown>, adContent?: { text: string; platforms: string[] }): Partial<CreativeAnalysis> {
+  let hookType = normalizeType(parsed['hookType'] as string, VALID_HOOK_TYPES, 'unknown');
+  let offerType = normalizeType(parsed['offerType'] as string, VALID_OFFER_TYPES, 'none');
+  let creativeFormat = normalizeType(parsed['creativeFormat'] as string, VALID_FORMAT_TYPES, 'unknown');
+
+  // Apply rule-based fallbacks when AI returns unknown/other
+  if (adContent?.text) {
+    if (hookType === 'unknown' || hookType === 'other') {
+      hookType = classifyHookByRules(adContent.text);
+    }
+    if (offerType === 'none' || offerType === 'other') {
+      const ruleOffer = classifyOfferByRules(adContent.text);
+      if (ruleOffer !== 'none') offerType = ruleOffer;
+    }
+    if (creativeFormat === 'unknown' || creativeFormat === 'other') {
+      creativeFormat = classifyFormatByRules(adContent.platforms, adContent.text);
+    }
+  }
+
   return {
-    hookType: (parsed['hookType'] as string) || 'unknown',
+    hookType,
     hookText: (parsed['hookText'] as string) || '',
-    ctaType: (parsed['ctaType'] as string) || 'unknown',
+    ctaType: normalizeType(parsed['ctaType'] as string, VALID_CTA_TYPES, 'unknown'),
     ctaText: (parsed['ctaText'] as string) || '',
-    offerType: (parsed['offerType'] as string) || 'none',
+    offerType,
     offerDetails: (parsed['offerDetails'] as string) || '',
-    creativeFormat: (parsed['creativeFormat'] as string) || 'unknown',
+    creativeFormat,
     emotionalTriggers: (parsed['emotionalTriggers'] as string[]) || [],
     targetAudience: (parsed['targetAudience'] as string) || 'unknown',
   };
