@@ -393,6 +393,70 @@ export function getOOSAlertThreshold(client: ServiceClient): number {
 }
 
 // ============================================================================
+// Discount Leakage Agent Store
+// ============================================================================
+
+export interface DiscountLeakageAgentStore {
+  lastCheckAt?: string;
+  knownLeakedCodes: string[];      // Codes we've already reported
+  cumulativeLeakage: number;       // Total leakage found over time
+  alertsSent: number;
+  lastAlertAt?: string;
+}
+
+export function getDiscountLeakageStore(clientId: string): DiscountLeakageAgentStore | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT discount_leakage_store FROM service_clients WHERE id = ?
+  `).get(clientId) as { discount_leakage_store?: string } | undefined;
+
+  if (!row?.discount_leakage_store) return null;
+
+  try {
+    return JSON.parse(row.discount_leakage_store);
+  } catch {
+    return null;
+  }
+}
+
+export function updateDiscountLeakageStore(clientId: string, updates: Partial<DiscountLeakageAgentStore>): void {
+  const db = getDb();
+  const existing = getDiscountLeakageStore(clientId) || {
+    knownLeakedCodes: [],
+    cumulativeLeakage: 0,
+    alertsSent: 0,
+  };
+
+  const merged = { ...existing, ...updates };
+
+  db.prepare(`
+    UPDATE service_clients
+    SET discount_leakage_store = ?
+    WHERE id = ?
+  `).run(JSON.stringify(merged), clientId);
+}
+
+export function getDiscountLeakageAlertThreshold(client: ServiceClient): number {
+  // Leakage thresholds - slightly higher than OOS since it's about margin not spend
+  if (client.alertThreshold && client.alertThreshold > 0) {
+    return client.alertThreshold * 1.5; // 1.5x the OOS threshold
+  }
+
+  switch (client.revenueLevel) {
+    case '5cr_plus':
+      return 15000; // Rs 15K
+    case '1cr_plus':
+      return 7500;  // Rs 7.5K
+    case '50l_plus':
+      return 3000;  // Rs 3K
+    case '10l_plus':
+      return 1500;  // Rs 1.5K
+    default:
+      return 750;   // Rs 750
+  }
+}
+
+// ============================================================================
 // Recommendations
 // ============================================================================
 
