@@ -516,6 +516,69 @@ export function getWatchdogUrgencyThreshold(client: ServiceClient): 'low' | 'med
 }
 
 // ============================================================================
+// Creative Scorer Agent Store
+// ============================================================================
+
+export interface CreativeScorerStore {
+  lastScoredAt?: string;
+  totalCreativesScored: number;
+  avgScore: number;
+  topPerformingFormats: string[];
+  winningPatterns: string[];
+  alertsSent: number;
+  lastAlertAt?: string;
+}
+
+export function getCreativeScorerStore(clientId: string): CreativeScorerStore | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT creative_scorer_store FROM service_clients WHERE id = ?
+  `).get(clientId) as { creative_scorer_store?: string } | undefined;
+
+  if (!row?.creative_scorer_store) return null;
+
+  try {
+    return JSON.parse(row.creative_scorer_store);
+  } catch {
+    return null;
+  }
+}
+
+export function updateCreativeScorerStore(clientId: string, updates: Partial<CreativeScorerStore>): void {
+  const db = getDb();
+  const existing = getCreativeScorerStore(clientId) || {
+    totalCreativesScored: 0,
+    avgScore: 0,
+    topPerformingFormats: [],
+    winningPatterns: [],
+    alertsSent: 0,
+  };
+
+  const merged = { ...existing, ...updates };
+
+  db.prepare(`
+    UPDATE service_clients
+    SET creative_scorer_store = ?
+    WHERE id = ?
+  `).run(JSON.stringify(merged), clientId);
+}
+
+export function getCreativeScoreThreshold(client: ServiceClient): number {
+  // Minimum score threshold for "good" creative by revenue level
+  // Higher revenue clients have stricter standards
+  switch (client.revenueLevel) {
+    case '5cr_plus':
+      return 75;    // Only 75+ scores are "good"
+    case '1cr_plus':
+      return 65;    // 65+ for scaled brands
+    case '50l_plus':
+      return 55;    // 55+ for growing brands
+    default:
+      return 45;    // 45+ for starter brands
+  }
+}
+
+// ============================================================================
 // Recommendations
 // ============================================================================
 
