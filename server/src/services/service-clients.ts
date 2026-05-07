@@ -312,6 +312,87 @@ export function hasReferenceBeenShown(clientId: string, adId: string): boolean {
 }
 
 // ============================================================================
+// OOS Agent Store
+// ============================================================================
+
+export function getOOSAgentStore(clientId: string): OOSAgentStore | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM oos_agent_store WHERE client_id = ?').get(clientId) as any;
+  if (!row) return null;
+
+  return {
+    clientId: row.client_id,
+    productCatalogHash: row.product_catalog_hash,
+    lastCheckAt: row.last_check_at,
+    knownOOSProducts: JSON.parse(row.known_oos_products || '[]'),
+    cumulativeWaste: row.cumulative_waste || 0,
+    alertsSent: row.alerts_sent || 0,
+    lastAlertAt: row.last_alert_at,
+  };
+}
+
+export function updateOOSAgentStore(clientId: string, updates: Partial<OOSAgentStore>): void {
+  const db = getDb();
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (updates.productCatalogHash !== undefined) {
+    fields.push('product_catalog_hash = ?');
+    values.push(updates.productCatalogHash);
+  }
+  if (updates.lastCheckAt !== undefined) {
+    fields.push('last_check_at = ?');
+    values.push(updates.lastCheckAt);
+  }
+  if (updates.knownOOSProducts !== undefined) {
+    fields.push('known_oos_products = ?');
+    values.push(JSON.stringify(updates.knownOOSProducts));
+  }
+  if (updates.cumulativeWaste !== undefined) {
+    fields.push('cumulative_waste = ?');
+    values.push(updates.cumulativeWaste);
+  }
+  if (updates.alertsSent !== undefined) {
+    fields.push('alerts_sent = ?');
+    values.push(updates.alertsSent);
+  }
+  if (updates.lastAlertAt !== undefined) {
+    fields.push('last_alert_at = ?');
+    values.push(updates.lastAlertAt);
+  }
+
+  if (fields.length > 0) {
+    values.push(clientId);
+    db.prepare(`UPDATE oos_agent_store SET ${fields.join(', ')} WHERE client_id = ?`).run(...values);
+  }
+}
+
+/**
+ * Get alert threshold based on client's revenue level
+ * Scaled brands need higher thresholds to avoid noise
+ */
+export function getOOSAlertThreshold(client: ServiceClient): number {
+  // Use client's custom threshold if set
+  if (client.alertThreshold && client.alertThreshold > 0) {
+    return client.alertThreshold;
+  }
+
+  // Default thresholds by revenue level
+  switch (client.revenueLevel) {
+    case '5cr_plus':
+      return 10000; // Rs 10K - very scaled, only major issues
+    case '1cr_plus':
+      return 5000;  // Rs 5K - scaled brand
+    case '50l_plus':
+      return 2000;  // Rs 2K - growing brand
+    case '10l_plus':
+      return 1000;  // Rs 1K - emerging brand
+    default:
+      return 500;   // Rs 500 - starter brand
+  }
+}
+
+// ============================================================================
 // Recommendations
 // ============================================================================
 

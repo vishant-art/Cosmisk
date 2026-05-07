@@ -4,6 +4,11 @@
  * Matches out-of-stock Shopify products to active Meta ads
  * to identify wasted ad spend.
  *
+ * Enhanced with:
+ * - Per-product spend via Meta async reports (breakdowns=product_id)
+ * - Shopify order verification to confirm true wasted spend
+ * - Stockout timeline analysis
+ *
  * Ported from Agency-automation-smashed CrossAnalyzer
  */
 
@@ -11,6 +16,17 @@ import { fetchFullyOOSProducts } from '../audit/shopify-ingestion.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics } from './insights-parser.js';
 import { logger } from '../utils/logger.js';
+import { config } from '../config.js';
+import {
+  getClient,
+  getClientContext,
+  getOOSAgentStore,
+  updateOOSAgentStore,
+  createRecommendation,
+  getOOSAlertThreshold,
+  type ServiceClient,
+  type OOSAgentStore,
+} from './service-clients.js';
 
 // ============ TYPES ============
 
@@ -395,17 +411,473 @@ export async function detectCatalogOOS(options: CatalogOOSOptions): Promise<Cata
   };
 }
 
+// ============ PER-PRODUCT SPEND ANALYSIS (Async Reports) ============
+
+export interface ProductSpendData {
+  productId: string;
+  productName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  purchases: number;
+  revenue: number;
+}
+
+export interface ShopifySalesData {
+  orders: number;
+  quantity: number;
+  revenue: number;
+}
+
+export interface EnhancedOOSProduct {
+  productId: string;
+  productName: string;
+  issueType: 'SYNC_ISSUE' | 'TRUE_OOS' | 'CATALOG_ONLY';
+  currentInventory: number | null;
+  // Meta ad data
+  metaSpend: number;
+  metaImpressions: number;
+  metaClicks: number;
+  metaPurchases: number;
+  metaRevenue: number;
+  // Shopify verified data
+  shopifyOrders: number;
+  shopifyQuantity: number;
+  shopifyRevenue: number;
+  // Analysis
+  verifiedWasted: boolean;
+  wastedSpend: number;
+  roas: number;
+}
+
+export interface EnhancedOOSReport {
+  capturedAt: string;
+  accountId: string;
+  catalogId: string;
+  dateRange: string;
+  // Summary
+  totalOOSProducts: number;
+  totalAdSpend: number;
+  verifiedWastedSpend: number;
+  productsWithShopifySales: number;
+  productsNoSales: number;
+  syncIssues: number;
+  trueOOS: number;
+  // Details
+  products: EnhancedOOSProduct[];
+}
+
+/**
+ * Run async report with product_id breakdown to get actual per-product spend
+ * This is the key loophole: standard insights don't support product_id,
+ * but async reports with breakdowns=product_id work
+ */
+async function runAsyncReportWithProductBreakdown(
+  accountId: string,
+  token: string,
+  startDate: string,
+  endDate: string,
+): Promise<ProductSpendData[]> {
+  const graphBase = config.graphApiBase;
+
+  // Create async report request
+  const createUrl = `${graphBase}/${accountId}/insights`;
+  const params = new URLSearchParams({
+    fields: 'spend,impressions,clicks,actions,action_values',
+    breakdowns: 'product_id',
+    level: 'ad',
+    time_range: JSON.stringify({ since: startDate, until: endDate }),
+    access_token: token,
+  });
+
+  const createResp = await fetch(createUrl, { method: 'POST', body: params });
+  const createData = await createResp.json();
+
+  if (createData.error) {
+    logger.warn({ error: createData.error.message }, '[OOS] Async report creation failed');
+    return [];
+  }
+
+  const reportId = createData.report_run_id;
+  if (!reportId) {
+    logger.warn('[OOS] No report_run_id returned');
+    return [];
+  }
+
+  // Poll for completion (max 60 attempts, 3s each = 3 minutes)
+  let attempts = 0;
+  while (attempts < 60) {
+    await new Promise(r => setTimeout(r, 3000));
+    attempts++;
+
+    const statusResp = await fetch(
+      `${graphBase}/${reportId}?fields=async_status,async_percent_completion&access_token=${token}`
+    );
+    const statusData = await statusResp.json();
+
+    if (statusData.async_status === 'Job Completed') {
+      break;
+    }
+    if (statusData.async_status === 'Job Failed') {
+      logger.warn('[OOS] Async report job failed');
+      return [];
+    }
+  }
+
+  // Fetch results with pagination
+  const results: ProductSpendData[] = [];
+  let url: string | null = `${graphBase}/${reportId}/insights?limit=500&access_token=${token}`;
+
+  while (url) {
+    const resp: Response = await fetch(url);
+    const data: any = await resp.json();
+    if (data.error) break;
+
+    for (const row of data.data || []) {
+      const productIdFull = row.product_id || '';
+      const [productId, ...nameParts] = productIdFull.split(', ');
+      const productName = nameParts.join(', ');
+
+      const purchases = parseInt(row.actions?.find((a: any) => a.action_type === 'purchase')?.value || '0', 10);
+      const revenue = parseFloat(row.action_values?.find((a: any) => a.action_type === 'purchase')?.value || '0');
+
+      results.push({
+        productId,
+        productName,
+        spend: parseFloat(row.spend || '0'),
+        impressions: parseInt(row.impressions || '0', 10),
+        clicks: parseInt(row.clicks || '0', 10),
+        purchases,
+        revenue,
+      });
+    }
+
+    url = data.paging?.next || null;
+  }
+
+  return results;
+}
+
+/**
+ * Fetch Shopify orders for the last N days and aggregate by product
+ */
+async function fetchShopifyOrdersByProduct(
+  shopDomain: string,
+  shopifyToken: string,
+  days: number,
+): Promise<Map<string, ShopifySalesData>> {
+  const API_VERSION = '2024-01';
+  const baseUrl = `https://${shopDomain}/admin/api/${API_VERSION}`;
+  const headers = {
+    'X-Shopify-Access-Token': shopifyToken,
+    'Content-Type': 'application/json',
+  };
+
+  const sinceDate = new Date();
+  sinceDate.setDate(sinceDate.getDate() - days);
+
+  const productSales = new Map<string, ShopifySalesData>();
+  let pageInfo: string | null = null;
+  let pageCount = 0;
+
+  while (pageCount < 20) {
+    const url: string = pageInfo
+      ? `${baseUrl}/orders.json?limit=250&page_info=${pageInfo}`
+      : `${baseUrl}/orders.json?limit=250&status=any&created_at_min=${sinceDate.toISOString()}`;
+
+    const resp: Response = await fetch(url, { headers });
+    if (!resp.ok) break;
+
+    const data: any = await resp.json();
+    const orders = data.orders || [];
+
+    for (const order of orders) {
+      for (const item of order.line_items || []) {
+        const productId = String(item.product_id);
+        const variantId = String(item.variant_id);
+        const revenue = parseFloat(item.price || '0') * (item.quantity || 0);
+
+        // Index by both product_id and variant_id for matching
+        for (const id of [productId, variantId]) {
+          const existing = productSales.get(id) || { orders: 0, quantity: 0, revenue: 0 };
+          existing.orders++;
+          existing.quantity += item.quantity || 0;
+          existing.revenue += revenue;
+          productSales.set(id, existing);
+        }
+      }
+    }
+
+    // Check for pagination
+    const link: string | null = resp.headers.get('Link');
+    if (link?.includes('rel="next"')) {
+      const match: RegExpMatchArray | null = link.match(/<[^>]*page_info=([^>&]*)[^>]*>;\s*rel="next"/);
+      pageInfo = match?.[1] || null;
+    } else {
+      pageInfo = null;
+    }
+
+    if (!pageInfo) break;
+    pageCount++;
+  }
+
+  return productSales;
+}
+
+/**
+ * Enhanced OOS detection with per-product spend and Shopify verification
+ *
+ * IMPORTANT LEARNINGS:
+ * 1. Meta breakdown product_id = catalog retailer_id = Shopify variant_id
+ * 2. Same product has multiple variants (sizes/colors) with different IDs
+ * 3. Customer may see ad for variant A but buy variant B (same product)
+ * 4. Must GROUP by product (retailer_product_group_id), not match by variant
+ * 5. UGC/creative ads (~40% of spend) are NOT tracked per product - only catalog/DPA ads
+ */
+export interface EnhancedOOSOptions {
+  catalogId: string;
+  metaAccountId: string;
+  metaToken: string;
+  shopDomain?: string;
+  shopifyToken?: string;
+  days?: number;
+}
+
+interface CatalogProductData {
+  id: string;
+  name: string;
+  retailer_id: string;         // Shopify variant_id
+  retailer_product_group_id: string; // Shopify product_id (parent)
+  availability: string;
+}
+
+interface ProductGroupSpend {
+  productGroupId: string;        // Shopify product_id
+  productName: string;
+  variants: string[];            // All variant IDs in this product
+  spend: number;
+  impressions: number;
+  clicks: number;
+  purchases: number;
+  revenue: number;
+}
+
+export async function detectEnhancedOOS(options: EnhancedOOSOptions): Promise<EnhancedOOSReport> {
+  const { catalogId, metaAccountId, metaToken, shopDomain, shopifyToken, days = 30 } = options;
+
+  logger.info(`[OOS Enhanced] Starting PRODUCT-LEVEL scan for ${metaAccountId} / catalog ${catalogId}`);
+
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - days);
+
+  const start = startDate.toISOString().split('T')[0];
+  const end = today.toISOString().split('T')[0];
+
+  // Fetch data in parallel
+  const [catalogProducts, variantSpend, shopifySales] = await Promise.all([
+    // Catalog products with retailer_product_group_id for variant → product mapping
+    (async () => {
+      const products: CatalogProductData[] = [];
+      let url: string | null = `${config.graphApiBase}/${catalogId}/products?fields=id,name,retailer_id,retailer_product_group_id,availability&limit=250&access_token=${metaToken}`;
+
+      while (url && products.length < 30000) {
+        const resp: Response = await fetch(url);
+        const data: any = await resp.json();
+        if (data.error) break;
+        for (const item of data.data || []) {
+          products.push(item);
+        }
+        url = data.paging?.next || null;
+      }
+      return products;
+    })(),
+
+    // Per-variant spend (Meta breakdown returns variant-level data)
+    (async () => {
+      const allSpend = new Map<string, ProductSpendData>();
+
+      // Process in weekly chunks
+      for (let i = 0; i < Math.ceil(days / 7); i++) {
+        const chunkEnd = new Date(today);
+        chunkEnd.setDate(today.getDate() - (i * 7));
+        const chunkStart = new Date(chunkEnd);
+        chunkStart.setDate(chunkEnd.getDate() - 6);
+
+        // Don't go before overall start date
+        if (chunkStart < startDate) chunkStart.setTime(startDate.getTime());
+
+        try {
+          const chunkData = await runAsyncReportWithProductBreakdown(
+            metaAccountId,
+            metaToken,
+            chunkStart.toISOString().split('T')[0],
+            chunkEnd.toISOString().split('T')[0],
+          );
+
+          for (const row of chunkData) {
+            const existing = allSpend.get(row.productId) || {
+              productId: row.productId,
+              productName: row.productName,
+              spend: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0,
+            };
+            existing.spend += row.spend;
+            existing.impressions += row.impressions;
+            existing.clicks += row.clicks;
+            existing.purchases += row.purchases;
+            existing.revenue += row.revenue;
+            if (row.productName) existing.productName = row.productName;
+            allSpend.set(row.productId, existing);
+          }
+        } catch (err: any) {
+          logger.warn({ err: err.message }, `[OOS Enhanced] Week ${i + 1} failed`);
+        }
+      }
+
+      return allSpend;
+    })(),
+
+    // Shopify sales by PRODUCT (not variant)
+    shopDomain && shopifyToken
+      ? fetchShopifyOrdersByProduct(shopDomain, shopifyToken, days)
+      : Promise.resolve(new Map<string, ShopifySalesData>()),
+  ]);
+
+  // Build variant → product mapping from catalog
+  const variantToProduct = new Map<string, string>(); // variant_id → product_id
+  const productInfo = new Map<string, { name: string; availability: string }>();
+
+  for (const p of catalogProducts) {
+    if (p.retailer_id && p.retailer_product_group_id) {
+      variantToProduct.set(p.retailer_id, p.retailer_product_group_id);
+      // Store product info (may be updated by multiple variants, that's fine)
+      const existing = productInfo.get(p.retailer_product_group_id);
+      if (!existing || p.availability !== 'in stock') {
+        // Keep OOS status if any variant is OOS
+        productInfo.set(p.retailer_product_group_id, {
+          name: p.name,
+          availability: existing?.availability !== 'in stock' ? existing?.availability || p.availability : p.availability,
+        });
+      }
+    }
+  }
+
+  logger.info(`[OOS Enhanced] Built mapping: ${variantToProduct.size} variants → ${productInfo.size} products`);
+
+  // AGGREGATE spend by PRODUCT (group all variants)
+  const productSpend = new Map<string, ProductGroupSpend>();
+
+  for (const [variantId, spendData] of variantSpend) {
+    const productId = variantToProduct.get(variantId) || variantId; // Fallback to variant if no mapping
+
+    const existing = productSpend.get(productId) || {
+      productGroupId: productId,
+      productName: spendData.productName || 'Unknown',
+      variants: [],
+      spend: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0,
+    };
+
+    existing.variants.push(variantId);
+    existing.spend += spendData.spend;
+    existing.impressions += spendData.impressions;
+    existing.clicks += spendData.clicks;
+    existing.purchases += spendData.purchases;
+    existing.revenue += spendData.revenue;
+    if (spendData.productName) existing.productName = spendData.productName;
+
+    productSpend.set(productId, existing);
+  }
+
+  logger.info(`[OOS Enhanced] Aggregated ${variantSpend.size} variants → ${productSpend.size} products`);
+
+  // Build OOS product set (products where ANY variant is OOS in catalog)
+  const oosProductIds = new Set<string>();
+  for (const p of catalogProducts) {
+    if (p.availability !== 'in stock' && p.retailer_product_group_id) {
+      oosProductIds.add(p.retailer_product_group_id);
+    }
+  }
+
+  // Match spend data to OOS products (at PRODUCT level, not variant)
+  const oosProducts: EnhancedOOSProduct[] = [];
+
+  for (const [productId, spendData] of productSpend) {
+    if (!oosProductIds.has(productId)) continue; // Not OOS
+
+    // Check Shopify sales by PRODUCT ID (not variant)
+    const shopifySalesData = shopifySales.get(productId) || { orders: 0, quantity: 0, revenue: 0 };
+    const hasShopifySales = shopifySalesData.orders > 0;
+    const verifiedWasted = !hasShopifySales;
+
+    const info = productInfo.get(productId);
+
+    oosProducts.push({
+      productId,
+      productName: info?.name || spendData.productName || 'Unknown',
+      issueType: 'TRUE_OOS',
+      currentInventory: null,
+      metaSpend: spendData.spend,
+      metaImpressions: spendData.impressions,
+      metaClicks: spendData.clicks,
+      metaPurchases: spendData.purchases,
+      metaRevenue: spendData.revenue,
+      shopifyOrders: shopifySalesData.orders,
+      shopifyQuantity: shopifySalesData.quantity,
+      shopifyRevenue: shopifySalesData.revenue,
+      verifiedWasted,
+      wastedSpend: verifiedWasted ? spendData.spend : 0,
+      roas: spendData.spend > 0 ? (shopifySalesData.revenue || spendData.revenue) / spendData.spend : 0,
+    });
+  }
+
+  // Sort by spend
+  oosProducts.sort((a, b) => b.metaSpend - a.metaSpend);
+
+  const verifiedWastedProducts = oosProducts.filter(p => p.verifiedWasted);
+
+  const report: EnhancedOOSReport = {
+    capturedAt: new Date().toISOString(),
+    accountId: metaAccountId,
+    catalogId,
+    dateRange: `${start} to ${end}`,
+    totalOOSProducts: oosProducts.length,
+    totalAdSpend: oosProducts.reduce((s, p) => s + p.metaSpend, 0),
+    verifiedWastedSpend: verifiedWastedProducts.reduce((s, p) => s + p.wastedSpend, 0),
+    productsWithShopifySales: oosProducts.filter(p => !p.verifiedWasted).length,
+    productsNoSales: verifiedWastedProducts.length,
+    syncIssues: oosProducts.filter(p => p.issueType === 'SYNC_ISSUE').length,
+    trueOOS: oosProducts.filter(p => p.issueType === 'TRUE_OOS').length,
+    products: oosProducts,
+  };
+
+  logger.info(`[OOS Enhanced] Found ${report.totalOOSProducts} OOS products, ${report.verifiedWastedSpend.toFixed(0)} verified wasted (product-level matching)`);
+
+  return report;
+}
+
 // ============ WATCHDOG INTEGRATION ============
 
 export interface OOSWatchdogResult {
   hasIssues: boolean;
   wastedSpend: number;
+  verifiedWastedSpend: number;
   topMatches: OOSAdMatch[];
   summary: string;
   catalogOOS?: {
     oosCount: number;
     oosRate: number;
     hasCatalogAds: boolean;
+  };
+  enhanced?: {
+    totalOOSProducts: number;
+    productsWithShopifySales: number;
+    productsNoSales: number;
+    topWasted: Array<{
+      productId: string;
+      productName: string;
+      wastedSpend: number;
+      shopifyOrders: number;
+    }>;
   };
 }
 
@@ -416,22 +888,34 @@ interface RunOOSCheckOptions extends DetectOOSAdsOptions {
 /**
  * Quick OOS check for Watchdog integration
  * Returns simplified result for decision-making
- * Supports both name-based matching and catalog-based detection
+ *
+ * Detection modes:
+ * 1. Enhanced (catalogId + shopify): Uses async reports with product_id breakdown + Shopify verification
+ * 2. Catalog only: Checks catalog for OOS products + DPA ad status
+ * 3. Name-based: Fuzzy matches ad text to OOS product titles
  */
 export async function runOOSCheck(options: RunOOSCheckOptions): Promise<OOSWatchdogResult> {
   try {
-    // Run name-based detection
+    const hasShopify = !!(options.shopDomain && options.shopifyToken);
+    const hasCatalog = !!options.catalogId;
+
+    // Use enhanced detection when catalog + shopify available (the gold standard)
+    if (hasCatalog && hasShopify) {
+      return runEnhancedOOSCheck(options);
+    }
+
+    // Fallback: Run name-based detection
     const report = await detectOOSAds(options);
 
     let hasIssues = report.totalWastedSpend > 100; // Threshold: Rs 100
     const topMatches = report.matches.slice(0, 5);
     let catalogOOS: OOSWatchdogResult['catalogOOS'];
 
-    // Also run catalog detection if catalogId provided
-    if (options.catalogId) {
+    // Also run catalog detection if catalogId provided (without Shopify verification)
+    if (hasCatalog) {
       try {
         const catalogReport = await detectCatalogOOS({
-          catalogId: options.catalogId,
+          catalogId: options.catalogId!,
           metaAccountId: options.metaAccountId,
           metaToken: options.metaToken,
         });
@@ -471,6 +955,7 @@ export async function runOOSCheck(options: RunOOSCheckOptions): Promise<OOSWatch
     return {
       hasIssues,
       wastedSpend: report.totalWastedSpend,
+      verifiedWastedSpend: 0, // Not verified without Shopify
       topMatches,
       summary,
       catalogOOS,
@@ -480,8 +965,320 @@ export async function runOOSCheck(options: RunOOSCheckOptions): Promise<OOSWatch
     return {
       hasIssues: false,
       wastedSpend: 0,
+      verifiedWastedSpend: 0,
       topMatches: [],
       summary: `OOS check failed: ${err.message}`,
     };
   }
+}
+
+/**
+ * Enhanced OOS check with per-product spend and Shopify verification
+ * This is the most accurate method - verifies wasted spend against actual Shopify orders
+ */
+async function runEnhancedOOSCheck(options: RunOOSCheckOptions): Promise<OOSWatchdogResult> {
+  logger.info('[OOS Detector] Running enhanced detection with Shopify verification');
+
+  const enhancedReport = await detectEnhancedOOS({
+    catalogId: options.catalogId!,
+    metaAccountId: options.metaAccountId,
+    metaToken: options.metaToken,
+    shopDomain: options.shopDomain,
+    shopifyToken: options.shopifyToken,
+    days: options.days || 7,
+  });
+
+  // Build top wasted products for the enhanced result
+  const topWasted = enhancedReport.products
+    .filter(p => p.verifiedWasted)
+    .slice(0, 10)
+    .map(p => ({
+      productId: p.productId,
+      productName: p.productName,
+      wastedSpend: p.wastedSpend,
+      shopifyOrders: p.shopifyOrders,
+    }));
+
+  // Determine if there are issues worth alerting
+  // Primary metric: verified wasted spend (confirmed no Shopify sales)
+  const hasIssues = enhancedReport.verifiedWastedSpend > 100; // Rs 100 threshold
+
+  // Build summary
+  let summary = '';
+  if (enhancedReport.totalOOSProducts === 0) {
+    summary = 'No OOS products found with active ads.';
+  } else if (enhancedReport.verifiedWastedSpend === 0) {
+    summary = `${enhancedReport.totalOOSProducts} OOS products with ads, but all had Shopify sales (likely Meta pixel sync issue).`;
+  } else {
+    const pctVerified = ((enhancedReport.productsNoSales / enhancedReport.totalOOSProducts) * 100).toFixed(0);
+    summary = `${enhancedReport.productsNoSales} products with Rs ${enhancedReport.verifiedWastedSpend.toFixed(0)} verified wasted spend (${pctVerified}% of ${enhancedReport.totalOOSProducts} OOS products).`;
+
+    if (enhancedReport.productsWithShopifySales > 0) {
+      summary += ` Note: ${enhancedReport.productsWithShopifySales} products had Shopify sales despite 0 Meta purchases (pixel sync issue).`;
+    }
+  }
+
+  return {
+    hasIssues,
+    wastedSpend: enhancedReport.totalAdSpend,
+    verifiedWastedSpend: enhancedReport.verifiedWastedSpend,
+    topMatches: [], // Enhanced mode doesn't use ad-level matching
+    summary,
+    catalogOOS: {
+      oosCount: enhancedReport.totalOOSProducts,
+      oosRate: 0, // We don't have total catalog count in enhanced mode
+      hasCatalogAds: true, // Implied by having OOS products with spend
+    },
+    enhanced: {
+      totalOOSProducts: enhancedReport.totalOOSProducts,
+      productsWithShopifySales: enhancedReport.productsWithShopifySales,
+      productsNoSales: enhancedReport.productsNoSales,
+      topWasted,
+    },
+  };
+}
+
+// ============================================================================
+// CLIENT-AWARE OOS DETECTION
+// ============================================================================
+
+export interface ClientOOSReport extends OOSWatchdogResult {
+  clientId: string;
+  clientName: string;
+  revenueLevel: string | null;
+  alertThreshold: number;
+  shouldAlert: boolean;
+  newOOSProducts: string[];
+  previouslyKnown: string[];
+}
+
+/**
+ * Run OOS check for a specific client
+ * - Uses client's alert threshold based on revenue level
+ * - Tracks known OOS products to identify NEW issues
+ * - Records history and cumulative waste
+ */
+export async function runOOSCheckForClient(
+  clientId: string,
+  options: {
+    metaToken: string;
+    days?: number;
+  }
+): Promise<ClientOOSReport | null> {
+  // Get client context
+  const ctx = getClientContext(clientId);
+  if (!ctx) {
+    logger.error({ clientId }, '[OOS Client] Client not found');
+    return null;
+  }
+
+  const { client } = ctx;
+  const oosStore = getOOSAgentStore(clientId);
+
+  logger.info({
+    clientId,
+    brandName: client.brandName,
+    revenueLevel: client.revenueLevel
+  }, '[OOS Client] Starting check');
+
+  // Get alert threshold for this client
+  const alertThreshold = getOOSAlertThreshold(client);
+  logger.info({ alertThreshold }, '[OOS Client] Using alert threshold');
+
+  // Parse Shopify store info
+  let shopDomain: string | undefined;
+  let shopifyToken: string | undefined;
+
+  if (client.shopifyStore) {
+    try {
+      const shopifyData = JSON.parse(client.shopifyStore);
+      // Could be { india: '...', global: '...' } or just a string
+      if (typeof shopifyData === 'string') {
+        shopDomain = shopifyData;
+      } else if (shopifyData.india) {
+        shopDomain = shopifyData.india;
+      } else if (shopifyData.global) {
+        shopDomain = shopifyData.global;
+      }
+    } catch {
+      shopDomain = client.shopifyStore;
+    }
+  }
+
+  // Validate required credentials
+  if (!shopDomain) {
+    logger.warn({ clientId }, '[OOS Client] No Shopify store configured');
+    return null;
+  }
+
+  // Run the OOS check
+  const result = await runOOSCheck({
+    metaAccountId: client.metaAdAccountId || '',
+    metaToken: options.metaToken,
+    shopDomain,
+    shopifyToken: shopifyToken || '', // Would need to get from credentials store
+    days: options.days || 7,
+  });
+
+  // Identify NEW OOS products vs previously known
+  const knownProducts = oosStore?.knownOOSProducts || [];
+  const currentOOSProducts = result.enhanced?.topWasted?.map(p => p.productId) || [];
+  const newOOSProducts = currentOOSProducts.filter(id => !knownProducts.includes(id));
+  const previouslyKnown = currentOOSProducts.filter(id => knownProducts.includes(id));
+
+  // Determine if we should alert
+  // Alert if: verified waste > threshold AND there are NEW products
+  const shouldAlert = result.verifiedWastedSpend > alertThreshold && newOOSProducts.length > 0;
+
+  logger.info({
+    verifiedWaste: result.verifiedWastedSpend,
+    alertThreshold,
+    newProducts: newOOSProducts.length,
+    shouldAlert,
+  }, '[OOS Client] Alert decision');
+
+  // Update OOS store
+  if (oosStore) {
+    const allKnownProducts = [...new Set([...knownProducts, ...currentOOSProducts])];
+    updateOOSAgentStore(clientId, {
+      lastCheckAt: new Date().toISOString(),
+      knownOOSProducts: allKnownProducts,
+      cumulativeWaste: (oosStore.cumulativeWaste || 0) + result.verifiedWastedSpend,
+      alertsSent: shouldAlert ? (oosStore.alertsSent || 0) + 1 : oosStore.alertsSent,
+      lastAlertAt: shouldAlert ? new Date().toISOString() : oosStore.lastAlertAt,
+    });
+  }
+
+  // Create recommendation record if alerting
+  if (shouldAlert) {
+    createRecommendation(clientId, 'oos_detector', 'pause_oos_ads', {
+      wastedSpend: result.verifiedWastedSpend,
+      productsCount: newOOSProducts.length,
+      topProducts: result.enhanced?.topWasted?.slice(0, 5) || [],
+      summary: result.summary,
+    });
+  }
+
+  return {
+    ...result,
+    clientId,
+    clientName: client.brandName,
+    revenueLevel: client.revenueLevel,
+    alertThreshold,
+    shouldAlert,
+    newOOSProducts,
+    previouslyKnown,
+  };
+}
+
+/**
+ * Generate Smashed-branded HTML report for OOS detection
+ */
+export function generateOOSReport(report: ClientOOSReport, client: ServiceClient): string {
+  const topProducts = report.enhanced?.topWasted || [];
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OOS Detection Report - ${client.brandName}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e5e5e5; line-height: 1.6; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 40px 20px; }
+    .header { text-align: center; padding: 60px 20px; background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%); border-bottom: 1px solid #333; }
+    .logo { font-size: 14px; color: #EC8A23; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 20px; }
+    h1 { font-size: 36px; font-weight: 700; background: linear-gradient(90deg, #EC8A23, #f5a623); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 16px; }
+    .subtitle { font-size: 18px; color: #888; }
+    .alert-box { background: ${report.shouldAlert ? '#7f1d1d' : '#065f46'}; border: 1px solid ${report.shouldAlert ? '#dc2626' : '#10b981'}; border-radius: 12px; padding: 24px; margin: 40px 0; text-align: center; }
+    .alert-value { font-size: 48px; font-weight: 700; color: ${report.shouldAlert ? '#fca5a5' : '#6ee7b7'}; }
+    .alert-label { font-size: 14px; color: #888; text-transform: uppercase; margin-top: 8px; }
+    .section { padding: 40px 0; border-bottom: 1px solid #222; }
+    .section-title { font-size: 24px; font-weight: 600; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+    .section-title::before { content: ''; width: 4px; height: 24px; background: #EC8A23; border-radius: 2px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .stat-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; text-align: center; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #EC8A23; }
+    .stat-label { font-size: 12px; color: #666; text-transform: uppercase; margin-top: 4px; }
+    .product-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .product-card.new { border-left: 4px solid #dc2626; }
+    .product-name { font-weight: 600; color: #fff; margin-bottom: 4px; }
+    .product-meta { font-size: 13px; color: #888; }
+    .product-waste { font-size: 24px; font-weight: 700; color: #fca5a5; }
+    .badge { display: inline-block; background: #dc2626; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 8px; }
+    .footer { text-align: center; padding: 60px 20px; color: #666; }
+    .footer a { color: #EC8A23; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">The Bridge Service · Smashed Agency</div>
+    <h1>OOS Detection Report</h1>
+    <div class="subtitle">${client.brandName} — ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+  </div>
+
+  <div class="container">
+    <div class="alert-box">
+      <div class="alert-value">₹${report.verifiedWastedSpend.toLocaleString('en-IN')}</div>
+      <div class="alert-label">${report.shouldAlert ? 'Verified Wasted Spend — Action Required' : 'Below Alert Threshold (₹' + report.alertThreshold.toLocaleString('en-IN') + ')'}</div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Summary</h2>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value">${report.enhanced?.totalOOSProducts || 0}</div>
+          <div class="stat-label">OOS Products</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${report.newOOSProducts.length}</div>
+          <div class="stat-label">New This Check</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${report.enhanced?.productsNoSales || 0}</div>
+          <div class="stat-label">Verified No Sales</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">₹${report.alertThreshold.toLocaleString('en-IN')}</div>
+          <div class="stat-label">Alert Threshold</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Top Wasted Products</h2>
+      ${topProducts.length === 0 ? '<p style="color:#888">No products with verified wasted spend.</p>' : topProducts.map(p => `
+        <div class="product-card ${report.newOOSProducts.includes(p.productId) ? 'new' : ''}">
+          <div>
+            <div class="product-name">
+              ${p.productName}
+              ${report.newOOSProducts.includes(p.productId) ? '<span class="badge">NEW</span>' : ''}
+            </div>
+            <div class="product-meta">ID: ${p.productId} · Shopify Orders: ${p.shopifyOrders}</div>
+          </div>
+          <div class="product-waste">₹${p.wastedSpend.toLocaleString('en-IN')}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Recommendation</h2>
+      <div style="background:#151515;border:1px solid #2a2a2a;border-left:4px solid #EC8A23;border-radius:12px;padding:24px">
+        ${report.shouldAlert ? `
+          <p style="color:#fff;font-size:16px;margin-bottom:12px"><strong>Action Required:</strong> Pause ads for ${report.newOOSProducts.length} OOS products</p>
+          <p style="color:#6ee7b7">→ Estimated daily savings: ₹${Math.round(report.verifiedWastedSpend / 7).toLocaleString('en-IN')}/day</p>
+        ` : `
+          <p style="color:#888">No immediate action required. Waste is below your ₹${report.alertThreshold.toLocaleString('en-IN')} alert threshold for ${report.revenueLevel || 'starter'} brands.</p>
+        `}
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>Generated by <a href="https://smashed.agency/scan">The Bridge Service</a></p>
+    <p style="margin-top:8px;font-size:12px">© ${new Date().getFullYear()} Smashed Agency · Confidential</p>
+  </div>
+</body>
+</html>`;
 }
