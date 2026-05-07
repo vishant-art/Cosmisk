@@ -457,6 +457,65 @@ export function getDiscountLeakageAlertThreshold(client: ServiceClient): number 
 }
 
 // ============================================================================
+// Watchdog Agent Store
+// ============================================================================
+
+export interface WatchdogAgentStore {
+  lastRunAt?: string;
+  totalDecisions: number;
+  decisionsActedOn: number;
+  alertsSent: number;
+  lastAlertAt?: string;
+  // Track recent decision types to avoid duplicate alerts
+  recentDecisionTypes: string[];
+}
+
+export function getWatchdogStore(clientId: string): WatchdogAgentStore | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT watchdog_store FROM service_clients WHERE id = ?
+  `).get(clientId) as { watchdog_store?: string } | undefined;
+
+  if (!row?.watchdog_store) return null;
+
+  try {
+    return JSON.parse(row.watchdog_store);
+  } catch {
+    return null;
+  }
+}
+
+export function updateWatchdogStore(clientId: string, updates: Partial<WatchdogAgentStore>): void {
+  const db = getDb();
+  const existing = getWatchdogStore(clientId) || {
+    totalDecisions: 0,
+    decisionsActedOn: 0,
+    alertsSent: 0,
+    recentDecisionTypes: [],
+  };
+
+  const merged = { ...existing, ...updates };
+
+  db.prepare(`
+    UPDATE service_clients
+    SET watchdog_store = ?
+    WHERE id = ?
+  `).run(JSON.stringify(merged), clientId);
+}
+
+export function getWatchdogUrgencyThreshold(client: ServiceClient): 'low' | 'medium' | 'high' {
+  // Higher revenue clients should only be alerted on higher urgency issues
+  switch (client.revenueLevel) {
+    case '5cr_plus':
+      return 'high';     // Only high/critical urgency
+    case '1cr_plus':
+      return 'medium';   // Medium and above
+    default:
+      return 'low';      // All urgencies
+  }
+}
+
+// ============================================================================
 // Recommendations
 // ============================================================================
 
