@@ -579,6 +579,124 @@ export function getCreativeScoreThreshold(client: ServiceClient): number {
 }
 
 // ============================================================================
+// Cohort LTV Analyzer Store
+// ============================================================================
+
+export interface CohortLTVStore {
+  lastAnalyzedAt?: string;
+  bestChannel?: string;
+  worstChannel?: string;
+  ltvGap: number;
+  avgLTV: number;
+  alertsSent: number;
+  lastAlertAt?: string;
+}
+
+export function getCohortLTVStore(clientId: string): CohortLTVStore | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT cohort_ltv_store FROM service_clients WHERE id = ?
+  `).get(clientId) as { cohort_ltv_store?: string } | undefined;
+
+  if (!row?.cohort_ltv_store) return null;
+
+  try {
+    return JSON.parse(row.cohort_ltv_store);
+  } catch {
+    return null;
+  }
+}
+
+export function updateCohortLTVStore(clientId: string, updates: Partial<CohortLTVStore>): void {
+  const db = getDb();
+  const existing = getCohortLTVStore(clientId) || {
+    ltvGap: 0,
+    avgLTV: 0,
+    alertsSent: 0,
+  };
+
+  const merged = { ...existing, ...updates };
+
+  db.prepare(`
+    UPDATE service_clients
+    SET cohort_ltv_store = ?
+    WHERE id = ?
+  `).run(JSON.stringify(merged), clientId);
+}
+
+export function getCohortLTVGapThreshold(client: ServiceClient): number {
+  // LTV gap threshold (%) to trigger alert - higher revenue = stricter
+  switch (client.revenueLevel) {
+    case '5cr_plus':
+      return 30;    // 30%+ gap is significant
+    case '1cr_plus':
+      return 25;    // 25%+ gap
+    case '50l_plus':
+      return 20;    // 20%+ gap
+    default:
+      return 15;    // 15%+ gap for starter brands
+  }
+}
+
+// ============================================================================
+// Fatigue Detector Store
+// ============================================================================
+
+export interface FatigueDetectorStore {
+  lastCheckedAt?: string;
+  knownFatiguedCreatives: string[];  // Creative IDs already flagged
+  totalFatiguedCount: number;
+  alertsSent: number;
+  lastAlertAt?: string;
+}
+
+export function getFatigueDetectorStore(clientId: string): FatigueDetectorStore | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT fatigue_detector_store FROM service_clients WHERE id = ?
+  `).get(clientId) as { fatigue_detector_store?: string } | undefined;
+
+  if (!row?.fatigue_detector_store) return null;
+
+  try {
+    return JSON.parse(row.fatigue_detector_store);
+  } catch {
+    return null;
+  }
+}
+
+export function updateFatigueDetectorStore(clientId: string, updates: Partial<FatigueDetectorStore>): void {
+  const db = getDb();
+  const existing = getFatigueDetectorStore(clientId) || {
+    knownFatiguedCreatives: [],
+    totalFatiguedCount: 0,
+    alertsSent: 0,
+  };
+
+  const merged = { ...existing, ...updates };
+
+  db.prepare(`
+    UPDATE service_clients
+    SET fatigue_detector_store = ?
+    WHERE id = ?
+  `).run(JSON.stringify(merged), clientId);
+}
+
+export function getFatigueFrequencyThreshold(client: ServiceClient): number {
+  // Frequency threshold before alerting - higher revenue = stricter monitoring
+  switch (client.revenueLevel) {
+    case '5cr_plus':
+      return 3.0;    // Alert at 3.0+ frequency
+    case '1cr_plus':
+      return 3.5;    // Alert at 3.5+
+    case '50l_plus':
+      return 4.0;    // Alert at 4.0+
+    default:
+      return 4.5;    // Alert at 4.5+ for starter brands
+  }
+}
+
+// ============================================================================
 // Recommendations
 // ============================================================================
 

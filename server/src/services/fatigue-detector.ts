@@ -10,6 +10,10 @@
  */
 
 import { logger } from '../utils/logger.js';
+import {
+  getClientContext, getFatigueDetectorStore, updateFatigueDetectorStore,
+  getFatigueFrequencyThreshold, createRecommendation, type ServiceClient,
+} from './service-clients.js';
 
 export interface CreativeMetrics {
   id: string;
@@ -334,4 +338,294 @@ function generateBrief(
   }
 
   return lines.join('\n');
+}
+
+// ============ CLIENT-AWARE FATIGUE DETECTION ============
+
+export interface ClientFatigueReport {
+  clientId: string;
+  clientName: string;
+  revenueLevel: string;
+  frequencyThreshold: number;
+  creatives: AnalyzedCreative[];
+  alerts: FatigueAlert[];
+  newFatiguedCreatives: string[];   // IDs not previously flagged
+  previouslyKnown: string[];        // IDs we already knew about
+  summary: {
+    total: number;
+    scaling: number;
+    healthy: number;
+    watch: number;
+    fatiguing: number;
+    dead: number;
+  };
+  shouldAlert: boolean;
+  alertReason?: string;
+  checkedAt: string;
+}
+
+/**
+ * Detect creative fatigue for a specific client
+ * - Uses client's frequency threshold based on revenue level
+ * - Tracks known fatigued creatives for deduplication
+ * - Generates client-specific recommendations
+ */
+export function detectFatigueForClient(
+  clientId: string,
+  creatives: CreativeMetrics[],
+): ClientFatigueReport | null {
+  const ctx = getClientContext(clientId);
+  if (!ctx) {
+    logger.error({ clientId }, '[Fatigue Client] Client not found');
+    return null;
+  }
+
+  const { client } = ctx;
+  const fatigueStore = getFatigueDetectorStore(clientId);
+
+  logger.info({
+    clientId,
+    brandName: client.brandName,
+    revenueLevel: client.revenueLevel,
+    creativesCount: creatives.length,
+  }, '[Fatigue Client] Starting detection');
+
+  // Get frequency threshold for this client
+  const frequencyThreshold = getFatigueFrequencyThreshold(client);
+  logger.info({ frequencyThreshold }, '[Fatigue Client] Using frequency threshold');
+
+  // Analyze creatives
+  const analyzedCreatives = analyzeCreatives(creatives);
+
+  // Generate alerts (using standard function)
+  const alerts = generateFatigueAlerts(creatives);
+
+  // Count by status
+  const summary = {
+    total: analyzedCreatives.length,
+    scaling: analyzedCreatives.filter(c => c.status === 'scaling').length,
+    healthy: analyzedCreatives.filter(c => c.status === 'healthy').length,
+    watch: analyzedCreatives.filter(c => c.status === 'watch').length,
+    fatiguing: analyzedCreatives.filter(c => c.status === 'fatiguing').length,
+    dead: analyzedCreatives.filter(c => c.status === 'dead').length,
+  };
+
+  // Find creatives above client's frequency threshold
+  const fatiguedIds = analyzedCreatives
+    .filter(c => c.frequency >= frequencyThreshold || c.status === 'fatiguing' || c.status === 'dead')
+    .map(c => c.id);
+
+  // Identify NEW fatigued creatives vs previously known
+  const knownIds = fatigueStore?.knownFatiguedCreatives || [];
+  const newFatiguedCreatives = fatiguedIds.filter(id => !knownIds.includes(id));
+  const previouslyKnown = fatiguedIds.filter(id => knownIds.includes(id));
+
+  // Determine if we should alert
+  const shouldAlert = newFatiguedCreatives.length > 0;
+  const alertReason = shouldAlert
+    ? `${newFatiguedCreatives.length} new creatives above ${frequencyThreshold} frequency threshold`
+    : undefined;
+
+  logger.info({
+    totalFatigued: fatiguedIds.length,
+    newFatigued: newFatiguedCreatives.length,
+    shouldAlert,
+  }, '[Fatigue Client] Alert decision');
+
+  // Update fatigue store
+  const allKnownIds = [...new Set([...knownIds, ...fatiguedIds])];
+  updateFatigueDetectorStore(clientId, {
+    lastCheckedAt: new Date().toISOString(),
+    knownFatiguedCreatives: allKnownIds,
+    totalFatiguedCount: (fatigueStore?.totalFatiguedCount || 0) + newFatiguedCreatives.length,
+    alertsSent: shouldAlert ? (fatigueStore?.alertsSent || 0) + 1 : fatigueStore?.alertsSent || 0,
+    lastAlertAt: shouldAlert ? new Date().toISOString() : fatigueStore?.lastAlertAt,
+  });
+
+  // Create recommendation if new fatigued creatives found
+  if (shouldAlert) {
+    createRecommendation(clientId, 'fatigue_detector', 'replace_fatigued_creatives', {
+      newFatiguedCount: newFatiguedCreatives.length,
+      frequencyThreshold,
+      topFatigued: analyzedCreatives
+        .filter(c => newFatiguedCreatives.includes(c.id))
+        .slice(0, 5)
+        .map(c => ({ name: c.name, frequency: c.frequency, status: c.status })),
+    });
+  }
+
+  return {
+    clientId,
+    clientName: client.brandName,
+    revenueLevel: client.revenueLevel || 'unknown',
+    frequencyThreshold,
+    creatives: analyzedCreatives,
+    alerts,
+    newFatiguedCreatives,
+    previouslyKnown,
+    summary,
+    shouldAlert,
+    alertReason,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Generate Smashed-branded HTML report for Fatigue Detection
+ */
+export function generateFatigueHTMLReport(report: ClientFatigueReport, client: ServiceClient): string {
+  const statusColors: Record<CreativeStatus, string> = {
+    scaling: '#22c55e',
+    healthy: '#3b82f6',
+    watch: '#eab308',
+    fatiguing: '#f97316',
+    dead: '#ef4444',
+  };
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creative Fatigue Report - ${client.brandName}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e5e5e5; line-height: 1.6; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+    .header { text-align: center; padding: 60px 20px; background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%); border-bottom: 1px solid #333; }
+    .logo { font-size: 14px; color: #EC8A23; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 20px; }
+    h1 { font-size: 42px; font-weight: 700; background: linear-gradient(90deg, #EC8A23, #f5a623); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 16px; }
+    .subtitle { font-size: 18px; color: #888; }
+    .status-bar { display: flex; justify-content: center; gap: 20px; margin-top: 30px; flex-wrap: wrap; }
+    .status-item { text-align: center; padding: 16px 24px; background: #151515; border-radius: 12px; min-width: 100px; }
+    .status-count { font-size: 28px; font-weight: 700; }
+    .status-label { font-size: 11px; color: #666; text-transform: uppercase; margin-top: 4px; }
+    .section { padding: 60px 0; border-bottom: 1px solid #222; }
+    .section-title { font-size: 28px; font-weight: 600; margin-bottom: 40px; display: flex; align-items: center; gap: 12px; }
+    .section-title::before { content: ''; width: 4px; height: 28px; background: #EC8A23; border-radius: 2px; }
+    .creatives-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .creative-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; }
+    .creative-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .creative-name { font-size: 14px; color: #fff; font-weight: 600; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .creative-status { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #000; }
+    .creative-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .creative-stat { text-align: center; padding: 8px; background: #1a1a1a; border-radius: 6px; }
+    .creative-stat-value { font-size: 16px; font-weight: 700; color: #EC8A23; }
+    .creative-stat-label { font-size: 10px; color: #666; text-transform: uppercase; }
+    .new-badge { background: #ef4444; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+    .alert-section { background: #1a1a1a; border: 1px solid #ef4444; border-radius: 12px; padding: 24px; margin: 40px 0; }
+    .alert-title { color: #ef4444; font-size: 14px; font-weight: 700; text-transform: uppercase; margin-bottom: 16px; }
+    .alert-item { padding: 12px 0; border-bottom: 1px solid #2a2a2a; }
+    .alert-item:last-child { border-bottom: none; }
+    .footer { text-align: center; padding: 60px 20px; color: #666; }
+    .footer-logo { font-size: 14px; color: #EC8A23; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 12px; }
+    .footer a { color: #EC8A23; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">The Bridge Service · Smashed Agency</div>
+    <h1>Creative Fatigue Report</h1>
+    <div class="subtitle">${client.brandName} — Frequency Threshold: ${report.frequencyThreshold}+</div>
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-count" style="color: ${statusColors.scaling}">${report.summary.scaling}</div>
+        <div class="status-label">Scaling</div>
+      </div>
+      <div class="status-item">
+        <div class="status-count" style="color: ${statusColors.healthy}">${report.summary.healthy}</div>
+        <div class="status-label">Healthy</div>
+      </div>
+      <div class="status-item">
+        <div class="status-count" style="color: ${statusColors.watch}">${report.summary.watch}</div>
+        <div class="status-label">Watch</div>
+      </div>
+      <div class="status-item">
+        <div class="status-count" style="color: ${statusColors.fatiguing}">${report.summary.fatiguing}</div>
+        <div class="status-label">Fatiguing</div>
+      </div>
+      <div class="status-item">
+        <div class="status-count" style="color: ${statusColors.dead}">${report.summary.dead}</div>
+        <div class="status-label">Dead</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    ${report.alerts.length > 0 ? `
+    <div class="alert-section">
+      <div class="alert-title">⚠️ ${report.alerts.length} Fatigue Alerts</div>
+      ${report.alerts.map(a => `
+        <div class="alert-item">
+          <div style="font-weight:600;color:#fff;">${a.creativeName}</div>
+          <div style="font-size:13px;color:#aaa;margin-top:4px;">${a.reason}</div>
+          <div style="font-size:12px;color:#888;margin-top:4px;">Frequency: ${a.frequency.toFixed(1)} | CTR Decline: ${a.ctrDecline.toFixed(1)}% | Predicted: ${a.predictedDeath}</div>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    <div class="section">
+      <h2 class="section-title">All Creatives (${report.summary.total})</h2>
+      <div class="creatives-grid">
+        ${report.creatives.map(c => `
+          <div class="creative-card" style="border-left: 4px solid ${statusColors[c.status]};">
+            <div class="creative-header">
+              <span class="creative-name">${c.name}${report.newFatiguedCreatives.includes(c.id) ? '<span class="new-badge">NEW</span>' : ''}</span>
+              <span class="creative-status" style="background: ${statusColors[c.status]}">${c.status}</span>
+            </div>
+            <div class="creative-stats">
+              <div class="creative-stat">
+                <div class="creative-stat-value">${c.frequency.toFixed(1)}</div>
+                <div class="creative-stat-label">Frequency</div>
+              </div>
+              <div class="creative-stat">
+                <div class="creative-stat-value">${c.ctr.toFixed(2)}%</div>
+                <div class="creative-stat-label">CTR</div>
+              </div>
+              <div class="creative-stat">
+                <div class="creative-stat-value">${c.roas.toFixed(1)}x</div>
+                <div class="creative-stat-label">ROAS</div>
+              </div>
+              <div class="creative-stat">
+                <div class="creative-stat-value">₹${c.spend.toLocaleString('en-IN')}</div>
+                <div class="creative-stat-label">Spend</div>
+              </div>
+              <div class="creative-stat">
+                <div class="creative-stat-value">${c.daysActive}d</div>
+                <div class="creative-stat-label">Active</div>
+              </div>
+              <div class="creative-stat">
+                <div class="creative-stat-value">${c.conversions}</div>
+                <div class="creative-stat-label">Conv.</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    ${report.shouldAlert ? `
+    <div class="section">
+      <h2 class="section-title">Recommendation</h2>
+      <div style="background:#151515;border:1px solid #2a2a2a;border-left:4px solid #EC8A23;border-radius:12px;padding:24px;">
+        <div style="font-size:11px;color:#EC8A23;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:600;">Action Required</div>
+        <div style="font-size:16px;color:#fff;margin-bottom:12px;">
+          ${report.newFatiguedCreatives.length} creatives have crossed the ${report.frequencyThreshold} frequency threshold for ${client.brandName}'s revenue level.
+        </div>
+        <div style="font-size:14px;color:#6ee7b7;">
+          → Create replacement creatives for fatiguing ads. Consider new angles, hooks, or formats to refresh the creative mix.
+        </div>
+      </div>
+    </div>
+    ` : ''}
+  </div>
+
+  <div class="footer">
+    <div class="footer-logo">The Bridge Service</div>
+    <p>Generated on ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+    <p style="margin-top:8px"><a href="https://smashed.agency/scan">smashed.agency/scan</a> · Confidential Client Report</p>
+  </div>
+</body>
+</html>`;
 }
