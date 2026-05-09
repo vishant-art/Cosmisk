@@ -1727,7 +1727,1062 @@ export function generateTier2Package(
 }
 
 // ============================================================================
+// TIER 3: TRUST & ANTICIPATION
+// ============================================================================
+
+// ============================================================================
+// 3.1 PREDICTION SCORECARDS
+// ============================================================================
+
+/**
+ * A tracked prediction with outcome
+ */
+export interface TrackedPrediction {
+  id: string;
+  clientId: string;
+  createdAt: string;
+
+  // The prediction
+  prediction: string;
+  predictedOutcome: string;
+  predictedValue?: number;
+  confidence: number;
+  timeframe: string;  // "7 days", "30 days", etc.
+
+  // Verification
+  verificationDate?: string;
+  actualOutcome?: string;
+  actualValue?: number;
+  wasAccurate?: boolean;
+  accuracyScore?: number;  // 0-100, how close was the prediction
+
+  // Context
+  evidenceUsed: string[];
+  insightType: string;
+  actionTaken?: string;
+}
+
+/**
+ * Prediction scorecard for a client
+ */
+export interface PredictionScorecard {
+  clientId: string;
+  generatedAt: string;
+
+  // Overall accuracy
+  totalPredictions: number;
+  verifiedPredictions: number;
+  accuratePredictions: number;
+  overallAccuracy: number;  // Percentage
+
+  // By category
+  accuracyByType: Record<string, {
+    total: number;
+    accurate: number;
+    accuracy: number;
+  }>;
+
+  // Trends
+  recentAccuracy: number;  // Last 30 days
+  accuracyTrend: 'improving' | 'stable' | 'declining';
+
+  // Trust indicators
+  trustScore: number;  // 0-100
+  trustLevel: 'high' | 'medium' | 'low' | 'building';
+  trustFactors: string[];
+
+  // Recent predictions
+  recentPredictions: TrackedPrediction[];
+
+  // Accountability
+  bestPredictionTypes: string[];
+  worstPredictionTypes: string[];
+  improvementAreas: string[];
+}
+
+/**
+ * In-memory prediction store (would be DB in production)
+ */
+const predictionStore = new Map<string, TrackedPrediction[]>();
+
+/**
+ * Store a prediction for future verification
+ */
+export function storePrediction(
+  clientId: string,
+  prediction: string,
+  predictedOutcome: string,
+  confidence: number,
+  timeframe: string,
+  insightType: string,
+  evidenceUsed: string[],
+  predictedValue?: number
+): TrackedPrediction {
+  const tracked: TrackedPrediction = {
+    id: `pred_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    clientId,
+    createdAt: new Date().toISOString(),
+    prediction,
+    predictedOutcome,
+    predictedValue,
+    confidence,
+    timeframe,
+    evidenceUsed,
+    insightType,
+  };
+
+  const existing = predictionStore.get(clientId) || [];
+  existing.push(tracked);
+  predictionStore.set(clientId, existing);
+
+  logger.debug({ predictionId: tracked.id, clientId }, '[Experience] Prediction stored for tracking');
+
+  return tracked;
+}
+
+/**
+ * Verify a prediction against actual outcome
+ */
+export function verifyPrediction(
+  predictionId: string,
+  actualOutcome: string,
+  actualValue?: number,
+  actionTaken?: string
+): TrackedPrediction | null {
+  for (const [clientId, predictions] of predictionStore) {
+    const prediction = predictions.find(p => p.id === predictionId);
+    if (prediction) {
+      prediction.verificationDate = new Date().toISOString();
+      prediction.actualOutcome = actualOutcome;
+      prediction.actualValue = actualValue;
+      prediction.actionTaken = actionTaken;
+
+      // Calculate accuracy
+      if (prediction.predictedValue !== undefined && actualValue !== undefined) {
+        const diff = Math.abs(prediction.predictedValue - actualValue);
+        const maxVal = Math.max(prediction.predictedValue, actualValue);
+        prediction.accuracyScore = maxVal > 0 ? Math.round((1 - diff / maxVal) * 100) : 100;
+        prediction.wasAccurate = prediction.accuracyScore >= 70;
+      } else {
+        // Qualitative comparison
+        const predictedLower = prediction.predictedOutcome.toLowerCase();
+        const actualLower = actualOutcome.toLowerCase();
+        prediction.wasAccurate =
+          actualLower.includes(predictedLower.split(' ')[0]) ||
+          predictedLower.includes(actualLower.split(' ')[0]);
+        prediction.accuracyScore = prediction.wasAccurate ? 80 : 30;
+      }
+
+      logger.debug({ predictionId, wasAccurate: prediction.wasAccurate }, '[Experience] Prediction verified');
+
+      return prediction;
+    }
+  }
+  return null;
+}
+
+/**
+ * Generate prediction scorecard for a client
+ */
+export function generatePredictionScorecard(clientId: string): PredictionScorecard {
+  const predictions = predictionStore.get(clientId) || [];
+  const verified = predictions.filter(p => p.verificationDate);
+  const accurate = verified.filter(p => p.wasAccurate);
+
+  // Calculate accuracy by type
+  const byType: Record<string, { total: number; accurate: number }> = {};
+  for (const p of verified) {
+    if (!byType[p.insightType]) {
+      byType[p.insightType] = { total: 0, accurate: 0 };
+    }
+    byType[p.insightType].total++;
+    if (p.wasAccurate) byType[p.insightType].accurate++;
+  }
+
+  const accuracyByType: PredictionScorecard['accuracyByType'] = {};
+  for (const [type, data] of Object.entries(byType)) {
+    accuracyByType[type] = {
+      ...data,
+      accuracy: data.total > 0 ? Math.round((data.accurate / data.total) * 100) : 0,
+    };
+  }
+
+  // Recent accuracy (last 30 days)
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recentVerified = verified.filter(p =>
+    new Date(p.verificationDate!) > thirtyDaysAgo
+  );
+  const recentAccurate = recentVerified.filter(p => p.wasAccurate);
+  const recentAccuracy = recentVerified.length > 0
+    ? Math.round((recentAccurate.length / recentVerified.length) * 100)
+    : 0;
+
+  // Overall accuracy
+  const overallAccuracy = verified.length > 0
+    ? Math.round((accurate.length / verified.length) * 100)
+    : 0;
+
+  // Accuracy trend
+  let accuracyTrend: PredictionScorecard['accuracyTrend'] = 'stable';
+  if (recentVerified.length >= 5) {
+    if (recentAccuracy > overallAccuracy + 10) accuracyTrend = 'improving';
+    else if (recentAccuracy < overallAccuracy - 10) accuracyTrend = 'declining';
+  }
+
+  // Trust score calculation
+  let trustScore = 50;  // Base score
+  trustScore += Math.min(verified.length * 2, 20);  // More verifications = more trust
+  trustScore += (overallAccuracy - 50) * 0.3;  // Accuracy boost/penalty
+  if (accuracyTrend === 'improving') trustScore += 10;
+  if (accuracyTrend === 'declining') trustScore -= 10;
+  trustScore = Math.max(0, Math.min(100, trustScore));
+
+  // Trust level
+  let trustLevel: PredictionScorecard['trustLevel'] = 'building';
+  if (verified.length < 5) trustLevel = 'building';
+  else if (trustScore >= 75) trustLevel = 'high';
+  else if (trustScore >= 50) trustLevel = 'medium';
+  else trustLevel = 'low';
+
+  // Trust factors
+  const trustFactors: string[] = [];
+  if (verified.length >= 10) trustFactors.push(`${verified.length} verified predictions`);
+  if (overallAccuracy >= 70) trustFactors.push(`${overallAccuracy}% overall accuracy`);
+  if (accuracyTrend === 'improving') trustFactors.push('Accuracy improving over time');
+  if (accurate.length >= 5) trustFactors.push(`${accurate.length} accurate predictions`);
+
+  // Best and worst prediction types
+  const typeAccuracies = Object.entries(accuracyByType)
+    .filter(([_, data]) => data.total >= 3)
+    .sort((a, b) => b[1].accuracy - a[1].accuracy);
+
+  const bestPredictionTypes = typeAccuracies.slice(0, 2).map(([type]) => type);
+  const worstPredictionTypes = typeAccuracies.slice(-2).map(([type]) => type);
+
+  // Improvement areas
+  const improvementAreas: string[] = [];
+  for (const [type, data] of Object.entries(accuracyByType)) {
+    if (data.accuracy < 50 && data.total >= 3) {
+      improvementAreas.push(`${type} predictions need more data or better signals`);
+    }
+  }
+
+  return {
+    clientId,
+    generatedAt: new Date().toISOString(),
+    totalPredictions: predictions.length,
+    verifiedPredictions: verified.length,
+    accuratePredictions: accurate.length,
+    overallAccuracy,
+    accuracyByType,
+    recentAccuracy,
+    accuracyTrend,
+    trustScore: Math.round(trustScore),
+    trustLevel,
+    trustFactors,
+    recentPredictions: predictions.slice(-5).reverse(),
+    bestPredictionTypes,
+    worstPredictionTypes,
+    improvementAreas,
+  };
+}
+
+/**
+ * Format scorecard for display
+ */
+export function formatPredictionScorecard(scorecard: PredictionScorecard): string {
+  const parts: string[] = [];
+
+  const trustEmoji = {
+    high: '🟢',
+    medium: '🟡',
+    low: '🔴',
+    building: '🔵',
+  };
+
+  parts.push(`**PREDICTION SCORECARD** ${trustEmoji[scorecard.trustLevel]}`);
+  parts.push(`Trust Level: ${scorecard.trustLevel.toUpperCase()} (${scorecard.trustScore}/100)\n`);
+
+  parts.push('**Accuracy Stats**');
+  parts.push(`- Overall: ${scorecard.overallAccuracy}% (${scorecard.accuratePredictions}/${scorecard.verifiedPredictions} verified)`);
+  parts.push(`- Last 30 days: ${scorecard.recentAccuracy}%`);
+  parts.push(`- Trend: ${scorecard.accuracyTrend}\n`);
+
+  if (scorecard.bestPredictionTypes.length > 0) {
+    parts.push(`**Best at:** ${scorecard.bestPredictionTypes.join(', ')}`);
+  }
+
+  if (scorecard.worstPredictionTypes.length > 0) {
+    parts.push(`**Improving:** ${scorecard.worstPredictionTypes.join(', ')}`);
+  }
+
+  if (scorecard.trustFactors.length > 0) {
+    parts.push(`\n**Why you can trust this:**`);
+    for (const factor of scorecard.trustFactors) {
+      parts.push(`✓ ${factor}`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+// ============================================================================
+// 3.2 COMPETITOR MOVEMENT ALERTS
+// ============================================================================
+
+/**
+ * Types of competitor movements to track
+ */
+export type CompetitorMovementType =
+  | 'new_creative'
+  | 'creative_killed'
+  | 'spend_increase'
+  | 'spend_decrease'
+  | 'new_angle'
+  | 'format_shift'
+  | 'targeting_change'
+  | 'offer_change';
+
+/**
+ * A competitor movement alert
+ */
+export interface CompetitorMovement {
+  id: string;
+  clientId: string;
+  detectedAt: string;
+
+  // Competitor info
+  competitorName: string;
+  competitorId?: string;
+
+  // Movement details
+  movementType: CompetitorMovementType;
+  description: string;
+  significance: 'high' | 'medium' | 'low';
+
+  // Evidence
+  evidence: {
+    source: string;
+    dataPoint: string;
+    comparisonPeriod?: string;
+  }[];
+
+  // Strategic implications
+  implications: string[];
+  suggestedResponse: string;
+  responseUrgency: 'immediate' | 'this_week' | 'monitor';
+
+  // Window
+  firstMoverWindow?: string;
+
+  // Status
+  acknowledged: boolean;
+  responseAction?: string;
+}
+
+/**
+ * Competitor movement detection patterns
+ */
+interface MovementPattern {
+  type: CompetitorMovementType;
+  detect: (current: CompetitorSnapshot, previous: CompetitorSnapshot) => boolean;
+  generateAlert: (current: CompetitorSnapshot, previous: CompetitorSnapshot, clientId: string) => CompetitorMovement | null;
+}
+
+interface CompetitorSnapshot {
+  competitorName: string;
+  competitorId?: string;
+  capturedAt: string;
+  activeAds: number;
+  estimatedSpend?: number;
+  topFormats: string[];
+  topAngles: string[];
+  offers: string[];
+  newCreatives: number;
+  killedCreatives: number;
+}
+
+/**
+ * Movement detection patterns
+ */
+const MOVEMENT_PATTERNS: MovementPattern[] = [
+  {
+    type: 'spend_increase',
+    detect: (current, previous) => {
+      if (!current.estimatedSpend || !previous.estimatedSpend) return false;
+      return current.estimatedSpend > previous.estimatedSpend * 1.3;  // 30%+ increase
+    },
+    generateAlert: (current, previous, clientId) => ({
+      id: `move_${Date.now()}`,
+      clientId,
+      detectedAt: new Date().toISOString(),
+      competitorName: current.competitorName,
+      competitorId: current.competitorId,
+      movementType: 'spend_increase',
+      description: `${current.competitorName} increased ad spend by ~${Math.round(((current.estimatedSpend! / previous.estimatedSpend!) - 1) * 100)}%`,
+      significance: 'high',
+      evidence: [{
+        source: 'Meta Ad Library',
+        dataPoint: `Estimated spend: ${previous.estimatedSpend} → ${current.estimatedSpend}`,
+        comparisonPeriod: '7 days',
+      }],
+      implications: [
+        'They may have found a winning angle or audience',
+        'Expect increased competition for your audiences',
+        'CPMs in your category may rise',
+      ],
+      suggestedResponse: 'Analyze their top-spending creatives for patterns. Consider defensive budget increase.',
+      responseUrgency: 'this_week',
+      firstMoverWindow: '1-2 weeks before market adjusts',
+      acknowledged: false,
+    }),
+  },
+  {
+    type: 'new_angle',
+    detect: (current, previous) => {
+      const newAngles = current.topAngles.filter(a => !previous.topAngles.includes(a));
+      return newAngles.length > 0;
+    },
+    generateAlert: (current, previous, clientId) => {
+      const newAngles = current.topAngles.filter(a => !previous.topAngles.includes(a));
+      return {
+        id: `move_${Date.now()}`,
+        clientId,
+        detectedAt: new Date().toISOString(),
+        competitorName: current.competitorName,
+        competitorId: current.competitorId,
+        movementType: 'new_angle',
+        description: `${current.competitorName} testing new angle: "${newAngles[0]}"`,
+        significance: 'medium',
+        evidence: [{
+          source: 'Meta Ad Library',
+          dataPoint: `New creative angle detected: ${newAngles.join(', ')}`,
+        }],
+        implications: [
+          'They\'re testing new positioning',
+          'This angle may or may not work for them',
+          'Worth monitoring performance indicators',
+        ],
+        suggestedResponse: `Consider if "${newAngles[0]}" angle could work for your brand. Monitor their commitment.`,
+        responseUrgency: 'monitor',
+        acknowledged: false,
+      };
+    },
+  },
+  {
+    type: 'creative_killed',
+    detect: (current, previous) => {
+      return current.killedCreatives > 3;  // Killed multiple creatives
+    },
+    generateAlert: (current, previous, clientId) => ({
+      id: `move_${Date.now()}`,
+      clientId,
+      detectedAt: new Date().toISOString(),
+      competitorName: current.competitorName,
+      competitorId: current.competitorId,
+      movementType: 'creative_killed',
+      description: `${current.competitorName} killed ${current.killedCreatives} creatives — possible strategy shift`,
+      significance: 'medium',
+      evidence: [{
+        source: 'Meta Ad Library',
+        dataPoint: `${current.killedCreatives} ads no longer running`,
+        comparisonPeriod: '7 days',
+      }],
+      implications: [
+        'These angles/formats may not have worked for them',
+        'They\'re pivoting creative strategy',
+        'Avoid similar approaches if you were considering them',
+      ],
+      suggestedResponse: 'Note which creative types they killed. Avoid similar approaches unless you have different data.',
+      responseUrgency: 'monitor',
+      acknowledged: false,
+    }),
+  },
+  {
+    type: 'offer_change',
+    detect: (current, previous) => {
+      return current.offers.some(o => !previous.offers.includes(o));
+    },
+    generateAlert: (current, previous, clientId) => {
+      const newOffers = current.offers.filter(o => !previous.offers.includes(o));
+      return {
+        id: `move_${Date.now()}`,
+        clientId,
+        detectedAt: new Date().toISOString(),
+        competitorName: current.competitorName,
+        competitorId: current.competitorId,
+        movementType: 'offer_change',
+        description: `${current.competitorName} launched new offer: "${newOffers[0]}"`,
+        significance: 'high',
+        evidence: [{
+          source: 'Meta Ad Library',
+          dataPoint: `New offer detected: ${newOffers.join(', ')}`,
+        }],
+        implications: [
+          'Price competition may intensify',
+          'Your offer may need review',
+          'Watch for market response',
+        ],
+        suggestedResponse: 'Review your current offer competitiveness. Consider matching or differentiating.',
+        responseUrgency: 'this_week',
+        firstMoverWindow: '1 week to respond before customers notice',
+        acknowledged: false,
+      };
+    },
+  },
+];
+
+/**
+ * Detect competitor movements
+ */
+export function detectCompetitorMovements(
+  clientId: string,
+  currentSnapshots: CompetitorSnapshot[],
+  previousSnapshots: CompetitorSnapshot[]
+): CompetitorMovement[] {
+  const movements: CompetitorMovement[] = [];
+
+  for (const current of currentSnapshots) {
+    const previous = previousSnapshots.find(p =>
+      p.competitorName === current.competitorName || p.competitorId === current.competitorId
+    );
+
+    if (!previous) continue;  // New competitor, can't compare
+
+    for (const pattern of MOVEMENT_PATTERNS) {
+      try {
+        if (pattern.detect(current, previous)) {
+          const alert = pattern.generateAlert(current, previous, clientId);
+          if (alert) {
+            movements.push(alert);
+            logger.debug({
+              type: pattern.type,
+              competitor: current.competitorName
+            }, '[Experience] Competitor movement detected');
+          }
+        }
+      } catch (err) {
+        logger.debug({ pattern: pattern.type, err }, '[Experience] Movement detection failed');
+      }
+    }
+  }
+
+  // Sort by significance
+  const significanceOrder = { high: 0, medium: 1, low: 2 };
+  movements.sort((a, b) => significanceOrder[a.significance] - significanceOrder[b.significance]);
+
+  return movements;
+}
+
+/**
+ * Format competitor alert for notification
+ */
+export function formatCompetitorAlert(movement: CompetitorMovement): string {
+  const urgencyEmoji = {
+    immediate: '🚨',
+    this_week: '⚡',
+    monitor: '👀',
+  };
+
+  const parts: string[] = [];
+
+  parts.push(`${urgencyEmoji[movement.responseUrgency]} **COMPETITOR ALERT**`);
+  parts.push(`**${movement.competitorName}**: ${movement.description}\n`);
+
+  parts.push('**Implications:**');
+  for (const impl of movement.implications) {
+    parts.push(`- ${impl}`);
+  }
+
+  parts.push(`\n**Suggested Response:** ${movement.suggestedResponse}`);
+
+  if (movement.firstMoverWindow) {
+    parts.push(`**Window:** ${movement.firstMoverWindow}`);
+  }
+
+  return parts.join('\n');
+}
+
+// ============================================================================
+// 3.3 ANTICIPATION ENGINE
+// ============================================================================
+
+/**
+ * Anticipated need types
+ */
+export type AnticipatedNeedType =
+  | 'creative_refresh'
+  | 'budget_decision'
+  | 'performance_review'
+  | 'competitor_response'
+  | 'seasonal_prep'
+  | 'scale_decision'
+  | 'cost_investigation';
+
+/**
+ * An anticipated need
+ */
+export interface AnticipatedNeed {
+  id: string;
+  clientId: string;
+  anticipatedAt: string;
+
+  // What we anticipate
+  needType: AnticipatedNeedType;
+  title: string;
+  description: string;
+
+  // Why we anticipate it
+  triggerSignals: string[];
+  confidence: number;
+
+  // When
+  expectedTiming: string;
+  daysUntil: number;
+
+  // Proactive support
+  preemptiveAction: string;
+  resourcesReady: string[];
+
+  // Validation
+  wasNeeded?: boolean;
+  feedbackReceived?: string;
+}
+
+/**
+ * Anticipation patterns based on signals
+ */
+interface AnticipationPattern {
+  needType: AnticipatedNeedType;
+  signals: string[];
+  condition: (context: AnticipationContext) => boolean;
+  generate: (context: AnticipationContext) => AnticipatedNeed;
+}
+
+interface AnticipationContext {
+  clientId: string;
+  daysSinceLastCreative?: number;
+  topCreativeAge?: number;
+  budgetUtilization?: number;
+  performanceTrend?: 'improving' | 'stable' | 'declining';
+  daysUntilMonthEnd?: number;
+  seasonalEvents?: string[];
+  competitorMovements?: CompetitorMovement[];
+  recentDecisions?: string[];
+}
+
+/**
+ * Anticipation patterns
+ */
+const ANTICIPATION_PATTERNS: AnticipationPattern[] = [
+  {
+    needType: 'creative_refresh',
+    signals: ['creative_age', 'fatigue_indicators', 'performance_decline'],
+    condition: (ctx) => (ctx.topCreativeAge || 0) > 10 || ctx.performanceTrend === 'declining',
+    generate: (ctx) => ({
+      id: `ant_${Date.now()}`,
+      clientId: ctx.clientId,
+      anticipatedAt: new Date().toISOString(),
+      needType: 'creative_refresh',
+      title: 'Creative Refresh Needed Soon',
+      description: `Your top creatives are ${ctx.topCreativeAge || 14}+ days old. Based on historical patterns, refresh timing is approaching.`,
+      triggerSignals: [
+        `Top creative age: ${ctx.topCreativeAge || 14} days`,
+        ctx.performanceTrend === 'declining' ? 'Performance trending down' : 'Normal fatigue timeline',
+      ],
+      confidence: ctx.performanceTrend === 'declining' ? 85 : 70,
+      expectedTiming: ctx.performanceTrend === 'declining' ? '3-5 days' : '7-10 days',
+      daysUntil: ctx.performanceTrend === 'declining' ? 3 : 7,
+      preemptiveAction: 'Start briefing new creatives now to have them ready',
+      resourcesReady: [
+        'Creative brief template',
+        'Winning patterns from playbook',
+        'Competitor creative analysis',
+      ],
+    }),
+  },
+  {
+    needType: 'budget_decision',
+    signals: ['month_end', 'budget_utilization', 'performance_data'],
+    condition: (ctx) => (ctx.daysUntilMonthEnd || 30) <= 5 && (ctx.budgetUtilization || 0) < 80,
+    generate: (ctx) => ({
+      id: `ant_${Date.now()}`,
+      clientId: ctx.clientId,
+      anticipatedAt: new Date().toISOString(),
+      needType: 'budget_decision',
+      title: 'Month-End Budget Decision Coming',
+      description: `${ctx.daysUntilMonthEnd} days until month end with ${ctx.budgetUtilization}% budget utilized. You'll need to decide: push harder or save?`,
+      triggerSignals: [
+        `${ctx.daysUntilMonthEnd} days until month end`,
+        `${ctx.budgetUtilization}% budget utilized`,
+      ],
+      confidence: 90,
+      expectedTiming: `${ctx.daysUntilMonthEnd} days`,
+      daysUntil: ctx.daysUntilMonthEnd || 5,
+      preemptiveAction: 'Review performance by campaign to identify scale opportunities',
+      resourcesReady: [
+        'Budget utilization report',
+        'Campaign performance ranking',
+        'Scaling recommendations',
+      ],
+    }),
+  },
+  {
+    needType: 'competitor_response',
+    signals: ['competitor_movement', 'market_shift'],
+    condition: (ctx) => (ctx.competitorMovements || []).some(m => m.significance === 'high'),
+    generate: (ctx) => {
+      const highMovement = (ctx.competitorMovements || []).find(m => m.significance === 'high')!;
+      return {
+        id: `ant_${Date.now()}`,
+        clientId: ctx.clientId,
+        anticipatedAt: new Date().toISOString(),
+        needType: 'competitor_response',
+        title: 'Competitor Response Strategy Needed',
+        description: `${highMovement.competitorName} made a significant move. You'll need a response strategy within ${highMovement.firstMoverWindow || '1-2 weeks'}.`,
+        triggerSignals: [
+          `Competitor movement: ${highMovement.movementType}`,
+          highMovement.description,
+        ],
+        confidence: 80,
+        expectedTiming: highMovement.firstMoverWindow || '1-2 weeks',
+        daysUntil: 7,
+        preemptiveAction: highMovement.suggestedResponse,
+        resourcesReady: [
+          'Competitor analysis',
+          'Response options brief',
+          'Quick-launch creative templates',
+        ],
+      };
+    },
+  },
+  {
+    needType: 'scale_decision',
+    signals: ['strong_performance', 'budget_headroom', 'audience_saturation'],
+    condition: (ctx) => ctx.performanceTrend === 'improving' && (ctx.budgetUtilization || 0) > 90,
+    generate: (ctx) => ({
+      id: `ant_${Date.now()}`,
+      clientId: ctx.clientId,
+      anticipatedAt: new Date().toISOString(),
+      needType: 'scale_decision',
+      title: 'Scale Opportunity Window',
+      description: 'Performance is improving and budget is nearly maxed. Time to decide on scaling.',
+      triggerSignals: [
+        'Performance trend: improving',
+        `Budget utilization: ${ctx.budgetUtilization}%`,
+      ],
+      confidence: 75,
+      expectedTiming: 'This week',
+      daysUntil: 3,
+      preemptiveAction: 'Prepare scaling plan with audience expansion and budget increase options',
+      resourcesReady: [
+        'Audience expansion recommendations',
+        'Budget increase scenarios',
+        'Historical scale outcomes',
+      ],
+    }),
+  },
+  {
+    needType: 'cost_investigation',
+    signals: ['cpm_increase', 'cpa_spike', 'efficiency_drop'],
+    condition: (ctx) => ctx.performanceTrend === 'declining',
+    generate: (ctx) => ({
+      id: `ant_${Date.now()}`,
+      clientId: ctx.clientId,
+      anticipatedAt: new Date().toISOString(),
+      needType: 'cost_investigation',
+      title: 'Cost Investigation Needed',
+      description: 'Performance is declining. You\'ll want to understand why before it gets worse.',
+      triggerSignals: [
+        'Performance trend: declining',
+        'Early warning indicators triggered',
+      ],
+      confidence: 70,
+      expectedTiming: '1-2 days',
+      daysUntil: 1,
+      preemptiveAction: 'Run diagnostic on CPM, audience overlap, and creative performance',
+      resourcesReady: [
+        'Cost breakdown analysis',
+        'Audience overlap report',
+        'Creative performance comparison',
+      ],
+    }),
+  },
+];
+
+/**
+ * Anticipate operator needs
+ */
+export function anticipateNeeds(context: AnticipationContext): AnticipatedNeed[] {
+  const needs: AnticipatedNeed[] = [];
+
+  for (const pattern of ANTICIPATION_PATTERNS) {
+    try {
+      if (pattern.condition(context)) {
+        const need = pattern.generate(context);
+        needs.push(need);
+        logger.debug({ needType: pattern.needType }, '[Experience] Need anticipated');
+      }
+    } catch (err) {
+      logger.debug({ pattern: pattern.needType, err }, '[Experience] Anticipation check failed');
+    }
+  }
+
+  // Sort by days until needed
+  needs.sort((a, b) => a.daysUntil - b.daysUntil);
+
+  return needs.slice(0, 3);  // Return top 3 most imminent
+}
+
+/**
+ * Format anticipated needs for display
+ */
+export function formatAnticipatedNeeds(needs: AnticipatedNeed[]): string {
+  if (needs.length === 0) {
+    return '**🔮 ANTICIPATION ENGINE**\n\nNo immediate needs anticipated. You\'re ahead of the curve.';
+  }
+
+  const parts: string[] = [];
+  parts.push('**🔮 WHAT YOU\'LL NEED SOON**\n');
+
+  for (const need of needs) {
+    const urgencyIcon = need.daysUntil <= 2 ? '🔴' : need.daysUntil <= 5 ? '🟡' : '🟢';
+    parts.push(`${urgencyIcon} **${need.title}** (${need.expectedTiming})`);
+    parts.push(`   ${need.description}`);
+    parts.push(`   → ${need.preemptiveAction}`);
+    parts.push('');
+  }
+
+  return parts.join('\n');
+}
+
+// ============================================================================
+// COMBINED: Full Tier 3 Package
+// ============================================================================
+
+/**
+ * Complete Tier 3 intelligence package
+ */
+export interface Tier3IntelligencePackage {
+  generatedAt: string;
+  clientId: string;
+
+  // Trust & Accountability
+  predictionScorecard: PredictionScorecard;
+  trustStatement: string;
+
+  // Competitive Intelligence
+  competitorMovements: CompetitorMovement[];
+  competitorAlertsSummary: string;
+
+  // Anticipation
+  anticipatedNeeds: AnticipatedNeed[];
+  anticipationBrief: string;
+
+  // Combined trust score
+  overallTrustScore: number;
+  trustBreakdown: {
+    predictionAccuracy: number;
+    dataFreshness: number;
+    coverageDepth: number;
+  };
+}
+
+/**
+ * Generate complete Tier 3 package
+ */
+export function generateTier3Package(
+  clientId: string,
+  competitorSnapshots?: { current: CompetitorSnapshot[]; previous: CompetitorSnapshot[] },
+  anticipationContext?: AnticipationContext
+): Tier3IntelligencePackage {
+  // Generate prediction scorecard
+  const predictionScorecard = generatePredictionScorecard(clientId);
+
+  // Generate trust statement
+  const trustStatement = generateTrustStatement(predictionScorecard);
+
+  // Detect competitor movements
+  const competitorMovements = competitorSnapshots
+    ? detectCompetitorMovements(clientId, competitorSnapshots.current, competitorSnapshots.previous)
+    : [];
+
+  // Competitor alerts summary
+  const competitorAlertsSummary = competitorMovements.length > 0
+    ? `${competitorMovements.length} competitor movement(s) detected. ${competitorMovements.filter(m => m.significance === 'high').length} require attention.`
+    : 'No significant competitor movements detected.';
+
+  // Anticipate needs
+  const anticipatedNeeds = anticipationContext
+    ? anticipateNeeds(anticipationContext)
+    : [];
+
+  // Anticipation brief
+  const anticipationBrief = formatAnticipatedNeeds(anticipatedNeeds);
+
+  // Calculate overall trust score
+  const overallTrustScore = calculateOverallTrust(predictionScorecard, competitorMovements.length);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    clientId,
+    predictionScorecard,
+    trustStatement,
+    competitorMovements,
+    competitorAlertsSummary,
+    anticipatedNeeds,
+    anticipationBrief,
+    overallTrustScore,
+    trustBreakdown: {
+      predictionAccuracy: predictionScorecard.overallAccuracy,
+      dataFreshness: 85,  // Would be calculated from actual data freshness
+      coverageDepth: Math.min(predictionScorecard.verifiedPredictions * 10, 100),
+    },
+  };
+}
+
+/**
+ * Generate trust statement
+ */
+function generateTrustStatement(scorecard: PredictionScorecard): string {
+  if (scorecard.trustLevel === 'building') {
+    return `Building trust with ${scorecard.verifiedPredictions} verified predictions so far. Accuracy tracking in progress.`;
+  }
+
+  if (scorecard.trustLevel === 'high') {
+    return `High confidence recommendations. ${scorecard.overallAccuracy}% prediction accuracy across ${scorecard.verifiedPredictions} verifications.`;
+  }
+
+  if (scorecard.trustLevel === 'medium') {
+    return `Recommendations backed by ${scorecard.overallAccuracy}% accuracy. ${scorecard.improvementAreas.length > 0 ? 'Some areas improving.' : 'Consistent track record.'}`;
+  }
+
+  return `Working to improve. Current accuracy: ${scorecard.overallAccuracy}%. Focusing on: ${scorecard.improvementAreas.join(', ') || 'all areas'}.`;
+}
+
+/**
+ * Calculate overall trust score
+ */
+function calculateOverallTrust(scorecard: PredictionScorecard, competitorCoverage: number): number {
+  let score = scorecard.trustScore * 0.6;  // 60% from predictions
+  score += Math.min(competitorCoverage * 5, 20);  // Up to 20% from competitor coverage
+  score += 20;  // Base score for having the system
+  return Math.min(Math.round(score), 100);
+}
+
+// ============================================================================
+// COMPLETE OPERATOR EXPERIENCE PACKAGE
+// ============================================================================
+
+/**
+ * The complete intelligence package combining all tiers
+ */
+export interface CompleteOperatorExperience {
+  generatedAt: string;
+  clientId: string;
+
+  // Tier 1: Wow Moments
+  tier1: OperatorIntelligencePackage;
+
+  // Tier 2: Role-Based Intelligence
+  tier2: Tier2IntelligencePackage;
+
+  // Tier 3: Trust & Anticipation
+  tier3: Tier3IntelligencePackage;
+
+  // Executive summary
+  executiveSummary: string;
+}
+
+/**
+ * Generate complete operator experience
+ */
+export function generateCompleteExperience(
+  clientId: string,
+  insights: Array<{ type: string; evidence: Evidence[]; context: Record<string, unknown> }>,
+  playbook?: ClientPlaybook,
+  additionalData?: {
+    crossSignalData?: CrossSignalData;
+    metrics?: Array<{ metric: string; value: number; change: number }>;
+    competitorSnapshots?: { current: CompetitorSnapshot[]; previous: CompetitorSnapshot[] };
+    anticipationContext?: AnticipationContext;
+  }
+): CompleteOperatorExperience {
+  // Generate Tier 1
+  const tier1 = generateOperatorPackage(
+    clientId,
+    insights,
+    playbook,
+    additionalData?.crossSignalData
+  );
+
+  // Generate Tier 2
+  const tier2 = generateTier2Package(
+    clientId,
+    tier1.narrativeInsights,
+    tier1.hiddenOpportunities,
+    tier1.timedItems,
+    additionalData?.metrics
+  );
+
+  // Generate Tier 3
+  const tier3 = generateTier3Package(
+    clientId,
+    additionalData?.competitorSnapshots,
+    additionalData?.anticipationContext
+  );
+
+  // Generate executive summary
+  const executiveSummary = generateExecutiveSummary(tier1, tier2, tier3);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    clientId,
+    tier1,
+    tier2,
+    tier3,
+    executiveSummary,
+  };
+}
+
+/**
+ * Generate executive summary
+ */
+function generateExecutiveSummary(
+  tier1: OperatorIntelligencePackage,
+  tier2: Tier2IntelligencePackage,
+  tier3: Tier3IntelligencePackage
+): string {
+  const parts: string[] = [];
+
+  parts.push('**EXECUTIVE SUMMARY**\n');
+
+  // THE ONE THING
+  if (tier1.theOneThing) {
+    parts.push(`**Priority:** ${tier1.theOneThing.action}`);
+    parts.push(`↳ ${tier1.theOneThing.whyThisAboveAll}\n`);
+  }
+
+  // Trust indicator
+  parts.push(`**Trust Score:** ${tier3.overallTrustScore}/100 (${tier3.predictionScorecard.trustLevel})`);
+
+  // Key numbers
+  parts.push(`**Active Insights:** ${tier1.narrativeInsights.length}`);
+  parts.push(`**Hidden Opportunities:** ${tier1.hiddenOpportunities.length}`);
+  parts.push(`**Competitor Alerts:** ${tier3.competitorMovements.length}`);
+  parts.push(`**Anticipated Needs:** ${tier3.anticipatedNeeds.length}`);
+
+  // Timing
+  const criticalItems = tier1.timedItems.filter(t => t.urgencyLevel === 'critical');
+  if (criticalItems.length > 0) {
+    parts.push(`\n**⚠️ ${criticalItems.length} critical item(s) need attention today**`);
+  }
+
+  return parts.join('\n');
+}
+
+// ============================================================================
 // Logging
 // ============================================================================
 
-logger.info('[OperatorExperience] Tier 1 + Tier 2 loaded — Narratives, Opportunities, Timing, Roles, Compression, Disclosure');
+logger.info('[OperatorExperience] All tiers loaded — Narratives, Opportunities, Timing, Roles, Compression, Disclosure, Trust, Competitors, Anticipation');
