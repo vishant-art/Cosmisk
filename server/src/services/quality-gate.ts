@@ -20,11 +20,42 @@ import { logger } from '../utils/logger.js';
 // Types
 // ============================================================================
 
+/**
+ * Evidence — The proof behind every recommendation.
+ * No recommendation should exist without traceable evidence.
+ */
+export interface Evidence {
+  metric: string;           // e.g., 'CPA', 'CTR', 'ROAS', 'OOS_count'
+  currentValue: number;     // Current measured value
+  comparisonValue?: number; // Previous value or threshold for comparison
+  comparisonType?: 'threshold' | 'previous_period' | 'benchmark' | 'target';
+  changePercent?: number;   // Calculated change (e.g., -40%)
+  source: string;           // e.g., 'meta_insights_2024-05-09', 'shopify_inventory'
+  timestamp: string;        // ISO timestamp of data
+  accountId?: string;       // Which ad account
+  entityId?: string;        // Campaign/adset/ad ID
+  entityName?: string;      // Human-readable name
+}
+
+/**
+ * Confidence factors that influence recommendation reliability
+ */
+export interface ConfidenceFactors {
+  dataFreshness: number;      // 0-1: How recent is the evidence
+  signalStrength: number;     // 0-1: How strong is the change
+  corroboratingSignals: number; // 0-1: How many signals agree
+  historicalAccuracy?: number;  // 0-1: Past prediction accuracy
+}
+
 export interface QualityCheckResult {
   passes: boolean;
   score: number; // 0-100
   reasons: string[];
   filtered?: string; // If filtered, why
+  confidence?: number; // 0-1 confidence score
+  confidenceFactors?: ConfidenceFactors;
+  evidenceQuality?: 'strong' | 'moderate' | 'weak' | 'none';
+  requiresHumanReview?: boolean;
 }
 
 export interface InsightInput {
@@ -32,6 +63,7 @@ export interface InsightInput {
   category?: string;
   basedOn?: string[]; // What signals contributed
   confidence?: number;
+  evidence?: Evidence[]; // Required for production-grade insights
 }
 
 export interface DecisionInput {
@@ -40,6 +72,8 @@ export interface DecisionInput {
   suggestedAction: string;
   targetName: string;
   basedOn?: string[];
+  evidence?: Evidence[]; // Required for production-grade decisions
+  urgency?: string;
 }
 
 export interface QualityGateConfig {
@@ -138,6 +172,256 @@ const SYNTHESIS_INDICATORS = [
   'historically',
   'based on',
 ];
+
+// ============================================================================
+// Evidence Validation Functions
+// ============================================================================
+
+/**
+ * Check evidence quality — is the recommendation backed by verifiable data?
+ */
+function checkEvidenceQuality(evidence?: Evidence[]): {
+  quality: 'strong' | 'moderate' | 'weak' | 'none';
+  score: number;
+  issues: string[];
+  confidence: number;
+  factors: ConfidenceFactors;
+} {
+  if (!evidence || evidence.length === 0) {
+    return {
+      quality: 'none',
+      score: 0,
+      issues: ['No evidence provided — recommendation cannot be verified'],
+      confidence: 0.2,
+      factors: { dataFreshness: 0, signalStrength: 0, corroboratingSignals: 0 },
+    };
+  }
+
+  const issues: string[] = [];
+  let totalFreshness = 0;
+  let totalStrength = 0;
+
+  for (const e of evidence) {
+    // Check data freshness (within 24h = fresh, 7d = stale)
+    const ageHours = (Date.now() - new Date(e.timestamp).getTime()) / (1000 * 60 * 60);
+    if (ageHours > 168) { // > 7 days
+      issues.push(`Stale evidence: ${e.metric} is ${Math.round(ageHours / 24)} days old`);
+      totalFreshness += 0.3;
+    } else if (ageHours > 24) {
+      totalFreshness += 0.7;
+    } else {
+      totalFreshness += 1.0;
+    }
+
+    // Check signal strength (significant change vs noise)
+    if (e.changePercent !== undefined) {
+      const absChange = Math.abs(e.changePercent);
+      if (absChange < 5) {
+        issues.push(`Weak signal: ${e.metric} change of ${e.changePercent}% may be noise`);
+        totalStrength += 0.3;
+      } else if (absChange < 15) {
+        totalStrength += 0.6;
+      } else if (absChange < 30) {
+        totalStrength += 0.8;
+      } else {
+        totalStrength += 1.0;
+      }
+    } else {
+      totalStrength += 0.5; // Unknown strength
+    }
+
+    // Check for required fields
+    if (!e.source) {
+      issues.push(`Missing source for ${e.metric} evidence`);
+    }
+    if (!e.timestamp) {
+      issues.push(`Missing timestamp for ${e.metric} evidence`);
+    }
+  }
+
+  const avgFreshness = totalFreshness / evidence.length;
+  const avgStrength = totalStrength / evidence.length;
+  const corroboratingSignals = Math.min(evidence.length / 3, 1); // 3+ signals = 100%
+
+  // Calculate overall confidence
+  const confidence = (avgFreshness * 0.3) + (avgStrength * 0.4) + (corroboratingSignals * 0.3);
+
+  // Determine quality tier
+  let quality: 'strong' | 'moderate' | 'weak' | 'none';
+  let score: number;
+
+  if (evidence.length >= 2 && confidence >= 0.7 && issues.length === 0) {
+    quality = 'strong';
+    score = 90 + (confidence * 10);
+  } else if (evidence.length >= 1 && confidence >= 0.5) {
+    quality = 'moderate';
+    score = 60 + (confidence * 30);
+  } else if (evidence.length >= 1) {
+    quality = 'weak';
+    score = 30 + (confidence * 30);
+  } else {
+    quality = 'none';
+    score = 10;
+  }
+
+  return {
+    quality,
+    score,
+    issues,
+    confidence,
+    factors: {
+      dataFreshness: avgFreshness,
+      signalStrength: avgStrength,
+      corroboratingSignals,
+    },
+  };
+}
+
+/**
+ * Extract numeric claims from text for verification
+ * e.g., "CTR dropped 40%" -> { metric: 'CTR', claim: 'dropped', value: 40, unit: '%' }
+ */
+export function extractNumericClaims(text: string): Array<{
+  metric: string;
+  claim: 'dropped' | 'increased' | 'is' | 'was';
+  value: number;
+  unit: string;
+  originalText: string;
+}> {
+  const claims: Array<{
+    metric: string;
+    claim: 'dropped' | 'increased' | 'is' | 'was';
+    value: number;
+    unit: string;
+    originalText: string;
+  }> = [];
+
+  // Pattern: "METRIC dropped/increased/is X%/X"
+  const patterns = [
+    /(\w+)\s+(dropped|decreased|declined|fell)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*(%|percent|x|times)?/gi,
+    /(\w+)\s+(increased|rose|grew|spiked)\s+(?:by\s+)?(\d+(?:\.\d+)?)\s*(%|percent|x|times)?/gi,
+    /(\w+)\s+(?:is|was)\s+(\d+(?:\.\d+)?)\s*(%|percent|x|₹|\$)/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const metric = match[1].toUpperCase();
+      const claimWord = match[2]?.toLowerCase() || 'is';
+      const value = parseFloat(match[3]);
+      const unit = match[4] || '';
+
+      let claim: 'dropped' | 'increased' | 'is' | 'was' = 'is';
+      if (['dropped', 'decreased', 'declined', 'fell'].includes(claimWord)) {
+        claim = 'dropped';
+      } else if (['increased', 'rose', 'grew', 'spiked'].includes(claimWord)) {
+        claim = 'increased';
+      }
+
+      claims.push({
+        metric,
+        claim,
+        value,
+        unit,
+        originalText: match[0],
+      });
+    }
+  }
+
+  return claims;
+}
+
+/**
+ * Verify claims against provided evidence
+ * Returns which claims are verified, unverified, or contradicted
+ */
+export function verifyClaims(
+  text: string,
+  evidence?: Evidence[],
+): {
+  verified: string[];
+  unverified: string[];
+  contradicted: string[];
+  verificationScore: number;
+} {
+  const claims = extractNumericClaims(text);
+  const verified: string[] = [];
+  const unverified: string[] = [];
+  const contradicted: string[] = [];
+
+  if (!evidence || evidence.length === 0) {
+    // All claims are unverified without evidence
+    return {
+      verified: [],
+      unverified: claims.map(c => c.originalText),
+      contradicted: [],
+      verificationScore: claims.length === 0 ? 1.0 : 0.0,
+    };
+  }
+
+  for (const claim of claims) {
+    // Find matching evidence
+    const matchingEvidence = evidence.find(e =>
+      e.metric.toUpperCase().includes(claim.metric) ||
+      claim.metric.includes(e.metric.toUpperCase())
+    );
+
+    if (!matchingEvidence) {
+      unverified.push(claim.originalText);
+      continue;
+    }
+
+    // Check if claim matches evidence
+    if (claim.claim === 'dropped' || claim.claim === 'increased') {
+      // Verify direction and magnitude
+      if (matchingEvidence.changePercent !== undefined) {
+        const evidenceDirection = matchingEvidence.changePercent < 0 ? 'dropped' : 'increased';
+        const evidenceMagnitude = Math.abs(matchingEvidence.changePercent);
+
+        // Allow 20% tolerance in magnitude
+        const magnitudeDiff = Math.abs(evidenceMagnitude - claim.value);
+        const magnitudeMatch = magnitudeDiff <= claim.value * 0.2 || magnitudeDiff <= 5;
+
+        if (evidenceDirection === claim.claim && magnitudeMatch) {
+          verified.push(claim.originalText);
+        } else if (evidenceDirection !== claim.claim) {
+          contradicted.push(`${claim.originalText} (evidence shows ${matchingEvidence.changePercent}%)`);
+        } else {
+          unverified.push(`${claim.originalText} (evidence shows ${matchingEvidence.changePercent}%)`);
+        }
+      } else {
+        unverified.push(claim.originalText);
+      }
+    } else {
+      // 'is' or 'was' claim — check value match
+      const evidenceValue = matchingEvidence.currentValue;
+      const valueDiff = Math.abs(evidenceValue - claim.value);
+      const valueMatch = valueDiff <= claim.value * 0.1 || valueDiff <= 1;
+
+      if (valueMatch) {
+        verified.push(claim.originalText);
+      } else {
+        unverified.push(`${claim.originalText} (evidence shows ${evidenceValue})`);
+      }
+    }
+  }
+
+  // Calculate verification score
+  const totalClaims = claims.length;
+  if (totalClaims === 0) {
+    return { verified, unverified, contradicted, verificationScore: 1.0 };
+  }
+
+  const verificationScore =
+    (verified.length * 1.0 + unverified.length * 0.3 - contradicted.length * 0.5) / totalClaims;
+
+  return {
+    verified,
+    unverified,
+    contradicted,
+    verificationScore: Math.max(0, Math.min(1, verificationScore)),
+  };
+}
 
 // ============================================================================
 // Core Quality Check Functions
@@ -328,15 +612,49 @@ export function checkInsightQuality(
   }
   checks++;
 
+  // 7. Evidence quality check (NEW - production hardening)
+  const evidenceCheck = checkEvidenceQuality(insight.evidence);
+  totalScore += evidenceCheck.score;
+  checks++;
+
+  if (evidenceCheck.quality === 'none') {
+    reasons.push('No evidence provided — claims cannot be verified');
+  } else if (evidenceCheck.quality === 'weak') {
+    reasons.push(`Weak evidence: ${evidenceCheck.issues.slice(0, 2).join('; ')}`);
+  }
+  evidenceCheck.issues.forEach(issue => {
+    if (!reasons.includes(issue)) reasons.push(issue);
+  });
+
+  // 8. Claim verification check (NEW - hallucination detection)
+  const claimCheck = verifyClaims(insight.text, insight.evidence);
+  if (claimCheck.contradicted.length > 0) {
+    reasons.push(`Contradicted claims: ${claimCheck.contradicted.slice(0, 2).join('; ')}`);
+    totalScore -= 20; // Penalty for contradictions
+  }
+  if (claimCheck.unverified.length > 2) {
+    reasons.push(`Multiple unverified claims (${claimCheck.unverified.length})`);
+  }
+
   // Calculate final score
-  const finalScore = Math.round(totalScore / checks);
+  const finalScore = Math.max(0, Math.round(totalScore / checks));
   const passes = finalScore >= cfg.minScore && (cfg.allowObvious || !obvious.isObvious);
+
+  // Determine if human review needed
+  const requiresHumanReview =
+    evidenceCheck.confidence < 0.6 ||
+    claimCheck.contradicted.length > 0 ||
+    (claimCheck.unverified.length > 0 && evidenceCheck.quality !== 'strong');
 
   return {
     passes,
     score: finalScore,
     reasons,
     filtered: passes ? undefined : `Score ${finalScore} < min ${cfg.minScore}`,
+    confidence: evidenceCheck.confidence,
+    confidenceFactors: evidenceCheck.factors,
+    evidenceQuality: evidenceCheck.quality,
+    requiresHumanReview,
   };
 }
 
@@ -347,9 +665,13 @@ export function checkDecisionQuality(
   decision: DecisionInput,
   config: Partial<QualityGateConfig> = {},
 ): QualityCheckResult {
-  // Decisions are checked via their reasoning
+  // Decisions are checked via their reasoning + evidence
   const insightResult = checkInsightQuality(
-    { text: decision.reasoning, basedOn: decision.basedOn },
+    {
+      text: decision.reasoning,
+      basedOn: decision.basedOn,
+      evidence: decision.evidence, // Pass evidence through
+    },
     config,
   );
 
@@ -368,39 +690,84 @@ export function checkDecisionQuality(
     additionalReasons.push('Target is not specifically named');
   }
 
+  // Decision-specific evidence check: must have at least 1 evidence item
+  if (!decision.evidence || decision.evidence.length === 0) {
+    additionalReasons.push('Decision has no evidence — cannot verify recommendation');
+  } else {
+    // Check if evidence supports the suggested action
+    const evidenceSupportsAction = decision.evidence.some(e => {
+      // For pause/cut actions, we expect negative trends
+      if (['pause', 'cut', 'reduce_budget'].some(a => decision.suggestedAction.toLowerCase().includes(a))) {
+        return (e.changePercent && e.changePercent < -10) ||
+               (e.metric.toLowerCase().includes('cpa') && e.changePercent && e.changePercent > 20);
+      }
+      // For scale actions, we expect positive trends
+      if (['scale', 'increase_budget'].some(a => decision.suggestedAction.toLowerCase().includes(a))) {
+        return (e.changePercent && e.changePercent > 10) ||
+               (e.metric.toLowerCase().includes('roas') && e.currentValue > 2);
+      }
+      return true;
+    });
+
+    if (!evidenceSupportsAction) {
+      additionalReasons.push('Evidence does not clearly support the suggested action');
+    }
+  }
+
   // Adjust score based on decision-specific checks
   let adjustedScore = insightResult.score;
   if (additionalReasons.length > 0) {
     adjustedScore = Math.max(adjustedScore - (additionalReasons.length * 10), 0);
   }
 
+  // Decisions with contradicted claims should never pass
+  const hasContradictions = insightResult.reasons.some(r => r.includes('Contradicted'));
+
   return {
-    passes: insightResult.passes && additionalReasons.length === 0,
+    passes: insightResult.passes && additionalReasons.length === 0 && !hasContradictions,
     score: adjustedScore,
     reasons: [...insightResult.reasons, ...additionalReasons],
     filtered: insightResult.filtered,
+    confidence: insightResult.confidence,
+    confidenceFactors: insightResult.confidenceFactors,
+    evidenceQuality: insightResult.evidenceQuality,
+    requiresHumanReview: insightResult.requiresHumanReview || hasContradictions,
   };
 }
 
 /**
  * Filter an array of insights, keeping only those that pass quality gate
  */
-export function filterInsights<T extends { reasoning?: string; text?: string; insight?: string }>(
+export function filterInsights<T extends { reasoning?: string; text?: string; insight?: string; evidence?: Evidence[] }>(
   items: T[],
   config: Partial<QualityGateConfig> = {},
-): { passed: T[]; filtered: T[]; stats: { total: number; passed: number; filtered: number } } {
+): {
+  passed: T[];
+  filtered: T[];
+  stats: { total: number; passed: number; filtered: number };
+  requiresHumanReview: T[];
+} {
   const passed: T[] = [];
   const filtered: T[] = [];
+  const requiresHumanReview: T[] = [];
 
   for (const item of items) {
     const text = item.reasoning || item.text || item.insight || '';
-    const result = checkInsightQuality({ text }, config);
+    const result = checkInsightQuality({ text, evidence: item.evidence }, config);
 
     if (result.passes) {
       passed.push(item);
+      if (result.requiresHumanReview) {
+        requiresHumanReview.push(item);
+      }
     } else {
       filtered.push(item);
-      logger.debug({ text: text.slice(0, 100), reasons: result.reasons }, '[QualityGate] Filtered insight');
+      logger.debug({
+        text: text.slice(0, 100),
+        reasons: result.reasons,
+        evidenceQuality: result.evidenceQuality,
+        confidence: result.confidence,
+      }, '[QualityGate] Filtered insight');
     }
   }
 
@@ -412,24 +779,40 @@ export function filterInsights<T extends { reasoning?: string; text?: string; in
       passed: passed.length,
       filtered: filtered.length,
     },
+    requiresHumanReview,
   };
 }
 
 /**
  * Filter decisions, keeping only strategic ones
+ * Also detects and resolves contradictions
  */
 export function filterDecisions<T extends DecisionInput>(
   decisions: T[],
   config: Partial<QualityGateConfig> = {},
-): { passed: T[]; filtered: T[]; stats: { total: number; passed: number; filtered: number } } {
-  const passed: T[] = [];
-  const filtered: T[] = [];
+): {
+  passed: T[];
+  filtered: T[];
+  stats: { total: number; passed: number; filtered: number; contradictions: number };
+  contradictions?: string[];
+  requiresHumanReview: T[];
+} {
+  // First, detect and resolve contradictions
+  const contradictionResult = resolveContradictions(decisions);
+  const decisionsToCheck = contradictionResult.resolved as T[];
 
-  for (const decision of decisions) {
+  const passed: T[] = [];
+  const filtered: T[] = [...(contradictionResult.dropped as T[])];
+  const requiresHumanReview: T[] = [];
+
+  for (const decision of decisionsToCheck) {
     const result = checkDecisionQuality(decision, config);
 
     if (result.passes) {
       passed.push(decision);
+      if (result.requiresHumanReview) {
+        requiresHumanReview.push(decision);
+      }
     } else {
       filtered.push(decision);
       logger.debug({
@@ -437,8 +820,17 @@ export function filterDecisions<T extends DecisionInput>(
         target: decision.targetName,
         score: result.score,
         reasons: result.reasons,
+        evidenceQuality: result.evidenceQuality,
+        confidence: result.confidence,
       }, '[QualityGate] Filtered decision');
     }
+  }
+
+  if (contradictionResult.conflicts.length > 0) {
+    logger.warn({
+      conflicts: contradictionResult.conflicts,
+      dropped: contradictionResult.dropped.length,
+    }, '[QualityGate] Resolved contradictions');
   }
 
   return {
@@ -448,7 +840,155 @@ export function filterDecisions<T extends DecisionInput>(
       total: decisions.length,
       passed: passed.length,
       filtered: filtered.length,
+      contradictions: contradictionResult.conflicts.length,
     },
+    contradictions: contradictionResult.conflicts.length > 0 ? contradictionResult.conflicts : undefined,
+    requiresHumanReview,
+  };
+}
+
+// ============================================================================
+// Contradiction Detection
+// ============================================================================
+
+/**
+ * Contradictory action pairs — if both exist for same target, it's a conflict
+ */
+const CONTRADICTORY_ACTIONS: Array<[string[], string[]]> = [
+  [['pause', 'cut', 'stop'], ['scale', 'increase_budget', 'boost']],
+  [['reduce_budget', 'decrease'], ['increase_budget', 'raise']],
+  [['disable', 'turn_off'], ['enable', 'turn_on', 'activate']],
+];
+
+/**
+ * Detect contradictions between decisions
+ * Returns conflicts that should be surfaced instead of contradictory advice
+ */
+export function detectContradictions(decisions: DecisionInput[]): {
+  hasContradictions: boolean;
+  conflicts: Array<{
+    decision1: DecisionInput;
+    decision2: DecisionInput;
+    reason: string;
+  }>;
+  recommendations: string[];
+} {
+  const conflicts: Array<{
+    decision1: DecisionInput;
+    decision2: DecisionInput;
+    reason: string;
+  }> = [];
+
+  // Group decisions by target (normalize target name)
+  const byTarget = new Map<string, DecisionInput[]>();
+  for (const decision of decisions) {
+    const normalizedTarget = decision.targetName.toLowerCase().trim();
+    if (!byTarget.has(normalizedTarget)) {
+      byTarget.set(normalizedTarget, []);
+    }
+    byTarget.get(normalizedTarget)!.push(decision);
+  }
+
+  // Check for contradictions within each target
+  for (const [target, targetDecisions] of byTarget) {
+    if (targetDecisions.length < 2) continue;
+
+    for (let i = 0; i < targetDecisions.length; i++) {
+      for (let j = i + 1; j < targetDecisions.length; j++) {
+        const d1 = targetDecisions[i];
+        const d2 = targetDecisions[j];
+        const action1 = d1.suggestedAction.toLowerCase();
+        const action2 = d2.suggestedAction.toLowerCase();
+
+        // Check if actions are contradictory
+        for (const [group1, group2] of CONTRADICTORY_ACTIONS) {
+          const d1InGroup1 = group1.some(a => action1.includes(a));
+          const d1InGroup2 = group2.some(a => action1.includes(a));
+          const d2InGroup1 = group1.some(a => action2.includes(a));
+          const d2InGroup2 = group2.some(a => action2.includes(a));
+
+          if ((d1InGroup1 && d2InGroup2) || (d1InGroup2 && d2InGroup1)) {
+            conflicts.push({
+              decision1: d1,
+              decision2: d2,
+              reason: `Contradictory actions on "${target}": "${d1.suggestedAction}" vs "${d2.suggestedAction}"`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Generate recommendations for resolving conflicts
+  const recommendations: string[] = [];
+  for (const conflict of conflicts) {
+    // Compare evidence quality to recommend which to follow
+    const ev1Quality = checkEvidenceQuality(conflict.decision1.evidence);
+    const ev2Quality = checkEvidenceQuality(conflict.decision2.evidence);
+
+    if (ev1Quality.confidence > ev2Quality.confidence + 0.2) {
+      recommendations.push(
+        `Conflict on "${conflict.decision1.targetName}": Prefer "${conflict.decision1.suggestedAction}" ` +
+        `(confidence ${(ev1Quality.confidence * 100).toFixed(0)}% vs ${(ev2Quality.confidence * 100).toFixed(0)}%)`
+      );
+    } else if (ev2Quality.confidence > ev1Quality.confidence + 0.2) {
+      recommendations.push(
+        `Conflict on "${conflict.decision2.targetName}": Prefer "${conflict.decision2.suggestedAction}" ` +
+        `(confidence ${(ev2Quality.confidence * 100).toFixed(0)}% vs ${(ev1Quality.confidence * 100).toFixed(0)}%)`
+      );
+    } else {
+      recommendations.push(
+        `Conflict on "${conflict.decision1.targetName}": Manual review needed — ` +
+        `"${conflict.decision1.suggestedAction}" vs "${conflict.decision2.suggestedAction}" ` +
+        `(similar confidence levels)`
+      );
+    }
+  }
+
+  return {
+    hasContradictions: conflicts.length > 0,
+    conflicts,
+    recommendations,
+  };
+}
+
+/**
+ * Resolve contradictions by keeping the higher-confidence decision
+ */
+export function resolveContradictions(decisions: DecisionInput[]): {
+  resolved: DecisionInput[];
+  dropped: DecisionInput[];
+  conflicts: string[];
+} {
+  const detection = detectContradictions(decisions);
+
+  if (!detection.hasContradictions) {
+    return { resolved: decisions, dropped: [], conflicts: [] };
+  }
+
+  const dropped: DecisionInput[] = [];
+  const toRemove = new Set<DecisionInput>();
+
+  for (const conflict of detection.conflicts) {
+    const ev1 = checkEvidenceQuality(conflict.decision1.evidence);
+    const ev2 = checkEvidenceQuality(conflict.decision2.evidence);
+
+    // Keep higher confidence, drop lower
+    if (ev1.confidence >= ev2.confidence) {
+      toRemove.add(conflict.decision2);
+      dropped.push(conflict.decision2);
+    } else {
+      toRemove.add(conflict.decision1);
+      dropped.push(conflict.decision1);
+    }
+  }
+
+  const resolved = decisions.filter(d => !toRemove.has(d));
+
+  return {
+    resolved,
+    dropped,
+    conflicts: detection.recommendations,
   };
 }
 
