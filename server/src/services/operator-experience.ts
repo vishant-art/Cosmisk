@@ -843,7 +843,891 @@ export function generateOperatorPackage(
 }
 
 // ============================================================================
+// TIER 2: ROLE-BASED INTELLIGENCE
+// ============================================================================
+
+/**
+ * Operator persona types — each sees intelligence differently
+ */
+export type OperatorPersona = 'founder' | 'media_buyer' | 'creative_strategist' | 'growth_lead';
+
+/**
+ * Persona configuration — what each role cares about
+ */
+interface PersonaConfig {
+  persona: OperatorPersona;
+  title: string;
+  focusAreas: string[];
+  metricsEmphasis: string[];
+  decisionContext: string;
+  urgencyThreshold: number;  // 0-1, higher = only show critical
+  detailLevel: 'executive' | 'tactical' | 'detailed';
+}
+
+const PERSONA_CONFIGS: PersonaConfig[] = [
+  {
+    persona: 'founder',
+    title: 'Founder',
+    focusAreas: ['P&L impact', 'strategic direction', 'major risks', 'growth opportunities'],
+    metricsEmphasis: ['revenue', 'profit', 'LTV', 'market share'],
+    decisionContext: 'Should we invest more, pivot, or stay the course?',
+    urgencyThreshold: 0.6,  // Only high-urgency items
+    detailLevel: 'executive',
+  },
+  {
+    persona: 'media_buyer',
+    title: 'Media Buyer',
+    focusAreas: ['campaign performance', 'budget allocation', 'creative rotation', 'audience targeting'],
+    metricsEmphasis: ['ROAS', 'CPA', 'CTR', 'CPM', 'frequency'],
+    decisionContext: 'What should I change in the ads manager today?',
+    urgencyThreshold: 0.3,  // Show most tactical items
+    detailLevel: 'tactical',
+  },
+  {
+    persona: 'creative_strategist',
+    title: 'Creative Strategist',
+    focusAreas: ['creative performance', 'fatigue patterns', 'winning hooks', 'competitor creative'],
+    metricsEmphasis: ['engagement', 'hook rate', 'watch time', 'Click→ATC'],
+    decisionContext: 'What creative should we make next?',
+    urgencyThreshold: 0.4,
+    detailLevel: 'tactical',
+  },
+  {
+    persona: 'growth_lead',
+    title: 'Growth Lead',
+    focusAreas: ['scaling opportunities', 'unit economics', 'channel mix', 'CAC payback'],
+    metricsEmphasis: ['CAC', 'LTV:CAC', 'payback period', 'channel efficiency'],
+    decisionContext: 'Where should we double down or cut back?',
+    urgencyThreshold: 0.5,
+    detailLevel: 'detailed',
+  },
+];
+
+/**
+ * Role-specific briefing
+ */
+export interface RoleBriefing {
+  persona: OperatorPersona;
+  title: string;
+  generatedAt: string;
+
+  // The single most important thing for this role
+  theOneThing: {
+    action: string;
+    whyYou: string;  // Why this matters to YOUR role specifically
+    impact: string;
+  } | null;
+
+  // Filtered and reframed insights for this role
+  relevantInsights: Array<{
+    headline: string;
+    relevance: string;  // Why this matters to this persona
+    action: string;
+    urgency: NarrativeInsight['urgency'];
+  }>;
+
+  // Role-specific metrics summary
+  keyMetrics: Array<{
+    metric: string;
+    value: string;
+    change: string;
+    interpretation: string;  // What this means for this role
+  }>;
+
+  // Questions this persona should be asking
+  strategicQuestions: string[];
+}
+
+/**
+ * Filter and reframe insights for a specific persona
+ */
+export function generateRoleBriefing(
+  persona: OperatorPersona,
+  insights: NarrativeInsight[],
+  opportunities: HiddenOpportunity[],
+  timedItems: TimedIntelligence[],
+  metrics?: Array<{ metric: string; value: number; change: number }>
+): RoleBriefing {
+  const config = PERSONA_CONFIGS.find(c => c.persona === persona) || PERSONA_CONFIGS[0];
+
+  // Filter insights by relevance to persona
+  const relevantInsights = insights
+    .filter(insight => {
+      // Check if insight relates to persona's focus areas
+      const insightText = `${insight.headline} ${insight.narrative}`.toLowerCase();
+      return config.focusAreas.some(area =>
+        insightText.includes(area.toLowerCase()) ||
+        config.metricsEmphasis.some(m => insightText.includes(m.toLowerCase()))
+      );
+    })
+    .map(insight => ({
+      headline: insight.headline,
+      relevance: generateRelevanceStatement(insight, config),
+      action: insight.actionStatement,
+      urgency: insight.urgency,
+    }))
+    .slice(0, 3);  // Max 3 per briefing
+
+  // Find THE ONE THING for this persona
+  let theOneThing: RoleBriefing['theOneThing'] = null;
+
+  // Prioritize by urgency and relevance
+  const criticalItems = timedItems.filter(t => t.urgencyLevel === 'critical');
+  const highItems = timedItems.filter(t => t.urgencyLevel === 'high');
+
+  const topItem = criticalItems[0] || highItems[0] || timedItems[0];
+  if (topItem) {
+    theOneThing = {
+      action: topItem.title.replace(/—.*$/, '').trim(),
+      whyYou: generateWhyYouStatement(topItem, config),
+      impact: topItem.costOfDelay,
+    };
+  }
+
+  // Generate key metrics for this persona
+  const keyMetrics = (metrics || [])
+    .filter(m => config.metricsEmphasis.some(em =>
+      m.metric.toLowerCase().includes(em.toLowerCase())
+    ))
+    .slice(0, 4)
+    .map(m => ({
+      metric: m.metric,
+      value: formatMetricValue(m.value, m.metric),
+      change: `${m.change > 0 ? '+' : ''}${m.change.toFixed(1)}%`,
+      interpretation: interpretMetricForPersona(m, config),
+    }));
+
+  // Strategic questions this persona should ask
+  const strategicQuestions = generateStrategicQuestions(config, relevantInsights, opportunities);
+
+  return {
+    persona,
+    title: `${config.title} Briefing`,
+    generatedAt: new Date().toISOString(),
+    theOneThing,
+    relevantInsights,
+    keyMetrics,
+    strategicQuestions,
+  };
+}
+
+/**
+ * Generate relevance statement for persona
+ */
+function generateRelevanceStatement(insight: NarrativeInsight, config: PersonaConfig): string {
+  const templates: Record<OperatorPersona, string> = {
+    founder: `This affects your ${insight.urgency === 'act_now' ? 'immediate P&L' : 'strategic position'}`,
+    media_buyer: `This requires action in your campaigns ${insight.urgency === 'act_now' ? 'today' : 'this week'}`,
+    creative_strategist: `This signals a creative ${insight.headline.toLowerCase().includes('fatigue') ? 'refresh opportunity' : 'optimization opportunity'}`,
+    growth_lead: `This impacts your ${insight.urgency === 'act_now' ? 'unit economics' : 'growth trajectory'}`,
+  };
+  return templates[config.persona];
+}
+
+/**
+ * Generate "why you" statement for persona
+ */
+function generateWhyYouStatement(item: TimedIntelligence, config: PersonaConfig): string {
+  const templates: Record<OperatorPersona, string> = {
+    founder: `As founder, this directly impacts your bottom line`,
+    media_buyer: `This is in your direct control in ads manager`,
+    creative_strategist: `This is a creative decision only you can make`,
+    growth_lead: `This affects your growth metrics and channel strategy`,
+  };
+  return templates[config.persona];
+}
+
+/**
+ * Format metric value based on type
+ */
+function formatMetricValue(value: number, metric: string): string {
+  const metricLower = metric.toLowerCase();
+  if (metricLower.includes('roas') || metricLower.includes('ltv:cac')) {
+    return `${value.toFixed(2)}x`;
+  }
+  if (metricLower.includes('cpa') || metricLower.includes('cac') || metricLower.includes('revenue') || metricLower.includes('profit')) {
+    return `₹${value.toLocaleString('en-IN')}`;
+  }
+  if (metricLower.includes('rate') || metricLower.includes('ctr')) {
+    return `${value.toFixed(2)}%`;
+  }
+  return value.toLocaleString('en-IN');
+}
+
+/**
+ * Interpret metric change for specific persona
+ */
+function interpretMetricForPersona(
+  metric: { metric: string; value: number; change: number },
+  config: PersonaConfig
+): string {
+  const isPositive = metric.change > 0;
+  const isGoodMetric = !metric.metric.toLowerCase().includes('cpa') &&
+                       !metric.metric.toLowerCase().includes('cac');
+  const isGoodChange = isPositive === isGoodMetric;
+
+  if (config.persona === 'founder') {
+    return isGoodChange ? 'Trending in right direction' : 'Needs attention';
+  }
+  if (config.persona === 'media_buyer') {
+    return isGoodChange ? 'Keep current strategy' : 'Review campaign settings';
+  }
+  if (config.persona === 'creative_strategist') {
+    return isGoodChange ? 'Creative resonating' : 'Consider refresh';
+  }
+  return isGoodChange ? 'Scaling opportunity' : 'Investigate root cause';
+}
+
+/**
+ * Generate strategic questions for persona
+ */
+function generateStrategicQuestions(
+  config: PersonaConfig,
+  insights: RoleBriefing['relevantInsights'],
+  opportunities: HiddenOpportunity[]
+): string[] {
+  const questions: string[] = [];
+
+  const baseQuestions: Record<OperatorPersona, string[]> = {
+    founder: [
+      'Are we profitable at current scale?',
+      'What\'s our biggest risk this month?',
+      'Where should we double down?',
+    ],
+    media_buyer: [
+      'Which campaigns need immediate attention?',
+      'What\'s working that we should scale?',
+      'What should we pause or cut?',
+    ],
+    creative_strategist: [
+      'Which creative angles are fatiguing?',
+      'What hooks are working best?',
+      'What should we test next?',
+    ],
+    growth_lead: [
+      'Which channel has the best unit economics?',
+      'Where are we leaving money on the table?',
+      'What\'s blocking our next growth phase?',
+    ],
+  };
+
+  questions.push(...baseQuestions[config.persona].slice(0, 2));
+
+  // Add contextual questions based on insights
+  if (insights.some(i => i.urgency === 'act_now')) {
+    questions.push('What\'s the most urgent fire to put out?');
+  }
+
+  if (opportunities.length > 0) {
+    questions.push('What hidden opportunities are we missing?');
+  }
+
+  return questions.slice(0, 3);
+}
+
+// ============================================================================
+// TIER 2: DECISION COMPRESSION
+// ============================================================================
+
+/**
+ * Decision compression levels
+ */
+export type CompressionLevel = 'one_thing' | 'top_three' | 'full_context';
+
+/**
+ * Compressed decision package
+ */
+export interface CompressedDecision {
+  level: CompressionLevel;
+
+  // THE ONE THING — if you do nothing else, do this
+  theOneThing: {
+    action: string;
+    deadline: string;
+    impact: string;
+    confidence: number;
+  } | null;
+
+  // Top 3 if they want more
+  topThree?: Array<{
+    rank: 1 | 2 | 3;
+    action: string;
+    type: 'protect' | 'grow' | 'optimize';  // Category
+    effort: 'low' | 'medium' | 'high';
+    impact: 'low' | 'medium' | 'high';
+  }>;
+
+  // Full context if drilling down
+  fullContext?: {
+    actions: Array<{
+      action: string;
+      category: string;
+      evidence: string;
+      blockers?: string[];
+    }>;
+    skipList: string[];  // Actions we filtered out and why
+  };
+}
+
+/**
+ * Compress multiple insights into prioritized decisions
+ */
+export function compressDecisions(
+  insights: NarrativeInsight[],
+  opportunities: HiddenOpportunity[],
+  timedItems: TimedIntelligence[],
+  level: CompressionLevel = 'one_thing'
+): CompressedDecision {
+  // Score and rank all potential actions
+  const scoredActions = scoreAndRankActions(insights, opportunities, timedItems);
+
+  // THE ONE THING — highest scored action
+  const topAction = scoredActions[0];
+  const theOneThing = topAction ? {
+    action: topAction.action,
+    deadline: topAction.deadline,
+    impact: topAction.impactStatement,
+    confidence: topAction.score,
+  } : null;
+
+  const result: CompressedDecision = {
+    level,
+    theOneThing,
+  };
+
+  // Add top 3 if requested
+  if (level === 'top_three' || level === 'full_context') {
+    result.topThree = scoredActions.slice(0, 3).map((a, i) => ({
+      rank: (i + 1) as 1 | 2 | 3,
+      action: a.action,
+      type: a.type,
+      effort: a.effort,
+      impact: a.impact,
+    }));
+  }
+
+  // Add full context if requested
+  if (level === 'full_context') {
+    result.fullContext = {
+      actions: scoredActions.map(a => ({
+        action: a.action,
+        category: a.type,
+        evidence: a.evidence,
+        blockers: a.blockers,
+      })),
+      skipList: generateSkipList(insights, scoredActions),
+    };
+  }
+
+  return result;
+}
+
+interface ScoredAction {
+  action: string;
+  score: number;
+  deadline: string;
+  impactStatement: string;
+  type: 'protect' | 'grow' | 'optimize';
+  effort: 'low' | 'medium' | 'high';
+  impact: 'low' | 'medium' | 'high';
+  evidence: string;
+  blockers?: string[];
+}
+
+/**
+ * Score and rank all potential actions
+ */
+function scoreAndRankActions(
+  insights: NarrativeInsight[],
+  opportunities: HiddenOpportunity[],
+  timedItems: TimedIntelligence[]
+): ScoredAction[] {
+  const actions: ScoredAction[] = [];
+
+  // Convert insights to scored actions
+  for (const insight of insights) {
+    const urgencyScore = { act_now: 40, this_week: 30, this_month: 20, when_ready: 10 };
+    const baseScore = urgencyScore[insight.urgency] + (insight.confidence * 0.5);
+
+    actions.push({
+      action: insight.actionStatement,
+      score: baseScore,
+      deadline: getDeadlineFromUrgency(insight.urgency),
+      impactStatement: insight.whatIfNothing,
+      type: categorizeAction(insight.headline),
+      effort: estimateEffort(insight.actionStatement),
+      impact: estimateImpact(insight.confidence, insight.urgency),
+      evidence: `Based on ${insight.evidence.length} data points`,
+    });
+  }
+
+  // Convert opportunities to scored actions
+  for (const opp of opportunities) {
+    actions.push({
+      action: opp.actionSteps[0],
+      score: opp.confidence * 0.8,  // Slightly lower than urgent insights
+      deadline: opp.timeToCapture,
+      impactStatement: opp.potentialUpside,
+      type: 'grow',
+      effort: opp.actionSteps.length > 3 ? 'high' : 'medium',
+      impact: 'high',
+      evidence: `Cross-signal: ${opp.signalsCombined.join(', ')}`,
+    });
+  }
+
+  // Boost items with tight deadlines
+  for (const item of timedItems) {
+    const existing = actions.find(a => a.action.includes(item.title.split(' ')[0]));
+    if (existing && item.daysRemaining <= 3) {
+      existing.score += 20;  // Urgency boost
+    }
+  }
+
+  // Sort by score descending
+  actions.sort((a, b) => b.score - a.score);
+
+  return actions;
+}
+
+/**
+ * Categorize action type
+ */
+function categorizeAction(headline: string): 'protect' | 'grow' | 'optimize' {
+  const lower = headline.toLowerCase();
+  if (lower.includes('drop') || lower.includes('decline') || lower.includes('waste') || lower.includes('leak')) {
+    return 'protect';
+  }
+  if (lower.includes('opportunity') || lower.includes('untested') || lower.includes('gap')) {
+    return 'grow';
+  }
+  return 'optimize';
+}
+
+/**
+ * Estimate effort from action text
+ */
+function estimateEffort(action: string): 'low' | 'medium' | 'high' {
+  const lower = action.toLowerCase();
+  if (lower.includes('pause') || lower.includes('review') || lower.includes('check')) {
+    return 'low';
+  }
+  if (lower.includes('create') || lower.includes('launch') || lower.includes('build')) {
+    return 'high';
+  }
+  return 'medium';
+}
+
+/**
+ * Estimate impact from confidence and urgency
+ */
+function estimateImpact(
+  confidence: number,
+  urgency: NarrativeInsight['urgency']
+): 'low' | 'medium' | 'high' {
+  if (urgency === 'act_now' || confidence > 80) return 'high';
+  if (urgency === 'when_ready' && confidence < 60) return 'low';
+  return 'medium';
+}
+
+/**
+ * Get deadline string from urgency
+ */
+function getDeadlineFromUrgency(urgency: NarrativeInsight['urgency']): string {
+  switch (urgency) {
+    case 'act_now': return 'Today';
+    case 'this_week': return 'This week';
+    case 'this_month': return 'This month';
+    default: return 'When ready';
+  }
+}
+
+/**
+ * Generate list of skipped actions with reasons
+ */
+function generateSkipList(
+  insights: NarrativeInsight[],
+  scoredActions: ScoredAction[]
+): string[] {
+  const skipList: string[] = [];
+
+  // Low confidence insights
+  const lowConfidence = insights.filter(i => i.confidence < 50);
+  if (lowConfidence.length > 0) {
+    skipList.push(`${lowConfidence.length} insight(s) skipped due to low confidence (<50%)`);
+  }
+
+  // Duplicate actions
+  const actionTexts = scoredActions.map(a => a.action.toLowerCase());
+  const duplicates = actionTexts.filter((a, i) => actionTexts.indexOf(a) !== i);
+  if (duplicates.length > 0) {
+    skipList.push(`${duplicates.length} duplicate action(s) merged`);
+  }
+
+  return skipList;
+}
+
+/**
+ * Generate "if you only have 5 minutes" brief
+ */
+export function generateFiveMinuteBrief(
+  compressed: CompressedDecision
+): string {
+  const parts: string[] = [];
+
+  parts.push('**⏱️ 5-MINUTE BRIEF**\n');
+
+  if (compressed.theOneThing) {
+    parts.push(`**THE ONE THING:** ${compressed.theOneThing.action}`);
+    parts.push(`↳ Deadline: ${compressed.theOneThing.deadline}`);
+    parts.push(`↳ If not: ${compressed.theOneThing.impact}\n`);
+  }
+
+  if (compressed.topThree && compressed.topThree.length > 1) {
+    parts.push('**ALSO IMPORTANT:**');
+    for (const item of compressed.topThree.slice(1)) {
+      const icon = item.type === 'protect' ? '🛡️' : item.type === 'grow' ? '📈' : '⚙️';
+      parts.push(`${item.rank}. ${icon} ${item.action} (${item.effort} effort, ${item.impact} impact)`);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+// ============================================================================
+// TIER 2: PROGRESSIVE DISCLOSURE
+// ============================================================================
+
+/**
+ * Disclosure depth levels
+ */
+export type DisclosureDepth = 'tldr' | 'summary' | 'detailed' | 'full_audit';
+
+/**
+ * Progressive disclosure package
+ */
+export interface ProgressiveDisclosure {
+  depth: DisclosureDepth;
+
+  // TL;DR — 1 sentence
+  tldr: string;
+
+  // Summary — 3-5 bullet points
+  summary?: string[];
+
+  // Detailed — Full narrative with evidence
+  detailed?: {
+    narrative: string;
+    evidence: Evidence[];
+    alternatives: string[];
+    risks: string[];
+  };
+
+  // Full audit trail (for those who want to verify)
+  fullAudit?: {
+    dataSourcesUsed: string[];
+    calculationsPerformed: string[];
+    assumptionsMade: string[];
+    confidenceBreakdown: Record<string, number>;
+  };
+
+  // Drill-down prompts
+  canDrillDeeper: boolean;
+  nextDepth?: DisclosureDepth;
+  drillDownPrompt?: string;
+}
+
+/**
+ * Generate progressive disclosure for an insight
+ */
+export function generateProgressiveDisclosure(
+  insight: NarrativeInsight,
+  requestedDepth: DisclosureDepth = 'tldr'
+): ProgressiveDisclosure {
+  // Always generate TL;DR
+  const tldr = generateTldr(insight);
+
+  const result: ProgressiveDisclosure = {
+    depth: requestedDepth,
+    tldr,
+    canDrillDeeper: requestedDepth !== 'full_audit',
+  };
+
+  // Add summary if requested
+  if (requestedDepth !== 'tldr') {
+    result.summary = generateSummaryBullets(insight);
+  }
+
+  // Add detailed if requested
+  if (requestedDepth === 'detailed' || requestedDepth === 'full_audit') {
+    result.detailed = {
+      narrative: insight.narrative,
+      evidence: insight.evidence,
+      alternatives: generateAlternatives(insight),
+      risks: generateRisks(insight),
+    };
+  }
+
+  // Add full audit if requested
+  if (requestedDepth === 'full_audit') {
+    result.fullAudit = {
+      dataSourcesUsed: extractDataSources(insight.evidence),
+      calculationsPerformed: ['Confidence scoring', 'Urgency calculation', 'Evidence correlation'],
+      assumptionsMade: extractAssumptions(insight),
+      confidenceBreakdown: {
+        evidenceQuality: insight.confidence * 0.4,
+        dataFreshness: insight.confidence * 0.3,
+        signalStrength: insight.confidence * 0.3,
+      },
+    };
+  }
+
+  // Set drill-down prompt
+  if (result.canDrillDeeper) {
+    const nextDepths: Record<DisclosureDepth, DisclosureDepth> = {
+      tldr: 'summary',
+      summary: 'detailed',
+      detailed: 'full_audit',
+      full_audit: 'full_audit',
+    };
+    result.nextDepth = nextDepths[requestedDepth];
+    result.drillDownPrompt = getDrillDownPrompt(requestedDepth);
+  }
+
+  return result;
+}
+
+/**
+ * Generate TL;DR (one sentence)
+ */
+function generateTldr(insight: NarrativeInsight): string {
+  const urgencyPrefix = {
+    act_now: '🚨 ',
+    this_week: '⚡ ',
+    this_month: '📋 ',
+    when_ready: '💡 ',
+  };
+
+  return `${urgencyPrefix[insight.urgency]}${insight.headline} — ${insight.actionStatement}`;
+}
+
+/**
+ * Generate summary bullets
+ */
+function generateSummaryBullets(insight: NarrativeInsight): string[] {
+  const bullets: string[] = [];
+
+  bullets.push(`**What:** ${insight.headline}`);
+  bullets.push(`**Why it matters:** ${insight.emotionalHook}`);
+  bullets.push(`**Action:** ${insight.actionStatement}`);
+  bullets.push(`**If not:** ${insight.whatIfNothing}`);
+
+  if (insight.alternativeAction) {
+    bullets.push(`**Alternative:** ${insight.alternativeAction}`);
+  }
+
+  return bullets;
+}
+
+/**
+ * Generate alternative approaches
+ */
+function generateAlternatives(insight: NarrativeInsight): string[] {
+  const alternatives: string[] = [];
+
+  if (insight.alternativeAction) {
+    alternatives.push(insight.alternativeAction);
+  }
+
+  // Generate based on urgency
+  if (insight.urgency === 'act_now') {
+    alternatives.push('Delegate to team member if you can\'t act personally');
+    alternatives.push('Set a 24-hour reminder if you need time to decide');
+  } else {
+    alternatives.push('Schedule for next planning session');
+    alternatives.push('Add to backlog for batch processing');
+  }
+
+  return alternatives;
+}
+
+/**
+ * Generate risks of action/inaction
+ */
+function generateRisks(insight: NarrativeInsight): string[] {
+  const risks: string[] = [];
+
+  risks.push(`Inaction risk: ${insight.whatIfNothing}`);
+
+  if (insight.confidence < 70) {
+    risks.push(`Confidence is ${insight.confidence.toFixed(0)}% — consider gathering more data`);
+  }
+
+  if (insight.evidence.length < 3) {
+    risks.push('Limited data points — recommendation may change with more data');
+  }
+
+  return risks;
+}
+
+/**
+ * Extract data sources from evidence
+ */
+function extractDataSources(evidence: Evidence[]): string[] {
+  const sources = new Set<string>();
+
+  for (const e of evidence) {
+    if (e.source) {
+      sources.add(e.source);
+    } else {
+      sources.add('Internal metrics');
+    }
+  }
+
+  return Array.from(sources);
+}
+
+/**
+ * Extract assumptions made
+ */
+function extractAssumptions(insight: NarrativeInsight): string[] {
+  const assumptions: string[] = [];
+
+  assumptions.push('Historical patterns will continue');
+  assumptions.push('Data sources are accurate and complete');
+
+  if (insight.urgency === 'act_now') {
+    assumptions.push('Immediate action is feasible');
+  }
+
+  return assumptions;
+}
+
+/**
+ * Get drill-down prompt for each depth
+ */
+function getDrillDownPrompt(currentDepth: DisclosureDepth): string {
+  const prompts: Record<DisclosureDepth, string> = {
+    tldr: 'Want more context? →',
+    summary: 'See full analysis →',
+    detailed: 'View audit trail →',
+    full_audit: '',
+  };
+  return prompts[currentDepth];
+}
+
+/**
+ * Format disclosure for display
+ */
+export function formatDisclosure(disclosure: ProgressiveDisclosure): string {
+  const parts: string[] = [];
+
+  parts.push(disclosure.tldr);
+
+  if (disclosure.summary) {
+    parts.push('\n---\n');
+    parts.push(disclosure.summary.join('\n'));
+  }
+
+  if (disclosure.detailed) {
+    parts.push('\n---\n**DETAILED ANALYSIS**\n');
+    parts.push(disclosure.detailed.narrative);
+    parts.push('\n**Alternatives:**');
+    parts.push(disclosure.detailed.alternatives.map(a => `- ${a}`).join('\n'));
+    parts.push('\n**Risks:**');
+    parts.push(disclosure.detailed.risks.map(r => `- ${r}`).join('\n'));
+  }
+
+  if (disclosure.fullAudit) {
+    parts.push('\n---\n**AUDIT TRAIL**\n');
+    parts.push(`Data sources: ${disclosure.fullAudit.dataSourcesUsed.join(', ')}`);
+    parts.push(`Calculations: ${disclosure.fullAudit.calculationsPerformed.join(', ')}`);
+    parts.push(`Assumptions: ${disclosure.fullAudit.assumptionsMade.join(', ')}`);
+  }
+
+  if (disclosure.canDrillDeeper && disclosure.drillDownPrompt) {
+    parts.push(`\n${disclosure.drillDownPrompt}`);
+  }
+
+  return parts.join('\n');
+}
+
+// ============================================================================
+// COMBINED: Full Tier 2 Package
+// ============================================================================
+
+/**
+ * Complete Tier 2 intelligence package
+ */
+export interface Tier2IntelligencePackage {
+  generatedAt: string;
+  clientId: string;
+
+  // Role-specific briefings
+  briefings: Record<OperatorPersona, RoleBriefing>;
+
+  // Compressed decisions at all levels
+  decisions: {
+    oneThing: CompressedDecision;
+    topThree: CompressedDecision;
+    fullContext: CompressedDecision;
+  };
+
+  // Quick access formats
+  fiveMinuteBrief: string;
+
+  // Progressive disclosure for top insight
+  topInsightDisclosure: ProgressiveDisclosure;
+}
+
+/**
+ * Generate complete Tier 2 package
+ */
+export function generateTier2Package(
+  clientId: string,
+  insights: NarrativeInsight[],
+  opportunities: HiddenOpportunity[],
+  timedItems: TimedIntelligence[],
+  metrics?: Array<{ metric: string; value: number; change: number }>
+): Tier2IntelligencePackage {
+  // Generate role briefings
+  const briefings: Record<OperatorPersona, RoleBriefing> = {
+    founder: generateRoleBriefing('founder', insights, opportunities, timedItems, metrics),
+    media_buyer: generateRoleBriefing('media_buyer', insights, opportunities, timedItems, metrics),
+    creative_strategist: generateRoleBriefing('creative_strategist', insights, opportunities, timedItems, metrics),
+    growth_lead: generateRoleBriefing('growth_lead', insights, opportunities, timedItems, metrics),
+  };
+
+  // Generate compressed decisions at all levels
+  const decisions = {
+    oneThing: compressDecisions(insights, opportunities, timedItems, 'one_thing'),
+    topThree: compressDecisions(insights, opportunities, timedItems, 'top_three'),
+    fullContext: compressDecisions(insights, opportunities, timedItems, 'full_context'),
+  };
+
+  // Generate 5-minute brief
+  const fiveMinuteBrief = generateFiveMinuteBrief(decisions.topThree);
+
+  // Generate progressive disclosure for top insight
+  const topInsightDisclosure = insights.length > 0
+    ? generateProgressiveDisclosure(insights[0], 'summary')
+    : {
+        depth: 'tldr' as DisclosureDepth,
+        tldr: 'No critical insights at this time',
+        canDrillDeeper: false,
+      };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    clientId,
+    briefings,
+    decisions,
+    fiveMinuteBrief,
+    topInsightDisclosure,
+  };
+}
+
+// ============================================================================
 // Logging
 // ============================================================================
 
-logger.info('[OperatorExperience] Wow moment systems loaded — Narratives, Opportunities, Timing');
+logger.info('[OperatorExperience] Tier 1 + Tier 2 loaded — Narratives, Opportunities, Timing, Roles, Compression, Disclosure');
