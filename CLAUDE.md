@@ -1,4 +1,74 @@
-<!-- PROJECT MEMORY - Updated 2026-05-06 -->
+<!-- PROJECT MEMORY - Updated 2026-05-10 -->
+
+## Cosmisk Strategic Positioning (May 2026)
+
+### The Core Insight: We Watch THE GAP
+
+**What Meta + Claude does:** AI generates ads (single platform, generic for everyone)
+
+**What Cosmisk does:** AI watches THE GAP between platforms where money disappears
+
+```
+META'S CLAUDE:                    COSMISK:
+┌─────────────┐                   ┌─────────┐ ┌─────────┐ ┌───────────┐
+│  META ONLY  │                   │  META   │ │ SHOPIFY │ │COMPETITORS│
+└──────┬──────┘                   └────┬────┘ └────┬────┘ └─────┬─────┘
+       │                               └──────┬────┴────────────┘
+       ▼                                      ▼
+  Generic ads                          ┌─────────────┐
+  for anyone                           │   THE GAP   │
+                                       │(money leaks)│
+                                       └──────┬──────┘
+                                              ▼
+                                       Intelligence +
+                                       Strategic creatives
+```
+
+### Positioning Rules (FOLLOW THESE)
+
+| DO SAY | DON'T SAY |
+|--------|-----------|
+| "We catch money leaks between platforms" | "AI generates ads" |
+| "We watch The Gap" | "We're an AI creative tool" |
+| "Rs 14Cr waste identified across 3 brands" | "We make creatives faster" |
+| "Intelligence that produces creatives" | "Creative generation platform" |
+| "Cross-platform blind spots" | "Better ad copy" |
+
+### What Meta + Claude CANNOT Do (Our Moat)
+
+| Capability | Meta + Claude | Cosmisk |
+|------------|---------------|---------|
+| Cross-platform data | NO | YES (Meta + Shopify + Competitors) |
+| OOS Detection | NO | YES (ads spending on out-of-stock) |
+| Discount Leakage | NO | YES (coupon site scraping) |
+| Cohort LTV | NO | YES (Shopify customer analysis) |
+| Competitor Intel | NO | YES (Ad Library analysis) |
+| Brand-specific learning | NO (generic) | YES (your brand's history) |
+| Reality Testing | NO | YES (accuracy tracking) |
+
+### Competitive Response (May 2026)
+
+Meta integrating Claude validates AI for ads. This HELPS us — proves the market exists.
+
+**Our response:**
+1. Position as "intelligence layer" not "creative tool"
+2. Double down on cross-platform (Meta can't do this)
+3. Lead with OOS/Leakage demos (proof Meta can't match)
+4. Build data moat (every client = more intelligence)
+5. Creative is OUTPUT of intelligence, not the product
+
+### The Gap Framework (Use in All Content)
+
+The Gap = the space between platforms where nobody is watching:
+- Gap 1: Inventory ↔ Ads (OOS detection)
+- Gap 2: Discount Codes ↔ Margins (leakage detection)
+- Gap 3: Clicks ↔ Purchases (Click→ATC analysis)
+- Gap 4: Acquisition ↔ Lifetime Value (LTV-adjusted CPA)
+- Gap 5: Ad Comments ↔ Product (feedback loop)
+
+Every brand has 3+ gaps. We find them.
+
+---
 
 ## Karpathy's 4 Principles (AI Coding Discipline)
 
@@ -154,6 +224,49 @@ A high-ticket D2C performance monitoring service that sits between Meta Ads and 
 - Weekly calls, dedicated analyst
 - They stay dependent on us (recurring revenue)
 - **Why cheaper per month:** Ongoing relationship, no knowledge transfer
+
+### Done With You Deployment Plan (5-Week Process)
+
+**Phase 1: Infrastructure Setup (Week 1-2)**
+- Client provides: VPS/Cloud instance, Meta App credentials, Shopify API access, Slack/WhatsApp webhooks
+- We deploy: Cosmisk server (Docker/Node.js), SQLite database, cron jobs, alert routing
+- Alternative: Host initially → Train → Migrate to their infra
+
+**Phase 2: Configuration (Week 2-3)**
+- Configure service_clients entry with their credentials
+- Set revenue-level thresholds for alerts
+- Configure agent schedules (hourly OOS, daily watchdog, weekly LTV)
+- Set up alert channels and report delivery
+
+**Phase 3: Training (Week 3-4)**
+- Session 1: Understanding the Agents (what each catches, actions required)
+- Session 2: Reading Reports (metrics, thresholds, recommendations)
+- Session 3: Taking Action (decision frameworks, escalation paths)
+- Session 4: Running the System (CLI commands, health checks)
+
+**Phase 4: Handover Deliverables (Week 4)**
+```
+Deliverables/
+├── SOPs/ (daily-monitoring, alert-response, report-interpretation, troubleshooting)
+├── Scripts/ (run-all-agents.sh, generate-weekly-report.sh, health-check.sh)
+├── Training/ (4 recorded sessions, quick-reference-cards.pdf)
+└── Support/ (30-day Slack channel access)
+```
+
+**Phase 5: Independence (Week 5+)**
+- Client runs agents independently
+- Weekly async check-ins (30 days)
+- Emergency support via Slack/WhatsApp
+- Optional: quarterly refresh training
+
+### Client Delivery Mechanisms
+
+**How clients receive intelligence (they don't use Claude Code):**
+1. **WhatsApp/Slack Alerts** — Real-time notifications when agents detect issues
+2. **HTML Reports** — Smashed-branded reports via email/shared link
+3. **Weekly Briefings** — Aggregated summary via N8N webhook
+4. **Future: Dashboard** — Web UI for real-time agent status (if needed)
+5. **Future: API Access** — Enterprise tier, JSON endpoints
 
 ### Intelligence Stack (9 Agents)
 
@@ -647,6 +760,87 @@ DM me if you spend ₹10L+/month on Meta and want to find your leaks.
 - Calculate LTV per cohort
 - Identify high-value vs discount-buyer segments
 - LTV-adjusted CPA reporting
+
+**4. Profit Dashboard for D2C Brands**
+- True profit per product/campaign (not just ROAS)
+- Connect: Meta Ads spend + Shopify revenue + COGs/margins + RTO/returns
+- Surface "real" profit vs what Ads Manager shows
+- Per-SKU profitability tracking
+- Factor in: payment gateway fees, shipping costs, return rates
+- Dashboard view + alerts when profit margins drop
+
+### Static Ad Generator (BUILT - May 2026)
+
+**Purpose:** Generate static ads using Gemini MCP based on winning patterns from own account + competitor intel.
+
+**Gemini MCP (Installed)**
+- Server: `@rlabs-inc/gemini-mcp` with `GEMINI_TOOL_PRESET=image`
+- Tools: `gemini-generate-image`, `gemini-edit-image`, `gemini-analyze-image`
+- Config: `~/.claude.json` → mcpServers.gemini
+
+**Architecture**
+```
+1. STYLE EXTRACTION
+   ├── Own Ad Account → Creative DNA → Winning patterns
+   └── Competitor Intel → Their patterns
+                       ↓
+2. STYLE SYNTHESIS → StyleBrief for brand
+                       ↓
+3. PROMPT BUILDER
+   ├── Product data (Shopify)
+   ├── Style brief + Format (1:1, 9:16, 16:9)
+   └── Copy (headline, CTA, offer)
+                       ↓
+4. GEMINI MCP (gemini-generate-image)
+   └── Bulk generate → Multiple variants
+                       ↓
+5. OUTPUT → ./gemini-output/
+```
+
+**StyleBrief Interface**
+```typescript
+interface StyleBrief {
+  brandName: string;
+  colorPalette: string[];
+  typography: "serif" | "sans-serif" | "display";
+  layout: "product-center" | "lifestyle" | "split" | "text-overlay";
+  textDensity: "minimal" | "moderate" | "heavy";
+  hookStyle: "problem" | "result" | "curiosity" | "social-proof";
+  ctaStyle: "direct" | "soft" | "urgency";
+  toneOfVoice: "casual" | "premium" | "playful" | "authoritative";
+  competitorGaps: string[];
+  winningPatterns: string[];
+}
+```
+
+**API Input/Output**
+```typescript
+// POST /static-ads/generate
+{
+  clientId: string;
+  products: string[] | "bestsellers" | "new-arrivals";
+  formats: ["1080x1080", "1080x1920", "1200x628"];
+  variantsPerFormat: 3;
+  includeOffer?: string;
+}
+
+// Response
+{
+  generated: [{ productId, format, variant, imagePath, prompt }];
+  styleBriefUsed: StyleBrief;
+  totalCost: string;
+}
+```
+
+**Files to Create**
+1. `server/src/services/static-ad-generator.ts` — Main service
+2. `server/src/routes/static-ads.ts` — API endpoint
+3. `server/scripts/run-static-ad-gen.mjs` — Test script
+
+**Data Sources (Already Built)**
+- `competitor-creative-intel.ts` — hookType, ctaType, creativeFormat, emotionalTriggers
+- `creative-scorer.ts` — winningPatterns, topPerformingFormats
+- `service-clients.ts` — Client context, stores
 
 ---
 
