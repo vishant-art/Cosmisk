@@ -19,6 +19,12 @@ import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import {
+  reportDataToSignals,
+  enhanceReportOutput,
+  isStrategicEnough,
+} from './intelligence-integration.js';
+import { filterInsights, checkInsightQuality } from './quality-gate.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -199,6 +205,53 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
       recommendations: analysis.recommendations || [],
       memoryCommentary: analysis.commentary || '',
     };
+
+    // === INTELLIGENCE CORE ENHANCEMENT ===
+    // Filter out generic insights and enhance with strategic intelligence
+    try {
+      const signals = reportDataToSignals(reportData);
+      const enhanced = await enhanceReportOutput(
+        {
+          strategicAnalysis: reportData.strategicAnalysis,
+          keyInsights: reportData.keyInsights,
+          recommendations: reportData.recommendations,
+        },
+        userId, // Use userId as clientId
+        signals
+      );
+
+      // Apply enhanced insights (filtering out generic ones)
+      reportData.keyInsights = enhanced.keyInsights;
+      reportData.recommendations = enhanced.recommendations;
+
+      if (enhanced.qualityCheck.genericInsightsFiltered > 0) {
+        logger.info({
+          filtered: enhanced.qualityCheck.genericInsightsFiltered,
+        }, '[ReportAgent] Filtered generic insights');
+      }
+    } catch (err) {
+      logger.warn({ err }, '[ReportAgent] Intelligence enhancement failed, using original');
+    }
+
+    // === QUALITY GATE: Final filter for strategic depth ===
+    const insightFiltered = filterInsights(
+      reportData.keyInsights.map(text => ({ text })),
+      { minScore: 50, requireSynthesis: false, allowObvious: false }
+    );
+    const recFiltered = filterInsights(
+      reportData.recommendations.map(text => ({ text })),
+      { minScore: 50, requireSynthesis: false, allowObvious: false }
+    );
+
+    reportData.keyInsights = insightFiltered.passed.map(i => i.text);
+    reportData.recommendations = recFiltered.passed.map(r => r.text);
+
+    if (insightFiltered.stats.filtered > 0 || recFiltered.stats.filtered > 0) {
+      logger.info({
+        insightsFiltered: insightFiltered.stats.filtered,
+        recsFiltered: recFiltered.stats.filtered,
+      }, '[ReportAgent] Quality gate filtered obvious content');
+    }
 
     // Save to reports table
     const reportId = uuidv4();

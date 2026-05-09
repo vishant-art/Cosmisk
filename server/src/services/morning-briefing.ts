@@ -7,6 +7,8 @@ import { round, fmt } from './format-helpers.js';
 import { notifyAlert } from './notifications.js';
 import { sendMorningBriefing } from './slack-interactive.js';
 import { recordEpisode } from './agent-memory.js';
+import { getQualityScore } from './quality-gate.js';
+import { generatePredictions, type Prediction } from './learning-engine.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -39,8 +41,14 @@ interface BriefingSource {
 
 interface SynthesizedBriefing {
   summary: string;
+  theOneThing: {
+    action: string;
+    why: string;
+    urgency: 'critical' | 'high' | 'medium' | 'low';
+  } | null;
   sections: Array<{ title: string; content: string }>;
   actionItems: string[];
+  predictions: Prediction[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -197,8 +205,16 @@ async function fetchN8nBriefingData(): Promise<any | null> {
 /*  Synthesize briefing with Claude                                    */
 /* ------------------------------------------------------------------ */
 
-async function synthesizeBriefing(sources: BriefingSource): Promise<SynthesizedBriefing> {
+async function synthesizeBriefing(sources: BriefingSource, userId: string): Promise<SynthesizedBriefing> {
   const dataContext: string[] = [];
+
+  // Generate predictions from learning engine
+  let predictions: Prediction[] = [];
+  try {
+    predictions = await generatePredictions(userId);
+  } catch (err) {
+    logger.warn({ err }, '[Briefing] Predictions generation failed');
+  }
 
   // Ad performance
   if (sources.adPerformance) {
@@ -242,8 +258,10 @@ ${sources.autopilot.map(a => `- [${a.severity}] ${a.title}`).join('\n')}`);
   if (dataContext.length === 0) {
     return {
       summary: 'No significant activity to report. All systems are running normally.',
+      theOneThing: null,
       sections: [],
       actionItems: [],
+      predictions,
     };
   }
 
@@ -258,6 +276,11 @@ Style: Direct, no fluff. Like a sharp chief of staff who respects your time.
 Format your response as JSON with this structure:
 {
   "summary": "2-3 sentence executive summary of the day's situation",
+  "theOneThing": {
+    "action": "The single most important action to take today",
+    "why": "Brief explanation connecting multiple data points",
+    "urgency": "critical|high|medium|low"
+  },
   "sections": [
     { "title": "Section name", "content": "Content with specific numbers and insights" }
   ],
@@ -265,10 +288,10 @@ Format your response as JSON with this structure:
 }
 
 Rules:
-1. Lead with the most important thing.
+1. THE ONE THING is mandatory — identify the single highest-impact action based on ALL the data. It must synthesize multiple signals (e.g., "Pause Campaign X" because CPA spiked 40% AND it's running on 3 OOS products AND creative CTR dropped).
 2. Use specific numbers, not vague qualifiers.
 3. Action items must be concrete and actionable — not "review performance" but "Approve the pause on Campaign X (CPA spiked 40%)".
-4. If things are going well, say so briefly. Don't manufacture urgency.
+4. If things are going well, theOneThing can be "Stay the course" with urgency "low".
 5. Connect dots between data points — if CPA spiked AND there's a pending watchdog decision about it, mention both together.
 6. Return ONLY the JSON object.`,
       messages: [{ role: 'user', content: dataContext.join('\n\n') }],
@@ -281,12 +304,22 @@ Rules:
     const match = jsonStr.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('No JSON in response');
 
-    return JSON.parse(match[0]) as SynthesizedBriefing;
+    const parsed = JSON.parse(match[0]);
+    return {
+      ...parsed,
+      predictions, // Add predictions from learning engine
+    } as SynthesizedBriefing;
   } catch (err: any) {
     logger.error({ err: err.message }, '[Briefing] Claude synthesis failed');
     // Fallback: structured but not synthesized
+    const topDecision = sources.watchdog.pendingDecisions.find(d => d.urgency === 'critical' || d.urgency === 'high');
     return {
       summary: `Daily update: ${sources.watchdog.pendingDecisions.length} pending decisions, ${sources.autopilot.length} alerts, ${sources.pendingJobs} jobs in pipeline.`,
+      theOneThing: topDecision ? {
+        action: `${topDecision.suggested_action} on "${topDecision.target_name}"`,
+        why: topDecision.reasoning,
+        urgency: topDecision.urgency as 'critical' | 'high' | 'medium' | 'low',
+      } : null,
       sections: dataContext.map((ctx, i) => ({
         title: ctx.split('\n')[0].replace(':', ''),
         content: ctx.split('\n').slice(1).join('\n'),
@@ -294,6 +327,7 @@ Rules:
       actionItems: sources.watchdog.pendingDecisions
         .filter(d => d.urgency === 'high' || d.urgency === 'critical')
         .map(d => `${d.suggested_action} on "${d.target_name}" — ${d.reasoning}`),
+      predictions,
     };
   }
 }
@@ -324,18 +358,24 @@ export async function runMorningBriefing(): Promise<number> {
       // 1. Gather all sources
       const sources = await gatherBriefingSources(user.id);
 
-      // 2. Synthesize
-      const briefing = await synthesizeBriefing(sources);
+      // 2. Synthesize with learning engine predictions
+      const briefing = await synthesizeBriefing(sources, user.id);
 
       // 3. Send via Slack
       const slackSent = await sendMorningBriefing(briefing);
 
       // 4. Send via email as well
+      const theOneThingSection = briefing.theOneThing
+        ? `**🎯 THE ONE THING**\n${briefing.theOneThing.action}\n_Why: ${briefing.theOneThing.why}_ (${briefing.theOneThing.urgency})\n\n`
+        : '';
+      const predictionsSection = briefing.predictions.length > 0
+        ? `\n\n**📈 Predictions:**\n${briefing.predictions.map(p => `- ${p.prediction} (${Math.round(p.confidence * 100)}% confidence)`).join('\n')}`
+        : '';
       notifyAlert(user.id, {
         type: 'morning_briefing',
-        title: 'Your Daily Briefing',
-        content: `${briefing.summary}\n\n${briefing.sections.map(s => `**${s.title}**\n${s.content}`).join('\n\n')}\n\n**Action Items:**\n${briefing.actionItems.map((a, i) => `${i + 1}. ${a}`).join('\n')}`,
-        severity: 'info',
+        title: briefing.theOneThing ? `Daily Briefing: ${briefing.theOneThing.action}` : 'Your Daily Briefing',
+        content: `${theOneThingSection}${briefing.summary}\n\n${briefing.sections.map(s => `**${s.title}**\n${s.content}`).join('\n\n')}\n\n**Action Items:**\n${briefing.actionItems.map((a, i) => `${i + 1}. ${a}`).join('\n')}${predictionsSection}`,
+        severity: briefing.theOneThing?.urgency === 'critical' ? 'critical' : 'info',
       }).catch(err => logger.error({ err: err.message }, '[Briefing] Email notification failed'));
 
       // 5. Record as episode for memory

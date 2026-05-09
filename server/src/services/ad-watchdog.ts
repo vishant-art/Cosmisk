@@ -21,6 +21,12 @@ import {
   getOOSAlertThreshold, getDiscountLeakageAlertThreshold, createRecommendation,
   type ServiceClient,
 } from './service-clients.js';
+import {
+  watchdogSnapshotToSignals,
+  buildStrategicPromptSection,
+  enhanceWatchdogDecisions,
+} from './intelligence-integration.js';
+import { filterDecisions, type DecisionInput } from './quality-gate.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -201,6 +207,7 @@ async function reasonAboutPerformance(
   snapshot: AccountSnapshot,
   pastDecisions: AgentDecisionRow[],
   memoryContext: string,
+  clientId?: string,
 ): Promise<WatchdogDecision[]> {
   const pastContext = pastDecisions.length > 0
     ? `\n\nPAST DECISIONS (learn from these):\n${pastDecisions.map(d =>
@@ -212,7 +219,27 @@ async function reasonAboutPerformance(
     ? `\n\nAGENT MEMORY:\n${memoryContext}`
     : '';
 
-  const prompt = `You are the Ad Watchdog, an autonomous AI agent monitoring Meta Ads performance.
+  // === INTELLIGENCE CORE INTEGRATION ===
+  // Convert snapshot to signals and get strategic context
+  let strategicSection = '';
+  if (clientId) {
+    try {
+      const signals = watchdogSnapshotToSignals(snapshot);
+      strategicSection = await buildStrategicPromptSection(clientId, signals);
+    } catch (err) {
+      logger.warn({ err }, '[Watchdog] Intelligence integration failed, continuing without');
+    }
+  }
+
+  const prompt = `You are the Ad Watchdog, an elite performance intelligence agent (NOT a dashboard).
+
+CRITICAL: You are advising experienced media buyers spending ₹30L+/month. They already know basic metrics.
+- Do NOT state obvious observations like "CTR dropped" or "CPA increased"
+- DO explain WHY patterns exist and WHAT strategic action to take
+- Every insight must synthesize multiple signals, not just report one metric
+- If you can't provide strategic value, return an empty array []
+${strategicSection}
+You are monitoring Meta Ads performance.
 
 ACCOUNT SNAPSHOT:
 - Account: ${snapshot.accountName} (${snapshot.accountId})
@@ -227,12 +254,14 @@ ${snapshot.campaigns.map(c =>
 ${pastContext}${memorySection}
 
 RULES:
-1. Think like a strategist, not a rule engine. Consider trends, confidence, and context.
-2. Don't flag trivial issues. Only recommend actions that meaningfully impact the account.
-3. Be specific: name the campaign/ad, state the action, quantify the impact.
-4. Consider data confidence: 1 conversion on $5 spend means nothing. 50 conversions on $500 is a real pattern.
-5. If you recommended something before and the outcome was bad, learn from it.
-6. For each recommendation, specify ONE action: pause, reduce_budget, increase_budget, new_creative, or monitor.
+1. Think like an elite D2C operator, not a rule engine. Consider trends, confidence, and context.
+2. NEVER state obvious metrics without explaining WHY and WHAT TO DO ABOUT IT.
+3. Every decision must synthesize at least 2 signals (e.g., "ROAS declining + frequency increasing = audience fatigue").
+4. Be specific: name the campaign/ad, state the action, quantify the impact.
+5. Consider data confidence: 1 conversion on $5 spend means nothing. 50 conversions on $500 is a real pattern.
+6. If you recommended something before and the outcome was bad, learn from it.
+7. For each recommendation, specify ONE action: pause, reduce_budget, increase_budget, new_creative, or monitor.
+8. Quality check: Would an experienced media buyer already know this? If yes, don't include it.
 
 Respond with a JSON array of decisions. Each decision:
 {
@@ -509,7 +538,8 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 entityTypes: ['campaign', 'adset', 'metric'],
               });
 
-              const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext);
+              // Pass user.id as clientId for intelligence integration
+              const decisions = await reasonAboutPerformance(snapshot, pastDecisions, memoryContext, user.id);
 
               // OOS Detection + Discount Leakage Detection (requires Shopify connection)
               const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(user.id) as ShopifyTokenRow | undefined;
@@ -595,7 +625,33 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 }
               }
 
-              for (const decision of decisions) {
+              // === QUALITY GATE: Filter out obvious/non-strategic decisions ===
+              const qualityFiltered = filterDecisions(
+                decisions.map(d => ({
+                  type: d.type,
+                  reasoning: d.reasoning,
+                  suggestedAction: d.suggestedAction,
+                  targetName: d.targetName,
+                  basedOn: [], // Decisions from AI don't track this yet
+                })),
+                { minScore: 55, requireSynthesis: true, allowObvious: false }
+              );
+
+              // Map back to original decisions that passed
+              const passedDecisions = decisions.filter(d =>
+                qualityFiltered.passed.some(p => p.targetName === d.targetName && p.type === d.type)
+              );
+
+              if (qualityFiltered.stats.filtered > 0) {
+                logger.info({
+                  total: qualityFiltered.stats.total,
+                  passed: qualityFiltered.stats.passed,
+                  filtered: qualityFiltered.stats.filtered,
+                  accountId: account.id,
+                }, '[Watchdog] Quality gate filtered non-strategic decisions');
+              }
+
+              for (const decision of passedDecisions) {
                 const decisionId = uuidv4();
                 db.prepare(`
                   INSERT INTO agent_decisions (id, run_id, user_id, account_id, type, target_id, target_name,
@@ -610,7 +666,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
               }
 
               // Record episodes (fire-and-forget, no blocking Haiku calls)
-              for (const decision of decisions) {
+              for (const decision of passedDecisions) {
                 recordDecisionEpisode(user.id, 'watchdog', {
                   type: decision.type,
                   targetName: decision.targetName,
@@ -619,8 +675,8 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordDecisionEpisode failed in ad-watchdog'));
               }
 
-              const summary = decisions.length > 0
-                ? `Found ${decisions.length} recommendations: ${decisions.map(d => d.suggestedAction).join(', ')}`
+              const summary = passedDecisions.length > 0
+                ? `Found ${passedDecisions.length} strategic recommendations: ${passedDecisions.map(d => d.suggestedAction).join(', ')}${qualityFiltered.stats.filtered > 0 ? ` (${qualityFiltered.stats.filtered} obvious insights filtered)` : ''}`
                 : 'No action needed — account performing within expectations';
 
               db.prepare(`
@@ -629,21 +685,21 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 WHERE id = ?
               `).run(summary, JSON.stringify(snapshot), runId);
 
-              if (decisions.length > 0) {
-                const briefingContent = decisions.map(d =>
+              if (passedDecisions.length > 0) {
+                const briefingContent = passedDecisions.map(d =>
                   `*${d.type}* — ${d.targetName}\n${d.reasoning}\nAction: ${d.suggestedAction} | Urgency: ${d.urgency}`
                 ).join('\n\n');
 
                 notifyAlert(user.id, {
                   type: 'watchdog_briefing',
-                  title: `Ad Watchdog: ${decisions.length} recommendation${decisions.length > 1 ? 's' : ''} for ${snapshot.accountName}`,
+                  title: `Ad Watchdog: ${passedDecisions.length} recommendation${passedDecisions.length > 1 ? 's' : ''} for ${snapshot.accountName}`,
                   content: briefingContent,
-                  severity: decisions.some(d => d.urgency === 'critical') ? 'critical' : 'warning',
+                  severity: passedDecisions.some(d => d.urgency === 'critical') ? 'critical' : 'warning',
                   accountId: account.id,
                 }).catch(err => logger.error({ err: err.message }, '[Watchdog] Notification failed'));
               }
 
-              return { decisions: decisions.length };
+              return { decisions: passedDecisions.length };
             } catch (err: any) {
               db.prepare(`
                 UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
@@ -752,8 +808,8 @@ export async function runWatchdogForClient(
     // Gather account snapshot
     const snapshot = await gatherAccountSnapshot(meta, metaAccountId);
 
-    // Get AI-powered decisions
-    const decisions = await reasonAboutPerformance(snapshot, [], '');
+    // Get AI-powered decisions with intelligence integration
+    const decisions = await reasonAboutPerformance(snapshot, [], '', clientId);
 
     // Run OOS check with client context
     let oosReport = null;

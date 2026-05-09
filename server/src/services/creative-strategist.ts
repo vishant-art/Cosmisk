@@ -17,6 +17,7 @@ import {
 import { notifyAlert } from './notifications.js';
 import { CREATIVE_PATTERNS } from './creative-patterns.js';
 import { config } from '../config.js';
+import { getCreativeGuidanceCached, buildClientPlaybook, type CreativeGuidance, type ClientPlaybook } from './learning-engine.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -92,8 +93,25 @@ export async function runCreativeStrategist(
       adSummary = await gatherAdData(userId, brandContext.accountId);
     }
 
-    // 3. Build prompt and call Claude Opus
-    const prompt = buildStrategistPrompt(brandContext, memoryContext, adSummary);
+    // 3. Get learning engine guidance (learned patterns from past performance)
+    let learningGuidance: CreativeGuidance | null = null;
+    let clientPlaybook: ClientPlaybook | null = null;
+    try {
+      [learningGuidance, clientPlaybook] = await Promise.all([
+        getCreativeGuidanceCached(userId),
+        buildClientPlaybook(userId),
+      ]);
+      logger.info({
+        userId,
+        winningPatterns: clientPlaybook?.winningPatterns?.length || 0,
+        confidence: learningGuidance?.confidence || 0,
+      }, '[CreativeStrategist] Loaded learning engine data');
+    } catch (err) {
+      logger.warn({ err }, '[CreativeStrategist] Learning engine failed, continuing without');
+    }
+
+    // 4. Build prompt and call Claude Opus
+    const prompt = buildStrategistPrompt(brandContext, memoryContext, adSummary, learningGuidance, clientPlaybook);
 
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-6',
@@ -319,6 +337,8 @@ function buildStrategistPrompt(
   brand: BrandContext,
   memoryContext: string,
   adSummary: string,
+  learningGuidance: CreativeGuidance | null,
+  clientPlaybook: ClientPlaybook | null,
 ): string {
   const productList = brand.products.map(p =>
     `- ${p.name}: ${p.price}${p.url ? ` (${p.url})` : ''}`
@@ -326,21 +346,68 @@ function buildStrategistPrompt(
 
   const numConcepts = brand.numConcepts || 10;
 
-  return `You are a Creative Strategist with memory. You learn from every brand you work with.
+  // Build learning intelligence section
+  let learningSection = '';
+  if (learningGuidance || clientPlaybook) {
+    const parts: string[] = ['LEARNING ENGINE INTELLIGENCE (from past performance data):'];
 
-Your job: Given a brand brief and your accumulated memory, decide what UGC concepts will work for THIS specific brand. Not templates — contextual strategy.
+    if (learningGuidance) {
+      if (learningGuidance.recommendedHooks.length > 0) {
+        parts.push(`- Recommended hooks (high LTV): ${learningGuidance.recommendedHooks.join(', ')}`);
+      }
+      if (learningGuidance.avoid.length > 0) {
+        parts.push(`- AVOID these patterns: ${learningGuidance.avoid.map(a =>
+          `${a}${learningGuidance.avoidReasons[a] ? ` (${learningGuidance.avoidReasons[a]})` : ''}`
+        ).join('; ')}`);
+      }
+      if (learningGuidance.reasoning.length > 0) {
+        parts.push(`- Strategic context: ${learningGuidance.reasoning.slice(0, 3).join('. ')}`);
+      }
+      parts.push(`- Urgency: ${learningGuidance.urgency} | Confidence: ${learningGuidance.confidence}%`);
+    }
+
+    if (clientPlaybook) {
+      if (clientPlaybook.winningPatterns.length > 0) {
+        parts.push(`\nPROVEN WINNERS (backed by data):`);
+        for (const w of clientPlaybook.winningPatterns.slice(0, 3)) {
+          parts.push(`- ${w.format}: ${Math.round(w.avgLtv)} avg LTV, ${w.sampleSize} customers (${w.confidence} confidence)`);
+        }
+      }
+      if (clientPlaybook.losingPatterns.length > 0) {
+        parts.push(`\nPATTERNS TO AVOID (backed by data):`);
+        for (const l of clientPlaybook.losingPatterns.slice(0, 3)) {
+          parts.push(`- ${l.format}: ${l.reason}`);
+        }
+      }
+      if (clientPlaybook.audienceInsights.repeatBuyerCreatives.length > 0) {
+        parts.push(`\nCREATIVES THAT BRING REPEAT BUYERS: ${clientPlaybook.audienceInsights.repeatBuyerCreatives.slice(0, 3).join(', ')}`);
+      }
+      if (clientPlaybook.competitorGaps.length > 0) {
+        parts.push(`\nCOMPETITOR GAPS (opportunities): ${clientPlaybook.competitorGaps.slice(0, 3).join(', ')}`);
+      }
+    }
+
+    learningSection = parts.join('\n');
+  }
+
+  return `You are a Creative Strategist with memory AND learning intelligence. You learn from every brand you work with AND from aggregated performance data.
+
+Your job: Given a brand brief, your accumulated memory, AND the learning engine data, decide what UGC concepts will work for THIS specific brand. Not templates — contextual strategy backed by data.
 
 REASONING RULES:
 1. Start with the BRAND, not your playbook. What does their audience respond to?
 2. Check your memory — have you worked with similar brands? What worked/failed?
-3. Every concept must have a UNIQUE DEMO (physical action on camera). Different hooks on the same demo = same concept.
-4. Tone must match the CREATOR, not the brand. Would a real person say this to their friend?
-5. Cultural context matters — a hook that works in the US may bomb in India.
-6. Format diversity is mandatory — if all concepts follow the same structure, the deck will be rejected.
-7. Cite your memory when making decisions. "Based on [episode], I'm recommending..."
+3. PRIORITIZE patterns from the Learning Engine — these are backed by actual LTV and return rate data.
+4. Every concept must have a UNIQUE DEMO (physical action on camera). Different hooks on the same demo = same concept.
+5. Tone must match the CREATOR, not the brand. Would a real person say this to their friend?
+6. Cultural context matters — a hook that works in the US may bomb in India.
+7. Format diversity is mandatory — if all concepts follow the same structure, the deck will be rejected.
+8. Cite your memory AND learning data when making decisions.
 
 AGENT MEMORY:
 ${memoryContext || 'No prior context.'}
+
+${learningSection}
 
 BRAND BRIEF:
 - Brand: ${brand.brandName}
@@ -358,29 +425,30 @@ AVAILABLE CREATIVE PATTERNS:
 - Visual Styles: ${CREATIVE_PATTERNS.visual_style.join(', ')}
 - Audio: ${CREATIVE_PATTERNS.audio.join(', ')}
 
-Generate exactly ${numConcepts} concept strategies. For each, provide a specific format, hook angle, unique physical demo, tone, and contextual reasoning for why it fits THIS brand.
+Generate exactly ${numConcepts} concept strategies. For each, provide a specific format, hook angle, unique physical demo, tone, and contextual reasoning for why it fits THIS brand. PRIORITIZE hooks/formats backed by learning data.
 
 Also provide anti-patterns (what to AVOID for this brand) and cultural adaptations for the ${brand.market} market.
 
 Respond in JSON:
 {
-  "brandAnalysis": "2-3 paragraphs analyzing what this brand specifically needs",
+  "brandAnalysis": "2-3 paragraphs analyzing what this brand specifically needs, referencing learning data",
   "conceptStrategies": [
     {
       "format": "e.g. GRWM, Myth Buster, Street Interview",
       "hook": "the specific hook angle",
       "demo": "the unique physical demo/visual action",
       "tone": "e.g. playful creator, authority, vulnerable confession",
-      "whyThisBrand": "contextual reasoning citing memory if relevant",
+      "whyThisBrand": "contextual reasoning citing memory AND learning data if relevant",
       "confidence": "high|medium|low",
-      "sourceMemory": "which past learning informed this (if any)"
+      "sourceMemory": "which past learning informed this (if any)",
+      "backedByData": "true if this pattern is backed by learning engine data"
     }
   ],
   "antiPatterns": [
     {
       "avoid": "what to avoid",
-      "reason": "why, citing memory if relevant",
-      "sourceMemory": "episode reference if any"
+      "reason": "why, citing memory or learning data",
+      "sourceMemory": "episode or data reference"
     }
   ],
   "culturalAdaptations": ["market-specific adjustments"]
