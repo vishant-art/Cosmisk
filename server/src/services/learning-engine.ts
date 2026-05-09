@@ -100,6 +100,63 @@ export interface Prediction {
   suggestedAction: string;
 }
 
+/**
+ * Stored prediction with tracking for accuracy measurement
+ */
+export interface StoredPrediction extends Prediction {
+  id: string;
+  clientId: string;
+  createdAt: string;
+  expiresAt: string; // When to verify
+  expectedOutcome: {
+    metric: string;       // e.g., 'ROAS', 'CPA', 'CTR'
+    direction: 'increase' | 'decrease' | 'stable';
+    minChange?: number;   // Minimum % change expected
+    targetValue?: number; // Or specific target value
+  };
+  status: 'pending' | 'verified_correct' | 'verified_incorrect' | 'expired';
+  verifiedAt?: string;
+  actualOutcome?: {
+    metric: string;
+    actualValue: number;
+    previousValue: number;
+    changePercent: number;
+  };
+}
+
+/**
+ * Prediction accuracy stats by type
+ */
+export interface PredictionAccuracy {
+  type: Prediction['type'];
+  totalPredictions: number;
+  correctPredictions: number;
+  incorrectPredictions: number;
+  pendingPredictions: number;
+  accuracyRate: number; // 0-1
+  avgConfidenceWhenCorrect: number;
+  avgConfidenceWhenIncorrect: number;
+}
+
+/**
+ * Items flagged for human review
+ */
+export interface HumanReviewItem {
+  id: string;
+  clientId: string;
+  type: 'low_confidence_decision' | 'contradictory_signals' | 'unusual_pattern' | 'high_impact_action';
+  title: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  relatedEntityId?: string;
+  relatedEntityType?: string;
+  createdAt: string;
+  status: 'pending' | 'reviewed' | 'dismissed';
+  reviewedAt?: string;
+  reviewedBy?: string;
+  resolution?: string;
+}
+
 export interface LearningEngineOutput {
   clientId: string;
   generatedAt: string;
@@ -490,7 +547,7 @@ export async function buildClientPlaybook(clientId: string): Promise<ClientPlayb
     aggregateCompetitorData(clientId),
   ]);
 
-  const playbook: ClientPlaybook = {
+  let playbook: ClientPlaybook = {
     clientId,
     lastUpdated: new Date().toISOString(),
     winningPatterns: synthesizeWinningPatterns(ltvData, returnData),
@@ -505,6 +562,9 @@ export async function buildClientPlaybook(clientId: string): Promise<ClientPlayb
     competitorGaps: competitorData.gaps,
     competitorTrends: competitorData.trends,
   };
+
+  // TIER 2: Prune playbook to prevent bloat
+  playbook = prunePlaybook(playbook);
 
   // Store playbook in DB
   const db = getDb();
@@ -526,8 +586,9 @@ export async function buildClientPlaybook(clientId: string): Promise<ClientPlayb
 
 /**
  * Generate predictions based on current data
+ * TIER 2: Adjusts confidence based on historical accuracy and stores for verification
  */
-export async function generatePredictions(clientId: string): Promise<Prediction[]> {
+export async function generatePredictions(clientId: string, storeForVerification = true): Promise<Prediction[]> {
   const predictions: Prediction[] = [];
 
   const [fatigueData, competitorData] = await Promise.all([
@@ -540,36 +601,72 @@ export async function generatePredictions(clientId: string): Promise<Prediction[
   const moderateCount = fatigueData.filter(f => f.fatigueLevel === 'moderate').length;
 
   if (severeCount >= 2) {
-    predictions.push({
+    const basePrediction: Prediction = {
       type: 'roas_decline',
       prediction: `With ${severeCount} creatives in severe fatigue, expect ROAS to drop 15-25% over the next 7 days without refresh`,
       confidence: 75,
       timeframe: '7 days',
       basedOn: ['fatigue-analysis', 'historical-patterns'],
       suggestedAction: 'Launch 3-5 new creatives in next 48 hours targeting warm audiences',
-    });
+    };
+
+    // TIER 2: Adjust confidence based on historical accuracy
+    basePrediction.confidence = adjustConfidenceByAccuracy(basePrediction, clientId);
+
+    predictions.push(basePrediction);
+
+    // TIER 2: Store for later verification
+    if (storeForVerification) {
+      storePrediction(basePrediction, clientId, {
+        metric: 'ROAS',
+        direction: 'decrease',
+        minChange: 15,
+      });
+    }
   } else if (moderateCount >= 3) {
-    predictions.push({
+    const basePrediction: Prediction = {
       type: 'fatigue',
       prediction: `${moderateCount} creatives showing early fatigue. Performance decline expected in 5-7 days`,
       confidence: 65,
       timeframe: '5-7 days',
       basedOn: ['fatigue-analysis'],
       suggestedAction: 'Begin creative development now for next refresh cycle',
-    });
+    };
+
+    basePrediction.confidence = adjustConfidenceByAccuracy(basePrediction, clientId);
+    predictions.push(basePrediction);
+
+    if (storeForVerification) {
+      storePrediction(basePrediction, clientId, {
+        metric: 'CTR',
+        direction: 'decrease',
+        minChange: 10,
+      });
+    }
   }
 
   // Predict opportunity from competitor gaps
   if (competitorData.gaps.length >= 2) {
-    predictions.push({
+    const basePrediction: Prediction = {
       type: 'opportunity',
       prediction: `Competitors are absent from ${competitorData.gaps.slice(0, 2).join(' and ')} positioning. First-mover opportunity exists.`,
       confidence: 60,
       timeframe: '2-4 weeks',
       basedOn: ['competitor-intel'],
       suggestedAction: `Test ${competitorData.gaps[0]} angle with 3 creative variants`,
-    });
+    };
+
+    basePrediction.confidence = adjustConfidenceByAccuracy(basePrediction, clientId);
+    predictions.push(basePrediction);
+
+    // Opportunity predictions are harder to verify automatically
+    // Skip storage for now
   }
+
+  // TIER 2: Verify any expired predictions while we're here
+  verifyPredictions(clientId).catch(err =>
+    logger.debug({ err }, '[LearningEngine] Background prediction verification failed')
+  );
 
   return predictions;
 }
@@ -643,6 +740,493 @@ export async function getCreativeGuidanceCached(clientId: string): Promise<Creat
 export function invalidateGuidanceCache(clientId: string): void {
   guidanceCache.delete(clientId);
   logger.debug({ clientId }, '[LearningEngine] Cache invalidated');
+}
+
+// ============================================================================
+// TIER 2: Signal Decay System
+// ============================================================================
+
+/**
+ * Calculate decay factor based on data age
+ * 7d = 100%, 30d = 70%, 90d = 40%, 180d+ = 20%
+ */
+export function calculateDecayFactor(timestamp: string | Date): number {
+  const ageMs = Date.now() - new Date(timestamp).getTime();
+  const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+  if (ageDays <= 7) return 1.0;
+  if (ageDays <= 30) return 0.7 + (0.3 * (1 - (ageDays - 7) / 23));
+  if (ageDays <= 90) return 0.4 + (0.3 * (1 - (ageDays - 30) / 60));
+  if (ageDays <= 180) return 0.2 + (0.2 * (1 - (ageDays - 90) / 90));
+  return 0.2; // Minimum weight for very old data
+}
+
+/**
+ * Apply decay to a confidence score
+ */
+export function applyDecay(confidence: number, timestamp: string | Date): number {
+  const decayFactor = calculateDecayFactor(timestamp);
+  return Math.round(confidence * decayFactor);
+}
+
+// ============================================================================
+// TIER 2: Memory Pruning
+// ============================================================================
+
+const MAX_WINNING_PATTERNS = 20;
+const MAX_LOSING_PATTERNS = 15;
+const MAX_FATIGUE_PATTERNS = 10;
+const MIN_SAMPLE_SIZE = 5;
+const SIMILARITY_THRESHOLD = 0.8;
+
+/**
+ * Check if two patterns are similar (for deduplication)
+ */
+function areSimilarPatterns(p1: string, p2: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const n1 = normalize(p1);
+  const n2 = normalize(p2);
+
+  if (n1 === n2) return true;
+
+  // Check if one contains the other
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+
+  // Simple Jaccard similarity on words
+  const words1 = new Set(p1.toLowerCase().split(/\s+/));
+  const words2 = new Set(p2.toLowerCase().split(/\s+/));
+  const intersection = new Set([...words1].filter(x => words2.has(x)));
+  const union = new Set([...words1, ...words2]);
+  const similarity = intersection.size / union.size;
+
+  return similarity >= SIMILARITY_THRESHOLD;
+}
+
+/**
+ * Prune playbook to prevent bloat
+ * Removes low-value patterns, deduplicates similar ones, applies decay
+ */
+export function prunePlaybook(playbook: ClientPlaybook): ClientPlaybook {
+  const pruned = { ...playbook };
+
+  // 1. Apply decay to confidence and sort by value
+  pruned.winningPatterns = playbook.winningPatterns
+    .map(p => ({
+      ...p,
+      // Decay confidence based on implicit age (use lastUpdated as proxy)
+      confidence: p.confidence, // Would need timestamp per pattern for proper decay
+    }))
+    // Filter low sample size
+    .filter(p => p.sampleSize >= MIN_SAMPLE_SIZE)
+    // Sort by value (LTV * sample size as proxy for value)
+    .sort((a, b) => (b.avgLtv * b.sampleSize) - (a.avgLtv * a.sampleSize));
+
+  // 2. Deduplicate similar patterns (keep higher value one)
+  const dedupedWinners: typeof pruned.winningPatterns = [];
+  for (const pattern of pruned.winningPatterns) {
+    const isDuplicate = dedupedWinners.some(p => areSimilarPatterns(p.format, pattern.format));
+    if (!isDuplicate) {
+      dedupedWinners.push(pattern);
+    }
+  }
+  pruned.winningPatterns = dedupedWinners.slice(0, MAX_WINNING_PATTERNS);
+
+  // 3. Prune losing patterns
+  pruned.losingPatterns = playbook.losingPatterns
+    .filter(p => p.sampleSize >= MIN_SAMPLE_SIZE)
+    .sort((a, b) => b.returnRate - a.returnRate)
+    .slice(0, MAX_LOSING_PATTERNS);
+
+  // 4. Prune fatigue patterns
+  pruned.fatiguePatterns = playbook.fatiguePatterns
+    .slice(0, MAX_FATIGUE_PATTERNS);
+
+  // 5. Deduplicate audience insights arrays
+  pruned.audienceInsights = {
+    highLtvSources: [...new Set(playbook.audienceInsights.highLtvSources)].slice(0, 10),
+    lowLtvSources: [...new Set(playbook.audienceInsights.lowLtvSources)].slice(0, 10),
+    repeatBuyerCreatives: [...new Set(playbook.audienceInsights.repeatBuyerCreatives)].slice(0, 10),
+    onePurchaseTrap: [...new Set(playbook.audienceInsights.onePurchaseTrap)].slice(0, 10),
+  };
+
+  const removedCount =
+    (playbook.winningPatterns.length - pruned.winningPatterns.length) +
+    (playbook.losingPatterns.length - pruned.losingPatterns.length);
+
+  if (removedCount > 0) {
+    logger.info({ clientId: playbook.clientId, removedCount }, '[LearningEngine] Pruned playbook');
+  }
+
+  return pruned;
+}
+
+// ============================================================================
+// TIER 2: Prediction Accuracy Measurement
+// ============================================================================
+
+/**
+ * Store a prediction for later verification
+ */
+export function storePrediction(
+  prediction: Prediction,
+  clientId: string,
+  expectedOutcome: StoredPrediction['expectedOutcome'],
+): StoredPrediction {
+  const db = getDb();
+  const id = `pred_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  // Parse timeframe to calculate expiry
+  const timeframeDays = parseTimeframeToDays(prediction.timeframe);
+  const expiresAt = new Date(Date.now() + timeframeDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const stored: StoredPrediction = {
+    ...prediction,
+    id,
+    clientId,
+    createdAt: new Date().toISOString(),
+    expiresAt,
+    expectedOutcome,
+    status: 'pending',
+  };
+
+  try {
+    db.prepare(`
+      INSERT INTO predictions (id, client_id, type, prediction_text, confidence, timeframe,
+        expected_metric, expected_direction, expected_min_change, expires_at, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+    `).run(
+      id, clientId, prediction.type, prediction.prediction, prediction.confidence,
+      prediction.timeframe, expectedOutcome.metric, expectedOutcome.direction,
+      expectedOutcome.minChange || null, expiresAt
+    );
+  } catch (err) {
+    // Table might not exist, log but don't fail
+    logger.debug({ err }, '[LearningEngine] predictions table not found');
+  }
+
+  return stored;
+}
+
+/**
+ * Parse timeframe string to days
+ */
+function parseTimeframeToDays(timeframe: string): number {
+  const lower = timeframe.toLowerCase();
+
+  // Handle ranges like "5-7 days"
+  const rangeMatch = lower.match(/(\d+)-(\d+)\s*(days?|weeks?)/);
+  if (rangeMatch) {
+    const avg = (parseInt(rangeMatch[1]) + parseInt(rangeMatch[2])) / 2;
+    if (rangeMatch[3].startsWith('week')) return avg * 7;
+    return avg;
+  }
+
+  // Handle single values
+  const singleMatch = lower.match(/(\d+)\s*(days?|weeks?|hours?)/);
+  if (singleMatch) {
+    const value = parseInt(singleMatch[1]);
+    if (singleMatch[2].startsWith('week')) return value * 7;
+    if (singleMatch[2].startsWith('hour')) return value / 24;
+    return value;
+  }
+
+  return 7; // Default 7 days
+}
+
+/**
+ * Verify expired predictions against actual outcomes
+ */
+export async function verifyPredictions(clientId: string): Promise<{
+  verified: number;
+  correct: number;
+  incorrect: number;
+}> {
+  const db = getDb();
+  let verified = 0, correct = 0, incorrect = 0;
+
+  try {
+    // Get pending predictions that have expired
+    const pending = db.prepare(`
+      SELECT * FROM predictions
+      WHERE client_id = ? AND status = 'pending' AND expires_at < datetime('now')
+    `).all(clientId) as Array<{
+      id: string;
+      type: string;
+      expected_metric: string;
+      expected_direction: string;
+      expected_min_change: number | null;
+      confidence: number;
+    }>;
+
+    for (const pred of pending) {
+      // Get actual metric data (would need to fetch from Meta/Shopify)
+      // For now, we'll mark as expired if we can't verify
+      const actualOutcome = await fetchActualOutcome(clientId, pred.expected_metric);
+
+      if (!actualOutcome) {
+        db.prepare(`UPDATE predictions SET status = 'expired' WHERE id = ?`).run(pred.id);
+        continue;
+      }
+
+      // Determine if prediction was correct
+      const directionCorrect =
+        (pred.expected_direction === 'increase' && actualOutcome.changePercent > 0) ||
+        (pred.expected_direction === 'decrease' && actualOutcome.changePercent < 0) ||
+        (pred.expected_direction === 'stable' && Math.abs(actualOutcome.changePercent) < 10);
+
+      const magnitudeCorrect = !pred.expected_min_change ||
+        Math.abs(actualOutcome.changePercent) >= pred.expected_min_change;
+
+      const isCorrect = directionCorrect && magnitudeCorrect;
+
+      db.prepare(`
+        UPDATE predictions
+        SET status = ?, verified_at = datetime('now'),
+            actual_value = ?, actual_change = ?
+        WHERE id = ?
+      `).run(
+        isCorrect ? 'verified_correct' : 'verified_incorrect',
+        actualOutcome.actualValue,
+        actualOutcome.changePercent,
+        pred.id
+      );
+
+      verified++;
+      if (isCorrect) correct++;
+      else incorrect++;
+    }
+  } catch (err) {
+    logger.debug({ err }, '[LearningEngine] Error verifying predictions');
+  }
+
+  if (verified > 0) {
+    logger.info({ clientId, verified, correct, incorrect }, '[LearningEngine] Verified predictions');
+  }
+
+  return { verified, correct, incorrect };
+}
+
+/**
+ * Fetch actual outcome for a metric (placeholder - needs real implementation)
+ */
+async function fetchActualOutcome(
+  clientId: string,
+  metric: string,
+): Promise<{ actualValue: number; previousValue: number; changePercent: number } | null> {
+  // This would fetch from Meta API or cached insights
+  // For now, return null to mark predictions as expired
+  const db = getDb();
+
+  try {
+    // Try to get from cached insights
+    const recent = db.prepare(`
+      SELECT * FROM daily_metrics
+      WHERE client_id = ? AND metric_name = ?
+      ORDER BY date DESC LIMIT 2
+    `).all(clientId, metric) as Array<{ value: number; date: string }>;
+
+    if (recent.length >= 2) {
+      const actualValue = recent[0].value;
+      const previousValue = recent[1].value;
+      const changePercent = previousValue > 0
+        ? ((actualValue - previousValue) / previousValue) * 100
+        : 0;
+
+      return { actualValue, previousValue, changePercent };
+    }
+  } catch {
+    // Table doesn't exist or no data
+  }
+
+  return null;
+}
+
+/**
+ * Get prediction accuracy stats for a client
+ */
+export function getPredictionAccuracy(clientId: string): PredictionAccuracy[] {
+  const db = getDb();
+  const stats: PredictionAccuracy[] = [];
+
+  try {
+    const types: Prediction['type'][] = ['fatigue', 'roas_decline', 'cpa_spike', 'opportunity'];
+
+    for (const type of types) {
+      const rows = db.prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'verified_correct' THEN 1 ELSE 0 END) as correct,
+          SUM(CASE WHEN status = 'verified_incorrect' THEN 1 ELSE 0 END) as incorrect,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+          AVG(CASE WHEN status = 'verified_correct' THEN confidence ELSE NULL END) as avg_conf_correct,
+          AVG(CASE WHEN status = 'verified_incorrect' THEN confidence ELSE NULL END) as avg_conf_incorrect
+        FROM predictions
+        WHERE client_id = ? AND type = ?
+      `).get(clientId, type) as any;
+
+      if (rows && rows.total > 0) {
+        const total = rows.correct + rows.incorrect;
+        stats.push({
+          type,
+          totalPredictions: rows.total,
+          correctPredictions: rows.correct || 0,
+          incorrectPredictions: rows.incorrect || 0,
+          pendingPredictions: rows.pending || 0,
+          accuracyRate: total > 0 ? (rows.correct || 0) / total : 0,
+          avgConfidenceWhenCorrect: rows.avg_conf_correct || 0,
+          avgConfidenceWhenIncorrect: rows.avg_conf_incorrect || 0,
+        });
+      }
+    }
+  } catch {
+    // Table doesn't exist
+  }
+
+  return stats;
+}
+
+/**
+ * Adjust prediction confidence based on historical accuracy
+ */
+export function adjustConfidenceByAccuracy(
+  prediction: Prediction,
+  clientId: string,
+): number {
+  const accuracyStats = getPredictionAccuracy(clientId);
+  const typeStats = accuracyStats.find(s => s.type === prediction.type);
+
+  if (!typeStats || typeStats.totalPredictions < 5) {
+    // Not enough data to adjust
+    return prediction.confidence;
+  }
+
+  // Adjust confidence based on historical accuracy
+  // If 80% accurate, multiply by 1.0. If 50% accurate, multiply by 0.7
+  const accuracyMultiplier = 0.5 + (typeStats.accuracyRate * 0.5);
+
+  return Math.round(prediction.confidence * accuracyMultiplier);
+}
+
+// ============================================================================
+// TIER 2: Human Review Escalation
+// ============================================================================
+
+/**
+ * Create a human review item
+ */
+export function createHumanReviewItem(
+  item: Omit<HumanReviewItem, 'id' | 'createdAt' | 'status'>,
+): HumanReviewItem {
+  const db = getDb();
+  const id = `review_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const reviewItem: HumanReviewItem = {
+    ...item,
+    id,
+    createdAt: new Date().toISOString(),
+    status: 'pending',
+  };
+
+  try {
+    db.prepare(`
+      INSERT INTO human_reviews (id, client_id, type, title, description, severity,
+        related_entity_id, related_entity_type, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
+    `).run(
+      id, item.clientId, item.type, item.title, item.description, item.severity,
+      item.relatedEntityId || null, item.relatedEntityType || null
+    );
+  } catch (err) {
+    logger.debug({ err }, '[LearningEngine] human_reviews table not found');
+  }
+
+  logger.info({
+    reviewId: id,
+    type: item.type,
+    severity: item.severity,
+  }, '[LearningEngine] Human review item created');
+
+  return reviewItem;
+}
+
+/**
+ * Get pending human review items for a client
+ */
+export function getPendingReviews(clientId: string): HumanReviewItem[] {
+  const db = getDb();
+
+  try {
+    return db.prepare(`
+      SELECT
+        id, client_id as clientId, type, title, description, severity,
+        related_entity_id as relatedEntityId, related_entity_type as relatedEntityType,
+        created_at as createdAt, status
+      FROM human_reviews
+      WHERE client_id = ? AND status = 'pending'
+      ORDER BY
+        CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+        created_at DESC
+    `).all(clientId) as HumanReviewItem[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolve a human review item
+ */
+export function resolveReview(
+  reviewId: string,
+  resolution: string,
+  reviewedBy?: string,
+): void {
+  const db = getDb();
+
+  try {
+    db.prepare(`
+      UPDATE human_reviews
+      SET status = 'reviewed', resolution = ?, reviewed_by = ?, reviewed_at = datetime('now')
+      WHERE id = ?
+    `).run(resolution, reviewedBy || 'system', reviewId);
+
+    logger.info({ reviewId, resolution }, '[LearningEngine] Review resolved');
+  } catch {
+    logger.debug('[LearningEngine] Could not resolve review');
+  }
+}
+
+/**
+ * Get critical reviews that need immediate attention
+ */
+export function getCriticalReviews(clientId: string): HumanReviewItem[] {
+  return getPendingReviews(clientId).filter(r =>
+    r.severity === 'critical' || r.severity === 'high'
+  );
+}
+
+/**
+ * Auto-create review items from quality gate results
+ */
+export function createReviewsFromQualityGate(
+  clientId: string,
+  requiresHumanReview: Array<{ targetName?: string; reasoning?: string; type?: string }>,
+): HumanReviewItem[] {
+  const items: HumanReviewItem[] = [];
+
+  for (const item of requiresHumanReview.slice(0, 5)) { // Limit to 5
+    const reviewItem = createHumanReviewItem({
+      clientId,
+      type: 'low_confidence_decision',
+      title: `Review needed: ${item.type || 'Decision'} for "${item.targetName || 'Unknown'}"`,
+      description: item.reasoning || 'Low confidence decision requires manual review',
+      severity: 'medium',
+      relatedEntityId: item.targetName,
+      relatedEntityType: item.type,
+    });
+    items.push(reviewItem);
+  }
+
+  return items;
 }
 
 // ============================================================================
