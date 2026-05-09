@@ -197,6 +197,53 @@ If the conversation has been going for 20+ turns and involves code changes, proa
 
 ---
 
+## Business Model & Architecture
+
+### The Hierarchy (REMEMBER THIS)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SMASHED AGENCY (smashed.agency)                                │
+│  └── The brand clients see and pay                              │
+├─────────────────────────────────────────────────────────────────┤
+│  THE BRIDGE SERVICE (smashed.agency/scan/)                      │
+│  └── The service clients buy                                    │
+│  └── "We watch The Gap between your platforms"                  │
+├─────────────────────────────────────────────────────────────────┤
+│  COSMISK (this codebase)                                        │
+│  └── Backend platform clients NEVER see                         │
+│  └── All agents, intelligence, persistence live here            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Business Roadmap
+
+| Phase | What | Status |
+|-------|------|--------|
+| **Phase 1: SERVICE** | Sell via Smashed Agency, done-for-you/done-with-you | NOW |
+| **Phase 2: SAAS** | Self-serve platform, clients onboard themselves | AFTER SERVICE PROVEN |
+
+**Why service first:**
+- Validate the value prop with real clients
+- Learn what features matter vs. what's noise
+- Build learning data from real accounts
+- Prove ROI before building self-serve
+- Higher ticket = fewer clients needed to validate
+
+### What Clients Experience
+
+| They See | Powered By (Cosmisk) |
+|----------|----------------------|
+| WhatsApp alert: "Rs 4.2L wasted on OOS" | `oos-detector.ts` |
+| Slack: "3 recommendations for your account" | `ad-watchdog.ts` |
+| HTML report: "Weekly Intelligence Briefing" | `operator-experience.ts` |
+| "Creative refresh needed" | `creative-intelligence.ts` |
+
+**Clients never see:** Cosmisk, Claude, Gemini, code, databases, agents.
+**Clients only see:** Smashed Agency branded alerts, reports, recommendations.
+
+---
+
 ## The Bridge Service (smashed.agency/scan/)
 
 ### What It Is
