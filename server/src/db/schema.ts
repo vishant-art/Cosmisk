@@ -521,4 +521,405 @@ export function createTables(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_briefs_user ON creative_briefs(user_id);
     CREATE INDEX IF NOT EXISTS idx_briefs_account ON creative_briefs(account_id);
   `);
+
+  // =========================================================================
+  // THE BRIDGE SERVICE - Client Profile & Agent Stores
+  // AI Infrastructure for service delivery (not SaaS)
+  // =========================================================================
+
+  // Service clients - brands we serve (not platform users)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS service_clients (
+      id TEXT PRIMARY KEY,
+      brand_name TEXT NOT NULL,
+      category TEXT,
+      revenue_level TEXT,
+      price_point_min INTEGER,
+      price_point_max INTEGER,
+      meta_ad_account_id TEXT,
+      shopify_store TEXT,
+      slack_channel TEXT,
+      whatsapp_number TEXT,
+      alert_threshold INTEGER DEFAULT 1000,
+      service_tier TEXT DEFAULT 'done_for_you',
+      contract_start TEXT,
+      contract_end TEXT,
+      monthly_fee INTEGER,
+      status TEXT DEFAULT 'active',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_service_clients_status ON service_clients(status);
+  `);
+
+  // Competitor Intel Agent Store - tracks references shown, outcomes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS competitor_intel_store (
+      client_id TEXT PRIMARY KEY REFERENCES service_clients(id) ON DELETE CASCADE,
+      references_shown TEXT DEFAULT '[]',
+      outcomes TEXT DEFAULT '{}',
+      client_creative_style TEXT,
+      search_queries_used TEXT DEFAULT '[]',
+      last_scrape_at TEXT,
+      last_report_at TEXT,
+      total_references_given INTEGER DEFAULT 0,
+      successful_adoptions INTEGER DEFAULT 0
+    );
+  `);
+
+  // OOS Detection Agent Store
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS oos_agent_store (
+      client_id TEXT PRIMARY KEY REFERENCES service_clients(id) ON DELETE CASCADE,
+      product_catalog_hash TEXT,
+      last_check_at TEXT,
+      known_oos_products TEXT DEFAULT '[]',
+      cumulative_waste REAL DEFAULT 0,
+      alerts_sent INTEGER DEFAULT 0,
+      last_alert_at TEXT
+    );
+  `);
+
+  // Discount Leakage Agent Store
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discount_agent_store (
+      client_id TEXT PRIMARY KEY REFERENCES service_clients(id) ON DELETE CASCADE,
+      active_codes TEXT DEFAULT '[]',
+      leaked_codes TEXT DEFAULT '[]',
+      coupon_sites_checked TEXT DEFAULT '[]',
+      margin_impact_total REAL DEFAULT 0,
+      last_scan_at TEXT,
+      alerts_sent INTEGER DEFAULT 0
+    );
+  `);
+
+  // Creative Performance Agent Store
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creative_agent_store (
+      client_id TEXT PRIMARY KEY REFERENCES service_clients(id) ON DELETE CASCADE,
+      winning_hooks TEXT DEFAULT '[]',
+      fatigued_creatives TEXT DEFAULT '[]',
+      format_performance TEXT DEFAULT '{}',
+      hook_performance TEXT DEFAULT '{}',
+      last_analysis_at TEXT,
+      creative_count_analyzed INTEGER DEFAULT 0
+    );
+  `);
+
+  // Agent Recommendations - track what we recommended and outcomes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_recommendations (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES service_clients(id) ON DELETE CASCADE,
+      agent_type TEXT NOT NULL,
+      recommendation_type TEXT NOT NULL,
+      recommendation_data TEXT NOT NULL,
+      delivered_via TEXT,
+      delivered_at TEXT,
+      outcome_status TEXT DEFAULT 'pending',
+      outcome_data TEXT,
+      outcome_recorded_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_recommendations_client ON agent_recommendations(client_id);
+    CREATE INDEX IF NOT EXISTS idx_recommendations_agent ON agent_recommendations(agent_type);
+    CREATE INDEX IF NOT EXISTS idx_recommendations_pending ON agent_recommendations(outcome_status) WHERE outcome_status = 'pending';
+  `);
+
+  // Weekly reports delivered to clients
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS client_reports (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES service_clients(id) ON DELETE CASCADE,
+      report_type TEXT NOT NULL,
+      report_data TEXT NOT NULL,
+      html_path TEXT,
+      delivered_via TEXT,
+      delivered_at TEXT,
+      opened_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_client_reports_client ON client_reports(client_id);
+  `);
+
+  // =========================================================================
+  // INTELLIGENCE INFRASTRUCTURE - Operator Experience & Reality Testing
+  // Persistent stores for predictions, feedback, behavior learning
+  // =========================================================================
+
+  // Tracked predictions for validation
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intelligence_predictions (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      prediction TEXT NOT NULL,
+      predicted_outcome TEXT NOT NULL,
+      predicted_value REAL,
+      confidence REAL NOT NULL,
+      timeframe TEXT NOT NULL,
+      evidence_used TEXT DEFAULT '[]',
+      insight_type TEXT NOT NULL,
+      verification_date TEXT,
+      actual_outcome TEXT,
+      actual_value REAL,
+      was_accurate INTEGER,
+      accuracy_score REAL,
+      action_taken TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_predictions_client ON intelligence_predictions(client_id);
+    CREATE INDEX IF NOT EXISTS idx_predictions_unverified ON intelligence_predictions(verification_date) WHERE verification_date IS NULL;
+  `);
+
+  // Tracked recommendations for reality testing
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intelligence_recommendations (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      type TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      recommendation TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      urgency TEXT NOT NULL,
+      was_viewed INTEGER DEFAULT 0,
+      viewed_at TEXT,
+      was_acted_upon INTEGER DEFAULT 0,
+      acted_upon_at TEXT,
+      action_taken TEXT,
+      outcome_tracked INTEGER DEFAULT 0,
+      outcome_positive INTEGER,
+      outcome_notes TEXT,
+      operator_rating INTEGER,
+      operator_feedback TEXT,
+      marked_as_obvious INTEGER DEFAULT 0,
+      marked_as_useless INTEGER DEFAULT 0,
+      marked_as_non_obvious INTEGER DEFAULT 0,
+      validated_at TEXT,
+      validation_score REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_recommendations_client ON intelligence_recommendations(client_id);
+    CREATE INDEX IF NOT EXISTS idx_recommendations_unviewed ON intelligence_recommendations(was_viewed) WHERE was_viewed = 0;
+  `);
+
+  // Operator feedback for learning
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS operator_feedback (
+      id TEXT PRIMARY KEY,
+      recommendation_id TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      operator_id TEXT NOT NULL,
+      submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      rating INTEGER NOT NULL,
+      rating_dimensions TEXT,
+      feedback_type TEXT NOT NULL,
+      freeform_feedback TEXT,
+      operator_correction TEXT,
+      operator_alternative TEXT,
+      disagreed_with TEXT,
+      disagreement_reason TEXT,
+      should_have_known INTEGER DEFAULT 0,
+      already_did_this INTEGER DEFAULT 0,
+      will_try_this INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_feedback_client ON operator_feedback(client_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_recommendation ON operator_feedback(recommendation_id);
+  `);
+
+  // Operator behavior events
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS operator_behavior (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      operator_id TEXT NOT NULL,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+      event_type TEXT NOT NULL,
+      context TEXT NOT NULL,
+      item_id TEXT,
+      item_type TEXT,
+      action TEXT,
+      duration INTEGER,
+      metadata TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_behavior_operator ON operator_behavior(client_id, operator_id);
+    CREATE INDEX IF NOT EXISTS idx_behavior_type ON operator_behavior(event_type);
+  `);
+
+  // Operator profiles (learned preferences)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS operator_profiles (
+      operator_id TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      last_updated TEXT NOT NULL DEFAULT (datetime('now')),
+      preferred_times TEXT DEFAULT '[]',
+      avg_session_duration REAL DEFAULT 0,
+      sessions_per_week REAL DEFAULT 0,
+      preferred_insight_types TEXT DEFAULT '[]',
+      ignored_insight_types TEXT DEFAULT '[]',
+      preferred_detail_level TEXT DEFAULT 'summary',
+      urgency_threshold TEXT DEFAULT 'all',
+      avg_decision_time REAL DEFAULT 0,
+      action_rate REAL DEFAULT 0,
+      feedback_rate REAL DEFAULT 0,
+      learning_velocity TEXT DEFAULT 'moderate',
+      trust_level TEXT DEFAULT 'growing',
+      should_simplify INTEGER DEFAULT 0,
+      wants_more_detail INTEGER DEFAULT 0,
+      prefers_visual INTEGER DEFAULT 0,
+      needs_urgency INTEGER DEFAULT 0,
+      PRIMARY KEY (operator_id, client_id)
+    );
+  `);
+
+  // Intelligence metrics snapshots
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intelligence_metrics (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      period TEXT NOT NULL,
+      generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      recommendation_usefulness REAL DEFAULT 0,
+      strategic_accuracy REAL DEFAULT 0,
+      operator_trust REAL DEFAULT 0,
+      wow_factor_score REAL DEFAULT 0,
+      insight_uniqueness REAL DEFAULT 0,
+      prediction_usefulness REAL DEFAULT 0,
+      execution_leverage REAL DEFAULT 0,
+      decision_quality_improvement REAL DEFAULT 0,
+      insight_adoption_rate REAL DEFAULT 0,
+      recommendation_follow_through REAL DEFAULT 0,
+      decision_speed_improvement REAL DEFAULT 0,
+      creative_hit_rate_improvement REAL DEFAULT 0,
+      overall_score REAL DEFAULT 0,
+      trend TEXT DEFAULT 'stable',
+      risk_flags TEXT DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_metrics_client ON intelligence_metrics(client_id, period);
+  `);
+
+  // Competitor snapshots for movement detection
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS competitor_snapshots (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      competitor_name TEXT NOT NULL,
+      competitor_id TEXT,
+      captured_at TEXT NOT NULL DEFAULT (datetime('now')),
+      active_ads INTEGER DEFAULT 0,
+      estimated_spend REAL,
+      top_formats TEXT DEFAULT '[]',
+      top_angles TEXT DEFAULT '[]',
+      offers TEXT DEFAULT '[]',
+      new_creatives INTEGER DEFAULT 0,
+      killed_creatives INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_competitor_snapshots_client ON competitor_snapshots(client_id, competitor_name);
+  `);
+
+  // Competitor movement alerts
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS competitor_movements (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+      competitor_name TEXT NOT NULL,
+      competitor_id TEXT,
+      movement_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      significance TEXT NOT NULL,
+      evidence TEXT DEFAULT '[]',
+      implications TEXT DEFAULT '[]',
+      suggested_response TEXT,
+      response_urgency TEXT DEFAULT 'monitor',
+      first_mover_window TEXT,
+      acknowledged INTEGER DEFAULT 0,
+      response_action TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_movements_client ON competitor_movements(client_id);
+    CREATE INDEX IF NOT EXISTS idx_movements_unacknowledged ON competitor_movements(acknowledged) WHERE acknowledged = 0;
+  `);
+
+  // =========================================================================
+  // CREATIVE INTELLIGENCE - Autonomous creative evolution
+  // =========================================================================
+
+  // Creative quality scores and validation
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creative_quality_scores (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      creative_id TEXT NOT NULL,
+      scored_at TEXT NOT NULL DEFAULT (datetime('now')),
+      sophistication_score REAL DEFAULT 0,
+      typography_score REAL DEFAULT 0,
+      emotional_impact_score REAL DEFAULT 0,
+      brand_consistency_score REAL DEFAULT 0,
+      ai_artifact_score REAL DEFAULT 0,
+      layout_intelligence_score REAL DEFAULT 0,
+      competitor_benchmark_score REAL DEFAULT 0,
+      overall_quality_score REAL DEFAULT 0,
+      auto_rejected INTEGER DEFAULT 0,
+      rejection_reasons TEXT DEFAULT '[]',
+      benchmark_creative_ids TEXT DEFAULT '[]',
+      human_override INTEGER DEFAULT 0,
+      human_score REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_quality_scores_client ON creative_quality_scores(client_id);
+    CREATE INDEX IF NOT EXISTS idx_quality_scores_creative ON creative_quality_scores(creative_id);
+  `);
+
+  // Creative evolution tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creative_evolution (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      dimension TEXT NOT NULL,
+      previous_state TEXT,
+      new_state TEXT,
+      trigger_signals TEXT DEFAULT '[]',
+      confidence REAL DEFAULT 0,
+      applied INTEGER DEFAULT 0,
+      outcome TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_evolution_client ON creative_evolution(client_id, dimension);
+  `);
+
+  // Cross-agent intelligence synthesis
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creative_intelligence_context (
+      client_id TEXT PRIMARY KEY,
+      last_updated TEXT NOT NULL DEFAULT (datetime('now')),
+      fatigue_signals TEXT DEFAULT '{}',
+      ltv_signals TEXT DEFAULT '{}',
+      cohort_signals TEXT DEFAULT '{}',
+      competitor_signals TEXT DEFAULT '{}',
+      audience_signals TEXT DEFAULT '{}',
+      retention_signals TEXT DEFAULT '{}',
+      emotional_signals TEXT DEFAULT '{}',
+      pricing_signals TEXT DEFAULT '{}',
+      product_signals TEXT DEFAULT '{}',
+      performance_signals TEXT DEFAULT '{}',
+      synthesis_output TEXT DEFAULT '{}',
+      next_creative_recommendation TEXT
+    );
+  `);
+
+  // Category-specific creative knowledge
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS creative_category_knowledge (
+      category TEXT PRIMARY KEY,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      aesthetic_patterns TEXT DEFAULT '[]',
+      typography_patterns TEXT DEFAULT '[]',
+      hook_patterns TEXT DEFAULT '[]',
+      emotional_triggers TEXT DEFAULT '[]',
+      pricing_psychology TEXT DEFAULT '{}',
+      trust_structures TEXT DEFAULT '[]',
+      visual_hierarchy TEXT DEFAULT '[]',
+      benchmark_brands TEXT DEFAULT '[]',
+      anti_patterns TEXT DEFAULT '[]'
+    );
+  `);
 }
