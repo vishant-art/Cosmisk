@@ -37,6 +37,11 @@ import { auditRoutes } from './routes/audits.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { adCommandRoutes } from './routes/ad-command.js';
 import { shopifyRoutes } from './routes/shopify.js';
+import { healthScoreRoutes } from './routes/health-score.js';
+import { creativeScanRoutes } from './routes/creative-scan.js';
+import { quickWinsRoutes } from './routes/quick-wins.js';
+import { staticAdsRoutes } from './routes/static-ads.js';
+import intelligenceRoutes from './routes/intelligence.js';
 import { initializeScheduler } from './services/audit-scheduler.js';
 import { usageLimiterPlugin } from './plugins/usage-limiter.js';
 import { decryptToken } from './services/token-crypto.js';
@@ -244,6 +249,11 @@ await app.register(auditRoutes, { prefix: '/audits' });
 await app.register(scheduleRoutes, { prefix: '/schedules' });
 await app.register(adCommandRoutes, { prefix: '/ad-command' });
 await app.register(shopifyRoutes, { prefix: '/shopify' });
+await app.register(healthScoreRoutes, { prefix: '/health-score' });
+await app.register(creativeScanRoutes, { prefix: '/creative-scan' });
+await app.register(quickWinsRoutes, { prefix: '/quick-wins' });
+await app.register(staticAdsRoutes, { prefix: '/static-ads' });
+await app.register(intelligenceRoutes);
 
 // Initialize audit scheduler
 try {
