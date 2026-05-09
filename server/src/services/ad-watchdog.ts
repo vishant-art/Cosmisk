@@ -27,6 +27,8 @@ import {
   enhanceWatchdogDecisions,
 } from './intelligence-integration.js';
 import { filterDecisions, type DecisionInput } from './quality-gate.js';
+import { saveRecommendation } from './intelligence-persistence.js';
+import { trackRecommendation } from './reality-testing.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -663,6 +665,21 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                   decision.reasoning, decision.confidence, decision.urgency,
                   decision.suggestedAction, decision.estimatedImpact,
                 );
+
+                // Persist to intelligence layer for reality testing
+                try {
+                  const tracked = trackRecommendation(
+                    user.id,
+                    decision.type,
+                    decision.targetName,
+                    decision.reasoning,
+                    decision.confidence === 'high' ? 0.9 : decision.confidence === 'moderate' ? 0.7 : 0.5,
+                    decision.urgency
+                  );
+                  saveRecommendation(tracked);
+                } catch (err) {
+                  logger.warn({ err }, '[Watchdog] Intelligence persistence failed');
+                }
               }
 
               // Record episodes (fire-and-forget, no blocking Haiku calls)
