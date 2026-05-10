@@ -1788,7 +1788,18 @@ export function generateHTMLReport(report: CommentMiningReport, brandName: strin
       ${(typeof c.ugcScript === 'string' && c.ugcScript.length > 0) ? `
       <details>
         <summary class="concept-script-toggle">📹 View UGC Script</summary>
-        <div class="concept-script">${c.ugcScript}</div>
+        <div class="concept-script">${c.ugcScript
+          .replace(/\[HOOK/g, '\n[HOOK')
+          .replace(/\[ADDRESS/g, '\n\n[ADDRESS')
+          .replace(/\[STORY/g, '\n\n[STORY')
+          .replace(/\[PROOF/g, '\n\n[PROOF')
+          .replace(/\[CTA/g, '\n\n[CTA')
+          .replace(/\[BUILD/g, '\n\n[BUILD')
+          .replace(/\[REVEAL/g, '\n\n[REVEAL')
+          .replace(/\[RELATE/g, '\n\n[RELATE')
+          .replace(/\[RESOLVE/g, '\n\n[RESOLVE')
+          .replace(/\[PAYOFF/g, '\n\n[PAYOFF')
+          .trim()}</div>
       </details>
       ` : ''}
     </div>
