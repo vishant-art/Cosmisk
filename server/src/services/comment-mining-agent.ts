@@ -1040,7 +1040,7 @@ Return ONLY valid JSON array:
       adFormats: ['ugc_script', 'static_image', 'video_hook'] as AdFormat[],
       primaryCopy: c.primaryCopy,
       cta: 'Shop Now',
-      ugcScript: c.ugcScript,
+      ugcScript: typeof c.ugcScript === 'string' ? c.ugcScript : undefined,
       priority: c.priority || 5
     }));
 
