@@ -1,5 +1,45 @@
 <!-- PROJECT MEMORY - Updated 2026-05-10 -->
 
+## MANDATORY: Architecture Governance (READ FIRST)
+
+**Before writing ANY code, Claude MUST read:** `server/ARCHITECTURE_GOVERNANCE.md`
+
+### Quick Rules (Violations = Rejected Code)
+
+```
+RULE 1: NO DIRECT LLM CALLS — Use llmGateway only
+RULE 2: NO SCHEMA DUPLICATION — All tables in schema.ts
+RULE 3: NO GOD FILES — Max 500 lines per file
+RULE 4: NO HIDDEN DEPENDENCIES — Declare all imports
+RULE 5: NO SILENT FAILURES — Log all errors with context
+RULE 6: NO UNBOUNDED LOOPS — Always set limits
+RULE 7: NO UNREGISTERED CRON — Use cron registry
+RULE 8: NO HARDCODED SECRETS — Use env vars
+RULE 9: NO SERVICE BOUNDARY VIOLATIONS — Use contracts
+RULE 10: NO UNTRACED OPERATIONS — Include correlationId
+```
+
+### Pre-Implementation Checklist
+
+Before implementing any feature, Claude MUST:
+
+1. **Read governance docs** — `server/ARCHITECTURE_GOVERNANCE.md`
+2. **Identify impact** — Files created/modified, dependencies, schema changes
+3. **Estimate cost** — LLM tokens, API calls, execution time
+4. **Propose first** — Present plan BEFORE writing code for medium+ changes
+5. **Get approval** — Wait for human approval on architectural decisions
+
+### Escalation Triggers (STOP and ASK)
+
+- Modifying auth/payment/billing logic
+- Changing database schema with existing data
+- Creating new service boundaries
+- Introducing new technology/patterns
+- Multiple valid approaches exist
+- Requirements are ambiguous
+
+---
+
 ## Cosmisk Strategic Positioning (May 2026)
 
 ### The Core Insight: We Watch THE GAP
