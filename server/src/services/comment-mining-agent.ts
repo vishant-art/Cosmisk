@@ -727,6 +727,18 @@ export async function generateCreativeConcepts(
     }
   }
 
+  // Phase 2.5: Generate UGC scripts for concepts that need them (batch AI call)
+  const conceptsNeedingScripts = concepts.filter(c =>
+    c.adFormats?.includes('ugc_script') && !c.ugcScript
+  );
+  if (conceptsNeedingScripts.length > 0) {
+    try {
+      await generateUGCScriptsBatch(conceptsNeedingScripts, brandContext);
+    } catch (err) {
+      logger.warn({ err }, '[CommentMining] Batch script generation failed');
+    }
+  }
+
   // Phase 3: Deduplicate and prioritize
   const uniqueConcepts = deduplicateConcepts(concepts);
   const prioritizedConcepts = prioritizeConcepts(uniqueConcepts, patterns);
@@ -769,7 +781,6 @@ function generateRuleBasedConcepts(
       primaryCopy: `${praise.frequency}+ customers said "${praise.pattern}"`,
       secondaryCopy: `Join thousands who already love ${brandContext.name}`,
       cta: 'Shop Now',
-      ugcScript: generateUGCScript('social_proof', praise.pattern, brandContext),
       priority: calculatePriority(praise.frequency, 'praise')
     });
   }
@@ -800,7 +811,6 @@ function generateRuleBasedConcepts(
       primaryCopy: hook,
       secondaryCopy: `We hear you. Here's the truth about ${brandContext.name}`,
       cta: 'See For Yourself',
-      ugcScript: generateUGCScript('objection_handler', objection.pattern, brandContext),
       priority: calculatePriority(objection.frequency, 'objection') + 2 // Boost objection handlers
     });
   }
@@ -860,7 +870,6 @@ function generateRuleBasedConcepts(
       primaryCopy: `Made for ${occasion}. Loved by customers.`,
       secondaryCopy: `"${useCase.pattern}" — real customer`,
       cta: 'Shop The Look',
-      ugcScript: generateUGCScript('scenario', useCase.pattern, brandContext, occasion),
       priority: calculatePriority(useCase.frequency, 'use_case')
     });
   }
@@ -890,7 +899,6 @@ function generateRuleBasedConcepts(
       primaryCopy: `Worried about ${fear.pattern.toLowerCase()}?`,
       secondaryCopy: `We've got you covered. Here's our promise.`,
       cta: 'Risk-Free Trial',
-      ugcScript: generateUGCScript('fear_reversal', fear.pattern, brandContext),
       priority: calculatePriority(fear.frequency, 'frustration') + 1
     });
   }
@@ -1008,13 +1016,19 @@ Generate 3 ad concepts that:
 3. Feel authentic, not salesy
 4. Could work as UGC, static, or video
 
+UGC SCRIPT FORMAT (30-second framework):
+[HOOK - 0:00-0:03] Opening line that grabs attention (use customer language)
+[ADDRESS - 0:03-0:15] Story/concern acknowledgment *with B-roll directions in asterisks*
+[PROOF - 0:15-0:25] Demonstrate/show product solving it *with visual cues*
+[CTA - 0:25-0:30] Call to action
+
 Return ONLY valid JSON array:
 [{
   "type": "objection_handler|social_proof|desire_amplifier|transformation|fear_reversal",
   "hook": "The opening line/hook (under 10 words)",
   "primaryCopy": "Main ad copy (1-2 sentences)",
   "visualDirection": "What the visual should show",
-  "ugcScript": "30-second UGC script (if applicable)",
+  "ugcScript": "Full 30-second script with [HOOK], [ADDRESS], [PROOF], [CTA] sections and timing",
   "targetEmotion": "primary emotion to trigger",
   "whyThisWorks": "brief explanation",
   "priority": 1-10
@@ -1051,93 +1065,63 @@ Return ONLY valid JSON array:
 }
 
 /**
- * Generate UGC script for a concept
+ * Batch generate UGC scripts for concepts using Gemini AI
  */
-function generateUGCScript(
-  type: ConceptType,
-  pattern: string,
-  brandContext: { name: string; category: string },
-  occasion?: string
-): string {
-  const brand = brandContext.name;
+async function generateUGCScriptsBatch(
+  concepts: CreativeConceptFromComments[],
+  brandContext: { name: string; category: string }
+): Promise<void> {
+  if (concepts.length === 0) return;
 
-  switch (type) {
-    case 'social_proof':
-      return `[HOOK - 0:00-0:03]
-"${pattern}" — that's what I said when I first got my ${brand}.
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const gemini = new GoogleGenerativeAI(config.geminiApiKey || '');
+  const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-[STORY - 0:03-0:15]
-I was scrolling, saw everyone talking about it, thought "let me see what the hype is about"
-*show product unboxing/reveal*
-And honestly? I get it now.
+  const conceptSummaries = concepts.map((c, i) =>
+    `${i + 1}. TYPE: ${c.type} | HOOK: "${c.hook}" | PATTERN: "${c.primaryCopy || c.hook}"`
+  ).join('\n');
 
-[PROOF - 0:15-0:25]
-*show product in use*
-The quality, the fit, everything.
-Now I understand why ${pattern.toLowerCase()}.
+  const prompt = `You are a senior UGC ad scriptwriter. Generate 30-second scripts for these ad concepts.
 
-[CTA - 0:25-0:30]
-Link in bio. You'll thank me later.`;
+BRAND: ${brandContext.name} (${brandContext.category})
 
-    case 'objection_handler':
-      return `[HOOK - 0:00-0:03]
-So you're wondering "${pattern.toLowerCase()}"? Let me be real with you.
+CONCEPTS TO SCRIPT:
+${conceptSummaries}
 
-[ADDRESS - 0:03-0:15]
-I had the SAME question before I ordered.
-*show yourself considering*
-Here's what I found out...
+SCRIPT FORMAT (strict 30-second structure):
+[HOOK - 0:00-0:03] Opening line that grabs attention, use customer language
+[ADDRESS - 0:03-0:15] Story/acknowledgment *with B-roll directions in asterisks*
+[PROOF - 0:15-0:25] Demonstrate product solving the concern *with visual cues*
+[CTA - 0:25-0:30] Call to action
 
-[PROOF - 0:15-0:25]
-*demonstrate the answer - sizing, quality, etc.*
-See? That concern? Gone.
+RULES:
+- Conversational tone, like talking to a friend
+- Use exact customer language from hooks, not marketing speak
+- Include *B-roll directions* in asterisks
+- Scripts must feel authentic, not salesy
+- Each script must be production-ready
 
-[CTA - 0:25-0:30]
-Don't let that stop you. Link in bio.`;
+Return ONLY valid JSON array (same order as concepts):
+[
+  { "index": 1, "script": "Full formatted 30-second script with all sections" },
+  ...
+]`;
 
-    case 'scenario':
-      return `[HOOK - 0:00-0:03]
-POV: You need something for ${occasion || 'a special occasion'}...
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const jsonStr = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    const scripts = JSON.parse(jsonStr);
 
-[BUILD-UP - 0:03-0:12]
-*show the scenario setup*
-Everyone's going to be there. You need to look amazing.
-
-[REVEAL - 0:12-0:22]
-*product reveal and wearing*
-Enter: ${brand}.
-"${pattern}"
-
-[PAYOFF - 0:22-0:30]
-*show reactions/compliments*
-Yeah. That happened. Link in bio.`;
-
-    case 'fear_reversal':
-      return `[HOOK - 0:00-0:03]
-"What if ${pattern.toLowerCase()}?" — I know you're thinking it.
-
-[RELATE - 0:03-0:12]
-I thought the same thing. Almost didn't order.
-*show hesitation*
-
-[RESOLVE - 0:12-0:22]
-But then I saw their policy, tried it, and...
-*show positive experience*
-Zero issues.
-
-[CTA - 0:22-0:30]
-Stop worrying. Just try it. Link in bio.`;
-
-    default:
-      return `[HOOK - 0:00-0:03]
-Real talk about ${brand}...
-
-[STORY - 0:03-0:20]
-*share authentic experience*
-"${pattern}"
-
-[CTA - 0:20-0:30]
-Link in bio if you want the same.`;
+    for (const s of scripts) {
+      const idx = (s.index || 1) - 1;
+      if (idx >= 0 && idx < concepts.length && typeof s.script === 'string') {
+        concepts[idx].ugcScript = s.script;
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, '[CommentMining] Batch UGC script generation failed');
+    // Concepts will just not have ugcScript - that's fine
   }
 }
 
@@ -1214,14 +1198,21 @@ function deduplicateConcepts(concepts: CreativeConceptFromComments[]): CreativeC
 }
 
 /**
- * Prioritize concepts by ROI potential
+ * Prioritize concepts by ROI potential and renumber 1, 2, 3...
  */
 function prioritizeConcepts(
   concepts: CreativeConceptFromComments[],
   patterns: CommentPattern[]
 ): CreativeConceptFromComments[] {
-  // Sort by priority (highest first)
-  return concepts.sort((a, b) => b.priority - a.priority);
+  // Sort by priority score (highest first = most important)
+  const sorted = concepts.sort((a, b) => b.priority - a.priority);
+
+  // Renumber priorities sequentially: 1, 2, 3... (1 = create first)
+  sorted.forEach((concept, index) => {
+    concept.priority = index + 1;
+  });
+
+  return sorted;
 }
 
 // ============================================================================
@@ -1794,7 +1785,7 @@ export function generateHTMLReport(report: CommentMiningReport, brandName: strin
         ${(c.adFormats || ['static_image']).map(f => `<span>${f.replace(/_/g, ' ')}</span>`).join('')}
         <span>CTA: ${c.cta || 'Shop Now'}</span>
       </div>
-      ${c.ugcScript ? `
+      ${(typeof c.ugcScript === 'string' && c.ugcScript.length > 0) ? `
       <details>
         <summary class="concept-script-toggle">📹 View UGC Script</summary>
         <div class="concept-script">${c.ugcScript}</div>
