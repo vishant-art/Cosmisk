@@ -9,7 +9,9 @@ import {
   generateEliteIntelligence,
   generateQuickSummary,
   generateFormattedReport,
+  generateHTMLReport,
 } from '../dist/services/elite-intelligence/index.js';
+import { writeFileSync } from 'fs';
 
 // Sample data simulating a brand with trust issues and declining performance
 const sampleInput = {
@@ -199,6 +201,13 @@ async function runTest() {
     verifiedInsights: output.confidenceReport.verifiedInsights,
     uncertainties: output.confidenceReport.uncertainties,
   }, null, 2));
+
+  // Generate HTML Report
+  const htmlReport = generateHTMLReport(output);
+  const htmlPath = `elite-intelligence-report-${Date.now()}.html`;
+  writeFileSync(htmlPath, htmlReport);
+  console.log('');
+  console.log(`📄 HTML Report saved to: ${htmlPath}`);
 
   console.log('');
   console.log('═'.repeat(60));

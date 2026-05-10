@@ -18,7 +18,6 @@ import {
   EliteIntelligenceOutput,
   ExecutionPlaybook,
   ExecutionItem,
-  Contradiction,
 } from './types.js';
 
 import { collectAllSignals } from './signal-collector.js';
@@ -42,6 +41,8 @@ export {
   mapSystemicEffects,
   determineTheOneThing,
 } from './reasoning-engines.js';
+
+export { generateHTMLReport } from './html-report.js';
 
 // ============================================================================
 // EXECUTION PLAYBOOK BUILDER
