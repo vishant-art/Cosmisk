@@ -73,9 +73,23 @@ export interface CustomerLanguage {
   useCases: Array<{ phrase: string; occasion?: string; count: number }>;
 }
 
+export type ConceptType =
+  | 'objection_handler'  // "Is it worth ₹X?" → answer the doubt
+  | 'social_proof'       // "Best purchase ever" → show others agree
+  | 'aspiration'         // "I want to look like..." → dream state
+  | 'differentiation'    // "Better than X" → competitive angle
+  | 'scenario'           // "Wore to my wedding" → use case
+  | 'fear_reversal'      // "What if it doesn't fit?" → eliminate risk
+  | 'desire_amplifier'   // "I NEED this" → intensify want
+  | 'urgency_trigger'    // "Almost sold out" → scarcity
+  | 'transformation'     // "Before/after" → change story
+  | 'community';         // "Everyone's wearing" → belonging
+
+export type AdFormat = 'ugc_script' | 'static_image' | 'carousel' | 'video_hook' | 'story_ad';
+
 export interface CreativeConceptFromComments {
   id: string;
-  type: 'objection_handler' | 'social_proof' | 'aspiration' | 'differentiation' | 'scenario';
+  type: ConceptType;
   hook: string;
   hookSource: 'exact_quote' | 'derived' | 'synthesized';
   sourceComments: string[]; // IDs of comments that inspired this
@@ -84,6 +98,24 @@ export interface CreativeConceptFromComments {
   targetEmotion: string;
   confidence: number;
   estimatedImpact: string;
+  // Enhanced fields
+  adFormats: AdFormat[];
+  primaryCopy: string;
+  secondaryCopy?: string;
+  cta: string;
+  ugcScript?: string;
+  priority: number; // 1-10, higher = create first
+  emotionalArc?: string;
+}
+
+export interface WhatToCreateNext {
+  priority: number; // 1 = create first
+  conceptType: ConceptType;
+  reason: string;
+  dataPoints: number; // how many comments support this
+  estimatedROI: 'high' | 'medium' | 'low';
+  suggestedFormats: AdFormat[];
+  deadline?: string; // "This week", "ASAP", etc.
 }
 
 export interface CommentMiningReport {
@@ -96,6 +128,10 @@ export interface CommentMiningReport {
   customerLanguage: CustomerLanguage;
   creativeConcepts: CreativeConceptFromComments[];
   urgentInsights: string[];
+  // Enhanced fields
+  whatToCreateNext: WhatToCreateNext[];
+  emotionalHeatmap: Record<string, number>; // emotion → count
+  objectionMap: Array<{ objection: string; frequency: number; currentlyAddressed: boolean }>;
 }
 
 // ============================================================================
@@ -661,139 +697,676 @@ function extractOccasion(text: string): string | undefined {
 }
 
 // ============================================================================
-// CREATIVE CONCEPT GENERATION
+// CREATIVE CONCEPT GENERATION (AI-Powered)
 // ============================================================================
 
 /**
- * Generate creative concepts from comment patterns
+ * Generate creative concepts from comment patterns using AI
+ * This is the core "Comment → Creative Concept Generator"
  */
 export async function generateCreativeConcepts(
   patterns: CommentPattern[],
   language: CustomerLanguage,
-  brandContext: { name: string; category: string }
+  brandContext: { name: string; category: string },
+  classifiedComments?: ClassifiedComment[]
 ): Promise<CreativeConceptFromComments[]> {
 
   const concepts: CreativeConceptFromComments[] = [];
 
-  // 1. Social proof concepts from top praise patterns
+  // Phase 1: Rule-based concepts for guaranteed coverage
+  const ruleBasedConcepts = generateRuleBasedConcepts(patterns, language, brandContext);
+  concepts.push(...ruleBasedConcepts);
+
+  // Phase 2: AI-generated concepts for creative depth
+  if (patterns.length >= 5) {
+    try {
+      const aiConcepts = await generateAIConceptsFromPatterns(patterns, language, brandContext, classifiedComments);
+      concepts.push(...aiConcepts);
+    } catch (err) {
+      logger.warn({ err }, '[CommentMining] AI concept generation failed, using rule-based only');
+    }
+  }
+
+  // Phase 3: Deduplicate and prioritize
+  const uniqueConcepts = deduplicateConcepts(concepts);
+  const prioritizedConcepts = prioritizeConcepts(uniqueConcepts, patterns);
+
+  return prioritizedConcepts;
+}
+
+/**
+ * Rule-based concept generation (fast, reliable)
+ */
+function generateRuleBasedConcepts(
+  patterns: CommentPattern[],
+  language: CustomerLanguage,
+  brandContext: { name: string; category: string }
+): CreativeConceptFromComments[] {
+  const concepts: CreativeConceptFromComments[] = [];
+
+  // 1. Social proof from praise (highest confidence)
   const topPraise = patterns
-    .filter(p => p.category === 'praise' && p.frequency >= 3)
-    .slice(0, 3);
+    .filter(p => p.category === 'praise' && p.frequency >= 2)
+    .slice(0, 4);
 
   for (const praise of topPraise) {
     concepts.push({
       id: uuidv4(),
       type: 'social_proof',
-      hook: `"${praise.pattern}" — what ${praise.frequency}+ customers are saying`,
+      hook: `"${praise.pattern}" — ${praise.frequency}+ customers agree`,
       hookSource: 'exact_quote',
       sourceComments: praise.exampleComments.slice(0, 3),
-      visualDirection: 'Customer photos/screenshots with quote overlay',
+      visualDirection: 'Customer photos/screenshots with quote overlay, product in lifestyle context',
       copyPoints: [
         `Real customer quote: "${praise.pattern}"`,
-        'Show variety of customers',
-        'Include product in lifestyle context'
+        'Show diversity of happy customers',
+        'Include purchase count or review count'
       ],
       targetEmotion: 'trust',
       confidence: Math.min(95, 60 + praise.frequency * 5),
-      estimatedImpact: praise.frequency >= 5 ? 'High — proven resonance' : 'Medium — emerging pattern'
+      estimatedImpact: praise.frequency >= 5 ? 'High — proven resonance' : 'Medium — emerging pattern',
+      adFormats: ['static_image', 'carousel', 'ugc_script'],
+      primaryCopy: `${praise.frequency}+ customers said "${praise.pattern}"`,
+      secondaryCopy: `Join thousands who already love ${brandContext.name}`,
+      cta: 'Shop Now',
+      ugcScript: generateUGCScript('social_proof', praise.pattern, brandContext),
+      priority: calculatePriority(praise.frequency, 'praise')
     });
   }
 
-  // 2. Objection-handling concepts
+  // 2. Objection handlers (high ROI - removes purchase barriers)
   const topObjections = patterns
     .filter(p => p.category === 'objection' && p.frequency >= 2)
-    .slice(0, 3);
+    .slice(0, 4);
 
   for (const objection of topObjections) {
+    const hook = generateObjectionHook(objection.pattern);
     concepts.push({
       id: uuidv4(),
       type: 'objection_handler',
-      hook: generateObjectionHook(objection.pattern),
+      hook,
       hookSource: 'derived',
       sourceComments: objection.exampleComments.slice(0, 3),
-      visualDirection: 'Before/after or side-by-side comparison',
+      visualDirection: 'Split screen: concern on left, proof/answer on right. End with happy customer.',
       copyPoints: [
-        `Address the concern: "${objection.pattern}"`,
-        'Provide concrete answer/proof',
-        'End with satisfied customer example'
+        `Acknowledge the concern: "${objection.pattern}"`,
+        'Provide concrete proof (sizing chart, return policy, etc.)',
+        'Feature customer who had same concern and was satisfied'
       ],
       targetEmotion: 'reassurance',
       confidence: Math.min(90, 55 + objection.frequency * 5),
-      estimatedImpact: `${objection.frequency} customers asked this — worth addressing`
+      estimatedImpact: `${objection.frequency} potential customers have this doubt — address it`,
+      adFormats: ['ugc_script', 'video_hook', 'static_image'],
+      primaryCopy: hook,
+      secondaryCopy: `We hear you. Here's the truth about ${brandContext.name}`,
+      cta: 'See For Yourself',
+      ugcScript: generateUGCScript('objection_handler', objection.pattern, brandContext),
+      priority: calculatePriority(objection.frequency, 'objection') + 2 // Boost objection handlers
     });
   }
 
-  // 3. Scenario/use-case concepts
+  // 3. Desire amplifiers from desire comments
+  const topDesires = patterns
+    .filter(p => p.category === 'desire' && p.frequency >= 2)
+    .slice(0, 3);
+
+  for (const desire of topDesires) {
+    concepts.push({
+      id: uuidv4(),
+      type: 'desire_amplifier',
+      hook: `That feeling when ${desire.pattern.toLowerCase()}...`,
+      hookSource: 'derived',
+      sourceComments: desire.exampleComments.slice(0, 3),
+      visualDirection: 'Aspirational lifestyle shot. Customer living the dream. Slow motion reveal.',
+      copyPoints: [
+        `Tap into the desire: "${desire.pattern}"`,
+        'Show the transformation/result',
+        'Make it feel attainable'
+      ],
+      targetEmotion: 'desire',
+      confidence: Math.min(85, 50 + desire.frequency * 5),
+      estimatedImpact: 'Converts window shoppers to buyers',
+      adFormats: ['video_hook', 'story_ad', 'carousel'],
+      primaryCopy: `You've been wanting this. Now make it happen.`,
+      secondaryCopy: desire.pattern,
+      cta: 'Get Yours',
+      priority: calculatePriority(desire.frequency, 'desire')
+    });
+  }
+
+  // 4. Scenario ads from use cases
   const topUseCases = patterns
     .filter(p => p.category === 'use_case')
-    .slice(0, 2);
+    .slice(0, 3);
 
   for (const useCase of topUseCases) {
-    const occasion = language.useCases.find(u => u.phrase === useCase.pattern)?.occasion;
+    const occasion = language.useCases.find(u => u.phrase === useCase.pattern)?.occasion || 'any occasion';
     concepts.push({
       id: uuidv4(),
       type: 'scenario',
-      hook: `Perfect for ${occasion || 'every occasion'}`,
+      hook: `Perfect for ${occasion}`,
       hookSource: 'synthesized',
       sourceComments: useCase.exampleComments.slice(0, 3),
-      visualDirection: `Real customer wearing to ${occasion || 'real life scenario'}`,
+      visualDirection: `Real customer in ${occasion} setting. Before/during/after the event. Show reactions from others.`,
       copyPoints: [
-        `Show product in ${occasion} context`,
-        'Feature real customer story',
-        'Highlight versatility'
+        `Position product for ${occasion}`,
+        'Show real customer story',
+        'Highlight compliments received'
       ],
       targetEmotion: 'aspiration',
-      confidence: 65,
-      estimatedImpact: 'Expands perceived use cases'
+      confidence: 70,
+      estimatedImpact: 'Expands perceived use cases, reaches new audiences',
+      adFormats: ['carousel', 'ugc_script', 'video_hook'],
+      primaryCopy: `Made for ${occasion}. Loved by customers.`,
+      secondaryCopy: `"${useCase.pattern}" — real customer`,
+      cta: 'Shop The Look',
+      ugcScript: generateUGCScript('scenario', useCase.pattern, brandContext, occasion),
+      priority: calculatePriority(useCase.frequency, 'use_case')
     });
   }
 
-  // 4. Synthesized hook from top emotional descriptors
+  // 5. Fear reversal from frustration/questions
+  const topFears = patterns
+    .filter(p => (p.category === 'frustration' || p.category === 'question') && p.frequency >= 2)
+    .slice(0, 2);
+
+  for (const fear of topFears) {
+    concepts.push({
+      id: uuidv4(),
+      type: 'fear_reversal',
+      hook: `What if ${fear.pattern.toLowerCase()}? Here's our promise...`,
+      hookSource: 'derived',
+      sourceComments: fear.exampleComments.slice(0, 3),
+      visualDirection: 'Start with the fear/concern, transition to solution, end with guarantee.',
+      copyPoints: [
+        `Name the fear: "${fear.pattern}"`,
+        'Show how you solve it',
+        'Offer guarantee or proof'
+      ],
+      targetEmotion: 'relief',
+      confidence: 65,
+      estimatedImpact: 'Removes final barrier to purchase',
+      adFormats: ['ugc_script', 'static_image'],
+      primaryCopy: `Worried about ${fear.pattern.toLowerCase()}?`,
+      secondaryCopy: `We've got you covered. Here's our promise.`,
+      cta: 'Risk-Free Trial',
+      ugcScript: generateUGCScript('fear_reversal', fear.pattern, brandContext),
+      priority: calculatePriority(fear.frequency, 'frustration') + 1
+    });
+  }
+
+  // 6. Comparison/differentiation from comparison comments
+  const topComparisons = patterns
+    .filter(p => p.category === 'comparison')
+    .slice(0, 2);
+
+  for (const comp of topComparisons) {
+    const competitor = language.comparisons.find(c => c.phrase === comp.pattern)?.competitor;
+    concepts.push({
+      id: uuidv4(),
+      type: 'differentiation',
+      hook: competitor ? `Why customers switched from ${competitor}` : `Why customers chose us`,
+      hookSource: 'synthesized',
+      sourceComments: comp.exampleComments.slice(0, 3),
+      visualDirection: 'Side-by-side comparison. Focus on our advantage. Customer testimonial about switching.',
+      copyPoints: [
+        'Highlight key differentiator',
+        'Show customer who made the switch',
+        'Don\'t bash competitor, elevate yourself'
+      ],
+      targetEmotion: 'confidence',
+      confidence: 60,
+      estimatedImpact: 'Converts competitor\'s customers',
+      adFormats: ['carousel', 'ugc_script'],
+      primaryCopy: `"${comp.pattern}" — real customer review`,
+      cta: 'Make The Switch',
+      priority: calculatePriority(comp.frequency, 'comparison')
+    });
+  }
+
+  // 7. Synthesized hook from top emotional descriptors
   if (language.emotionalDescriptors.length >= 3) {
     const topPhrases = language.emotionalDescriptors.slice(0, 3);
-    const combinedHook = topPhrases.map(p => p.phrase).join(', ');
+    const combinedHook = topPhrases.map(p => p.phrase).join(' • ');
 
     concepts.push({
       id: uuidv4(),
-      type: 'social_proof',
+      type: 'community',
       hook: combinedHook,
       hookSource: 'synthesized',
       sourceComments: [],
-      visualDirection: 'Compilation of customer reactions',
+      visualDirection: 'Montage of customer reactions. Quick cuts. End with product.',
       copyPoints: [
-        `Uses top 3 customer phrases: ${combinedHook}`,
-        'Each phrase mentioned ${topPhrases[0].count}+ times',
-        'Authentic customer language'
+        'Rapid-fire customer phrases',
+        'Show diversity of happy customers',
+        'Energy and excitement'
       ],
-      targetEmotion: 'trust',
+      targetEmotion: 'belonging',
       confidence: 80,
-      estimatedImpact: 'High — combines proven phrases'
+      estimatedImpact: 'High — combines proven emotional triggers',
+      adFormats: ['video_hook', 'carousel', 'story_ad'],
+      primaryCopy: combinedHook,
+      secondaryCopy: `Join ${topPhrases.reduce((sum, p) => sum + p.count, 0)}+ happy customers`,
+      cta: 'Join The Community',
+      priority: 7
     });
   }
 
   return concepts;
 }
 
+/**
+ * AI-generated concepts for creative depth
+ */
+async function generateAIConceptsFromPatterns(
+  patterns: CommentPattern[],
+  language: CustomerLanguage,
+  brandContext: { name: string; category: string },
+  classifiedComments?: ClassifiedComment[]
+): Promise<CreativeConceptFromComments[]> {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const gemini = new GoogleGenerativeAI(config.geminiApiKey || '');
+  const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  // Build context for AI
+  const patternSummary = patterns.slice(0, 15).map(p =>
+    `- "${p.pattern}" (${p.category}, mentioned ${p.frequency}x)`
+  ).join('\n');
+
+  const emotionalSummary = language.emotionalDescriptors.slice(0, 5)
+    .map(e => `"${e.phrase}" (${e.count}x)`).join(', ');
+
+  const painPoints = language.painPointsSolved.slice(0, 5)
+    .map(p => `"${p.phrase}" (${p.count}x)`).join(', ');
+
+  // Get raw high-engagement comments for authentic voice
+  const highEngagement = classifiedComments
+    ?.filter(c => c.creativeRelevance >= 70)
+    .slice(0, 10)
+    .map(c => `"${c.text}" [${c.category}]`)
+    .join('\n') || '';
+
+  const prompt = `You are a senior D2C creative strategist. Based on real customer comments, generate 3 unique ad concepts.
+
+BRAND: ${brandContext.name} (${brandContext.category})
+
+TOP COMMENT PATTERNS:
+${patternSummary}
+
+EMOTIONAL LANGUAGE CUSTOMERS USE:
+${emotionalSummary}
+
+PAIN POINTS MENTIONED:
+${painPoints}
+
+${highEngagement ? `HIGH-VALUE COMMENTS (exact quotes):
+${highEngagement}` : ''}
+
+Generate 3 ad concepts that:
+1. Use EXACT customer language (not marketing speak)
+2. Address real concerns or amplify real desires
+3. Feel authentic, not salesy
+4. Could work as UGC, static, or video
+
+Return ONLY valid JSON array:
+[{
+  "type": "objection_handler|social_proof|desire_amplifier|transformation|fear_reversal",
+  "hook": "The opening line/hook (under 10 words)",
+  "primaryCopy": "Main ad copy (1-2 sentences)",
+  "visualDirection": "What the visual should show",
+  "ugcScript": "30-second UGC script (if applicable)",
+  "targetEmotion": "primary emotion to trigger",
+  "whyThisWorks": "brief explanation",
+  "priority": 1-10
+}]`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const jsonStr = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    const aiConcepts = JSON.parse(jsonStr);
+
+    return aiConcepts.map((c: any) => ({
+      id: uuidv4(),
+      type: c.type || 'social_proof',
+      hook: c.hook,
+      hookSource: 'synthesized' as const,
+      sourceComments: [],
+      visualDirection: c.visualDirection,
+      copyPoints: [c.whyThisWorks],
+      targetEmotion: c.targetEmotion,
+      confidence: 75,
+      estimatedImpact: c.whyThisWorks,
+      adFormats: ['ugc_script', 'static_image', 'video_hook'] as AdFormat[],
+      primaryCopy: c.primaryCopy,
+      cta: 'Shop Now',
+      ugcScript: c.ugcScript,
+      priority: c.priority || 5
+    }));
+
+  } catch (err) {
+    logger.warn({ err }, '[CommentMining] AI concept generation failed');
+    return [];
+  }
+}
+
+/**
+ * Generate UGC script for a concept
+ */
+function generateUGCScript(
+  type: ConceptType,
+  pattern: string,
+  brandContext: { name: string; category: string },
+  occasion?: string
+): string {
+  const brand = brandContext.name;
+
+  switch (type) {
+    case 'social_proof':
+      return `[HOOK - 0:00-0:03]
+"${pattern}" — that's what I said when I first got my ${brand}.
+
+[STORY - 0:03-0:15]
+I was scrolling, saw everyone talking about it, thought "let me see what the hype is about"
+*show product unboxing/reveal*
+And honestly? I get it now.
+
+[PROOF - 0:15-0:25]
+*show product in use*
+The quality, the fit, everything.
+Now I understand why ${pattern.toLowerCase()}.
+
+[CTA - 0:25-0:30]
+Link in bio. You'll thank me later.`;
+
+    case 'objection_handler':
+      return `[HOOK - 0:00-0:03]
+So you're wondering "${pattern.toLowerCase()}"? Let me be real with you.
+
+[ADDRESS - 0:03-0:15]
+I had the SAME question before I ordered.
+*show yourself considering*
+Here's what I found out...
+
+[PROOF - 0:15-0:25]
+*demonstrate the answer - sizing, quality, etc.*
+See? That concern? Gone.
+
+[CTA - 0:25-0:30]
+Don't let that stop you. Link in bio.`;
+
+    case 'scenario':
+      return `[HOOK - 0:00-0:03]
+POV: You need something for ${occasion || 'a special occasion'}...
+
+[BUILD-UP - 0:03-0:12]
+*show the scenario setup*
+Everyone's going to be there. You need to look amazing.
+
+[REVEAL - 0:12-0:22]
+*product reveal and wearing*
+Enter: ${brand}.
+"${pattern}"
+
+[PAYOFF - 0:22-0:30]
+*show reactions/compliments*
+Yeah. That happened. Link in bio.`;
+
+    case 'fear_reversal':
+      return `[HOOK - 0:00-0:03]
+"What if ${pattern.toLowerCase()}?" — I know you're thinking it.
+
+[RELATE - 0:03-0:12]
+I thought the same thing. Almost didn't order.
+*show hesitation*
+
+[RESOLVE - 0:12-0:22]
+But then I saw their policy, tried it, and...
+*show positive experience*
+Zero issues.
+
+[CTA - 0:22-0:30]
+Stop worrying. Just try it. Link in bio.`;
+
+    default:
+      return `[HOOK - 0:00-0:03]
+Real talk about ${brand}...
+
+[STORY - 0:03-0:20]
+*share authentic experience*
+"${pattern}"
+
+[CTA - 0:20-0:30]
+Link in bio if you want the same.`;
+  }
+}
+
+/**
+ * Generate objection-specific hook
+ */
 function generateObjectionHook(objection: string): string {
   const lower = objection.toLowerCase();
 
-  if (lower.includes('price') || lower.includes('expensive') || lower.includes('worth')) {
-    return `Is it worth ₹X? Here's the honest answer...`;
+  if (lower.includes('price') || lower.includes('expensive') || lower.includes('worth') || lower.includes('cost')) {
+    return `"Is it worth the price?" Let me show you...`;
   }
-  if (lower.includes('fit') || lower.includes('size')) {
-    return `"Will it fit me?" Let's talk sizing...`;
+  if (lower.includes('fit') || lower.includes('size') || lower.includes('sizing')) {
+    return `"Will it actually fit?" Here's the truth...`;
   }
-  if (lower.includes('quality') || lower.includes('authentic') || lower.includes('real')) {
-    return `Is this the real deal? Let me show you...`;
+  if (lower.includes('quality') || lower.includes('authentic') || lower.includes('real') || lower.includes('original')) {
+    return `"Is this actually good quality?" Let me prove it...`;
   }
-  if (lower.includes('return') || lower.includes('exchange')) {
-    return `What if you don't love it? Here's our promise...`;
+  if (lower.includes('return') || lower.includes('exchange') || lower.includes('refund')) {
+    return `"What if I need to return it?" Here's our promise...`;
   }
-  if (lower.includes('shipping') || lower.includes('delivery')) {
-    return `When will it arrive? Let's be transparent...`;
+  if (lower.includes('shipping') || lower.includes('delivery') || lower.includes('time')) {
+    return `"When will it arrive?" Let's be honest...`;
+  }
+  if (lower.includes('fraud') || lower.includes('scam') || lower.includes('fake')) {
+    return `"Is this legit?" I had the same doubt...`;
   }
 
-  return `"${objection}" — here's the truth...`;
+  return `"${objection}" — here's what you need to know...`;
+}
+
+/**
+ * Calculate priority score for a concept
+ */
+function calculatePriority(frequency: number, category: CommentCategory): number {
+  // Base priority by category
+  const categoryBase: Record<CommentCategory, number> = {
+    objection: 8,      // High priority - removes barriers
+    frustration: 7,    // Address pain points
+    desire: 6,         // Amplify wants
+    praise: 5,         // Social proof
+    use_case: 4,       // Scenario expansion
+    comparison: 4,     // Competitive positioning
+    question: 3,       // FAQ content
+    other: 2
+  };
+
+  const base = categoryBase[category] || 3;
+
+  // Boost by frequency
+  const frequencyBoost = Math.min(2, frequency / 5);
+
+  return Math.min(10, Math.round(base + frequencyBoost));
+}
+
+/**
+ * Deduplicate similar concepts
+ */
+function deduplicateConcepts(concepts: CreativeConceptFromComments[]): CreativeConceptFromComments[] {
+  const seen = new Set<string>();
+  const unique: CreativeConceptFromComments[] = [];
+
+  for (const concept of concepts) {
+    // Create a simple fingerprint
+    const fingerprint = `${concept.type}-${concept.hook.toLowerCase().slice(0, 30)}`;
+
+    if (!seen.has(fingerprint)) {
+      seen.add(fingerprint);
+      unique.push(concept);
+    }
+  }
+
+  return unique;
+}
+
+/**
+ * Prioritize concepts by ROI potential
+ */
+function prioritizeConcepts(
+  concepts: CreativeConceptFromComments[],
+  patterns: CommentPattern[]
+): CreativeConceptFromComments[] {
+  // Sort by priority (highest first)
+  return concepts.sort((a, b) => b.priority - a.priority);
+}
+
+// ============================================================================
+// WHAT TO CREATE NEXT ENGINE
+// ============================================================================
+
+/**
+ * Generate prioritized "What To Create Next" recommendations
+ * This is the strategic layer that tells the brand WHAT ads to make
+ */
+function generateWhatToCreateNext(
+  patterns: CommentPattern[],
+  categoryCount: Record<CommentCategory, number>,
+  concepts: CreativeConceptFromComments[]
+): WhatToCreateNext[] {
+  const recommendations: WhatToCreateNext[] = [];
+  const totalComments = Object.values(categoryCount).reduce((a, b) => a + b, 0);
+
+  // 1. Check for high-frequency objections (URGENT)
+  const topObjections = patterns
+    .filter(p => p.category === 'objection' && p.frequency >= 3)
+    .slice(0, 3);
+
+  for (let i = 0; i < topObjections.length; i++) {
+    const obj = topObjections[i];
+    recommendations.push({
+      priority: i + 1,
+      conceptType: 'objection_handler',
+      reason: `"${obj.pattern}" asked ${obj.frequency}x — potential customers are hesitating`,
+      dataPoints: obj.frequency,
+      estimatedROI: obj.frequency >= 5 ? 'high' : 'medium',
+      suggestedFormats: ['ugc_script', 'video_hook'],
+      deadline: obj.frequency >= 5 ? 'ASAP' : 'This week'
+    });
+  }
+
+  // 2. Check for frustration spike (REPUTATION RISK)
+  const frustrationRate = (categoryCount.frustration / totalComments) * 100;
+  if (frustrationRate > 15) {
+    recommendations.push({
+      priority: 1,
+      conceptType: 'fear_reversal',
+      reason: `${Math.round(frustrationRate)}% frustration rate — address before it spreads`,
+      dataPoints: categoryCount.frustration,
+      estimatedROI: 'high',
+      suggestedFormats: ['ugc_script', 'static_image'],
+      deadline: 'ASAP'
+    });
+  }
+
+  // 3. Leverage high praise for social proof
+  const topPraise = patterns
+    .filter(p => p.category === 'praise' && p.frequency >= 3)
+    .slice(0, 2);
+
+  for (const praise of topPraise) {
+    const existingPriorities = recommendations.map(r => r.priority);
+    const nextPriority = existingPriorities.length > 0 ? Math.max(...existingPriorities) + 1 : 3;
+
+    recommendations.push({
+      priority: nextPriority,
+      conceptType: 'social_proof',
+      reason: `"${praise.pattern}" resonates — ${praise.frequency} customers already saying it`,
+      dataPoints: praise.frequency,
+      estimatedROI: praise.frequency >= 5 ? 'high' : 'medium',
+      suggestedFormats: ['carousel', 'static_image', 'ugc_script'],
+      deadline: 'This week'
+    });
+  }
+
+  // 4. Desire amplification opportunity
+  if (categoryCount.desire >= 5) {
+    const topDesire = patterns.find(p => p.category === 'desire');
+    if (topDesire) {
+      recommendations.push({
+        priority: recommendations.length + 1,
+        conceptType: 'desire_amplifier',
+        reason: `${categoryCount.desire} desire comments — customers want this, help them commit`,
+        dataPoints: categoryCount.desire,
+        estimatedROI: 'medium',
+        suggestedFormats: ['video_hook', 'story_ad'],
+        deadline: 'Next sprint'
+      });
+    }
+  }
+
+  // 5. Scenario expansion for use cases
+  if (categoryCount.use_case >= 3) {
+    const occasions = patterns
+      .filter(p => p.category === 'use_case')
+      .slice(0, 2)
+      .map(p => p.pattern)
+      .join(', ');
+
+    recommendations.push({
+      priority: recommendations.length + 1,
+      conceptType: 'scenario',
+      reason: `Customers mentioning: ${occasions} — expand targeting to these occasions`,
+      dataPoints: categoryCount.use_case,
+      estimatedROI: 'medium',
+      suggestedFormats: ['carousel', 'ugc_script'],
+      deadline: 'Next sprint'
+    });
+  }
+
+  // 6. Competitive differentiation
+  if (categoryCount.comparison >= 2) {
+    const competitors = patterns
+      .filter(p => p.category === 'comparison')
+      .slice(0, 2);
+
+    recommendations.push({
+      priority: recommendations.length + 1,
+      conceptType: 'differentiation',
+      reason: `Customers comparing to competitors — capitalize on switches`,
+      dataPoints: categoryCount.comparison,
+      estimatedROI: 'medium',
+      suggestedFormats: ['carousel', 'static_image'],
+      deadline: 'Next sprint'
+    });
+  }
+
+  // 7. Community/belonging angle if high engagement
+  const praiseRate = (categoryCount.praise / totalComments) * 100;
+  if (praiseRate > 20 && categoryCount.praise >= 10) {
+    recommendations.push({
+      priority: recommendations.length + 1,
+      conceptType: 'community',
+      reason: `${Math.round(praiseRate)}% positive sentiment — build community angle`,
+      dataPoints: categoryCount.praise,
+      estimatedROI: 'medium',
+      suggestedFormats: ['video_hook', 'carousel'],
+      deadline: 'Next month'
+    });
+  }
+
+  // Sort by priority
+  recommendations.sort((a, b) => a.priority - b.priority);
+
+  // Renumber priorities to be sequential
+  recommendations.forEach((r, i) => {
+    r.priority = i + 1;
+  });
+
+  return recommendations.slice(0, 8); // Max 8 recommendations
 }
 
 // ============================================================================
@@ -859,14 +1432,15 @@ export async function runCommentMining(
   // Extract patterns
   const { patterns, language } = extractPatterns(classifiedComments);
 
-  // Generate creative concepts
+  // Generate creative concepts (pass classified comments for AI context)
   const creatives = await generateCreativeConcepts(
     patterns,
     language,
     {
       name: options.brandName || 'Brand',
       category: options.brandCategory || 'fashion'
-    }
+    },
+    classifiedComments
   );
 
   // Count by category
@@ -883,6 +1457,27 @@ export async function runCommentMining(
   for (const c of classifiedComments) {
     categoryCount[c.category]++;
   }
+
+  // Build emotional heatmap
+  const emotionalHeatmap: Record<string, number> = {};
+  for (const c of classifiedComments) {
+    for (const emotion of c.emotionalTriggers) {
+      emotionalHeatmap[emotion] = (emotionalHeatmap[emotion] || 0) + 1;
+    }
+  }
+
+  // Build objection map
+  const objectionMap = patterns
+    .filter(p => p.category === 'objection' || p.category === 'question')
+    .slice(0, 10)
+    .map(p => ({
+      objection: p.pattern,
+      frequency: p.frequency,
+      currentlyAddressed: false // Could check against existing ads
+    }));
+
+  // Generate "What To Create Next" recommendations
+  const whatToCreateNext = generateWhatToCreateNext(patterns, categoryCount, creatives);
 
   // Generate urgent insights
   const urgentInsights: string[] = [];
@@ -902,6 +1497,12 @@ export async function runCommentMining(
     urgentInsights.push(`${frustrationCount} frustration comments (${Math.round(frustrationCount / classifiedComments.length * 100)}%) — review and address`);
   }
 
+  // Add high-priority creation recommendations to urgent insights
+  const topPriority = whatToCreateNext.find(w => w.priority === 1);
+  if (topPriority) {
+    urgentInsights.push(`TOP PRIORITY: Create ${topPriority.conceptType} ad — ${topPriority.reason}`);
+  }
+
   // Build report
   const report: CommentMiningReport = {
     clientId,
@@ -912,7 +1513,10 @@ export async function runCommentMining(
     topPatterns: patterns.slice(0, 15),
     customerLanguage: language,
     creativeConcepts: creatives,
-    urgentInsights
+    urgentInsights,
+    whatToCreateNext,
+    emotionalHeatmap,
+    objectionMap
   };
 
   // Persist report
@@ -959,36 +1563,114 @@ export function getLatestReport(clientId: string): CommentMiningReport | null {
 export function generateHTMLReport(report: CommentMiningReport, brandName: string): string {
   const topPraise = report.topPatterns.filter(p => p.category === 'praise').slice(0, 5);
   const topObjections = report.topPatterns.filter(p => p.category === 'objection').slice(0, 5);
+  const topQuestions = report.topPatterns.filter(p => p.category === 'question').slice(0, 5);
+  const topFrustrations = report.topPatterns.filter(p => p.category === 'frustration').slice(0, 5);
+
+  // Get top emotions from heatmap
+  const topEmotions = Object.entries(report.emotionalHeatmap || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
 
   return `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Comment Intelligence Report — ${brandName}</title>
   <style>
-    body { font-family: 'Inter', -apple-system, sans-serif; max-width: 900px; margin: 0 auto; padding: 40px 20px; color: #1a1a1a; }
-    h1 { font-size: 28px; margin-bottom: 8px; }
-    h2 { font-size: 20px; margin-top: 40px; border-bottom: 2px solid #000; padding-bottom: 8px; }
-    .subtitle { color: #666; margin-bottom: 30px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e5e5e5;
+      line-height: 1.6;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+
+    /* Header */
+    .header { text-align: center; padding: 60px 20px; background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%); border-bottom: 1px solid #333; }
+    .logo { font-size: 14px; color: #EC8A23; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 20px; }
+    h1 { font-size: 42px; font-weight: 700; background: linear-gradient(90deg, #EC8A23, #f5a623); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 16px; }
+    .subtitle { font-size: 18px; color: #888; }
+
+    /* Sections */
+    .section { padding: 40px 0; border-bottom: 1px solid #222; }
+    .section-title { font-size: 24px; font-weight: 600; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; color: #fff; }
+    .section-title::before { content: ''; width: 4px; height: 24px; background: #EC8A23; border-radius: 2px; }
+
     .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 24px 0; }
-    .stat { background: #f5f5f5; padding: 20px; border-radius: 8px; }
-    .stat-value { font-size: 32px; font-weight: 700; }
-    .stat-label { color: #666; font-size: 13px; margin-top: 4px; }
-    .pattern { background: #fff; border: 1px solid #e0e0e0; padding: 16px; margin: 12px 0; border-radius: 8px; }
-    .pattern-phrase { font-size: 18px; font-weight: 600; }
-    .pattern-meta { color: #666; font-size: 13px; margin-top: 4px; }
-    .concept { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; margin: 16px 0; border-radius: 12px; }
-    .concept h3 { margin: 0 0 12px 0; font-size: 18px; }
-    .concept-hook { font-size: 24px; font-weight: 700; margin: 8px 0; }
-    .concept-details { opacity: 0.9; font-size: 14px; margin-top: 12px; }
-    .urgent { background: #fee2e2; border-left: 4px solid #ef4444; padding: 16px; margin: 12px 0; }
-    .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 13px; }
+    @media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat { background: #151515; border: 1px solid #2a2a2a; padding: 24px; border-radius: 12px; text-align: center; }
+    .stat-value { font-size: 36px; font-weight: 700; color: #EC8A23; }
+    .stat-label { color: #888; font-size: 13px; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* What To Create Next */
+    .create-next { background: #151515; border: 1px solid #2a2a2a; border-radius: 12px; overflow: hidden; margin: 24px 0; }
+    .create-next-header { background: linear-gradient(90deg, #EC8A23, #f5a623); color: #000; padding: 16px 24px; font-weight: 700; font-size: 18px; }
+    .create-item { display: flex; gap: 16px; padding: 20px 24px; border-bottom: 1px solid #2a2a2a; align-items: flex-start; }
+    .create-item:last-child { border-bottom: none; }
+    .create-priority { background: #EC8A23; color: #000; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+    .create-content { flex: 1; }
+    .create-type { font-weight: 600; color: #fff; margin-bottom: 4px; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
+    .create-reason { color: #ccc; font-size: 14px; }
+    .create-meta { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; }
+    .create-meta span { background: #2a2a2a; padding: 4px 10px; border-radius: 20px; color: #888; }
+    .create-meta .high { color: #10b981; }
+    .create-meta .asap { color: #ef4444; }
+
+    /* Pattern Cards */
+    .pattern-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 768px) { .pattern-grid { grid-template-columns: 1fr; } }
+    .pattern-card { background: #151515; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; }
+    .pattern-card h3 { margin: 0 0 16px 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+    .pattern-card.danger { border-left: 4px solid #ef4444; }
+    .pattern-card.danger h3 { color: #ef4444; }
+    .pattern-card.warning { border-left: 4px solid #f59e0b; }
+    .pattern-card.warning h3 { color: #f59e0b; }
+    .pattern-card.success { border-left: 4px solid #10b981; }
+    .pattern-card.success h3 { color: #10b981; }
+    .pattern { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #2a2a2a; }
+    .pattern:last-child { border-bottom: none; }
+    .pattern-phrase { font-weight: 500; color: #ccc; }
+    .pattern-count { background: #2a2a2a; color: #EC8A23; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+
+    /* Concepts */
+    .concept { background: #151515; border: 1px solid #2a2a2a; border-left: 4px solid #EC8A23; padding: 24px; margin: 16px 0; border-radius: 12px; }
+    .concept-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .concept-type { font-size: 12px; color: #EC8A23; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .concept-priority { background: #EC8A23; color: #000; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+    .concept-hook { font-size: 22px; font-weight: 700; margin: 8px 0; color: #fff; }
+    .concept-copy { color: #aaa; font-size: 15px; margin: 12px 0; padding: 12px; background: #1a1a1a; border-radius: 8px; }
+    .concept-formats { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .concept-formats span { background: #2a2a2a; color: #888; padding: 4px 10px; border-radius: 20px; font-size: 11px; }
+    .concept-script { margin-top: 16px; padding: 16px; background: #1a1a1a; border-radius: 8px; font-family: 'Monaco', monospace; font-size: 12px; color: #aaa; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+    .concept-script-toggle { color: #EC8A23; font-size: 13px; cursor: pointer; margin-top: 12px; }
+
+    /* Emotional Heatmap */
+    .emotion-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+    .emotion-tag { background: #2a2a2a; padding: 8px 16px; border-radius: 20px; font-size: 14px; }
+    .emotion-tag .count { color: #EC8A23; margin-left: 8px; font-weight: 600; }
+
+    /* Urgent */
+    .alert-box { background: #151515; border: 1px solid #2a2a2a; border-left: 4px solid #ef4444; padding: 24px; border-radius: 12px; margin: 24px 0; }
+    .alert-box h3 { margin: 0 0 12px 0; font-size: 18px; color: #ef4444; }
+    .alert-box ul { margin: 0; padding-left: 20px; color: #ccc; }
+    .alert-box li { margin: 8px 0; }
+
+    .footer { margin-top: 60px; padding: 40px 20px; border-top: 1px solid #222; text-align: center; color: #666; font-size: 13px; }
+    .footer-logo { font-size: 14px; color: #EC8A23; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 12px; }
+    .footer a { color: #EC8A23; text-decoration: none; }
   </style>
 </head>
 <body>
-  <h1>Comment Intelligence Report</h1>
-  <p class="subtitle">${brandName} — Generated ${new Date(report.minedAt).toLocaleDateString()}</p>
+  <div class="header">
+    <div class="logo">The Bridge Service · Smashed Agency</div>
+    <h1>Comment Intelligence Report</h1>
+    <p class="subtitle">${brandName} — ${new Date(report.minedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+  </div>
+
+  <div class="container">
 
   <div class="stat-grid">
     <div class="stat">
@@ -1000,8 +1682,8 @@ export function generateHTMLReport(report: CommentMiningReport, brandName: strin
       <div class="stat-label">Praise Comments</div>
     </div>
     <div class="stat">
-      <div class="stat-value">${report.categories.objection}</div>
-      <div class="stat-label">Objections</div>
+      <div class="stat-value">${report.categories.objection + report.categories.question}</div>
+      <div class="stat-label">Questions/Objections</div>
     </div>
     <div class="stat">
       <div class="stat-value">${report.creativeConcepts.length}</div>
@@ -1010,41 +1692,123 @@ export function generateHTMLReport(report: CommentMiningReport, brandName: strin
   </div>
 
   ${report.urgentInsights.length > 0 ? `
-  <h2>Urgent Insights</h2>
-  ${report.urgentInsights.map(i => `<div class="urgent">${i}</div>`).join('')}
+  <div class="alert-box">
+    <h3>🚨 Urgent Actions Required</h3>
+    <ul>
+      ${report.urgentInsights.map(i => `<li>${i}</li>`).join('')}
+    </ul>
+  </div>
   ` : ''}
 
-  <h2>Top Customer Praise (Use as Social Proof)</h2>
-  ${topPraise.map(p => `
-    <div class="pattern">
-      <div class="pattern-phrase">"${p.pattern}"</div>
-      <div class="pattern-meta">Mentioned ${p.frequency} times</div>
-    </div>
-  `).join('')}
-
-  <h2>Top Objections (Create Handling Ads)</h2>
-  ${topObjections.map(p => `
-    <div class="pattern">
-      <div class="pattern-phrase">"${p.pattern}"</div>
-      <div class="pattern-meta">${p.frequency} customers asked this</div>
-    </div>
-  `).join('')}
-
-  <h2>Ready-to-Use Ad Concepts</h2>
-  ${report.creativeConcepts.slice(0, 5).map(c => `
-    <div class="concept">
-      <h3>${c.type.replace('_', ' ').toUpperCase()}</h3>
-      <div class="concept-hook">${c.hook}</div>
-      <div class="concept-details">
-        ${c.copyPoints.join(' • ')}<br>
-        Confidence: ${c.confidence}% | ${c.estimatedImpact}
+  ${(report.whatToCreateNext || []).length > 0 ? `
+  <h2 class="section-title">What To Create Next</h2>
+  <div class="create-next">
+    <div class="create-next-header">Prioritized Creative Recommendations</div>
+    ${(report.whatToCreateNext || []).slice(0, 5).map(w => `
+      <div class="create-item">
+        <div class="create-priority">${w.priority}</div>
+        <div class="create-content">
+          <div class="create-type">${w.conceptType.replace(/_/g, ' ')}</div>
+          <div class="create-reason">${w.reason}</div>
+          <div class="create-meta">
+            <span>${w.dataPoints} data points</span>
+            <span class="${w.estimatedROI}">ROI: ${w.estimatedROI}</span>
+            ${w.deadline ? `<span class="${w.deadline === 'ASAP' ? 'asap' : ''}">${w.deadline}</span>` : ''}
+          </div>
+        </div>
       </div>
+    `).join('')}
+  </div>
+  ` : ''}
+
+  <h2 class="section-title">Comment Patterns</h2>
+  <div class="pattern-grid">
+    ${topFrustrations.length > 0 ? `
+    <div class="pattern-card danger">
+      <h3>⚠️ Frustrations to Address</h3>
+      ${topFrustrations.map(p => `
+        <div class="pattern">
+          <span class="pattern-phrase">"${p.pattern}"</span>
+          <span class="pattern-count">${p.frequency}x</span>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    ${topQuestions.length > 0 ? `
+    <div class="pattern-card warning">
+      <h3>❓ Unanswered Questions</h3>
+      ${topQuestions.map(p => `
+        <div class="pattern">
+          <span class="pattern-phrase">"${p.pattern}"</span>
+          <span class="pattern-count">${p.frequency}x</span>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    ${topObjections.length > 0 ? `
+    <div class="pattern-card warning">
+      <h3>🤔 Objections to Handle</h3>
+      ${topObjections.map(p => `
+        <div class="pattern">
+          <span class="pattern-phrase">"${p.pattern}"</span>
+          <span class="pattern-count">${p.frequency}x</span>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    ${topPraise.length > 0 ? `
+    <div class="pattern-card success">
+      <h3>✨ Social Proof Gold</h3>
+      ${topPraise.map(p => `
+        <div class="pattern">
+          <span class="pattern-phrase">"${p.pattern}"</span>
+          <span class="pattern-count">${p.frequency}x</span>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+  </div>
+
+  ${topEmotions.length > 0 ? `
+  <h2 class="section-title">Emotional Triggers Detected</h2>
+  <div class="emotion-grid">
+    ${topEmotions.map(([emotion, count]) => `
+      <div class="emotion-tag">${emotion}<span class="count">${count}</span></div>
+    `).join('')}
+  </div>
+  ` : ''}
+
+  <h2 class="section-title">Ready-to-Use Ad Concepts</h2>
+  ${report.creativeConcepts.slice(0, 8).map((c, i) => `
+    <div class="concept">
+      <div class="concept-header">
+        <div class="concept-type">${c.type.replace(/_/g, ' ')}</div>
+        <div class="concept-priority">Priority #${c.priority || (i + 1)}</div>
+      </div>
+      <div class="concept-hook">${c.hook}</div>
+      ${c.primaryCopy ? `<div class="concept-copy">${c.primaryCopy}${c.secondaryCopy ? '<br><br>' + c.secondaryCopy : ''}</div>` : ''}
+      <div class="concept-formats">
+        ${(c.adFormats || ['static_image']).map(f => `<span>${f.replace(/_/g, ' ')}</span>`).join('')}
+        <span>CTA: ${c.cta || 'Shop Now'}</span>
+      </div>
+      ${c.ugcScript ? `
+      <details>
+        <summary class="concept-script-toggle">📹 View UGC Script</summary>
+        <div class="concept-script">${c.ugcScript}</div>
+      </details>
+      ` : ''}
     </div>
   `).join('')}
+
+  </div>
 
   <div class="footer">
-    Generated by Smashed Agency Intelligence Platform<br>
-    Contact: team@smashed.agency
+    <div class="footer-logo">The Bridge Service</div>
+    <p>Generated on ${new Date(report.minedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+    <p style="margin-top:8px"><a href="https://smashed.agency/scan">smashed.agency/scan</a> · Confidential Client Report</p>
   </div>
 </body>
 </html>
