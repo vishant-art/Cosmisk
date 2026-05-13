@@ -29,6 +29,12 @@ import {
 import { filterDecisions, type DecisionInput } from './quality-gate.js';
 import { saveRecommendation } from './intelligence-persistence.js';
 import { trackRecommendation } from './reality-testing.js';
+// CLOSED-LOOP OPERATING SYSTEM: Track recommendations with predictions
+import {
+  agentRecommend,
+  getLoopStatus,
+  type RecommendationType,
+} from './recommendation-loop.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
@@ -71,6 +77,34 @@ interface WatchdogDecision {
 const VALID_ACTIONS = new Set(['pause', 'reduce_budget', 'increase_budget', 'new_creative', 'monitor']);
 const VALID_CONFIDENCES = new Set(['high', 'moderate', 'low']);
 const VALID_URGENCIES = new Set(['low', 'medium', 'high', 'critical']);
+
+/* ------------------------------------------------------------------ */
+/*  Closed-Loop Helpers                                                */
+/* ------------------------------------------------------------------ */
+
+function mapDecisionTypeToRecommendationType(decisionType: string): RecommendationType {
+  const mapping: Record<string, RecommendationType> = {
+    'roas_decline': 'decrease_budget',
+    'cpa_spike': 'pause_campaign',
+    'scale_opportunity': 'increase_budget',
+    'creative_fatigue': 'refresh_creative',
+    'wasted_spend': 'pause_campaign',
+    'budget_reallocation': 'adjust_bidding',
+    'oos_wasted_spend': 'fix_oos',
+    'discount_leakage': 'fix_discount_leak',
+    'channel_ltv_gap': 'change_targeting',
+  };
+  return mapping[decisionType] || 'general';
+}
+
+function parseEstimatedImpact(impact: string): number {
+  // Extract numeric value from strings like "Save Rs 15,000/week" or "Save $500/day"
+  const match = impact.match(/[\d,]+/);
+  if (match) {
+    return parseInt(match[0].replace(/,/g, ''), 10);
+  }
+  return 0;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Validate Claude's decision output (#9)                             */
@@ -680,6 +714,31 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 } catch (err) {
                   logger.warn({ err }, '[Watchdog] Intelligence persistence failed');
                 }
+
+                // === CLOSED-LOOP OPERATING SYSTEM ===
+                // Track recommendation with prediction for validation
+                try {
+                  const recType = mapDecisionTypeToRecommendationType(decision.type);
+                  const predictedSavings = parseEstimatedImpact(decision.estimatedImpact);
+
+                  agentRecommend(user.id, 'watchdog', {
+                    type: recType,
+                    entityType: 'campaign',
+                    entityId: decision.targetId,
+                    entityName: decision.targetName,
+                    action: `${decision.suggestedAction}: ${decision.targetName}`,
+                    reasoning: decision.reasoning,
+                    evidence: [
+                      `Confidence: ${decision.confidence}`,
+                      `Urgency: ${decision.urgency}`,
+                      `Impact: ${decision.estimatedImpact}`,
+                    ],
+                    confidence: decision.confidence === 'high' ? 90 : decision.confidence === 'moderate' ? 70 : 50,
+                    predictedSavings,
+                  });
+                } catch (loopErr) {
+                  logger.warn({ err: loopErr }, '[Watchdog] Closed-loop tracking failed');
+                }
               }
 
               // Record episodes (fire-and-forget, no blocking Haiku calls)
@@ -915,6 +974,31 @@ export async function runWatchdogForClient(
         urgency: decision.urgency,
         estimatedImpact: decision.estimatedImpact,
       });
+
+      // === CLOSED-LOOP OPERATING SYSTEM ===
+      // Track recommendation with prediction for validation
+      try {
+        const recType = mapDecisionTypeToRecommendationType(decision.type);
+        const predictedSavings = parseEstimatedImpact(decision.estimatedImpact);
+
+        agentRecommend(clientId, 'watchdog', {
+          type: recType,
+          entityType: 'campaign',
+          entityId: decision.targetId,
+          entityName: decision.targetName,
+          action: `${decision.suggestedAction}: ${decision.targetName}`,
+          reasoning: decision.reasoning,
+          evidence: [
+            `Confidence: ${decision.confidence}`,
+            `Urgency: ${decision.urgency}`,
+            `Impact: ${decision.estimatedImpact}`,
+          ],
+          confidence: decision.confidence === 'high' ? 90 : decision.confidence === 'moderate' ? 70 : 50,
+          predictedSavings,
+        });
+      } catch (loopErr) {
+        logger.warn({ err: loopErr }, '[Watchdog Client] Closed-loop tracking failed');
+      }
     }
 
     return {
