@@ -922,4 +922,111 @@ export function createTables(db: Database.Database): void {
       anti_patterns TEXT DEFAULT '[]'
     );
   `);
+
+  // =========================================================================
+  // COMMENT MINING AGENT
+  // =========================================================================
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comment_mining_reports (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      report TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_comment_mining_client
+    ON comment_mining_reports(client_id, created_at DESC);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS classified_comments (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      category TEXT NOT NULL,
+      emotional_triggers TEXT DEFAULT '[]',
+      key_phrases TEXT DEFAULT '[]',
+      intensity TEXT DEFAULT 'low',
+      creative_relevance INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_classified_comments_client
+    ON classified_comments(client_id, category);
+  `);
+
+  // =========================================================================
+  // CLOSED-LOOP OPERATING SYSTEM - Recommendation Tracking & Learning
+  // This is the core infrastructure for the operating system, not reports
+  // =========================================================================
+
+  // Tracked recommendations with full lifecycle
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recommendations (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      entity_name TEXT NOT NULL,
+      action TEXT NOT NULL,
+      reasoning TEXT NOT NULL,
+      evidence TEXT DEFAULT '[]',
+      confidence INTEGER NOT NULL DEFAULT 50,
+      predicted_outcome TEXT NOT NULL,
+      predicted_metric TEXT NOT NULL,
+      predicted_value REAL NOT NULL,
+      predicted_direction TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      executed_at TEXT,
+      validated_at TEXT,
+      actual_outcome TEXT,
+      actual_value REAL,
+      prediction_accurate INTEGER,
+      accuracy_score INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_recommendations_client ON recommendations(client_id, status);
+    CREATE INDEX IF NOT EXISTS idx_recommendations_entity ON recommendations(entity_id, status);
+    CREATE INDEX IF NOT EXISTS idx_recommendations_pending ON recommendations(status) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS idx_recommendations_validation ON recommendations(status, executed_at) WHERE status = 'executed';
+  `);
+
+  // Prediction accuracy tracking for learning
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS prediction_accuracy (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      recommendation_type TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      predicted_value REAL NOT NULL,
+      actual_value REAL NOT NULL,
+      accuracy_score INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_prediction_accuracy_agent ON prediction_accuracy(client_id, agent_id);
+    CREATE INDEX IF NOT EXISTS idx_prediction_accuracy_type ON prediction_accuracy(recommendation_type);
+  `);
+
+  // Execution detection - tracks entity state changes
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS entity_state_snapshots (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      captured_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_entity_snapshots ON entity_state_snapshots(client_id, entity_id);
+  `);
 }
