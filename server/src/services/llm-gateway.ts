@@ -26,8 +26,8 @@ export type LLMProvider = 'anthropic' | 'gemini';
 export type LLMModel =
   | 'claude-sonnet-4-20250514'
   | 'claude-3-5-sonnet-20241022'
-  | 'gemini-2.0-flash'
-  | 'gemini-1.5-pro';
+  | 'gemini-2.5-flash'
+  | 'gemini-2.5-pro';
 
 export type Priority = 'low' | 'normal' | 'high' | 'critical';
 
@@ -100,8 +100,8 @@ export interface BudgetStatus {
 const COST_PER_1K_TOKENS: Record<string, { input: number; output: number }> = {
   'claude-sonnet-4-20250514': { input: 0.003, output: 0.015 },
   'claude-3-5-sonnet-20241022': { input: 0.003, output: 0.015 },
-  'gemini-2.0-flash': { input: 0.0001, output: 0.0004 },
-  'gemini-1.5-pro': { input: 0.00125, output: 0.005 },
+  'gemini-2.5-flash': { input: 0.00015, output: 0.0006 },
+  'gemini-2.5-pro': { input: 0.00125, output: 0.005 },
 };
 
 function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
@@ -568,7 +568,7 @@ export async function generate(options: {
     source: options.source,
     operation: options.operation,
     provider: options.provider || 'gemini',
-    model: options.model || 'gemini-2.0-flash',
+    model: options.model || 'gemini-2.5-flash',
     messages: [{ role: 'user', content: options.prompt }],
     systemPrompt: options.systemPrompt,
     budgetKey: options.budgetKey || `agent:${options.source}`,

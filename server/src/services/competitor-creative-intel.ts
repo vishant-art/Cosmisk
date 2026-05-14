@@ -36,6 +36,7 @@ import {
   getSearchQueriesForClient,
   type ServiceClient,
 } from './service-clients.js';
+import { agentRecommend } from './recommendation-loop.js';
 
 const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 const gemini = config.geminiApiKey ? new GoogleGenerativeAI(config.geminiApiKey) : null;
@@ -851,7 +852,7 @@ ${adContent}
   try {
     // Use Gemini for cost efficiency (this runs per ad)
     if (gemini) {
-      const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const result = await model.generateContent(prompt);
       const text = result.response.text();
       const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -2380,7 +2381,7 @@ ${brandContext ? `BRAND: ${brandContext.industry}, Keywords: ${brandContext.keyw
 {"hookType":"problem_first|social_proof|discount_lead|curiosity|aspiration|transformation|question|other","hookText":"first line","ctaType":"urgency|benefit|scarcity|discount|shop_now|other","offerType":"percentage_discount|flat_discount|free_shipping|bundle|none","emotionalTriggers":["fomo","trust","excitement"],"relevanceScore":0-100,"competitorType":"direct|indirect|irrelevant","relevanceReason":"why"}`;
 
   try {
-    const model = gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = gemini.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     const match = text.match(/\{[\s\S]*\}/);
@@ -2576,6 +2577,27 @@ export async function runCompetitorIntelForClient(
       basedOn: rec.basedOn,
       priority: rec.priority,
     });
+
+    // === CLOSED-LOOP OPERATING SYSTEM ===
+    try {
+      agentRecommend(clientId, 'competitor_intel', {
+        type: 'test_creative',
+        entityType: 'creative',
+        entityId: `competitor-insight-${rec.category}`,
+        entityName: rec.category,
+        action: rec.action,
+        reasoning: rec.insight,
+        evidence: [
+          `Based on: ${rec.basedOn}`,
+          `Priority: ${rec.priority}`,
+          `Category: ${rec.category}`,
+        ],
+        confidence: rec.priority === 'high' ? 85 : rec.priority === 'medium' ? 70 : 55,
+        predictedSavings: 0, // Competitor intel doesn't have direct savings
+      });
+    } catch (loopErr) {
+      logger.warn({ err: loopErr }, '[CompetitorIntel] Closed-loop tracking failed');
+    }
   }
 
   // Build swipe file

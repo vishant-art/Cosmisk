@@ -7,15 +7,18 @@ import { round, fmt } from './format-helpers.js';
 import { notifyAlert } from './notifications.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { config } from '../config.js';
-import Anthropic from '@anthropic-ai/sdk';
-import { extractText } from '../utils/claude-helpers.js';
+import { llmGateway } from './llm-gateway.js';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { buildContextWindow, recordDecisionEpisode, reinforceEpisode, penalizeEpisode } from './agent-memory.js';
 import type { MetaTokenRow, ShopifyTokenRow, UserRow, AgentRunRow, AgentDecisionRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 import { runOOSCheck, runOOSCheckForClient } from './oos-detector.js';
 import { runDiscountLeakageCheck, runDiscountLeakageForClient } from './discount-leakage-detector.js';
 import { quickCohortLTVCheck } from './cohort-ltv-analyzer.js';
+import { analyzeTopAdVisuals, selectAdsForAnalysis, type AdForAnalysis } from './visual-analyzer.js';
+import { runCommentMining } from './comment-mining-agent.js';
+import { generateStrategicIntelligence } from './strategic-intelligence-engine.js';
 import {
   getClientContext, getWatchdogStore, updateWatchdogStore, getWatchdogUrgencyThreshold,
   getOOSAlertThreshold, getDiscountLeakageAlertThreshold, createRecommendation,
@@ -35,8 +38,14 @@ import {
   getLoopStatus,
   type RecommendationType,
 } from './recommendation-loop.js';
+import {
+  validateMonetaryClaim,
+  calculateWastedSpend,
+  correctWasteReasoning,
+  type CampaignData,
+} from './factual-validation.js';
 
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+// Using llmGateway with Gemini for reasoning (cost-effective)
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -77,6 +86,55 @@ interface WatchdogDecision {
 const VALID_ACTIONS = new Set(['pause', 'reduce_budget', 'increase_budget', 'new_creative', 'monitor']);
 const VALID_CONFIDENCES = new Set(['high', 'moderate', 'low']);
 const VALID_URGENCIES = new Set(['low', 'medium', 'high', 'critical']);
+
+/* ------------------------------------------------------------------ */
+/*  FACTUAL VALIDATION (using shared utility)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Apply factual validation to watchdog decisions
+ * Uses shared factual-validation.ts utility
+ */
+function applyFactualValidation(
+  decisions: WatchdogDecision[],
+  snapshot: AccountSnapshot,
+): WatchdogDecision[] {
+  // Convert snapshot campaigns to CampaignData format
+  const campaigns: CampaignData[] = snapshot.campaigns.map(c => ({
+    name: c.name,
+    spend: c.spend,
+    roas: c.roas,
+    conversions: c.conversions,
+  }));
+
+  return decisions.map(decision => {
+    // Only validate wasted_spend type decisions
+    if (decision.type !== 'wasted_spend') {
+      return decision;
+    }
+
+    const actual = calculateWastedSpend(campaigns);
+    const validation = validateMonetaryClaim({
+      source: 'ad-watchdog',
+      claimType: 'wasted_spend',
+      aiText: decision.reasoning + ' ' + decision.estimatedImpact,
+      actualValue: actual.wasteSpend,
+      threshold: 200, // Allow up to 200% deviation before flagging
+    });
+
+    if (!validation.isValid) {
+      // Return corrected decision instead of rejecting entirely
+      return {
+        ...decision,
+        reasoning: correctWasteReasoning(decision.reasoning, actual),
+        confidence: 'low' as const, // Downgrade confidence after correction
+        estimatedImpact: `Save ₹${Math.round(actual.wasteSpend * 4.3).toLocaleString()}/month`,
+      };
+    }
+
+    return decision;
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /*  Closed-Loop Helpers                                                */
@@ -236,7 +294,7 @@ function getPastDecisions(userId: string, accountId: string): AgentDecisionRow[]
 }
 
 /* ------------------------------------------------------------------ */
-/*  Claude-powered reasoning                                           */
+/*  Gemini-powered reasoning (via llmGateway)                          */
 /* ------------------------------------------------------------------ */
 
 async function reasonAboutPerformance(
@@ -315,14 +373,20 @@ If the account is performing well and no action is needed, return an empty array
 Return ONLY the JSON array, no other text.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      temperature: 0.3,
+    const response = await llmGateway.generate({
+      correlationId: `watchdog-${Date.now()}`,
+      source: 'ad-watchdog',
+      operation: 'reason-about-performance',
+      provider: 'gemini',
+      model: 'gemini-2.5-flash',
       messages: [{ role: 'user', content: prompt }],
+      maxTokens: 2000,
+      temperature: 0.3,
+      budgetKey: clientId ? `client:${clientId}` : 'system:watchdog',
+      priority: 'normal',
     });
 
-    const rawText = extractText(response);
+    const rawText = response.content;
     if (!rawText) return [];
 
     const jsonStr = rawText.trim();
@@ -340,9 +404,14 @@ Return ONLY the JSON array, no other text.`;
     if (!Array.isArray(parsed)) return [];
 
     // Validate each decision (#9)
-    return parsed.map(validateDecision).filter((d): d is WatchdogDecision => d !== null);
+    const validDecisions = parsed.map(validateDecision).filter((d): d is WatchdogDecision => d !== null);
+
+    // Apply factual validation - cross-check AI claims against actual data
+    const factuallyValidated = applyFactualValidation(validDecisions, snapshot);
+
+    return factuallyValidated;
   } catch (err: any) {
-    logger.error({ err: err.message }, '[Watchdog] Claude reasoning failed');
+    logger.error({ err: err.message }, '[Watchdog] Gemini reasoning failed');
     return [];
   }
 }
@@ -521,6 +590,249 @@ export async function checkOutcomes(): Promise<number> {
   }
 
   return checked;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Creative Analysis: Store ad-level creative data for other agents   */
+/* ------------------------------------------------------------------ */
+
+interface CreativeAnalysisRow {
+  adId: string;
+  adName: string;
+  creativeType: 'static' | 'video' | 'carousel' | 'catalog' | 'unknown';
+  hookText: string;
+  hookPattern: string;
+  ctr: number;
+  spend: number;
+  impressions: number;
+  imageUrl: string | null;
+  videoId: string | null;
+}
+
+/**
+ * Categorize hook text into a strategic pattern
+ */
+function categorizeHookPattern(hookText: string): string {
+  const lower = hookText.toLowerCase();
+
+  if (lower.includes('founder') || lower.includes('started') || lower.includes('years')) {
+    return 'founder-story';
+  }
+  if (lower.includes('handcraft') || lower.includes('artisan') || lower.includes('made')) {
+    return 'artisan-craft';
+  }
+  if (lower.includes('women') || lower.includes('customers') || lower.includes('love')) {
+    return 'social-proof';
+  }
+  if (lower.includes('selling out') || lower.includes('only') || lower.includes('left')) {
+    return 'scarcity';
+  }
+  if (lower.includes('₹') || lower.includes('off') || lower.includes('%') || lower.includes('hours')) {
+    return 'discount-urgency';
+  }
+  if (lower.includes('new') || lower.includes('collection') || lower.includes('launch')) {
+    return 'new-arrival';
+  }
+
+  return 'other';
+}
+
+/**
+ * Detect creative type from ad name and creative data
+ */
+function detectCreativeType(adName: string, creative: any): CreativeAnalysisRow['creativeType'] {
+  const nameLower = (adName || '').toLowerCase();
+
+  // Check ad name first (most reliable for catalog detection)
+  if (nameLower.includes('catalog') ||
+      nameLower.includes('dpa') ||
+      nameLower.includes('dynamic') ||
+      nameLower.includes('all products') ||
+      nameLower.match(/- all\s*$/)) {
+    return 'catalog';
+  }
+  if (nameLower.includes('carousel')) {
+    return 'carousel';
+  }
+  if (nameLower.includes('reel') || nameLower.includes('video')) {
+    return 'video';
+  }
+  if (nameLower.includes('static')) {
+    return 'static';
+  }
+
+  // Fall back to creative data
+  if (creative?.video_id) {
+    return 'video';
+  }
+  if (creative?.asset_feed_spec?.images?.length > 1) {
+    return 'carousel';
+  }
+  if (creative?.object_story_spec?.link_data?.retailer_item_ids) {
+    return 'catalog';
+  }
+  if (creative?.image_url || creative?.thumbnail_url) {
+    return 'static';
+  }
+
+  return 'unknown';
+}
+
+/**
+ * Gather and store creative-level analysis data for an ad account
+ * Called after each watchdog scan to keep creative_analysis table fresh
+ */
+export async function gatherCreativeAnalysis(
+  meta: MetaApiService,
+  accountId: string,
+  clientId: string
+): Promise<{ analyzed: number; stored: number }> {
+  const db = getDb();
+
+  logger.info({ accountId, clientId }, '[Watchdog] Gathering creative analysis...');
+
+  try {
+    // Ensure table exists
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS creative_analysis (
+        id TEXT PRIMARY KEY,
+        client_id TEXT,
+        ad_id TEXT,
+        ad_name TEXT,
+        creative_type TEXT,
+        hook_text TEXT,
+        hook_pattern TEXT,
+        ctr REAL,
+        spend REAL,
+        impressions INTEGER,
+        image_url TEXT,
+        video_id TEXT,
+        analyzed_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+
+    // Create index for faster lookups
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_creative_analysis_client
+      ON creative_analysis(client_id)
+    `);
+
+    // Fetch ads with creative data (paginated)
+    let allAds: any[] = [];
+    let page = 1;
+
+    const adsUrl = new URL(`${config.graphApiBase}/${accountId}/ads`);
+    adsUrl.searchParams.set('fields', 'id,name,effective_status,creative{id,body,title,thumbnail_url,video_id,image_url}');
+    adsUrl.searchParams.set('limit', '100');
+    adsUrl.searchParams.set('filtering', JSON.stringify([
+      { field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PAUSED'] }
+    ]));
+
+    let currentUrl: string | null = adsUrl.toString();
+
+    // Fetch up to 20 pages (2000 ads) to avoid timeout
+    while (currentUrl && page <= 20) {
+      const adsData: { data?: any[]; paging?: { next?: string } } = await meta.get<any>(currentUrl.replace(config.graphApiBase, ''));
+      const ads = adsData.data || [];
+      allAds.push(...ads);
+
+      currentUrl = adsData.paging?.next || null;
+      page++;
+    }
+
+    logger.info({ adsFound: allAds.length }, '[Watchdog] Fetched ads for creative analysis');
+
+    if (allAds.length === 0) {
+      return { analyzed: 0, stored: 0 };
+    }
+
+    // Fetch insights in batches
+    const adIds = allAds.map(a => a.id);
+
+    for (let i = 0; i < adIds.length; i += 50) {
+      const batch = adIds.slice(i, i + 50);
+
+      try {
+        const insightsUrl = `/${accountId}/insights`;
+        const insightsData = await meta.get<any>(insightsUrl, {
+          level: 'ad',
+          filtering: JSON.stringify([{ field: 'ad.id', operator: 'IN', value: batch }]),
+          fields: 'ad_id,impressions,clicks,ctr,spend',
+          date_preset: 'last_30d',
+          limit: '100',
+        });
+
+        const insights = insightsData.data || [];
+
+        // Attach insights to ads
+        for (const insight of insights) {
+          const ad = allAds.find(a => a.id === insight.ad_id);
+          if (ad) {
+            ad.insights = { data: [insight] };
+          }
+        }
+      } catch (err) {
+        logger.warn({ batch: i / 50 + 1 }, '[Watchdog] Insights fetch failed for batch, continuing');
+      }
+    }
+
+    // Clear old data for this client and insert new
+    db.prepare('DELETE FROM creative_analysis WHERE client_id = ?').run(clientId);
+
+    const insert = db.prepare(`
+      INSERT INTO creative_analysis (id, client_id, ad_id, ad_name, creative_type, hook_text, hook_pattern, ctr, spend, impressions, image_url, video_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    let stored = 0;
+
+    for (const ad of allAds) {
+      const creative = ad.creative || {};
+      const insights = ad.insights?.data?.[0] || {};
+
+      const ctr = parseFloat(insights.ctr) || 0;
+      const spend = parseFloat(insights.spend) || 0;
+      const impressions = parseInt(insights.impressions) || 0;
+
+      // Determine creative type
+      const creativeType = detectCreativeType(ad.name, creative);
+
+      // Extract hook (first line of body text)
+      const bodyText = creative.body || creative.title || '';
+      const hookText = bodyText.split('\n')[0].trim().substring(0, 150);
+
+      // Categorize hook pattern
+      const hookPattern = categorizeHookPattern(hookText);
+
+      insert.run(
+        crypto.randomUUID(),
+        clientId,
+        ad.id,
+        ad.name,
+        creativeType,
+        hookText,
+        hookPattern,
+        ctr,
+        spend,
+        impressions,
+        creative.image_url || creative.thumbnail_url || null,
+        creative.video_id || null
+      );
+      stored++;
+    }
+
+    logger.info({
+      clientId,
+      analyzed: allAds.length,
+      stored,
+    }, '[Watchdog] Creative analysis stored');
+
+    return { analyzed: allAds.length, stored };
+
+  } catch (err: any) {
+    logger.error({ err: err.message, clientId }, '[Watchdog] Creative analysis failed');
+    return { analyzed: 0, stored: 0 };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -761,6 +1073,156 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 WHERE id = ?
               `).run(summary, JSON.stringify(snapshot), runId);
 
+              // Store creative-level analysis for other agents (static-ad-generator, etc.)
+              try {
+                await gatherCreativeAnalysis(meta, account.id, user.id);
+              } catch (creativeErr: any) {
+                logger.warn({ err: creativeErr.message }, '[Watchdog] Creative analysis failed, continuing');
+              }
+
+              // Visual analysis of top-performing ads (stores in dna_cache for static-ad-generator)
+              try {
+                // Get top ads for visual analysis
+                const topAdsForVisual: AdForAnalysis[] = snapshot.campaigns
+                  .flatMap(c => {
+                    // Find ads in this campaign from the creative_analysis we just stored
+                    return [{
+                      id: c.name, // Using campaign name as proxy - will be matched later
+                      name: c.name,
+                      spend: c.spend,
+                      roas: c.roas,
+                      ctr: c.ctr,
+                      thumbnail_url: '', // Will be fetched by visual analyzer
+                      video_id: null,
+                    }];
+                  })
+                  .filter(a => a.spend > 500 && a.roas > 1);
+
+                if (topAdsForVisual.length > 0) {
+                  // Fetch actual ad data with thumbnails for visual analysis
+                  const adsResp = await meta.get<any>(`/${account.id}/ads`, {
+                    fields: 'id,name,creative{thumbnail_url,video_id},insights.date_preset(last_7d){spend,impressions,clicks,ctr,purchase_roas}',
+                    filtering: JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]),
+                    limit: '50',
+                  });
+
+                  const adsForAnalysis: AdForAnalysis[] = (adsResp.data || [])
+                    .map((ad: any) => {
+                      const insights = ad.insights?.data?.[0] || {};
+                      return {
+                        id: ad.id,
+                        name: ad.name,
+                        spend: parseFloat(insights.spend) || 0,
+                        roas: parseFloat(insights.purchase_roas?.[0]?.value) || 0,
+                        ctr: parseFloat(insights.ctr) || 0,
+                        thumbnail_url: ad.creative?.thumbnail_url || '',
+                        video_id: ad.creative?.video_id || null,
+                      };
+                    })
+                    .filter((a: AdForAnalysis) => a.thumbnail_url || a.video_id);
+
+                  if (adsForAnalysis.length > 0) {
+                    const visualResults = await analyzeTopAdVisuals(adsForAnalysis, account.id, meta);
+                    logger.info({
+                      accountId: account.id,
+                      adsAnalyzed: visualResults.size,
+                    }, '[Watchdog] Visual analysis complete - stored in dna_cache');
+                  }
+                }
+              } catch (visualErr: any) {
+                logger.warn({ err: visualErr.message }, '[Watchdog] Visual analysis failed, continuing');
+              }
+
+              // Comment Mining: Extract creative concepts from ad comments
+              try {
+                const brandName = snapshot.accountName.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+                if (brandName) {
+                  const commentReport = await runCommentMining(user.id, {
+                    metaToken: token,
+                    metaAccountId: account.id,
+                    brandName,
+                    brandCategory: 'fashion', // Default, could be detected from products
+                  });
+
+                  if (commentReport.totalComments > 0) {
+                    logger.info({
+                      accountId: account.id,
+                      commentsAnalyzed: commentReport.totalComments,
+                      conceptsGenerated: commentReport.creativeConcepts.length,
+                      topObjections: commentReport.categories.objection,
+                    }, '[Watchdog] Comment mining complete');
+
+                    // Add decision if urgent insights found
+                    if (commentReport.urgentInsights.length > 0 || commentReport.categories.frustration > commentReport.totalComments * 0.15) {
+                      decisions.push({
+                        type: 'comment_insight',
+                        targetId: 'comment_analysis',
+                        targetName: `${commentReport.creativeConcepts.length} creative concepts from comments`,
+                        reasoning: commentReport.urgentInsights[0] || `Found ${commentReport.categories.objection} objections and ${commentReport.categories.frustration} frustrations to address`,
+                        confidence: 'moderate',
+                        urgency: commentReport.categories.frustration > commentReport.totalComments * 0.2 ? 'high' : 'medium',
+                        suggestedAction: 'new_creative',
+                        estimatedImpact: `${commentReport.creativeConcepts.length} ad concepts ready to test`,
+                      });
+                    }
+
+                    // Strategic Intelligence: Generate strategic direction from comment patterns
+                    try {
+                      // Map comment patterns to strategic signal inputs
+                      const commentSignals = commentReport.topPatterns.slice(0, 15).map(p => ({
+                        pattern: p.pattern,
+                        category: p.category,
+                        frequency: p.frequency,
+                        sentiment: p.category === 'praise' ? 'positive' : p.category === 'frustration' ? 'negative' : 'neutral',
+                        examples: p.exampleComments.slice(0, 3),
+                      }));
+
+                      // Build performance signals from snapshot
+                      const performanceSignals = {
+                        overallROAS: snapshot.week.roas,
+                        roasTrend: (snapshot.week.roas > snapshot.month.roas * 1.1 ? 'improving' :
+                                   snapshot.week.roas < snapshot.month.roas * 0.9 ? 'declining' : 'stable') as 'improving' | 'stable' | 'declining',
+                        cacTrend: (snapshot.week.cpa < snapshot.month.cpa * 0.9 ? 'improving' :
+                                  snapshot.week.cpa > snapshot.month.cpa * 1.1 ? 'increasing' : 'stable') as 'improving' | 'stable' | 'increasing',
+                        topCreativeType: 'static', // Could be detected from creative_analysis
+                      };
+
+                      const strategicOutput = generateStrategicIntelligence(user.id, {
+                        commentSignals,
+                        fatigueSignals: [], // Would need fatigue-detector data
+                        performanceSignals,
+                        competitorGaps: [], // Would need competitor-intel data
+                        categoryContext: { name: brandName, pricePoint: 'premium' },
+                      });
+
+                      // Add strategic risk decisions
+                      for (const risk of strategicOutput.risks.filter(r => r.severity === 'critical' || r.severity === 'high')) {
+                        decisions.push({
+                          type: 'strategic_risk',
+                          targetId: risk.id,
+                          targetName: `Strategic Risk: ${risk.riskType}`,
+                          reasoning: risk.strategicImplication,
+                          confidence: risk.severity === 'critical' ? 'high' : 'moderate',
+                          urgency: risk.severity === 'critical' ? 'critical' : 'high',
+                          suggestedAction: 'monitor',
+                          estimatedImpact: risk.businessImpact,
+                        });
+                      }
+
+                      logger.info({
+                        accountId: account.id,
+                        risks: strategicOutput.risks.length,
+                        opportunities: strategicOutput.opportunities.length,
+                      }, '[Watchdog] Strategic intelligence complete');
+                    } catch (stratErr: any) {
+                      logger.warn({ err: stratErr.message }, '[Watchdog] Strategic intelligence failed, continuing');
+                    }
+                  }
+                }
+              } catch (commentErr: any) {
+                logger.warn({ err: commentErr.message }, '[Watchdog] Comment mining failed, continuing');
+              }
+
               if (passedDecisions.length > 0) {
                 const briefingContent = passedDecisions.map(d =>
                   `*${d.type}* — ${d.targetName}\n${d.reasoning}\nAction: ${d.suggestedAction} | Urgency: ${d.urgency}`
@@ -839,7 +1301,7 @@ export interface ClientWatchdogReport {
  */
 export async function runWatchdogForClient(
   clientId: string,
-  options: { metaToken?: string; shopifyToken?: string },
+  options: { metaToken?: string; shopifyToken?: string } = {},
 ): Promise<ClientWatchdogReport | null> {
   const ctx = getClientContext(clientId);
   if (!ctx) {
@@ -862,8 +1324,14 @@ export async function runWatchdogForClient(
   let metaAccountId = client.metaAdAccountId;
 
   if (!metaToken && client.metaAdAccountId) {
-    // Try to get token from database (would need user association)
-    logger.warn({ clientId }, '[Watchdog Client] No Meta token provided');
+    // Try to get token from service_clients.meta_access_token
+    const clientRow = db.prepare('SELECT meta_access_token FROM service_clients WHERE id = ?').get(clientId) as { meta_access_token?: string } | undefined;
+    if (clientRow?.meta_access_token) {
+      metaToken = decryptToken(clientRow.meta_access_token);
+      logger.info({ clientId }, '[Watchdog Client] Using token from service_clients');
+    } else {
+      logger.warn({ clientId }, '[Watchdog Client] No Meta token found');
+    }
   }
 
   if (!metaToken || !metaAccountId) {
