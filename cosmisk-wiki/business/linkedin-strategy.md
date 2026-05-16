@@ -191,6 +191,7 @@ Building in public because [reason].
 
 ## Related
 
+- [[instagram-strategy]] — Cross-platform content
 - [[the-gap]] — Core positioning framework
 - [[positioning]] — Business positioning
 - [[casorro]] — Client case study
