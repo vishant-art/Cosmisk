@@ -25,6 +25,7 @@ See [[system/wiki-routing]] for the cascade rules.
 - [[architecture/agent-coordination]] — How agents communicate
 - [[architecture/evidence-providers]] — Wiring pattern
 - [[architecture/closed-loop]] — Learning system
+- [[architecture/governance-status]] — AI development governance (10-point checklist)
 
 ## Agents
 - [[agents/inventory]] — What's built, what's not
