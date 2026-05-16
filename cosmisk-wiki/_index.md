@@ -5,6 +5,10 @@
 ## Quick Start (New Session)
 Read `current/sprint.md` only. Query others as needed.
 
+## Wiki Routing (READ THIS)
+When learning something, route updates to ALL affected wikis.
+See [[system/wiki-routing]] for the cascade rules.
+
 ## Current (Updates Every Session)
 - [[current/sprint]] — What we're doing NOW
 - [[current/blockers]] — Active blockers
@@ -35,5 +39,10 @@ Read `current/sprint.md` only. Query others as needed.
 - [[patterns/what-fails]] — Anti-patterns
 - [[patterns/predictions]] — Accuracy tracking
 
+## System
+- [[system/wiki-routing]] — Where learnings cascade
+- [[system/context-routing]] — LLM context management
+- [[system/tools-repos]] — GitHub repos, tools, token management
+
 ## Health
-**Total Pages:** 18 | **Last Update:** 2026-05-15
+**Total Pages:** 21 | **Last Update:** 2026-05-17

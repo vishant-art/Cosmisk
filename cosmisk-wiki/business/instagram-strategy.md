@@ -32,17 +32,17 @@
 ## Scripts & Tools Inventory
 
 ### Audit Scripts
-| Script | Purpose | Output |
-|--------|---------|--------|
-| `audit-instagram.js` | Profile scraper v1 | Profile data |
-| `audit-instagram-v2.js` | Mobile viewport audit | Screenshots + JSON |
-| `instagram-audit-authenticated.js` | Authenticated scraping | Full post data |
+| Script                             | Purpose                | Output             |
+| ---------------------------------- | ---------------------- | ------------------ |
+| `audit-instagram.js`               | Profile scraper v1     | Profile data       |
+| `audit-instagram-v2.js`            | Mobile viewport audit  | Screenshots + JSON |
+| `instagram-audit-authenticated.js` | Authenticated scraping | Full post data     |
 
 ### Screenshot Scripts
-| Script | Purpose | Output |
-|--------|---------|--------|
-| `screenshot-instagram.js` | Single post capture v1 | PNG |
-| `screenshot-instagram-v2.js` | Post capture v2 | PNG |
+| Script                       | Purpose                   | Output        |
+| ---------------------------- | ------------------------- | ------------- |
+| `screenshot-instagram.js`    | Single post capture v1    | PNG           |
+| `screenshot-instagram-v2.js` | Post capture v2           | PNG           |
 | `screenshot-instagram-v3.js` | Handles popups, scrolling | Multiple PNGs |
 
 ### Output Files
@@ -67,6 +67,31 @@
 ---
 
 ## Competitor Accounts (Study These)
+
+### Primary Competitor: @moksh.vasant
+
+| Metric | Value |
+|--------|-------|
+| **Username** | @moksh.vasant |
+| **Followers** | 140,000 |
+| **Posts** | 27 |
+| **Engagement Rate** | 0.86% |
+| **Analysis Script** | `analyze-moksh-vasant.js` |
+| **Data File** | `moksh-vasant-analysis.json` |
+
+**Why Study:**
+- 140K followers with only 27 posts = high-quality content strategy
+- Static posts outperform reels (8,754 and 5,456 likes on top posts)
+- India-based creator in similar niche
+- Proves you don't need high volume, just high quality
+
+**What Works for Moksh:**
+- Educational static posts with clean design
+- Simple, direct captions
+- Consistent visual branding
+- Quality over quantity (27 posts → 140K followers)
+
+### Other Competitors
 
 | Account | Focus | Style | Followers |
 |---------|-------|-------|-----------|
@@ -131,6 +156,13 @@ Video assets stored in Frame.io for review:
 ---
 
 ## Session Learnings Log
+
+### May 17, 2026: Competitor Analysis + Wiki Structure
+- Added Moksh Vasant (@moksh.vasant) as primary competitor to study
+- Key insight: 140K followers with only 27 posts = quality > quantity
+- Static posts can outperform reels (8,754 likes on top post)
+- Analysis script: `analyze-moksh-vasant.js`
+- Data file: `moksh-vasant-analysis.json`
 
 ### May 2026: Audit Setup
 - Built Puppeteer scripts for profile auditing

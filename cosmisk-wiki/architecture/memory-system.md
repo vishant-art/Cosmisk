@@ -107,20 +107,41 @@ Default password: `cosmisk2024` (override with `CLIENT_PORTAL_PASSWORD` env)
 
 ## Current Gaps (To Fix)
 
-1. **Cross-client learning** - Patterns don't transfer between clients
+~~1. **Cross-client learning** - Patterns don't transfer between clients~~ **DONE (Session 11)** → `pattern-transfer.ts`
 2. **Client-visible history** - Portal is basic, needs richer timeline
-3. **Prediction auto-verification** - Still manual, needs metric hooks
-
+~~3. **Prediction auto-verification** - Still manual, needs metric hooks~~ **DONE (Session 11)** → `prediction-verifier.ts`
 ~~4. **6 leverage-systems agents** - Not wired to memory yet~~ **DONE (Session 10)**
+
+### What We Built in Session 11 (May 17, 2026)
+
+| Feature | File | What It Does |
+|---------|------|--------------|
+| **Prediction Verifier** | `prediction-verifier.ts` | Fetches real ROAS/spend/revenue from Meta API, compares to predictions with 20% tolerance |
+| **Pattern Transfer** | `pattern-transfer.ts` | Promotes patterns seen in 3+ clients with 90%+ confidence to global knowledge |
+| **Agent Registry** | `agent-registry.ts` | Auto-wraps any agent with memory (no code changes needed) |
+| **Integration Tests** | `memory-integration.test.ts` | 13 tests with real Pratapsons data |
 
 ---
 
 ## Key Files
 
 ```
-server/src/services/agent-memory.ts      - Episode CRUD
-server/src/services/strategic-memory.ts  - Reports/predictions
+server/src/services/agent-memory.ts       - Episode CRUD
+server/src/services/strategic-memory.ts   - Reports/predictions
 server/src/services/memory-maintenance.ts - Scheduler
-server/src/routes/memory.ts              - API routes
-server/src/routes/client-portal.ts       - HTML portal
+server/src/services/agent-registry.ts     - Auto-wrap pattern (NEW)
+server/src/services/prediction-verifier.ts - Auto-verification (NEW)
+server/src/services/pattern-transfer.ts   - Cross-client learning (NEW)
+server/src/routes/memory.ts               - API routes
+server/src/routes/client-portal.ts        - HTML portal
+server/src/__tests__/memory-integration.test.ts - Integration tests (NEW)
 ```
+
+---
+
+## Related
+
+- [[memory-roadmap]]
+- [[agent-coordination]]
+- [[strategic-cognition]]
+- [[evidence-providers]]

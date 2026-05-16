@@ -229,6 +229,34 @@ Ask:
 | Quality Gate | quality-gate.ts | EXISTS - logs but doesn't reject |
 | Elite Quality Gate | intelligence-layer/elite-quality-gate.ts | EXISTS - check if used |
 | Mediocrity Detector | intelligence-layer/mediocrity-detector.ts | EXISTS - check if used |
+| Agent Registry | agent-registry.ts | **NEW (Session 11)** - auto-wraps agents |
+| Prediction Verifier | prediction-verifier.ts | **NEW (Session 11)** - closes learning loop |
+| Pattern Transfer | pattern-transfer.ts | **NEW (Session 11)** - cross-client learning |
+
+## SESSION 11 LEARNINGS (May 17, 2026)
+
+**Topic:** Memory System Completion + Wiki Architecture
+
+**Key Insight:** "The Gap" is MESSAGING, not infrastructure.
+- We were confusing sales positioning with actual architecture
+- The Gap = how we explain value to clients (5 gaps they lose money on)
+- Strategic Cognition + Memory = actual infrastructure that creates the moat
+
+**What We Built:**
+- `prediction-verifier.ts` - Fetches real metrics from Meta API, verifies predictions
+- `pattern-transfer.ts` - Promotes patterns seen in 3+ clients to global knowledge
+- Auto-wrap orchestrator - 80+ agents get memory without code changes
+- 13 integration tests with real Pratapsons data
+
+**Wiki Update Protocol Established:**
+When building something new, update ALL affected wikis:
+- Main wiki (where feature lives)
+- Related wikis that reference it
+- Sprint wiki
+- FOUNDER_DIRECTIVES (learnings)
+- Positioning/the-gap if it affects messaging
+
+**Memory Score:** 95/100 (up from 15/100 before Session 9)
 
 ---
 

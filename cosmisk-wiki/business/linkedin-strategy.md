@@ -100,13 +100,28 @@
 - "Our agents now remember past decisions"
 - "Before/after: Agents with memory vs without"
 
-### Session 9 (May 17, 2026)
-**Topic:** Memory Architecture Audit
+### Session 11 (May 17, 2026)
+**Topic:** Prediction Verifier + Cross-Client Learning + Wiki Architecture
+**Learnings:**
+- "The Gap" is MESSAGING, not infrastructure (important distinction)
+- When building something, cascade updates to ALL affected wikis
+- Auto-wrap pattern scales to 80+ agents without touching their code
+- Pattern transfer: 3+ clients with 90%+ confidence = global pattern
+- Integration tests with real client data catch FK constraints
+
+**Post Ideas:**
+- "Our AI now learns from ALL our clients (cross-client intelligence)"
+- "Why messaging vs infrastructure confusion kills SaaS products"
+- "The auto-wrap pattern: How I wired 80+ agents to memory without touching their code"
+
+### Session 9-10 (May 17, 2026)
+**Topic:** Memory Architecture Audit + Full Wiring
 **Learnings:**
 - 95% of memory code was DESIGNED but NOT WIRED
 - 45+ SQLite tables were empty
 - Decay scheduler prevents memory bloat
 - Client portal for HTML report viewing
+- Fire-and-forget pattern keeps agents non-blocking
 
 **Post Ideas:**
 - "I audited our AI memory — 95% was unused"
