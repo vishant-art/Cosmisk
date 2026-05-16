@@ -388,8 +388,8 @@ applyMemoryActions(context, params);
 | Active Memory Usage | 4 hours | Agents actually learn | 2 | **DONE** ✅ (in Registry) |
 | Auto-wrap Orchestrator | 1 hour | ALL orchestrated agents get memory | 2.5 | **DONE** ✅ |
 | Integration Tests | 1 hour | Verify with real data | 2.6 | **DONE** ✅ (Pratapsons) |
-| Prediction Auto-Verification | 4 hours | Close 10-point gap | 3 | TODO |
-| Cross-Client Learning | 6 hours | Close 10-point gap | 4 | TODO |
+| Prediction Auto-Verification | 4 hours | Close 10-point gap | 3 | **DONE** ✅ |
+| Cross-Client Learning | 6 hours | Close 10-point gap | 4 | **DONE** ✅ |
 
 **Total Effort:** ~10 hours remaining to reach 95/100
 
@@ -417,3 +417,11 @@ server/src/services/agent-memory.ts         - Episode CRUD (EXISTS)
 server/src/services/strategic-memory.ts     - Reports/predictions (EXISTS)
 server/src/services/memory-maintenance.ts   - Scheduler (EXISTS)
 ```
+
+---
+
+## Related
+
+- [[memory-system]]
+- [[sprint]]
+- [[evidence-providers]]
