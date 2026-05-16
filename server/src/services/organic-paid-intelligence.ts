@@ -14,6 +14,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
+import { agentRecommend } from './recommendation-loop.js';
+// STRATEGIC MEMORY - Week-to-week learning
+import { recordEpisode } from './agent-memory.js';
+import { getStrategicContextForAgent, recordReport, type ReportRecord } from './strategic-memory.js';
 
 // ============================================================================
 // TYPES
@@ -739,6 +743,7 @@ export function determineAdaptations(
 export async function analyzeOrganicContent(
   contentUrl: string,
   contentData: {
+    userId?: string; // For closed-loop recommendations
     platform: 'instagram' | 'tiktok' | 'youtube' | 'facebook';
     comments: { text: string; category: string; sentiment: string; emotionalTriggers: string[] }[];
     creatorAnalysis?: Parameters<typeof extractCreatorDNA>[0];
@@ -831,6 +836,84 @@ export async function analyzeOrganicContent(
     addressesObjections: contentData.contentFeatures.hasObjectionHandling,
     hasVisualProofMoment: contentData.contentFeatures.hasProofDemonstration
   });
+
+  // Wire into closed-loop system
+  if (contentData.userId) {
+    // High CCP score - recommend creating adaptation
+    if (ccpScore.verdict === 'immediate_priority') {
+      agentRecommend(contentData.userId, 'organic_paid_intelligence', {
+        type: 'test_creative',
+        entityType: 'creative',
+        entityId: `organic_${Date.now()}`,
+        entityName: `Organic Content: ${contentUrl.slice(0, 50)}`,
+        action: `Adapt high-potential organic content (CCP: ${ccpScore.total}/100)`,
+        reasoning: ccpScore.reasoning,
+        evidence: [
+          `CCP Score: ${ccpScore.total}/100`,
+          `Verdict: ${ccpScore.verdict}`,
+          `Purchase Psychology: ${ccpScore.breakdown.purchasePsychology}/25`,
+          `Trust Transferability: ${ccpScore.breakdown.trustTransferability}/25`,
+          `Primary Format: ${adaptationPotential.primaryFormat}`,
+        ],
+        confidence: 85,
+        predictedSavings: 50000, // Estimated value of successful creative
+      });
+    }
+
+    // Trend timing shows optimal entry
+    if (trendTiming && trendTiming.action === 'enter_now') {
+      agentRecommend(contentData.userId, 'organic_paid_intelligence', {
+        type: 'test_creative',
+        entityType: 'creative',
+        entityId: `trend_${Date.now()}`,
+        entityName: `Trend Opportunity: ${trendTiming.phase}`,
+        action: `Enter trend now - ${trendTiming.estimatedDaysRemaining} days remaining`,
+        reasoning: trendTiming.reasoning,
+        evidence: [
+          `Trend Phase: ${trendTiming.phase}`,
+          `Usage Count: ${trendTiming.usageCount.toLocaleString()}`,
+          `Brands Using: ${trendTiming.brandsUsing}`,
+          `Brand Fit: ${trendTiming.brandFit}/100`,
+          `Days Remaining: ${trendTiming.estimatedDaysRemaining}`,
+        ],
+        confidence: 75,
+        predictedSavings: 30000, // Early trend entry value
+      });
+    }
+
+    // Commercial viability with strong objection handling
+    const objectionComments = commentIntelligence.filter(c => c.intent === 'objection');
+    if (objectionComments.length >= 3) {
+      const topObjection = objectionComments[0];
+      agentRecommend(contentData.userId, 'organic_paid_intelligence', {
+        type: 'refresh_creative',
+        entityType: 'creative',
+        entityId: `objection_${Date.now()}`,
+        entityName: `Objection Pattern: ${topObjection.purchasePsychology.activeObjection}`,
+        action: `Create objection-handling creative for "${topObjection.purchasePsychology.activeObjection}"`,
+        reasoning: `${objectionComments.length} comments show same objection pattern. Creating targeted content could unblock conversions.`,
+        evidence: [
+          `Objection Type: ${topObjection.purchasePsychology.activeObjection}`,
+          `Comments with objection: ${objectionComments.length}`,
+          `Suggested Hook: ${topObjection.strategyOutput.hookSuggestion}`,
+          `Emotional Arc: ${topObjection.strategyOutput.emotionalArc}`,
+        ],
+        confidence: 70,
+        predictedSavings: 25000, // Conversion improvement value
+      });
+    }
+
+    // === STRATEGIC MEMORY: Record episode for organic intelligence findings ===
+    if (ccpScore.verdict === 'immediate_priority' || ccpScore.verdict === 'test_with_mods') {
+      recordEpisode(
+        contentData.userId,
+        'content',
+        `Organic Intel: Found ${ccpScore.verdict} content (CCP: ${ccpScore.total}/100) - ${contentUrl.slice(0, 50)}`,
+        JSON.stringify({ ccpScore: ccpScore.total, verdict: ccpScore.verdict, platform: contentData.platform }),
+        'pending'
+      ).catch(epErr => logger.warn({ err: epErr }, '[OrganicPaid] Episode recording failed'));
+    }
+  }
 
   return {
     id: uuidv4(),

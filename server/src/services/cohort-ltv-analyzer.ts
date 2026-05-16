@@ -21,6 +21,12 @@ import {
   getClientContext, getCohortLTVStore, updateCohortLTVStore,
   getCohortLTVGapThreshold, createRecommendation, type ServiceClient,
 } from './service-clients.js';
+// CLOSED-LOOP OPERATING SYSTEM
+import { agentRecommend } from './recommendation-loop.js';
+// STRATEGIC MEMORY - Week-to-week learning
+import { recordEpisode } from './agent-memory.js';
+import { getStrategicContextForAgent, recordReport, type ReportRecord } from './strategic-memory.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // ============ TYPES ============
 
@@ -828,6 +834,12 @@ export async function analyzeCohortLTVForClient(
   const { client } = ctx;
   const ltvStore = getCohortLTVStore(clientId);
 
+  // === STRATEGIC MEMORY: Load context from previous runs ===
+  const strategicContext = getStrategicContextForAgent(clientId);
+  if (strategicContext) {
+    logger.info({ contextLength: strategicContext.length }, '[CohortLTV] Loaded strategic context');
+  }
+
   logger.info({
     clientId,
     brandName: client.brandName,
@@ -888,6 +900,72 @@ export async function analyzeCohortLTVForClient(
       ltvGapPercent,
       recommendations: analysis.recommendations,
     });
+
+    // === CLOSED-LOOP OPERATING SYSTEM ===
+    if (analysis.worstChannel && analysis.bestChannel) {
+      try {
+        agentRecommend(clientId, 'cohort_ltv', {
+          type: 'change_targeting',
+          entityType: 'account',
+          entityId: analysis.worstChannel.displayName,
+          entityName: analysis.worstChannel.displayName,
+          action: `Shift budget from ${analysis.worstChannel.displayName} to ${analysis.bestChannel.displayName}`,
+          reasoning: `LTV gap of ₹${analysis.ltvGap.toLocaleString()} (${ltvGapPercent}%) between best (${analysis.bestChannel.displayName}: ₹${analysis.bestChannel.avgLTV?.toLocaleString()}) and worst (${analysis.worstChannel.displayName}: ₹${analysis.worstChannel.avgLTV?.toLocaleString()}) channels`,
+          evidence: [
+            `Best channel: ${analysis.bestChannel.displayName} (LTV: ₹${analysis.bestChannel.avgLTV?.toLocaleString()})`,
+            `Worst channel: ${analysis.worstChannel.displayName} (LTV: ₹${analysis.worstChannel.avgLTV?.toLocaleString()})`,
+            `LTV gap: ₹${analysis.ltvGap.toLocaleString()} (${ltvGapPercent}%)`,
+            `Account avg LTV: ₹${analysis.avgAccountLTV?.toLocaleString()}`,
+          ],
+          confidence: 75,
+          predictedSavings: analysis.ltvGap * 10, // Rough estimate: gap * assumed monthly customers
+        });
+      } catch (loopErr) {
+        logger.warn({ err: loopErr }, '[CohortLTV] Closed-loop tracking failed');
+      }
+    }
+
+    // === STRATEGIC MEMORY: Record episode for LTV gap detection ===
+    recordEpisode(
+      'system',
+      'audience',
+      `LTV Gap Alert: ${analysis.bestChannel?.displayName} vs ${analysis.worstChannel?.displayName} (${ltvGapPercent.toFixed(0)}% gap) for ${client.brandName}`,
+      JSON.stringify({ bestChannel: analysis.bestChannel?.displayName, worstChannel: analysis.worstChannel?.displayName, gap: ltvGapPercent }),
+      'pending'
+    ).catch(epErr => logger.warn({ err: epErr }, '[CohortLTV] Episode recording failed'));
+  }
+
+  // === STRATEGIC MEMORY: Record report summary ===
+  try {
+    const now = new Date();
+    const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const reportRecord: ReportRecord = {
+      id: uuidv4(),
+      clientId,
+      reportType: 'cohort-ltv',
+      generatedAt: now.toISOString(),
+      weekNumber,
+      year: now.getFullYear(),
+      headline: `LTV Report: ${analysis.channels?.length || 0} channels analyzed, ${ltvGapPercent.toFixed(0)}% LTV gap`,
+      keyInsights: [
+        `Best channel: ${analysis.bestChannel?.displayName || 'N/A'}`,
+        `Worst channel: ${analysis.worstChannel?.displayName || 'N/A'}`,
+        `LTV gap threshold: ${gapThreshold}%`,
+      ],
+      recommendations: shouldAlert ? [`Shift budget from ${analysis.worstChannel?.displayName} to ${analysis.bestChannel?.displayName}`] : [],
+      metricsSnapshot: {
+        channelCount: analysis.channels?.length || 0,
+        ltvGap: ltvGapPercent,
+        gapThreshold
+      },
+      qualityScore: 80,
+      wasShipped: shouldAlert,
+      shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
+      deliveredVia: [],
+    };
+    recordReport(reportRecord);
+  } catch (repErr) {
+    logger.warn({ err: repErr }, '[CohortLTV] Report recording failed');
   }
 
   return {

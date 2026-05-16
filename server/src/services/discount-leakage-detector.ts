@@ -16,6 +16,12 @@ import {
   getDiscountLeakageStore, updateDiscountLeakageStore, getDiscountLeakageAlertThreshold,
   createRecommendation, type ServiceClient,
 } from './service-clients.js';
+// CLOSED-LOOP OPERATING SYSTEM
+import { agentRecommend } from './recommendation-loop.js';
+// STRATEGIC MEMORY - Week-to-week learning
+import { recordEpisode } from './agent-memory.js';
+import { getStrategicContextForAgent, recordReport, type ReportRecord } from './strategic-memory.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // ============ TYPES ============
 
@@ -625,6 +631,12 @@ export async function runDiscountLeakageForClient(
   const { client } = ctx;
   const leakageStore = getDiscountLeakageStore(clientId);
 
+  // === STRATEGIC MEMORY: Load context from previous runs ===
+  const strategicContext = getStrategicContextForAgent(clientId);
+  if (strategicContext) {
+    logger.info({ contextLength: strategicContext.length }, '[Leakage] Loaded strategic context');
+  }
+
   logger.info({
     clientId,
     brandName: client.brandName,
@@ -709,6 +721,73 @@ export async function runDiscountLeakageForClient(
       topCodes: report.leakedCodes.slice(0, 5),
       severity: report.severity,
     });
+
+    // === CLOSED-LOOP OPERATING SYSTEM ===
+    const topCode = report.leakedCodes[0];
+    if (topCode) {
+      try {
+        agentRecommend(clientId, 'discount_leakage', {
+          type: 'fix_discount_leak',
+          entityType: 'product',
+          entityId: topCode.code,
+          entityName: topCode.code,
+          action: 'Rotate or expire leaked discount codes',
+          reasoning: `${newLeakedCodes.length} codes leaked on coupon sites causing ₹${report.totalRevenueLeakage.toLocaleString()} revenue leakage. Severity: ${report.severity}`,
+          evidence: [
+            `${newLeakedCodes.length} codes found on coupon sites`,
+            `₹${report.totalRevenueLeakage.toLocaleString()} estimated leakage`,
+            `Top code: ${topCode.code} (${topCode.estimatedImpact?.ordersAffected || 0} orders affected)`,
+            `Severity: ${report.severity}`,
+          ],
+          confidence: 85,
+          predictedSavings: report.totalRevenueLeakage,
+        });
+      } catch (loopErr) {
+        logger.warn({ err: loopErr }, '[Leakage] Closed-loop tracking failed');
+      }
+    }
+
+    // === STRATEGIC MEMORY: Record episode for leakage detection ===
+    recordEpisode(
+      'system',
+      'sales',
+      `Leakage Alert: ${newLeakedCodes.length} codes leaked causing ₹${report.totalRevenueLeakage.toLocaleString()} loss for ${client.brandName}`,
+      JSON.stringify({ newCodes: newLeakedCodes.length, totalLeakage: report.totalRevenueLeakage, severity: report.severity }),
+      'pending'
+    ).catch(epErr => logger.warn({ err: epErr }, '[Leakage] Episode recording failed'));
+  }
+
+  // === STRATEGIC MEMORY: Record report summary ===
+  try {
+    const now = new Date();
+    const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const reportRecord: ReportRecord = {
+      id: uuidv4(),
+      clientId,
+      reportType: 'discount-leakage',
+      generatedAt: now.toISOString(),
+      weekNumber,
+      year: now.getFullYear(),
+      headline: `Leakage Report: ${report.leakedCodes.length} codes, ₹${report.totalRevenueLeakage.toLocaleString()} leaked`,
+      keyInsights: [
+        `${newLeakedCodes.length} new leaked codes detected`,
+        `Alert threshold: ₹${alertThreshold.toLocaleString()}`,
+        `Severity: ${report.severity}`,
+      ],
+      recommendations: shouldAlert ? [`Rotate ${newLeakedCodes.length} leaked discount codes`] : [],
+      metricsSnapshot: {
+        leakedCodes: report.leakedCodes.length,
+        totalLeakage: report.totalRevenueLeakage,
+        alertThreshold
+      },
+      qualityScore: 80,
+      wasShipped: shouldAlert,
+      shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
+      deliveredVia: [],
+    };
+    recordReport(reportRecord);
+  } catch (repErr) {
+    logger.warn({ err: repErr }, '[Leakage] Report recording failed');
   }
 
   return {

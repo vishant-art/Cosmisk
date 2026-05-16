@@ -14,6 +14,12 @@ import {
   getClientContext, getFatigueDetectorStore, updateFatigueDetectorStore,
   getFatigueFrequencyThreshold, createRecommendation, type ServiceClient,
 } from './service-clients.js';
+// CLOSED-LOOP OPERATING SYSTEM
+import { agentRecommend } from './recommendation-loop.js';
+// STRATEGIC MEMORY - Week-to-week learning
+import { recordEpisode } from './agent-memory.js';
+import { getStrategicContextForAgent, recordReport, type ReportRecord } from './strategic-memory.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface CreativeMetrics {
   id: string;
@@ -383,6 +389,12 @@ export function detectFatigueForClient(
   const { client } = ctx;
   const fatigueStore = getFatigueDetectorStore(clientId);
 
+  // === STRATEGIC MEMORY: Load context from previous runs ===
+  const strategicContext = getStrategicContextForAgent(clientId);
+  if (strategicContext) {
+    logger.info({ contextLength: strategicContext.length }, '[Fatigue] Loaded strategic context');
+  }
+
   logger.info({
     clientId,
     brandName: client.brandName,
@@ -452,6 +464,69 @@ export function detectFatigueForClient(
         .slice(0, 5)
         .map(c => ({ name: c.name, frequency: c.frequency, status: c.status })),
     });
+
+    // === STRATEGIC MEMORY: Record episode for fatigue detection ===
+    recordEpisode(
+      'system',
+      'watchdog',
+      `Fatigue Alert: ${newFatiguedCreatives.length} creatives exceeded threshold (${frequencyThreshold}) for ${client.brandName}`,
+      JSON.stringify({ newFatigued: newFatiguedCreatives.length, totalAnalyzed: creatives.length, frequencyThreshold }),
+      'pending'
+    ).catch(epErr => logger.warn({ err: epErr }, '[Fatigue] Episode recording failed'));
+
+    // === CLOSED-LOOP OPERATING SYSTEM ===
+    const topFatigued = analyzedCreatives.find(c => newFatiguedCreatives.includes(c.id));
+    if (topFatigued) {
+      try {
+        agentRecommend(clientId, 'fatigue_detector', {
+          type: 'refresh_creative',
+          entityType: 'creative',
+          entityId: topFatigued.id,
+          entityName: topFatigued.name,
+          action: 'Replace fatigued creatives with fresh variants',
+          reasoning: `${newFatiguedCreatives.length} creatives have exceeded frequency threshold (${frequencyThreshold}). Top: ${topFatigued.name} at ${topFatigued.frequency} frequency`,
+          evidence: [
+            `${newFatiguedCreatives.length} creatives fatigued`,
+            `Frequency threshold: ${frequencyThreshold}`,
+            `Top fatigued: ${topFatigued.name} (freq: ${topFatigued.frequency})`,
+            `Status: ${topFatigued.status}`,
+          ],
+          confidence: 80,
+          predictedSavings: 0, // Hard to estimate savings from fatigue
+        });
+      } catch (loopErr) {
+        logger.warn({ err: loopErr }, '[Fatigue] Closed-loop tracking failed');
+      }
+    }
+  }
+
+  // === STRATEGIC MEMORY: Record report summary ===
+  try {
+    const now = new Date();
+    const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const reportRecord: ReportRecord = {
+      id: uuidv4(),
+      clientId,
+      reportType: 'fatigue-detection',
+      generatedAt: now.toISOString(),
+      weekNumber,
+      year: now.getFullYear(),
+      headline: `Fatigue Report: ${summary.fatiguing} fatiguing, ${summary.dead} dead creatives`,
+      keyInsights: [
+        `Frequency threshold: ${frequencyThreshold}`,
+        `Status: ${summary.scaling} scaling, ${summary.healthy} healthy, ${summary.watch} watch`,
+        shouldAlert ? `${newFatiguedCreatives.length} creatives need replacement` : 'No immediate action needed',
+      ],
+      recommendations: shouldAlert ? [`Replace ${newFatiguedCreatives.length} fatigued creatives`] : [],
+      metricsSnapshot: { ...summary, frequencyThreshold },
+      qualityScore: 80,
+      wasShipped: shouldAlert,
+      shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
+      deliveredVia: [],
+    };
+    recordReport(reportRecord);
+  } catch (repErr) {
+    logger.warn({ err: repErr }, '[Fatigue] Report recording failed');
   }
 
   return {
