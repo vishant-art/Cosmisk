@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 <!-- PROJECT MEMORY - Updated 2026-05-10 -->
 
 ## MANDATORY: Architecture Governance (READ FIRST)
@@ -935,18 +934,12 @@ interface StyleBrief {
 <!-- code-review-graph MCP tools -->
 ## MCP Tools: code-review-graph
 
-**IMPORTANT: This project has a knowledge graph. ALWAYS call code-review-graph MCP tools
-=======
-## MCP Tools: code-review-graph
-
-This project has a knowledge graph. ALWAYS call code-review-graph MCP tools
->>>>>>> 4e872ae (chore: init cleanup)
+**IMPORTANT:** This project has a knowledge graph. ALWAYS call code-review-graph MCP tools
 before Grep/Glob/Read for codebase exploration, impact analysis, or code
 review. Fall back to Grep/Read only when the graph doesn't cover the need.
 
 See `.claude/code-review-graph-usage.md` for tool reference, phase-by-phase
 guidance, and prompt patterns.
-<<<<<<< HEAD
 
 ---
 
@@ -1006,5 +999,3 @@ Full workflows documented in: `mcp-servers/bridge-service-workflows.md`
 2. Use `detect_changes` for code review.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
-=======
->>>>>>> 4e872ae (chore: init cleanup)
