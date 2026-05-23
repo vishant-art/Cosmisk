@@ -80,7 +80,5 @@ scripts/shopify-auth/.shopify-token*.json
 
 #cluade
 .claude/
-#dev internal reports
-dev_reports/
 
 public/
