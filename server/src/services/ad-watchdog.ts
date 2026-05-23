@@ -887,8 +887,11 @@ export async function runWatchdogForClient(
     // Gather account snapshot
     const snapshot = await gatherAccountSnapshot(meta, metaAccountId);
 
-    // Get AI-powered decisions with intelligence integration
-    const decisions = await reasonAboutPerformance(snapshot, [], '', clientId);
+    // Get AI-powered decisions with intelligence integration.
+    // Client-mode watchdog uses clientId as the LLM-gateway principal — the
+    // run has no separate userId in scope, and per-client billing matches
+    // the service-clients ownership model.
+    const decisions = await reasonAboutPerformance(clientId, snapshot, [], '', clientId);
 
     // Run OOS check with client context
     let oosReport = null;

@@ -144,12 +144,17 @@ if (tier !== config.anthropicTier) {
 const limiters: Record<ModelClass, Bottleneck> = (Object.keys(LIMITS_BY_TIER[tier]) as ModelClass[])
   .reduce((acc, cls) => {
     const lim = LIMITS_BY_TIER[tier][cls];
+    // NB: maxConcurrent intentionally left unset. Bottleneck rejects a job
+    // whose `weight` exceeds maxConcurrent (e.g. weight=1000 tokens against
+    // maxConcurrent=5 throws "Impossible to add a job…"). The reservoir
+    // already gates throughput by token budget, and the per-second cap via
+    // minTime gates RPM, so an explicit concurrency cap would only re-enact
+    // the same constraints with extra failure modes.
     acc[cls] = new Bottleneck({
       minTime: Math.ceil(60_000 / lim.rpm),
       reservoir: lim.itpm,
       reservoirRefreshAmount: lim.itpm,
       reservoirRefreshInterval: 60_000,
-      maxConcurrent: 5,
     });
     return acc;
   }, {} as Record<ModelClass, Bottleneck>);
