@@ -21,7 +21,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    * GET /schedules/status
    * Get scheduler status
    */
-  app.get('/status', async () => {
+  app.get('/status', { preHandler: [app.authenticate] }, async () => {
     return getSchedulerStatus();
   });
 
@@ -29,7 +29,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    * POST /schedules/start
    * Start the scheduler
    */
-  app.post('/start', async () => {
+  app.post('/start', { preHandler: [app.authenticate] }, async () => {
     initializeScheduler();
     return { success: true, message: 'Scheduler started' };
   });
@@ -38,7 +38,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    * POST /schedules/stop
    * Stop the scheduler
    */
-  app.post('/stop', async () => {
+  app.post('/stop', { preHandler: [app.authenticate] }, async () => {
     stopScheduler();
     return { success: true, message: 'Scheduler stopped' };
   });
@@ -47,7 +47,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    * GET /schedules
    * List all scheduled audits
    */
-  app.get('/', async (request) => {
+  app.get('/', { preHandler: [app.authenticate] }, async (request) => {
     const { brandId } = request.query as { brandId?: string };
     return listScheduledAudits(brandId);
   });
@@ -58,7 +58,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get<{
     Params: { id: string };
-  }>('/:id', async (request, reply) => {
+  }>('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const schedule = getScheduledAudit(request.params.id);
 
     if (!schedule) {
@@ -80,7 +80,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
       frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly';
       datePreset?: 'last_7d' | 'last_14d' | 'last_30d';
     };
-  }>('/', async (request, reply) => {
+  }>('/', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { brandId, brandName, frequency, datePreset } = request.body;
 
     if (!brandId || !brandName || !frequency) {
@@ -115,7 +115,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
       datePreset?: 'last_7d' | 'last_14d' | 'last_30d';
       enabled?: boolean;
     };
-  }>('/:id', async (request, reply) => {
+  }>('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { frequency, datePreset, enabled } = request.body;
 
     const schedule = updateScheduledAudit(request.params.id, {
@@ -138,7 +138,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    */
   app.delete<{
     Params: { id: string };
-  }>('/:id', async (request, reply) => {
+  }>('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const deleted = deleteScheduledAudit(request.params.id);
 
     if (!deleted) {
@@ -155,7 +155,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post<{
     Params: { id: string };
-  }>('/:id/trigger', async (request, reply) => {
+  }>('/:id/trigger', { preHandler: [app.authenticate] }, async (request, reply) => {
     const triggered = await triggerScheduledAudit(request.params.id);
 
     if (!triggered) {
