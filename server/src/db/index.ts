@@ -1,5 +1,7 @@
 import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { config } from '../config.js';
 import { createTables } from './schema.js';
 
@@ -51,6 +53,9 @@ function seedReviewerAccount(database: Database.Database): void {
 
 export function getDb(): Database.Database {
   if (!db) {
+    if (config.databasePath !== ':memory:') {
+      mkdirSync(dirname(config.databasePath), { recursive: true });
+    }
     db = new Database(config.databasePath);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');

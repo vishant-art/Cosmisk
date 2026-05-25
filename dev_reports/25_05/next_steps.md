@@ -49,21 +49,29 @@ Original plan: generalise `ensureUsersColumn` into `ensureColumn(table, column, 
 
 **Replaced by:** M1 reconciliation step (see § 3.1 below).
 
-### 2.3 — Commit 5c: Local Docker build smoke + container-run tests
+### 2.3 — Step 5c: Local Docker verification (NOT a commit by default)
 
-🟡 `docker build -t cosmisk-test .` from repo root. ~10 min. Validates that sharp + node-canvas + better-sqlite3 native modules compile on `node:22-alpine`.
+This is a **verification step**, not a commit. A commit only happens if the build or test run surfaces an issue and we have to change the Dockerfile.
 
-If it fails on sharp: add `RUN apk add --no-cache vips-dev` to the builder stage of `Dockerfile`. If it fails on better-sqlite3 native build: the Dockerfile already installs `python3 make g++` in the builder stage, so that should be fine — but if it surfaces, add `libstdc++` to the builder layer (it's already in production layer).
+**Build smoke:**
+```bash
+docker build -t cosmisk-test .
+```
+~10 min on cold cache. Validates that `sharp@^0.33.5` (uses precompiled `@img/sharp-libvips-linuxmusl-x64`) and `better-sqlite3@^11.7.0` (compiled via `python3 make g++` in the builder stage) install cleanly on `node:22-alpine`.
 
-**Bonus role for the docker build:** since vitest bus-errors on this WSL2 host (ON_HOLD.md item 6), the container is now our canonical test environment. After the build:
-
+**Container-run tests (vitest workaround):**
 ```bash
 docker run --rm -w /app/server cosmisk-test npm test 2>&1 | tail -60
 ```
+Confirm: 8 known skips, no new failures. The container has no WSL2 syscall layer, so vitest runs clean (ON_HOLD item 6).
 
-Confirm: 8 known skips, no new failures. If new failures surface, triage in ON_HOLD.md before opening PR — CI is authoritative but pre-checking saves a round-trip.
+**Result branches:**
+- ✅ Both pass → no commit. Proceed to Commit 6.
+- ❌ Build fails on sharp → add `RUN apk add --no-cache vips-dev` to the builder stage; that becomes Commit 5d (Dockerfile fix).
+- ❌ Build fails on better-sqlite3 native → unlikely (deps already present), but if it surfaces, add `libstdc++` to the builder layer. Commit 5d.
+- ❌ Container `npm test` shows a 9th unknown failure → triage. Either fix or add to ON_HOLD before PR.
 
-### 2.4 — Commit 6: Push + open PR
+### 2.4 — Commit 6: Push + open PR (the only commit-level step left if 5c is clean)
 
 🟢 `git push origin analysis-and-cleanup`. The first push of this session went through (`1a7a04e → 270366e`); this second push covers `0f2adbc` (docs) + `c4012f9` (merge) + whatever 5c adds. No force needed — fast-forward only.
 
@@ -222,8 +230,8 @@ Same as `24_05/next_steps.md` § 7 — `/schedules` auth, intelligence-route aud
 1. ✅ **Commit 4** (`270366e`): `it.skip` 8 test fails — done, pushed.
 2. ✅ **Commit 5a** (`0f2adbc`): dev_reports + ON_HOLD — done, LOCAL.
 3. ✅ **Commit 5b** (`c4012f9`): merge `origin/main` + post-merge fixes — done, LOCAL.
-4. **Commit 5c:** Local docker build smoke + `npm test` in container (10 min)
-5. `git push origin analysis-and-cleanup` (1 min) — pushes `0f2adbc`, `c4012f9`, and 5c if separate
+4. **Step 5c (verification, not a commit):** `docker build` + `docker run npm test`. Pass → continue. Fail → fix Dockerfile, that's Commit 5d.
+5. `git push origin analysis-and-cleanup` (1 min) — pushes `0f2adbc`, `c4012f9`, plus 5d if a Dockerfile fix was needed.
 6. **Commit 6 = open PR** `analysis-and-cleanup → main`. Title: *"Unblock backend build + close one production bug"*. Body must include the known-issues list (all M0 ON_HOLD items referenced). (5 min)
 7. CI green → merge (passive wait)
 8. New Railway account project setup (new infra; not blocking PR merge) (~30 min — Sanskar)

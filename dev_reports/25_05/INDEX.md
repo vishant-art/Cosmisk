@@ -56,7 +56,8 @@ The Tier 1 plan in `24_05/next_steps.md` had four commits before push (3 → 4 �
 | 4 (was 5) | `it.skip` 8 pre-existing test fails | ✅ landed (`270366e`) |
 | 5a | Commit dev_reports (INDEX + session_log + Railway + fork + ON_HOLD) | ✅ landed (`0f2adbc`) |
 | 5b | Merge `origin/main` (resolve 3 conflicts) + post-merge fixes (AgentType, static-ad-generator stub) | ✅ landed (`c4012f9`) |
-| 5c | Local docker build smoke (sharp on Alpine + `npm test` in container) | pending |
+| 5c | **Verification step** — `docker build` + `docker run npm test` | ✅ done (build clean, 36/36 files pass) |
+| 5d | **Conditional commit** — hardened `getDb()` to create data dir (`server/src/db/index.ts`); fixes a main-side pre-existing CI failure on `memory-integration.test.ts` | ✅ landed (bundle commit) |
 | 6 | Push + open PR `→ main` | pending |
 
 PR description will explicitly note:
