@@ -1,7 +1,7 @@
 # `dev_reports/25_05/` — Index
 
 **Date:** 2026-05-25
-**Branch:** `analysis-and-cleanup` (5 commits ahead of `origin/analysis-and-cleanup`, not pushed yet)
+**Branch:** `analysis-and-cleanup` — 42 commits ahead of `origin/main`; HEAD `c4012f9` (merge commit). Pushed through commit `270366e`; everything since (`0f2adbc` docs, `c4012f9` merge) is local-only.
 **Session continuation:** rolls forward from `24_05/` set. Today's reports cover decisions taken after the `shopify_tokens` fork was discovered late on 2026-05-24.
 
 > Additive to `dev_reports/24_05/`. The 24_05 reports proposed the Tier 1 fix sequence; today's reports record what changed when the `shopify_tokens` patch turned out to be larger than estimated, and how the Railway-data question was settled.
@@ -27,14 +27,17 @@ Also updated today:
 ### State of the branch
 
 ```
-d4195fe  fix(server): require auth on all /schedules routes        ← landed late 2026-05-24
-7b08d0b  build(server): pin @types/node to ^20.19.0                ← landed late 2026-05-24
+c4012f9  merge: bring origin/main into analysis-and-cleanup      ← 2026-05-25 pm (LOCAL)
+0f2adbc  docs: add 25_05 decision reports + ON_HOLD ledger       ← 2026-05-25 pm (LOCAL)
+270366e  test(server): skip 8 pre-existing failures              ← 2026-05-25 pm (PUSHED)
+d4195fe  fix(server): require auth on all /schedules routes      ← landed 2026-05-24
+7b08d0b  build(server): pin @types/node to ^20.19.0              ← landed 2026-05-24
 1c6a26a  docs: add 24_05 decision reports
 c6d4f79  docs: track dev_reports under date-stamped folders
 63e4711  fix(server): unblock build, wire Bridge Service route stubs
 ```
 
-Five commits ahead of `origin/analysis-and-cleanup`. Zero pushed. None of the prior `analysis-and-cleanup` work is on the remote either (per `24_05/INDEX.md` — 80 commits ahead at the start of yesterday).
+**42 commits ahead of `origin/main`** (real PR base). The remote `origin/analysis-and-cleanup` was at `1a7a04e` (May 3) before today; first push of this session went `1a7a04e → 270366e` (84 commits). Two more commits (`0f2adbc` docs, `c4012f9` merge) are local-only — need a follow-up push before the PR.
 
 ### Two material discoveries on 2026-05-24 late
 
@@ -50,11 +53,16 @@ The Tier 1 plan in `24_05/next_steps.md` had four commits before push (3 → 4 �
 | 3 | `routes/schedules.ts` — auth preHandler | ✅ landed (`d4195fe`) |
 | 3a | `@types/node` pin | ✅ landed (`7b08d0b`) |
 | ~~4~~ | ~~`shopify_tokens.shop_name` patch~~ | **DROPPED → folded into M1** |
-| 4 (was 5) | `it.skip` 8 pre-existing test fails | pending |
-| 5 (was 6) | Local docker build smoke (sharp on Alpine) | pending |
-| 6 (was 7) | `git push` + open PR `→ main` | pending |
+| 4 (was 5) | `it.skip` 8 pre-existing test fails | ✅ landed (`270366e`) |
+| 5a | Commit dev_reports (INDEX + session_log + Railway + fork + ON_HOLD) | ✅ landed (`0f2adbc`) |
+| 5b | Merge `origin/main` (resolve 3 conflicts) + post-merge fixes (AgentType, static-ad-generator stub) | ✅ landed (`c4012f9`) |
+| 5c | Local docker build smoke (sharp on Alpine + `npm test` in container) | pending |
+| 6 | Push + open PR `→ main` | pending |
 
-PR description will explicitly note: `/shopify/*` routes are known-broken against legacy-shape DBs and will be reconciled by M1's Postgres+Drizzle migration.
+PR description will explicitly note:
+- `/shopify/*` routes are known-broken against legacy-shape DBs and will be reconciled by M1's Postgres+Drizzle migration.
+- Local vitest crashes on WSL2 (ON_HOLD item 6); CI/Docker run is authoritative for test status.
+- `static-ad-generator.ts` is a stub (ON_HOLD item 13); full impl deferred to M2.
 
 ---
 
@@ -68,9 +76,13 @@ PR description will explicitly note: `/shopify/*` routes are known-broken agains
 
 ## Critical facts to remember after `/compact`
 
-- **Branch is unpushed.** `analysis-and-cleanup` has 5 local commits, none on `origin`. Don't assume any of this work is durable until push.
-- **`origin/main` is broken.** Established in `24_05/merge_readiness.md`. This branch is the first to make `main` buildable again.
+- **HEAD `c4012f9` is local-only.** The merge of `origin/main` and the docs commit (`0f2adbc`) need a push before the PR can open. Through `270366e` is on the remote.
+- **`origin/main` had 8 commits we didn't have**, including a May 20 CODE FREEZE notice. The freeze blocks non-engineers from touching `server/src/`; we (on `analysis-and-cleanup`) are explicitly the team it authorises. Merged in cleanly with 4 conflicts: CLAUDE.md (took theirs, thin), pattern-extractor.ts (took theirs, full Gemini impl), llm-gateway.ts (took ours, rate-limited API), ad-watchdog.ts (kept main's Factual Validation + adapted LLM call to our new `createMessage`).
+- **CLAUDE.md is now the thin freeze version (~112 lines)** on this branch. The fat engineering version is in git history (any commit before `c4012f9`'s parent).
+- **AgentType extended** to include `'inventory' | 'audience'` (`server/src/types/index.ts:341`). Main's orchestrator/registry referenced these literals but the union was never updated on main — pre-existing tsc error inherited and fixed here.
+- **`static-ad-generator.ts` is a stub.** Main's `agent-orchestrator.ts:275` dynamically imports it; the file never existed on main. Stub returns empty. Full impl is ON_HOLD item 13 (M2).
 - **No production data.** Old Railway account being retired; volume sacrificed; new account is a cold start. M1 doesn't need a data migration step — just schema setup.
 - **`shopify_tokens` has two readers using two different PKs.** `routes/shopify.ts` + `services/shopify-client.ts` + `ad-watchdog.ts` use `user_id`; `services/cohort-ltv-analyzer.ts:184` + `services/unified-agent-runner.ts:178` use `brand_id`. M1 has to pick one (canonical: `user_id`) and patch the two stragglers.
-- **Encryption-key continuity matters for OAuth tokens.** Even if Railway DB were recovered, tokens were encrypted with the old instance's `ENCRYPTION_KEY` / `JWT_SECRET`. Re-OAuth is mandatory regardless of recovery path. (Moot here: no real OAuth was ever stored.)
+- **Encryption-key continuity matters for OAuth tokens.** Re-OAuth is mandatory regardless. (Moot here: no real OAuth was ever stored.)
+- **Vitest bus-errors on this WSL2 host.** ON_HOLD item 6. CI/Docker run is the authoritative test environment.
 - **Session protocol still active:** explain each fix before applying; log every step in `session_log.md`; no `Co-Authored-By: Claude` trailers; no "Generated with Claude Code" attribution.
