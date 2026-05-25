@@ -6,20 +6,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph update --quiet",
-            "timeout": 5000
+            "command": "code-review-graph update --skip-flows",
+            "timeout": 30
           }
         ]
       }
     ],
     "SessionStart": [
       {
-        "matcher": "startup",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph status --json",
-            "timeout": 3000
+            "command": "code-review-graph status",
+            "timeout": 10
           }
         ]
       }

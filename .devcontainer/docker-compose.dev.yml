@@ -1,0 +1,42 @@
+services:
+  cosmisk-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cosmisk-dev
+    hostname: cosmisk-dev
+    working_dir: /workspace
+    command: ["sleep", "infinity"]
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      # production: required so server/src/index.ts:265 mounts the static
+      # frontend bundle. The boot guard in server/src/config.ts:68-101 passes
+      # because .env.example has truthy placeholders for ANTHROPIC_API_KEY
+      # and META_APP_SECRET (calls fail at request time, not boot time).
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_PATH: /workspace/server/data/cosmisk.db
+      APP_URL: http://localhost:3000
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+    env_file:
+      - ../server/.env
+    volumes:
+      # Source: bind-mounted so host edits are visible inside the container
+      - ../:/workspace:cached
+      # node_modules: named volumes (avoid host FS perf hit, keep host clean)
+      - root_node_modules:/workspace/node_modules
+      - server_node_modules:/workspace/server/node_modules
+      # SQLite data: bind-mounted so DB survives container removal and is host-inspectable
+      - ../server/data:/workspace/server/data
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+    restart: unless-stopped
+
+volumes:
+  root_node_modules:
+  server_node_modules:

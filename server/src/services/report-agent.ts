@@ -13,8 +13,7 @@ import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.j
 import { assessConfidence, computeTrend } from './trend-analyzer.js';
 import { buildContextWindow, recordEpisode, recordDecisionEpisode } from './agent-memory.js';
 import { notifyAlert } from './notifications.js';
-import { config } from '../config.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
@@ -25,8 +24,6 @@ import {
   isStrategicEnough,
 } from './intelligence-integration.js';
 import { filterInsights, checkInsightQuality } from './quality-gate.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -162,11 +159,15 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
       topCreatives, lastReport, memoryContext,
     );
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      temperature: 0.3,
-      messages: [{ role: 'user', content: prompt }],
+    const response = await createMessage({
+      userId,
+      operation: 'report-agent.generateAccountReport',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        temperature: 0.3,
+        messages: [{ role: 'user', content: prompt }],
+      },
     });
 
     const rawText = extractText(response);

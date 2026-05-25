@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from '../services/llm-gateway.js';
 import { randomUUID } from 'crypto';
-import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow, MetaTokenRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
@@ -11,8 +10,6 @@ import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
 import { safeJsonParse } from '../utils/safe-json.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /** Aggregated job stats for a time window */
 interface JobStatsRow {
@@ -322,12 +319,16 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 }`;
 
     try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 3000,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Generate content for these platforms: ${targetPlatforms.join(', ')}\n\n${dataContext}${metaPerfSection ? `\n${metaPerfSection}` : ''}` }],
+      const response = await createMessage({
+        userId,
+        operation: 'content.generate',
+        request: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 3000,
+          temperature: 0.7,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Generate content for these platforms: ${targetPlatforms.join(', ')}\n\n${dataContext}${metaPerfSection ? `\n${metaPerfSection}` : ''}` }],
+        },
       });
 
       const text = extractText(response);
@@ -614,12 +615,16 @@ OUTPUT — respond with ONLY valid JSON:
 }`;
 
     try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 8000,
-        temperature: 0.7,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Generate this week's content batch.\n\n${dataContext}${metaPerfSection ? `\n${metaPerfSection}` : ''}` }],
+      const response = await createMessage({
+        userId,
+        operation: 'content.trigger-weekly',
+        request: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 8000,
+          temperature: 0.7,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: `Generate this week's content batch.\n\n${dataContext}${metaPerfSection ? `\n${metaPerfSection}` : ''}` }],
+        },
       });
 
       const text = extractText(response);

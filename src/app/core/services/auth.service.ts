@@ -11,6 +11,7 @@ export class AuthService {
 
   private currentUser = signal<User | null>(null);
   private token = signal<string | null>(null);
+  private loggingOut = false;
 
   user = this.currentUser.asReadonly();
   isLoggedIn = computed(() => !!this.currentUser());
@@ -73,12 +74,19 @@ export class AuthService {
     }
   }
 
+  isLoggingOut(): boolean {
+    return this.loggingOut;
+  }
+
   logout() {
+    if (this.loggingOut) return;
+    this.loggingOut = true;
     this.token.set(null);
     this.currentUser.set(null);
     localStorage.removeItem('cosmisk_token');
     localStorage.removeItem('cosmisk_user');
     this.router.navigate(['/login']);
+    setTimeout(() => { this.loggingOut = false; }, 1000);
   }
 
 }

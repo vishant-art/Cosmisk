@@ -6,8 +6,13 @@
 import { getDb } from '../db/index.js';
 import { getProvider } from './api-providers.js';
 import { notifyAlert } from './notifications.js';
+import { checkDailyLimit } from './llm-gateway.js';
 import type { JobRow, SprintRow, CountRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+
+// Re-export for backwards compatibility with any external callers expecting it
+// to live on job-queue. Single source of truth lives in llm-gateway.ts.
+export { checkDailyLimit };
 
 /** Shape returned by the sprint job stats aggregation query */
 interface SprintJobStats {
@@ -20,58 +25,8 @@ const MAX_CONCURRENT = 5;
 const POLL_INTERVAL_MS = 5_000;
 const MAX_RETRIES = 2;
 
-// Daily cost limits in cents (configurable per plan)
-const DAILY_COST_LIMITS: Record<string, number> = {
-  free: 500,        // $5/day
-  solo: 5000,       // $50/day
-  growth: 20000,    // $200/day
-  agency: 100000,   // $1000/day
-};
-const DEFAULT_DAILY_LIMIT = 1000; // $10/day for unknown plans
-
 // Track active sprint processors to avoid duplicates
 const activeProcessors = new Set<string>();
-
-/* ------------------------------------------------------------------ */
-/*  Daily cost limit enforcement                                       */
-/* ------------------------------------------------------------------ */
-
-interface DailyUsageRow {
-  total_cents: number | null;
-}
-
-interface UserPlanRow {
-  plan: string | null;
-}
-
-function getDailySpendCents(userId: string): number {
-  const db = getDb();
-  const today = new Date().toISOString().split('T')[0];
-  const row = db.prepare(`
-    SELECT SUM(cost_cents) as total_cents FROM cost_ledger
-    WHERE user_id = ? AND DATE(created_at) = ?
-  `).get(userId, today) as DailyUsageRow;
-  return row.total_cents || 0;
-}
-
-function getUserDailyLimit(userId: string): number {
-  const db = getDb();
-  const row = db.prepare('SELECT plan FROM users WHERE id = ?').get(userId) as UserPlanRow | undefined;
-  const plan = (row?.plan || 'free').toLowerCase();
-  return DAILY_COST_LIMITS[plan] || DEFAULT_DAILY_LIMIT;
-}
-
-export function checkDailyLimit(userId: string): { allowed: boolean; spent: number; limit: number; remaining: number } {
-  const spent = getDailySpendCents(userId);
-  const limit = getUserDailyLimit(userId);
-  const remaining = Math.max(0, limit - spent);
-  return {
-    allowed: spent < limit,
-    spent,
-    limit,
-    remaining,
-  };
-}
 
 /* ------------------------------------------------------------------ */
 /*  Start processing a sprint's jobs                                   */

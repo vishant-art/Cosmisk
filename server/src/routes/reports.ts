@@ -12,11 +12,8 @@ import { extractText } from '../utils/claude-helpers.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
 import { safeJsonParse } from '../utils/safe-json.js';
-import Anthropic from '@anthropic-ai/sdk';
-import { config } from '../config.js';
+import { createMessage } from '../services/llm-gateway.js';
 import cron from 'node-cron';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
@@ -567,11 +564,16 @@ async function generateWeeklyStrategyReport(userId: string, accountId: string, t
       daily_trend: dailyRows.map((d: any) => ({ date: d.date, roas: round(d.roas, 2), spend: round(d.spend, 2) })),
     };
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      temperature: 0.5,
-      system: `You are Cosmisk's AI strategist writing a weekly strategy report for a Meta Ads manager. Write a professional but conversational report.
+    const response = await createMessage({
+      userId,
+      operation: 'reports.generateWeeklyStrategyReport',
+      // Cron job — extra retries.
+      maxRetries: 5,
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        temperature: 0.5,
+        system: `You are Cosmisk's AI strategist writing a weekly strategy report for a Meta Ads manager. Write a professional but conversational report.
 
 Structure:
 1. **Executive Summary** (2-3 sentences: what happened this week, overall health)
@@ -586,7 +588,8 @@ Rules:
 - Be specific, not generic
 - Write like a strategist talking to a client
 - Use currency consistent with the data`,
-      messages: [{ role: 'user', content: `Generate weekly strategy report:\n${JSON.stringify(dataContext, null, 2)}` }],
+        messages: [{ role: 'user', content: `Generate weekly strategy report:\n${JSON.stringify(dataContext, null, 2)}` }],
+      },
     });
 
     return extractText(response) || null;

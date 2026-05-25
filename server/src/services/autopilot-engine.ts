@@ -4,14 +4,11 @@ import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.js';
 import { assessConfidence, computeTrend } from './trend-analyzer.js';
 import { round, fmt } from './format-helpers.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-
-const anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -106,7 +103,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
           user_id: userId, account_id: accountId,
           type: 'roas_decline',
           title: `ROAS dropped from ${round(weekAgo, 1)}x to ${round(latest, 1)}x this week`,
-          content: await generateAlertContent('roas_decline', {
+          content: await generateAlertContent(userId, 'roas_decline', {
             weekAgoRoas: weekAgo, currentRoas: latest,
             overallRoas: weekMetrics.roas, spend: weekMetrics.spend,
             campaigns: campaigns.slice(0, 5).map(c => ({ name: c.label, roas: c.roas, spend: c.spend })),
@@ -134,7 +131,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
               user_id: userId, account_id: accountId,
               type: 'cpa_spike',
               title: `${campaign.label}: CPA spiked ${round(spikePercent, 0)}%`,
-              content: await generateAlertContent('cpa_spike', {
+              content: await generateAlertContent(userId, 'cpa_spike', {
                 campaignName: campaign.label, spikePercent: round(spikePercent, 0),
                 currentCpa: campaign.cpa, roas: campaign.roas, spend: campaign.spend,
               }),
@@ -155,7 +152,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
             user_id: userId, account_id: accountId,
             type: 'scale_opportunity',
             title: `${campaign.label} hit ${round(campaign.roas, 1)}x ROAS — ready to scale`,
-            content: await generateAlertContent('scale_opportunity', {
+            content: await generateAlertContent(userId, 'scale_opportunity', {
               campaignName: campaign.label, roas: campaign.roas,
               conversions: campaign.conversions, spend: campaign.spend,
               trend: roasTrendC.direction,
@@ -174,7 +171,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
         user_id: userId, account_id: accountId,
         type: 'wasted_spend',
         title: `${fmt(wastedSpend)} spent on ${belowBreakeven.length} below-breakeven campaigns`,
-        content: await generateAlertContent('wasted_spend', {
+        content: await generateAlertContent(userId, 'wasted_spend', {
           wastedSpend, totalSpend, count: belowBreakeven.length,
           campaigns: belowBreakeven.slice(0, 5).map(c => ({ name: c.label, roas: c.roas, spend: c.spend })),
         }),
@@ -193,7 +190,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
             user_id: userId, account_id: accountId,
             type: 'creative_fatigue',
             title: `Creative fatigue detected in ${campaign.label}`,
-            content: await generateAlertContent('creative_fatigue', {
+            content: await generateAlertContent(userId, 'creative_fatigue', {
               campaignName: campaign.label, avgCtr: round(avgCtr, 2),
               trend: 'declining', spend: campaign.spend,
             }),
@@ -214,7 +211,7 @@ async function analyzeAccount(userId: string, accountId: string, token: string):
 /*  Claude-powered alert content generation                            */
 /* ------------------------------------------------------------------ */
 
-async function generateAlertContent(type: string, data: any): Promise<string> {
+async function generateAlertContent(userId: string, type: string, data: any): Promise<string> {
   try {
     const systemPrompt = `You are Cosmisk Autopilot — a senior Meta Ads strategist delivering daily performance alerts to agency operators.
 
@@ -235,12 +232,16 @@ DATA CONFIDENCE AWARENESS:
 
     const userContent = formatAlertData(type, data);
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 300,
-      temperature: 0.3,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userContent }],
+    const response = await createMessage({
+      userId,
+      operation: 'autopilot-engine.generateAlertContent',
+      request: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        temperature: 0.3,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userContent }],
+      },
     });
     return extractText(response) || generateFallbackContent(type, data);
   } catch {

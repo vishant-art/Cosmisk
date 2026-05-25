@@ -17,7 +17,7 @@ describe('errorInterceptor', () => {
 
   beforeEach(() => {
     toastService = jasmine.createSpyObj('ToastService', ['success', 'error', 'warning', 'info', 'show']);
-    authService = jasmine.createSpyObj('AuthService', ['getToken', 'logout']);
+    authService = jasmine.createSpyObj('AuthService', ['getToken', 'logout', 'isLoggingOut']);
 
     TestBed.configureTestingModule({
       providers: [
@@ -35,7 +35,7 @@ describe('errorInterceptor', () => {
       TestBed.runInInjectionContext(() => {
         errorInterceptor(req, next).subscribe({
           error: () => {
-            expect(toastService.error).toHaveBeenCalledWith('Session expired', 'Please log in again.');
+            expect(toastService.error).toHaveBeenCalledWith('Session Expired', 'Please log in again.');
             expect(authService.logout).toHaveBeenCalled();
             done();
           },
@@ -82,7 +82,7 @@ describe('errorInterceptor', () => {
         errorInterceptor(req, next).subscribe({
           error: () => {
             expect(toastService.error).toHaveBeenCalledWith(
-              'Access denied',
+              'Access Denied',
               "You don't have permission to do that."
             );
             done();
@@ -118,8 +118,8 @@ describe('errorInterceptor', () => {
         errorInterceptor(req, next).subscribe({
           error: () => {
             expect(toastService.warning).toHaveBeenCalledWith(
-              'Rate limited',
-              "Too many requests. We'll retry automatically."
+              'Rate Limited',
+              'Too many requests. Please wait a moment.'
             );
             done();
           },
@@ -137,7 +137,7 @@ describe('errorInterceptor', () => {
         errorInterceptor(req, next).subscribe({
           error: () => {
             expect(toastService.error).toHaveBeenCalledWith(
-              'Something went wrong',
+              'Something Went Wrong',
               "We've been notified. Please try again."
             );
             done();
@@ -156,7 +156,7 @@ describe('errorInterceptor', () => {
         errorInterceptor(req, next).subscribe({
           error: () => {
             expect(toastService.error).toHaveBeenCalledWith(
-              'Something went wrong',
+              'Something Went Wrong',
               "We've been notified. Please try again."
             );
             done();
