@@ -254,3 +254,72 @@ The db/index.ts hardening becomes Commit 5d. Bundled with: doc-framing reset for
 - `shopify_tokens` fork is M1's problem (Tier 1.5a sub-step). Two `brand_id`-keyed readers must be patched: `cohort-ltv-analyzer.ts:184`, `unified-agent-runner.ts:178`.
 - Open question for M1 start: does `brands` table have `owner_user_id`? Needed for the JOIN strategy.
 - PR description must explicitly call out `/shopify/*` as known-broken pending M1.
+
+---
+
+## Post-PR — frontend CI triage (source race fixed inline)
+
+### 17:10 — PR #1 frontend job failed; root cause
+
+PR #1's GitHub Actions Backend-Frontend job failed in the Angular unit test stage: `npx ng test --watch=false --browsers=ChromeHeadless` reported **5 failures / 447 passing** in `src/app/core/interceptors/error.interceptor.spec.ts`.
+
+Verified both `error.interceptor.ts` and `error.interceptor.spec.ts` are **byte-identical to `origin/main`** -- pre-existing failure (same category as the 8 backend `it.skip`s in `270366e`). However, frontend is NOT under the `server/src/`-scoped freeze, so the fix can be a real source change rather than another deferral.
+
+Failures by category:
+
+| # | Test | Type |
+|---|---|---|
+| 1 | 500 -> `'Something went wrong'` vs source `'Something Went Wrong'` | spec casing drift |
+| 2 | 429 -> `'Rate limited'` + "...We'll retry automatically." vs source `'Rate Limited'` + 'Please wait a moment.' | spec casing + wording drift |
+| 3 | 401 -> `'Session expired'` toast + `logout()` call never fire | **real source race** + casing |
+| 4 | 403 -> `'Access denied'` vs source `'Access Denied'` | spec casing drift |
+| 5 | 502 unknown -> `'Something went wrong'` vs source `'Something Went Wrong'` | spec casing drift |
+
+For #3 the actual bug is `error.interceptor.ts:11` -- a module-level `let logoutInProgress = false` with a 3 s `setTimeout` reset. Jasmine's randomized spec order causes an earlier 401 test (the `'error propagation: should always re-throw'` describe at line 215 also uses 401) to set the flag; the assertion test then sees `logoutInProgress === true` and short-circuits. The flag's timer hasn't fired before the next test runs.
+
+### 17:20 — Decision flow
+
+Three options were on the table:
+- **A (pure skip):** mark all 5 with `it.skip`, document as ON_HOLD item 14. Matches backend `it.skip` precedent but leaves real UX drift + a real race in the source. ~15 min.
+- **B (spec-only):** fix the 4 casing/wording drifts in spec; skip only the 401 race; document the race as ON_HOLD item 14 for M2. ~20 min.
+- **C (fix everything inline):** spec drifts + source race fix in one commit. Frontend not under freeze, so permissible. ~30 min.
+
+First answer was Path B. User pushed back twice:
+1. "We'll have to fix the test in future anyway" -- correct for the 4 casing/wording tests (skip-cost == fix-cost; skipping doubles total effort by adding a future un-skip step). Moved to a hybrid where the 4 cosmetic tests get fixed and only the 1 real-race test gets skipped.
+2. "Put nothing from frontend on ledger; solve it now and finish in a single commit." -- escalated to Path C. ON_HOLD item 14 deleted entirely; source race fixed inline.
+
+### 17:35 — Path C applied: source race fixed inline
+
+**File 1 -- `src/app/core/services/auth.service.ts` (logout debounce moved into the service):**
+- Added private `loggingOut = false` field.
+- Added public `isLoggingOut(): boolean` getter so the interceptor can check before duplicating a toast.
+- Rewrote `logout()` to early-return if `loggingOut`; set the flag on entry; reset it via `setTimeout(..., 1000)` after the synchronous state clear + `router.navigate(['/login'])`. Existing `auth.service.spec.ts` `logout()` test still passes (first call goes through; assertions are synchronous so the 1000 ms reset doesn't affect them).
+
+**File 2 -- `src/app/core/interceptors/error.interceptor.ts` (interceptor becomes stateless):**
+- Deleted the module-level `let logoutInProgress = false`.
+- Deleted the `setTimeout(() => { logoutInProgress = false; }, 3000)` reset.
+- The 401 branch now reads: `if (!auth.isLoggingOut()) { toast.error(...); auth.logout(); }`. Both the toast and the logout are gated by the service's own state -- no module state anywhere in the interceptor.
+
+**File 3 -- `src/app/core/interceptors/error.interceptor.spec.ts`:**
+- Spec drifts (4 tests) updated to match the shipped source strings:
+  - `'Something went wrong'` -> `'Something Went Wrong'` (500 + 502 tests via `replace_all`)
+  - `'Rate limited'` -> `'Rate Limited'`; `"We'll retry automatically."` -> `'Please wait a moment.'` (429)
+  - `'Access denied'` -> `'Access Denied'` (403)
+- The 401 assertion test is **un-skipped**. Casing updated to `'Session Expired'` (matches source).
+- `jasmine.createSpyObj('AuthService', [...])` extended with `'isLoggingOut'`. Spy returns `undefined` (falsy) by default, so every interceptor call enters the toast-and-logout branch. Tests are now deterministic regardless of Jasmine's randomized spec order.
+
+### Why no ON_HOLD entry for this
+
+Per user direction: "put nothing from frontend on ledger we will solve it now and finish in a single commit." The race is gone, the test is un-skipped, no deferred work remains. ON_HOLD additions made earlier in this session for item 14 were reverted in full (quick-index row removed, detail section removed, M2 phase mapping restored to `Item 2, Item 3, Item 4, Item 6, Item 11`).
+
+### Production effect of the source fix
+
+- **Single 401:** identical to before -- one toast, one logout, one navigation.
+- **Concurrent 401 burst (e.g. 5 dashboard polls all 401 on token expiry):** previously the module flag debounced everything; now the AuthService instance flag does the same job. First 401 wins, subsequent 401s within 1 second are no-ops in both the toast and the logout side. ToastService keeps at most 3 toasts via `slice(-3)`, but that fallback is no longer load-bearing here.
+- **Manual `topbar.component.ts` logout:** `this.authService.logout()` still works; the new early-return guards against double-clicks during navigation.
+
+### Next
+
+- Commit all four files (`auth.service.ts`, `error.interceptor.ts`, `error.interceptor.spec.ts`, this session log) as a single delivery. ON_HOLD revert is bundled too since it was modified mid-session.
+- Push to `analysis-and-cleanup`; PR #1 re-runs CI automatically.
+- Watch the Backend-Frontend job. Expectation: 452 tests, 452 pass (the previously-skipped 401 test is now un-skipped and should pass).

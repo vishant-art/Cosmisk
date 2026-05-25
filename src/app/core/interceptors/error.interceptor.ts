@@ -7,9 +7,6 @@ import { AuthService } from '../services/auth.service';
 /** Endpoints that handle their own errors silently (have fallback logic) */
 const SILENT_ENDPOINTS = ['analytics/full', 'ad-accounts/kpis', 'dashboard/chart', 'dashboard/insights', 'brain/patterns', 'reports/list', 'ad-accounts/video-source', 'ad-accounts/top-ads'];
 
-/** Prevent multiple 401 toasts/logouts firing simultaneously */
-let logoutInProgress = false;
-
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const toast = inject(ToastService);
   const auth = inject(AuthService);
@@ -19,14 +16,12 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       const isSilent = SILENT_ENDPOINTS.some(ep => req.url.includes(ep));
       const isAuthRoute = req.url.includes('auth/login') || req.url.includes('auth/signup');
 
-      // 401 = session expired — ALWAYS handle, even for silent endpoints
+      // 401 = session expired — ALWAYS handle, even for silent endpoints.
+      // Debounce sits inside AuthService.logout() so concurrent 401s collapse to one logout.
       if (error.status === 401 && !isAuthRoute) {
-        if (!logoutInProgress) {
-          logoutInProgress = true;
+        if (!auth.isLoggingOut()) {
           toast.error('Session Expired', 'Please log in again.');
           auth.logout();
-          // Reset after a brief delay to allow re-login
-          setTimeout(() => { logoutInProgress = false; }, 3000);
         }
         return throwError(() => error);
       }
