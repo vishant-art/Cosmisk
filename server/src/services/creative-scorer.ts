@@ -12,6 +12,12 @@ import {
   getCreativeScoreThreshold, createRecommendation, type ServiceClient,
 } from './service-clients.js';
 import { logger } from '../utils/logger.js';
+// CLOSED-LOOP OPERATING SYSTEM
+import { agentRecommend } from './recommendation-loop.js';
+// STRATEGIC MEMORY - Week-to-week learning
+import { recordEpisode } from './agent-memory.js';
+import { getStrategicContextForAgent, recordReport, type ReportRecord } from './strategic-memory.js';
+import { v4 as uuidv4 } from 'uuid';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -860,6 +866,12 @@ export async function scoreCreativesForClient(
   const { client } = ctx;
   const scorerStore = getCreativeScorerStore(clientId);
 
+  // === STRATEGIC MEMORY: Load context from previous runs ===
+  const strategicContext = getStrategicContextForAgent(clientId);
+  if (strategicContext) {
+    logger.info({ contextLength: strategicContext.length }, '[CreativeScorer] Loaded strategic context');
+  }
+
   logger.info({
     clientId,
     brandName: client.brandName,
@@ -969,6 +981,76 @@ export async function scoreCreativesForClient(
       winningPatterns,
       insight: `${belowThreshold} creatives scored below the ${scoreThreshold} quality threshold. Focus on ${topFormat} format and patterns: ${winningPatterns.slice(0, 3).join(', ')}`,
     });
+
+    // === CLOSED-LOOP OPERATING SYSTEM ===
+    const worstCreative = scores.sort((a, b) => a.score.total - b.score.total)[0];
+    if (worstCreative) {
+      try {
+        agentRecommend(clientId, 'creative_scorer', {
+          type: 'refresh_creative',
+          entityType: 'creative',
+          entityId: worstCreative.input.userId,
+          entityName: `Creative ${worstCreative.input.format}`,
+          action: 'Improve or replace low-scoring creatives',
+          reasoning: `${belowThreshold} creatives below ${scoreThreshold} threshold. Avg score: ${avgScore}. Use ${topFormat} format and patterns: ${winningPatterns.slice(0, 3).join(', ')}`,
+          evidence: [
+            `${belowThreshold} creatives below threshold`,
+            `Average score: ${avgScore}`,
+            `Top format: ${topFormat}`,
+            `Winning patterns: ${winningPatterns.slice(0, 3).join(', ')}`,
+            `Worst creative: ${worstCreative.input.format} (score: ${worstCreative.score.total})`,
+          ],
+          confidence: 70,
+          predictedSavings: 0, // Quality improvements don't have direct savings
+        });
+      } catch (loopErr) {
+        logger.warn({ err: loopErr }, '[CreativeScorer] Closed-loop tracking failed');
+      }
+    }
+
+    // === STRATEGIC MEMORY: Record episode for creative scoring alert ===
+    recordEpisode(
+      'system',
+      'creative_strategist',
+      `Creative Alert: ${belowThreshold} of ${totalScored} creatives below ${scoreThreshold} threshold for ${client.brandName}`,
+      JSON.stringify({ totalScored, avgScore, belowThreshold, scoreThreshold }),
+      'pending'
+    ).catch(epErr => logger.warn({ err: epErr }, '[CreativeScorer] Episode recording failed'));
+  }
+
+  // === STRATEGIC MEMORY: Record report summary ===
+  try {
+    const now = new Date();
+    const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const reportRecord: ReportRecord = {
+      id: uuidv4(),
+      clientId,
+      reportType: 'creative-scoring',
+      generatedAt: now.toISOString(),
+      weekNumber,
+      year: now.getFullYear(),
+      headline: `Creative Report: ${totalScored} scored, avg ${avgScore.toFixed(1)}, ${belowThreshold} below threshold`,
+      keyInsights: [
+        `Average score: ${avgScore.toFixed(1)}`,
+        `Above threshold (${scoreThreshold}): ${aboveThreshold}`,
+        `Below threshold: ${belowThreshold}`,
+      ],
+      recommendations: shouldAlert ? [`Replace ${belowThreshold} low-scoring creatives`] : [],
+      metricsSnapshot: {
+        totalScored,
+        avgScore,
+        aboveThreshold,
+        belowThreshold,
+        scoreThreshold
+      },
+      qualityScore: 80,
+      wasShipped: shouldAlert,
+      shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
+      deliveredVia: [],
+    };
+    recordReport(reportRecord);
+  } catch (repErr) {
+    logger.warn({ err: repErr }, '[CreativeScorer] Report recording failed');
   }
 
   return {

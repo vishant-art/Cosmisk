@@ -27,6 +27,12 @@ import {
   type ServiceClient,
   type OOSAgentStore,
 } from './service-clients.js';
+// CLOSED-LOOP OPERATING SYSTEM
+import { agentRecommend } from './recommendation-loop.js';
+// STRATEGIC MEMORY - Week-to-week learning
+import { recordEpisode } from './agent-memory.js';
+import { getStrategicContextForAgent, recordReport, type ReportRecord } from './strategic-memory.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // ============ TYPES ============
 
@@ -1075,6 +1081,12 @@ export async function runOOSCheckForClient(
   const { client } = ctx;
   const oosStore = getOOSAgentStore(clientId);
 
+  // === STRATEGIC MEMORY: Load context from previous runs ===
+  const strategicContext = getStrategicContextForAgent(clientId);
+  if (strategicContext) {
+    logger.info({ contextLength: strategicContext.length }, '[OOS] Loaded strategic context');
+  }
+
   logger.info({
     clientId,
     brandName: client.brandName,
@@ -1157,6 +1169,72 @@ export async function runOOSCheckForClient(
       topProducts: result.enhanced?.topWasted?.slice(0, 5) || [],
       summary: result.summary,
     });
+
+    // === CLOSED-LOOP OPERATING SYSTEM ===
+    const topWasted = result.enhanced?.topWasted?.[0];
+    if (topWasted) {
+      try {
+        agentRecommend(clientId, 'oos_detector', {
+          type: 'fix_oos',
+          entityType: 'product',
+          entityId: topWasted.productId || topWasted.productName,
+          entityName: topWasted.productName,
+          action: 'Pause ads for out-of-stock products',
+          reasoning: `${newOOSProducts.length} products are OOS with ₹${result.verifiedWastedSpend.toLocaleString()} wasted spend. Top: ${topWasted.productName} (₹${topWasted.wastedSpend?.toLocaleString() || 0})`,
+          evidence: [
+            `${newOOSProducts.length} new OOS products detected`,
+            `₹${result.verifiedWastedSpend.toLocaleString()} wasted on OOS ads`,
+            `Top product: ${topWasted.productName}`,
+          ],
+          confidence: 90,
+          predictedSavings: result.verifiedWastedSpend,
+        });
+      } catch (loopErr) {
+        logger.warn({ err: loopErr }, '[OOS] Closed-loop tracking failed');
+      }
+    }
+
+    // === STRATEGIC MEMORY: Record episode for OOS detection ===
+    recordEpisode(
+      'system',
+      'inventory',
+      `OOS Alert: ${newOOSProducts.length} products wasting ₹${result.verifiedWastedSpend.toLocaleString()} for ${client.brandName}`,
+      JSON.stringify({ newOOS: newOOSProducts.length, wastedSpend: result.verifiedWastedSpend }),
+      'pending'
+    ).catch(epErr => logger.warn({ err: epErr }, '[OOS] Episode recording failed'));
+  }
+
+  // === STRATEGIC MEMORY: Record report summary ===
+  try {
+    const now = new Date();
+    const weekNumber = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const reportRecord: ReportRecord = {
+      id: uuidv4(),
+      clientId,
+      reportType: 'oos-detection',
+      generatedAt: now.toISOString(),
+      weekNumber,
+      year: now.getFullYear(),
+      headline: `OOS Report: ${result.enhanced?.totalOOSProducts || 0} products, ₹${result.verifiedWastedSpend.toLocaleString()} wasted`,
+      keyInsights: [
+        `${newOOSProducts.length} new OOS products detected`,
+        `Alert threshold: ₹${alertThreshold.toLocaleString()}`,
+        result.summary,
+      ],
+      recommendations: shouldAlert ? [`Pause ads for ${newOOSProducts.length} OOS products`] : [],
+      metricsSnapshot: {
+        totalOOS: result.enhanced?.totalOOSProducts || 0,
+        wastedSpend: result.verifiedWastedSpend,
+        alertThreshold
+      },
+      qualityScore: 85,
+      wasShipped: shouldAlert,
+      shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
+      deliveredVia: [],
+    };
+    recordReport(reportRecord);
+  } catch (repErr) {
+    logger.warn({ err: repErr }, '[OOS] Report recording failed');
   }
 
   return {

@@ -28,6 +28,7 @@
 | 10 | `@types/node` was undeclared (now pinned, but auto-deps still missing for `sharp`/`cheerio` audit) | **M0 (closed)** | — | Already fixed in 63e4711 + 7b08d0b |
 | 11 | Pre-existing CI failures on watchdog/agent/billing/reports tests (19_05 audit) | **M2-M3** | ~2-3 hrs | Unknown surface; CI snapshot needed first |
 | 12 | Production OAuth re-issue for all connectors (Meta/Google/Shopify/TikTok) | **M1 close** | ~30 min per connector when first real client onboards | Encrypted token data orphaned (acceptable — old keys gone) |
+| 13 | `static-ad-generator.ts` is a stub; `ad-watchdog` reasoning lost its Gemini path on merge | **M2** | ~half day | None — orchestrator's static-ad codepath is a no-op (logs and returns empty); watchdog reasoning still works on Claude Sonnet (just costlier than Gemini) |
 
 ---
 
@@ -269,6 +270,29 @@ grep -n "owner_user_id\|ownerUserId" server/src/db/schema.ts
 
 **Action:** First CI run on M0 PR is the diagnostic input. Then triage.
 **Refs:** `19_05/smoke_test_results.md` §4.1.
+
+---
+
+### Item 13 — `static-ad-generator.ts` stub + watchdog Gemini path lost
+
+**Status:** Documented during merge of `origin/main` (2026-05-25). Defer to M2.
+**Discovered:** While resolving merge conflicts in `ad-watchdog.ts` and reconciling main's `agent-orchestrator.ts` import.
+
+**Two related issues bundled here:**
+
+1. **`static-ad-generator.ts` stub.** Main's `agent-orchestrator.ts:275` does `await import('./static-ad-generator.js')` and calls `generateStaticAds()`. The file never existed on main (referenced but never created — pre-existing tsc error on main too). Created a minimal stub in this branch: returns `{ generated: [] }`, logs at info. Production code path is a no-op; the orchestrator's success branch completes without producing creatives.
+
+2. **`ad-watchdog.ts` reasoning lost its Gemini path.** Main's commit `12615eb` changed the watchdog's "reason about performance" LLM call from Anthropic to Gemini Flash via the old `llmGateway.generate()` API. Our branch (commit `1521cce`) replaced `llmGateway.generate()` with `createMessage()` (Anthropic-only, rate-limited). On merge we kept our rate-limited `createMessage()` call against Claude Sonnet, dropping Gemini. Cost impact is moderate (Sonnet > Flash) but no functional loss.
+
+**Fix (M2, ~half day):**
+- For (1): Implement `generateStaticAds()` properly per the design in `CLAUDE.md` Static Ad Generator section.
+- For (2): Extend `createMessage()` (or add a sibling `createGeminiMessage()`) to support Gemini provider. Then re-route `ad-watchdog.ts` reasoning to Gemini Flash. Cost win: ~10× cheaper for the same prompt volume.
+
+**Risk if shipped as-is:**
+- (1) is genuinely a no-op — no caller depends on actual creative output yet.
+- (2) costs more in API spend, but spend was already capped by rate-limiter. No regression in functionality.
+
+**Refs:** Merge commit (this branch); `12615eb` on main; `1521cce` on this branch; `25_05/session_log.md`.
 
 ---
 
