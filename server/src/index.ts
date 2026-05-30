@@ -1,3 +1,5 @@
+// IPv4-first DNS for all DB consumers — must precede any pg connection. See db/net-config.ts.
+import './db/net-config.js';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import cors from '@fastify/cors';
