@@ -15,7 +15,9 @@
 | `VOCABULARY.md` | 📖 REFERENCE | Canonical naming; resolves the M-vs-Phase collision |
 | `STATUS_INDEX.md` (this) | 🔵 ACTIVE | Master catalog |
 | `ON_HOLD.md` | 🔵 ACTIVE | Deferred-items ledger. **Items 1 & 7 ✅ resolved** this session |
-| `31_05/next_steps.md` | 🔵 ACTIVE | Execution checklist (A0–A3 ✅; A4/B/C + DB-2 pending) |
+| `31_05/next_steps.md` | 🔵 ACTIVE | Execution checklist (A0–A4 + B/C ✅; DB-2 pending) |
+| `31_05/db2_execution_plan.md` | 🔵 ACTIVE | **DB-2 plan** — vitest repair + PG test target + adapter/shim + M2.0–M2.9 |
+| `31_05/logs.md` | 📓 LOG | M1-completion execution log (A4/B1/B2/C1) + full smoke sweep |
 | `31_05/phase1_completion_strategy.md` | 🔵 ACTIVE | M1-completion strategy + scrutiny |
 | `31_05/dev_reports_consolidation_strategy.md` | ✅ IMPLEMENTED | This consolidation |
 | `31_05/migration_0001_verification.md` | ✅ IMPLEMENTED | `0001` applied (79 tables) + verified |

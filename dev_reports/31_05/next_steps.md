@@ -63,14 +63,14 @@ Leave the runtime `CREATE TABLE IF NOT EXISTS` paths in place (SQLite-only, harm
 
 > **A0 + A1 + A2 + A3 are now complete.** Remaining Phase-1 (M1-completion) work: **A4** (seed brands + pg-layer parity test), **B1/B2** (Sentry, Request-ID), **C1** (`as any`). Then **DB-2** (the 635-site cutover, §4).
 
-### Step A3 — `shopify_tokens` fix — STRATEGY (apply on go) — see §2 below
+### Step A3 — `shopify_tokens` fix — ✅ DONE (2026-05-31)
 
-### Step A4 — Seed 3 brands + pg-layer parity test
+Applied: `brand_id` → `user_id` at `cohort-ltv-analyzer.ts:190` + `unified-agent-runner.ts:178`. Full strategy/rationale retained in §2 below.
 
-- Idempotent seed of 3 brands against `DATABASE_URL`.
-- One vitest spec: connect to the **pooled** pg layer, assert the 9 new tables exist, round-trip one `*_json` TEXT column.
+### Step A4 — Seed 3 brands + pg-layer parity test — ✅ DONE (2026-06-01)
 
-**DoD:** spec green against pooled URL.
+- `scripts/seed-brands.ts` (idempotent, `onConflictDoNothing`) → 3 brands re-seeded on Neon (ran twice, 3→3).
+- `src/db/__tests__/pg-parity.test.ts` asserts the 9 tables on the **pooled** endpoint + a `context_json` JSON round-trip. Verified green vs live Neon via tsx; **vitest runner SIGBUSes host-wide** (rolldown native binary on this WSL2 kernel — pre-existing, not ours) → official green deferred to CI. See [`logs.md`](./logs.md) §2.
 
 ---
 
@@ -98,17 +98,17 @@ No JOIN, no `brands.owner_user_id` (doesn't exist). Under canonical Postgres the
 
 ---
 
-## 3. Tracks B & C (unchanged from prior)
+## 3. Tracks B & C — ✅ DONE (2026-06-01)
 
-- **B1 Sentry** (~½d): `@sentry/node`; `Sentry.init` atop `index.ts` (before factory `:59`); `captureException` inside existing handler `:118`; no-op when `SENTRY_DSN` unset.
-- **B2 Request-ID/correlationId** (~½d): own `request.id` + inbound as `parentRequestId`; standardise cron `runId`; write id into existing `cost_ledger.metadata` JSON at `llm-gateway.ts:204` (no schema column).
-- **C1 `as any`** (~½d, prod-only): 159 total → target prod <50, justify residuals; skip casts wrapping `db.prepare().get()` rows (rewritten in M2). Hot files: `intelligence-persistence.ts`(11), `recommendation-loop.ts`(8), `intelligence-infrastructure.ts`(8), `audit/index.ts`(7), `service-clients.ts`(6).
+- **B1 Sentry** — ✅ `@sentry/node@^10.55.0` installed; guarded `Sentry.init` before the factory; `captureException` in the existing 500 branch of `setErrorHandler`. No-op when `SENTRY_DSN` unset.
+- **B2 Request-ID/correlationId** — ✅ AsyncLocalStorage (`utils/request-context.ts`) instead of call-site threading; Fastify `genReqId` + `onRequest` `enterWith` (own `request.id`, inbound `x-request-id` → separate `parentRequestId`); `recordCost` merges `correlationId` into `cost_ledger.metadata` (no schema column); cron `runId` wired in unified-agent-runner / report-agent / sales-agent. **Carry to DB-2:** `ad-watchdog.ts` runId needs `correlationStore.run(...)` (concurrent callbacks).
+- **C1 `as any`** — ✅ **scoped per §9.2.** Reality: 86 prod casts, **61 are SQLite-row casts** (deferred to DB-2), only 25 non-DB → `<50` unreachable without violating the no-touch-DB-rows rule (floor 61). Cleaned **all 25 non-DB casts** (86→61), annotated the 61 residuals, surfaced+fixed 2 latent enum bugs. See [`logs.md`](./logs.md) §2/§4.
 
 ---
 
 ## 4. Phase 2 — M2 ASYNC CUTOVER (the 635 sync `.prepare()` call sites)
 
-The full surface that must convert sync better-sqlite3 → async Drizzle/pg. **635 prod call sites / 69 files** (routes 300/30 · services 291/35 · audit 11/1 · db 8/2 · index 25/1) + **423 test calls / 36 files**. Source: [`../29_05/async_migration_call_site_audit.md`](../29_05/async_migration_call_site_audit.md). Ordered tasks:
+The full surface that must convert sync better-sqlite3 → async Drizzle/pg. **635 prod call sites / 69 files** (routes 300/30 · services 291/35 · audit 11/1 · db 8/2 · index 25/1) + **423 test calls / 36 files**. Source: [`../29_05/async_migration_call_site_audit.md`](../29_05/async_migration_call_site_audit.md). **Detailed execution plan (incl. vitest repair + PG test target + adapter/shim design): [`db2_execution_plan.md`](./db2_execution_plan.md).** Ordered tasks:
 
 - **M2.0 — Prereqs (blockers).**
   - Pick a Postgres **test target** (Neon test branch / local PG / `pg-mem`) — without it the 635 sites migrate blind.
