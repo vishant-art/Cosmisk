@@ -294,7 +294,7 @@ function getBrand(brandId: string): Brand | null {
   const db = getDb();
 
   // First check if brand exists in brands table
-  let row = db.prepare('SELECT * FROM brands WHERE id = ?').get(brandId) as any;
+  let row = db.prepare('SELECT * FROM brands WHERE id = ?').get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
 
   if (row) {
     return {
@@ -335,18 +335,18 @@ function getBrandUserId(brandId: string): string | null {
   const db = getDb();
 
   // Get user_id associated with brand
-  const row = db.prepare('SELECT user_id FROM brands WHERE id = ?').get(brandId) as any;
+  const row = db.prepare('SELECT user_id FROM brands WHERE id = ?').get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
   if (row?.user_id) return row.user_id;
 
   // Fallback: get first user with google token
-  const fallback = db.prepare('SELECT user_id FROM google_tokens LIMIT 1').get() as any;
+  const fallback = db.prepare('SELECT user_id FROM google_tokens LIMIT 1').get() as any;  // DB-2: typed when row becomes a Drizzle result
   return fallback?.user_id || null;
 }
 
 function getBrandContext(brandId: string): BrandContext | null {
   const db = getDb();
 
-  const row = db.prepare('SELECT * FROM brand_context WHERE brand_id = ?').get(brandId) as any;
+  const row = db.prepare('SELECT * FROM brand_context WHERE brand_id = ?').get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 
@@ -367,7 +367,7 @@ function getMetaAccessToken(): string | null {
   const row = db.prepare(`
     SELECT encrypted_access_token FROM meta_tokens
     WHERE user_id = (SELECT id FROM users WHERE email = 'vishant@gmail.com')
-  `).get() as any;
+  `).get() as any;  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 
@@ -380,7 +380,7 @@ function getShopifyAccessToken(brandId: string): string | null {
   const row = db.prepare(`
     SELECT encrypted_access_token FROM shopify_tokens
     WHERE brand_id = ?
-  `).get(brandId) as any;
+  `).get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 
@@ -514,7 +514,7 @@ export function getPreviousAudit(brandId: string): AuditOutput | null {
     WHERE brand_id = ?
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(brandId) as any;
+  `).get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 

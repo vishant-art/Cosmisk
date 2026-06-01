@@ -390,7 +390,9 @@ export function extractCreatorDNA(
       credibilityMarker: analysis.experienceStatement || 'Personal experience shared',
       relatabilityMoment: analysis.showsSkepticism ? 'Shows initial skepticism' : 'Shares relatable context',
       specificProof: analysis.usesSpecificNumbers,
-      pacingStyle: analysis.pacingVariation > 0.7 ? 'variable' : analysis.pacingVariation > 0.4 ? 'medium' : 'consistent' as any
+      // Runtime value preserved; 'consistent' is outside the declared union, so
+      // assert to the target union (overlaps on 'variable'/'medium') rather than `any`.
+      pacingStyle: (analysis.pacingVariation > 0.7 ? 'variable' : analysis.pacingVariation > 0.4 ? 'medium' : 'consistent') as 'fast' | 'medium' | 'slow' | 'variable'
     },
     emotionalArc: {
       productRevealTiming: analysis.productRevealTimestamp,
@@ -809,8 +811,8 @@ export async function analyzeOrganicContent(
   // Deep comment analysis
   const commentIntelligence = contentData.comments.slice(0, 20).map(c =>
     analyzeCommentDeep(c.text, {
-      category: c.category as any,
-      sentiment: c.sentiment as any,
+      category: c.category as 'objection' | 'desire' | 'praise' | 'question' | 'frustration' | 'use_case' | 'other',
+      sentiment: c.sentiment as 'positive' | 'negative' | 'mixed' | 'neutral',
       emotionalTriggers: c.emotionalTriggers
     })
   );

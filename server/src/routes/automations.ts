@@ -436,7 +436,14 @@ export async function automationRoutes(app: FastifyInstance) {
 
   // POST /automations/execute-action — Execute a one-off action from dashboard insights
   app.post('/execute-action', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id, action_type, campaign_id, adset_id, ad_id, budget_change_pct } = request.body as any;
+    const { account_id, action_type, campaign_id, adset_id, ad_id, budget_change_pct } = request.body as {
+      account_id?: string;
+      action_type?: string;
+      campaign_id?: string;
+      adset_id?: string;
+      ad_id?: string;
+      budget_change_pct?: number;
+    };
 
     if (!account_id || !action_type) {
       return reply.status(400).send({ success: false, error: 'account_id and action_type required' });
@@ -468,7 +475,7 @@ export async function automationRoutes(app: FastifyInstance) {
           if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to scale.' });
           const pct = budget_change_pct || 15;
           const infoResp = await fetch(`${GRAPH_BASE}/${targetId}?access_token=${token}&fields=daily_budget,lifetime_budget`);
-          const info = await infoResp.json().catch(() => ({})) as any;
+          const info = await infoResp.json().catch(() => ({})) as { daily_budget?: string; lifetime_budget?: string };
           const dailyBudget = parseInt(info.daily_budget || '0');
           if (dailyBudget > 0) {
             const newBudget = Math.max(100, Math.round(dailyBudget * (1 + pct / 100)));
@@ -485,7 +492,7 @@ export async function automationRoutes(app: FastifyInstance) {
           if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to reduce.' });
           const pct = budget_change_pct || 20;
           const infoResp = await fetch(`${GRAPH_BASE}/${targetId}?access_token=${token}&fields=daily_budget`);
-          const info = await infoResp.json().catch(() => ({})) as any;
+          const info = await infoResp.json().catch(() => ({})) as { daily_budget?: string };
           const dailyBudget = parseInt(info.daily_budget || '0');
           if (dailyBudget > 0) {
             const newBudget = Math.max(100, Math.round(dailyBudget * (1 - pct / 100)));

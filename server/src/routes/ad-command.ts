@@ -230,7 +230,11 @@ export async function adCommandRoutes(app: FastifyInstance) {
 
   // POST /ad-command/briefs/generate - Generate a new brief
   app.post('/briefs/generate', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const body = request.body as any;
+    const body = request.body as {
+      account_id?: string;
+      creative_id?: string;
+      replacement_for?: string;
+    };
     const accountId = body.account_id;
     const creativeId = body.creative_id; // Optional: for replacement briefs
     const replacementFor = body.replacement_for; // Optional: name of creative being replaced

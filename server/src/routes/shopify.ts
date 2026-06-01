@@ -65,8 +65,8 @@ export async function shopifyRoutes(app: FastifyInstance) {
     }
 
     // Check if Shopify OAuth is configured
-    const shopifyApiKey = (config as any).shopifyApiKey;
-    const shopifyApiSecret = (config as any).shopifyApiSecret;
+    const shopifyApiKey = config.shopifyApiKey;
+    const shopifyApiSecret = config.shopifyApiSecret;
 
     if (!shopifyApiKey || !shopifyApiSecret) {
       return reply.status(503).send({
@@ -129,8 +129,8 @@ export async function shopifyRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'Shop mismatch' });
     }
 
-    const shopifyApiKey = (config as any).shopifyApiKey;
-    const shopifyApiSecret = (config as any).shopifyApiSecret;
+    const shopifyApiKey = config.shopifyApiKey;
+    const shopifyApiSecret = config.shopifyApiSecret;
 
     // TODO: Verify HMAC signature for security
     // This is BLOCKED until auth security fix lands

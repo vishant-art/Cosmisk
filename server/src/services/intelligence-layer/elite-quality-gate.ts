@@ -21,6 +21,7 @@ import {
   evaluateThinkingQuality,
   type ThinkingTrace,
   type ThinkingQualityEvaluation,
+  type ThinkingDimensionScore,
 } from './thinking-quality-evaluator.js';
 
 import {
@@ -152,6 +153,107 @@ export function getQualityThresholds(tier: SpendTier): EliteQualityThresholds {
 }
 
 // ============================================================================
+// Empty placeholder evaluations for the "no data" rejection path.
+// These are fully-typed zero-value objects (no behaviour change vs. the prior
+// untyped literals) — only the fields read downstream carry meaningful values.
+// ============================================================================
+
+function emptyThinkingEvaluation(): ThinkingQualityEvaluation {
+  const emptyDimension: ThinkingDimensionScore = {
+    dimension: '',
+    score: 0,
+    weight: 0,
+    weightedContribution: 0,
+    evidence: [],
+    benchmark: '',
+  };
+  return {
+    hypothesisDepth: emptyDimension,
+    evidenceSearch: emptyDimension,
+    causalReasoning: emptyDimension,
+    assumptionExposure: emptyDimension,
+    contradictionHandling: emptyDimension,
+    secondOrderThinking: emptyDimension,
+    strategicOriginality: emptyDimension,
+    hiddenLeverageSearch: emptyDimension,
+    behavioralInterpretation: emptyDimension,
+    allDimensions: [],
+    overallThinkingScore: 0,
+    verdict: 'NO_REASONING',
+    improvementRequired: ['Cannot evaluate - no data available'],
+    humanReadableExplanation: '',
+  };
+}
+
+function emptyOutputEvaluation(finalExplanation: string): ExplainableQualityReport {
+  return {
+    overallScore: 0,
+    verdict: 'REJECT',
+    dimensions: [],
+    synthesisAnalysis: {
+      signalSourcesUsed: [],
+      signalSourcesMissed: [],
+      crossSignalCorrelations: 0,
+      causalChainsIdentified: 0,
+      secondOrderImplications: 0,
+      hiddenPatternSearchAttempts: [],
+      synthesisDepthScore: 0,
+      verdict: 'SURFACE',
+    },
+    multiSignalConfirmation: {
+      convergentSignals: [],
+      conflictingSignals: [],
+      unexaminedSignals: [],
+      confirmationStrength: 0,
+    },
+    confidenceBreakdown: {
+      signalAgreement: 0,
+      statisticalSupport: 0,
+      temporalConsistency: 0,
+      behavioralConsistency: 0,
+      overallConfidence: 0,
+    },
+    hiddenLeverageSearch: {
+      areasSearched: [],
+      areasNotSearched: [],
+      potentialHiddenPatterns: [],
+      recommendedDeepDives: [],
+    },
+    founderGradeAssessment: {
+      wouldImpressFounder: false,
+      reasoning: '',
+      whatWouldMakeItBetter: [],
+    },
+    finalExplanation,
+  };
+}
+
+function emptyMediocrityEvaluation(): MediocrityEvaluation {
+  return {
+    isMediocre: false,
+    matches: [],
+    severityCounts: { fatal: 0, major: 0, minor: 0 },
+    overallSeverity: 'none',
+    humanReadable: '',
+    wouldSeniorMBKnow: false,
+    couldDashboardShow: false,
+  };
+}
+
+function emptyCommoditizationCheck(): CommoditizationCheck {
+  return {
+    canGoogleAnalyticsShowThis: false,
+    canTripleWhaleShowThis: false,
+    canNorthbeamShowThis: false,
+    canMetaAdsManagerShowThis: false,
+    canSeniorMBIdentifyIn5Min: false,
+    canHumanAnalystFindManually: false,
+    isCommoditized: false,
+    reasoning: [],
+  };
+}
+
+// ============================================================================
 // Main Evaluation Function
 // ============================================================================
 
@@ -183,21 +285,10 @@ export function evaluateEliteQuality(input: EliteQualityInput): EliteQualityVerd
       spendTier,
       thresholds,
       meetsThreshold: false,
-      thinkingEvaluation: {
-        overallThinkingScore: 0,
-        verdict: 'SHALLOW',
-        allDimensions: [],
-        improvementRequired: ['Cannot evaluate - no data available'],
-      } as any,
-      outputEvaluation: {
-        overallScore: 0,
-        verdict: 'REJECT',
-        dimensions: [],
-        synthesisAnalysis: { signalSourcesUsed: [], signalSourcesMissed: [], synthesisDepthScore: 0, verdict: 'SURFACE' },
-        finalExplanation: signalCheck.reason,
-      } as any,
-      mediocrityEvaluation: { overallSeverity: 'none', matches: [], severityCounts: { fatal: 0, major: 0, minor: 0 } } as any,
-      commoditizationCheck: { isCommoditized: false, reasoning: [] } as any,
+      thinkingEvaluation: emptyThinkingEvaluation(),
+      outputEvaluation: emptyOutputEvaluation(signalCheck.reason),
+      mediocrityEvaluation: emptyMediocrityEvaluation(),
+      commoditizationCheck: emptyCommoditizationCheck(),
       rejection: {
         primaryReason: signalCheck.reason,
         category: 'threshold',

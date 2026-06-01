@@ -175,7 +175,7 @@ function findDuplicateRecommendation(
     WHERE client_id = ? AND entity_id = ? AND type = ?
       AND created_at >= ? AND status = 'pending'
     LIMIT 1
-  `).get(clientId, entityId, type, sevenDaysAgo.toISOString()) as any;
+  `).get(clientId, entityId, type, sevenDaysAgo.toISOString()) as any;  // DB-2: typed when row becomes a Drizzle result
 
   return row ? mapRowToRecommendation(row) : null;
 }
@@ -226,7 +226,7 @@ export function detectExecution(
   const pending = db.prepare(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND entity_id = ? AND status = 'pending'
-  `).all(clientId, entityId) as any[];
+  `).all(clientId, entityId) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   for (const rec of pending) {
     const executed = checkIfExecuted(rec, currentState);
@@ -394,7 +394,7 @@ export function getAgentAccuracyStats(
     SELECT * FROM prediction_accuracy
     WHERE client_id = ? AND agent_id = ?
     ORDER BY created_at DESC
-  `).all(clientId, agentId) as any[];
+  `).all(clientId, agentId) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   if (results.length === 0) {
     return {
@@ -492,7 +492,7 @@ export function getLearningInsights(
  */
 export function getRecommendation(id: string): Recommendation | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM recommendations WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM recommendations WHERE id = ?').get(id) as any;  // DB-2: typed when row becomes a Drizzle result
   return row ? mapRowToRecommendation(row) : null;
 }
 
@@ -505,7 +505,7 @@ export function getPendingRecommendations(clientId: string): Recommendation[] {
     SELECT * FROM recommendations
     WHERE client_id = ? AND status = 'pending'
     ORDER BY created_at DESC
-  `).all(clientId) as any[];
+  `).all(clientId) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(mapRowToRecommendation);
 }
@@ -522,7 +522,7 @@ export function getRecommendationsNeedingValidation(clientId: string): Recommend
     SELECT * FROM recommendations
     WHERE client_id = ? AND status = 'executed'
       AND executed_at <= ? AND validated_at IS NULL
-  `).all(clientId, sevenDaysAgo.toISOString()) as any[];
+  `).all(clientId, sevenDaysAgo.toISOString()) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(mapRowToRecommendation);
 }
@@ -536,7 +536,7 @@ export function getEntityHistory(clientId: string, entityId: string): Recommenda
     SELECT * FROM recommendations
     WHERE client_id = ? AND entity_id = ?
     ORDER BY created_at DESC
-  `).all(clientId, entityId) as any[];
+  `).all(clientId, entityId) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(mapRowToRecommendation);
 }
@@ -598,7 +598,7 @@ export function getLoopStatus(clientId: string): {
   const validated = db.prepare(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND validated_at >= ?
-  `).all(clientId, thirtyDaysAgo.toISOString()) as any[];
+  `).all(clientId, thirtyDaysAgo.toISOString()) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   const overallAccuracy = validated.length > 0
     ? Math.round(validated.reduce((sum, r) => sum + (r.accuracy_score || 0), 0) / validated.length)

@@ -7,6 +7,7 @@
 import { FastifyInstance } from 'fastify';
 import { generateOperatorPackage, generateTier2Package, generateTier3Package, generateCompleteExperience } from '../services/operator-experience.js';
 import { generateRealityTestingPackage, trackRecommendation, recordView, recordAction, recordOutcome, submitFeedback, trackBehavior } from '../services/reality-testing.js';
+import type { OperatorFeedback, BehaviorEventType } from '../services/reality-testing.js';
 import { buildCreativeContext, validateCreativeQuality, getCategoryKnowledge } from '../services/creative-intelligence.js';
 import * as persistence from '../services/intelligence-persistence.js';
 import { logger } from '../utils/logger.js';
@@ -215,7 +216,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
         clientId,
         operatorId,
         rating,
-        feedbackType as any,
+        feedbackType as OperatorFeedback['feedbackType'],
         { freeformFeedback }
       );
 
@@ -245,7 +246,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
     const { clientId, operatorId, eventType, context, itemId, itemType } = request.body;
 
     try {
-      const event = trackBehavior(clientId, operatorId, eventType as any, context, { itemId, itemType });
+      const event = trackBehavior(clientId, operatorId, eventType as BehaviorEventType, context, { itemId, itemType });
       persistence.saveBehaviorEvent(event);
       return { success: true, data: { id: event.id } };
     } catch (err) {

@@ -243,7 +243,7 @@ export function getReasoningTrace(decisionId: string): ReasoningTrace | null {
   try {
     const row = db.prepare(`
       SELECT * FROM decision_traces WHERE decision_id = ?
-    `).get(decisionId) as any;
+    `).get(decisionId) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (!row) return null;
 
@@ -394,7 +394,7 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
         AVG(CAST(json_extract(metadata, '$.confidence') as REAL)) as avg_conf
       FROM agent_decisions
       WHERE user_id = ? AND date(created_at) = ?
-    `).get(clientId, today) as any;
+    `).get(clientId, today) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (decisionStats) {
       metrics.decisionsGenerated = decisionStats.total || 0;
@@ -414,7 +414,7 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
       FROM human_reviews
       WHERE client_id = ?
-    `).get(today, today, clientId) as any;
+    `).get(today, today, clientId) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (reviewStats) {
       metrics.humanReviewsCreated = reviewStats.created || 0;
@@ -430,7 +430,7 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
         SUM(CASE WHEN status = 'verified_correct' THEN 1 ELSE 0 END) as correct
       FROM predictions
       WHERE client_id = ?
-    `).get(clientId) as any;
+    `).get(clientId) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (predStats) {
       metrics.predictionsGenerated = predStats.total || 0;
@@ -448,7 +448,7 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
         AVG(total_duration) as avg_time
       FROM decision_traces
       WHERE client_id = ? AND date(created_at) = ?
-    `).get(clientId, today) as any;
+    `).get(clientId, today) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (traceStats) {
       metrics.synthesisDepthAvg = traceStats.avg_depth || 0;
@@ -699,7 +699,7 @@ export class SQLitePatternStore implements PatternStore {
     const db = getDb();
 
     try {
-      const row = db.prepare(`SELECT * FROM pattern_store WHERE id = ?`).get(id) as any;
+      const row = db.prepare(`SELECT * FROM pattern_store WHERE id = ?`).get(id) as any;  // DB-2: typed when row becomes a Drizzle result
       if (!row) return null;
 
       return {
@@ -739,7 +739,7 @@ export class SQLitePatternStore implements PatternStore {
 
       query += ` ORDER BY created_at DESC`;
 
-      const rows = db.prepare(query).all(...params) as any[];
+      const rows = db.prepare(query).all(...params) as any[];  // DB-2: typed when row becomes a Drizzle result
 
       return rows.map(row => ({
         id: row.id,
@@ -765,7 +765,7 @@ export class SQLitePatternStore implements PatternStore {
         WHERE client_id = ? AND content LIKE ?
         ORDER BY created_at DESC
         LIMIT ?
-      `).all(clientId, `%${query}%`, limit) as any[];
+      `).all(clientId, `%${query}%`, limit) as any[];  // DB-2: typed when row becomes a Drizzle result
 
       return rows.map(row => ({
         id: row.id,

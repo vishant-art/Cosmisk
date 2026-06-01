@@ -50,20 +50,20 @@ export function savePrediction(prediction: TrackedPrediction): void {
 
 export function getPrediction(id: string): TrackedPrediction | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM intelligence_predictions WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM intelligence_predictions WHERE id = ?').get(id) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToPrediction(row);
 }
 
 export function getPredictionsByClient(clientId: string): TrackedPrediction[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM intelligence_predictions WHERE client_id = ? ORDER BY created_at DESC').all(clientId) as any[];
+  const rows = db.prepare('SELECT * FROM intelligence_predictions WHERE client_id = ? ORDER BY created_at DESC').all(clientId) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToPrediction);
 }
 
 export function getUnverifiedPredictions(clientId: string): TrackedPrediction[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM intelligence_predictions WHERE client_id = ? AND verification_date IS NULL').all(clientId) as any[];
+  const rows = db.prepare('SELECT * FROM intelligence_predictions WHERE client_id = ? AND verification_date IS NULL').all(clientId) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToPrediction);
 }
 
@@ -130,14 +130,14 @@ export function saveRecommendation(rec: TrackedRecommendation): void {
 
 export function getRecommendation(id: string): TrackedRecommendation | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM intelligence_recommendations WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM intelligence_recommendations WHERE id = ?').get(id) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToRecommendation(row);
 }
 
 export function getRecommendationsByClient(clientId: string, limit = 100): TrackedRecommendation[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM intelligence_recommendations WHERE client_id = ? ORDER BY created_at DESC LIMIT ?').all(clientId, limit) as any[];
+  const rows = db.prepare('SELECT * FROM intelligence_recommendations WHERE client_id = ? ORDER BY created_at DESC LIMIT ?').all(clientId, limit) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToRecommendation);
 }
 
@@ -224,7 +224,7 @@ export function saveFeedback(feedback: OperatorFeedback): void {
 
 export function getFeedbackByClient(clientId: string, limit = 100): OperatorFeedback[] {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM operator_feedback WHERE client_id = ? ORDER BY submitted_at DESC LIMIT ?').all(clientId, limit) as any[];
+  const rows = db.prepare('SELECT * FROM operator_feedback WHERE client_id = ? ORDER BY submitted_at DESC LIMIT ?').all(clientId, limit) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToFeedback);
 }
 
@@ -281,7 +281,7 @@ export function getBehaviorEvents(clientId: string, operatorId: string, limit = 
     SELECT * FROM operator_behavior
     WHERE client_id = ? AND operator_id = ?
     ORDER BY timestamp DESC LIMIT ?
-  `).all(clientId, operatorId, limit) as any[];
+  `).all(clientId, operatorId, limit) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToBehaviorEvent);
 }
 
@@ -340,7 +340,7 @@ export function saveOperatorProfile(profile: OperatorProfile): void {
 
 export function getOperatorProfile(clientId: string, operatorId: string): OperatorProfile | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM operator_profiles WHERE client_id = ? AND operator_id = ?').get(clientId, operatorId) as any;
+  const row = db.prepare('SELECT * FROM operator_profiles WHERE client_id = ? AND operator_id = ?').get(clientId, operatorId) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToProfile(row);
 }
@@ -409,7 +409,7 @@ export function saveIntelligenceMetrics(metrics: IntelligenceMetrics): void {
 
 export function getLatestMetrics(clientId: string): IntelligenceMetrics | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM intelligence_metrics WHERE client_id = ? ORDER BY generated_at DESC LIMIT 1').get(clientId) as any;
+  const row = db.prepare('SELECT * FROM intelligence_metrics WHERE client_id = ? ORDER BY generated_at DESC LIMIT 1').get(clientId) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToMetrics(row);
 }
@@ -487,7 +487,7 @@ export function getCompetitorSnapshots(clientId: string, competitorName: string,
     SELECT * FROM competitor_snapshots
     WHERE client_id = ? AND competitor_name = ?
     ORDER BY captured_at DESC LIMIT ?
-  `).all(clientId, competitorName, limit) as any[];
+  `).all(clientId, competitorName, limit) as any[];  // DB-2: typed when row becomes a Drizzle result
 }
 
 export function saveCompetitorMovement(movement: any): void {
@@ -519,7 +519,7 @@ export function saveCompetitorMovement(movement: any): void {
 
 export function getUnacknowledgedMovements(clientId: string): any[] {
   const db = getDb();
-  return db.prepare('SELECT * FROM competitor_movements WHERE client_id = ? AND acknowledged = 0 ORDER BY detected_at DESC').all(clientId) as any[];
+  return db.prepare('SELECT * FROM competitor_movements WHERE client_id = ? AND acknowledged = 0 ORDER BY detected_at DESC').all(clientId) as any[];  // DB-2: typed when row becomes a Drizzle result
 }
 
 // ============================================================================

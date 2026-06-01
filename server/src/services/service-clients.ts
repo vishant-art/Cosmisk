@@ -163,14 +163,14 @@ export function createClient(input: CreateClientInput): ServiceClient {
 
 export function getClient(id: string): ServiceClient | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM service_clients WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM service_clients WHERE id = ?').get(id) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToClient(row);
 }
 
 export function getClientByBrand(brandName: string): ServiceClient | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM service_clients WHERE brand_name = ?').get(brandName) as any;
+  const row = db.prepare('SELECT * FROM service_clients WHERE brand_name = ?').get(brandName) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToClient(row);
 }
@@ -187,7 +187,7 @@ export function listClients(status?: ClientStatus): ServiceClient[] {
 
   query += ' ORDER BY updated_at DESC';
 
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = db.prepare(query).all(...params) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToClient);
 }
 
@@ -233,7 +233,7 @@ export function updateClient(id: string, updates: Partial<CreateClientInput>): S
 
 export function getCompetitorIntelStore(clientId: string): CompetitorIntelStore | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM competitor_intel_store WHERE client_id = ?').get(clientId) as any;
+  const row = db.prepare('SELECT * FROM competitor_intel_store WHERE client_id = ?').get(clientId) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
 
   return {
@@ -317,7 +317,7 @@ export function hasReferenceBeenShown(clientId: string, adId: string): boolean {
 
 export function getOOSAgentStore(clientId: string): OOSAgentStore | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM oos_agent_store WHERE client_id = ?').get(clientId) as any;
+  const row = db.prepare('SELECT * FROM oos_agent_store WHERE client_id = ?').get(clientId) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
 
   return {
@@ -759,7 +759,7 @@ export function getPendingRecommendations(clientId: string): AgentRecommendation
     SELECT * FROM agent_recommendations
     WHERE client_id = ? AND outcome_status = 'pending' AND delivered_at IS NOT NULL
     ORDER BY created_at DESC
-  `).all(clientId) as any[];
+  `).all(clientId) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(row => ({
     id: row.id,

@@ -11,6 +11,14 @@ import { logger } from '../utils/logger.js';
 import { getRecentReports, getRecommendationHistory, getPredictionAccuracy } from '../services/strategic-memory.js';
 import crypto from 'crypto';
 
+// Properties populated by the basicAuth preHandler below.
+declare module 'fastify' {
+  interface FastifyRequest {
+    clientId?: string;
+    brandName?: string;
+  }
+}
+
 // Simple basic auth middleware
 async function basicAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const authHeader = request.headers.authorization;
@@ -49,8 +57,8 @@ async function basicAuth(request: FastifyRequest, reply: FastifyReply): Promise<
   }
 
   // Store client info for later use
-  (request as any).clientId = client.id;
-  (request as any).brandName = client.brand_name;
+  request.clientId = client.id;
+  request.brandName = client.brand_name;
 }
 
 export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
@@ -59,8 +67,9 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
    * Main portal page - shows client's report history
    */
   app.get('/portal', { preHandler: basicAuth }, async (request, reply) => {
-    const clientId = (request as any).clientId;
-    const brandName = (request as any).brandName;
+    // Set by the basicAuth preHandler; guaranteed present here.
+    const clientId = request.clientId ?? '';
+    const brandName = request.brandName ?? '';
 
     try {
       const reports = getRecentReports(clientId, 20);
@@ -82,8 +91,9 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
    * View a specific report
    */
   app.get<{ Params: { reportId: string } }>('/portal/report/:reportId', { preHandler: basicAuth }, async (request, reply) => {
-    const clientId = (request as any).clientId;
-    const brandName = (request as any).brandName;
+    // Set by the basicAuth preHandler; guaranteed present here.
+    const clientId = request.clientId ?? '';
+    const brandName = request.brandName ?? '';
     const { reportId } = request.params;
 
     try {
