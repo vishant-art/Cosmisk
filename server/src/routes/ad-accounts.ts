@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -8,9 +8,8 @@ import type { MetaTokenRow, AdAccount, TopAd } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -41,7 +40,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
         return { success: true, accounts, total: accounts.length };
       }
 
-      const token = getUserMetaToken(userId);
+      const token = await getUserMetaToken(userId);
       if (!token) {
         return reply.status(200).send({ success: true, accounts: [], total: 0, meta_connected: false });
       }
@@ -87,7 +86,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, kpis: {}, meta_connected: false });
       }
@@ -180,7 +179,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, ads: [], meta_connected: false });
       }
@@ -244,7 +243,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: false, video_url: '', error: 'Meta account not connected', meta_connected: false });
       }
@@ -322,7 +321,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
         return cached.data;
       }
 
-      const token = getUserMetaToken(userId);
+      const token = await getUserMetaToken(userId);
       if (!token) {
         return reply.status(200).send({ success: true, portfolio: null, accounts: [], meta_connected: false });
       }
@@ -345,29 +344,28 @@ export async function adAccountRoutes(app: FastifyInstance) {
       const activeAccounts = rawAccounts.filter((a: any) => a.account_status === 1);
 
       // Batch SQLite queries
-      const db = getDb();
       const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
-      const sprintRows = db.prepare(`
+      const sprintRows = await getDbAdapter().all<any>(`
         SELECT account_id, MAX(created_at) as latest_sprint,
           COUNT(*) as total_sprints,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_sprints
         FROM creative_sprints WHERE account_id IS NOT NULL
         GROUP BY account_id
-      `).all() as any[];
+      `);
 
-      const alertRows = db.prepare(`
+      const alertRows = await getDbAdapter().all<any>(`
         SELECT account_id, COUNT(*) as alert_count,
           MAX(CASE WHEN severity = 'critical' THEN 4 WHEN severity = 'high' THEN 3 WHEN severity = 'medium' THEN 2 ELSE 1 END) as max_severity
         FROM autopilot_alerts WHERE created_at >= ? AND account_id IS NOT NULL
         GROUP BY account_id
-      `).all(sevenDaysAgo) as any[];
+      `, [sevenDaysAgo]);
 
-      const decisionRows = db.prepare(`
+      const decisionRows = await getDbAdapter().all<any>(`
         SELECT account_id, COUNT(*) as pending_count
         FROM agent_decisions WHERE status = 'pending' AND account_id IS NOT NULL
         GROUP BY account_id
-      `).all() as any[];
+      `);
 
       // Index by account_id
       const sprintMap = new Map(sprintRows.map((r: any) => [r.account_id, r]));
@@ -497,7 +495,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
   // GET /ad-accounts/pages — list Facebook Pages the user manages
   app.get('/pages', { preHandler: [app.authenticate] }, async (request, reply) => {
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, pages: [] });
       }
