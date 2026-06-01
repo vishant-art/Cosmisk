@@ -119,4 +119,43 @@ Plan: [`db2_execution_plan.md`](./db2_execution_plan.md). Orchestrated as agents
 ### Composer green-gate — **VERDICT: GO**
 `tsc` = baseline only · full suite **908 passed / 0 failed / 28 skipped / 39 files** (894 core preserved + 14 adapter, pg-gated tests skipped) · adapter not runtime-imported (additive-only confirmed). M2.0 infra is green.
 
-**M2.0 status:** ✅ adapter + shim + flag + test-runner repair done and gated green. **Open:** provision Neon test branch (`TEST_DATABASE_URL`) to turn the pg-backend tests from skipped→green. **Next:** M2.1 pilot (one route end-to-end on both backends) — cleared by the composer, awaiting go.
+**M2.0 status:** ✅ adapter + shim + flag + test-runner repair done and gated green. Neon test branch since provisioned (`TEST_DATABASE_URL` in `server/.env.test`, loaded via `vitest.setup.ts`); pg-path tests now green (full suite 39 files / 917 / 0 / 19).
+
+---
+
+## 7. DB-2 — M2.1 pilot (Workflow, composer-gated) — 2026-06-01
+
+Run as a Workflow: **Select → Convert → Verify-PG → Compose-gate**. Plan: [`db2_execution_plan.md`](./db2_execution_plan.md) M2.1.
+
+- **Pilot route:** `src/routes/brands.ts` `GET /brands/list` (2 `.prepare()` sites, clean — no upserts/tx/lastInsertRowid). Converted to `await getDbAdapter().get<T>(sql,[...])`. **Async propagation: none** (handler-local; no helper/caller became async).
+- **Both backends green:** existing `brands-routes.test.ts` 7/7 on SQLite (`DB_BACKEND=sqlite`); new `src/db/__tests__/m2_1_pilot_pg.test.ts` 4/4 on the **Neon test branch** (`DB_BACKEND=postgres`) — GET /brands/list served from Postgres through PgAdapter.
+- **Composer VERDICT: GO** — tsc baseline-only; full suite **40 files / 921 passed / 0 failed / 19 skipped**; sqlite pilot green; pg pilot green.
+
+### ⚠️ Two adapter design problems the pilot surfaced (must fix before M2.2 — they affect all 633 remaining sites)
+Both stem from `adapter.ts` resolving `getDb`/`pgPool` via **`createRequire(import.meta.url)`** (CommonJS), which **bypasses vitest's ESM `vi.mock`**:
+1. **SQLite path:** `vi.mock('../db/index')` (the pattern every existing route test uses to inject in-memory SQLite) does NOT reach the adapter → converting a route makes its test 500 unless you add a `vi.mock('../db/adapter')` override returning `new SqliteAdapter(testDb)`. That override **hollows out the real `getDbAdapter()` wiring** — the test stops exercising the actual adapter selection. Hitting this on ~633 sites would erode the test gate.
+2. **Postgres path:** the adapter's `createRequire('./pg.js')` is **unreachable under vitest** (source is `pg.ts`; no compiled `pg.js`) → the pg branch throws "Cannot find module" and 500s; the pilot worked around it by mocking `getDbAdapter` to return a real `PgAdapter` over the test pool.
+
+**Recommended M2.0.1 hardening (small, high-leverage):** replace `createRequire` in `adapter.ts` with standard ESM static imports — `import { getDb } from './index.js'` + `import { pgPool } from './pg.js'` (importing the symbols does NOT call them; `getDb` stays lazy, no DB opens at load). Then `vi.mock('../db/index')` / `vi.mock('../db/pg')` work naturally, route tests exercise the REAL `getDbAdapter()`, the pg branch is reachable, and the `vi.mock('../db/adapter')` workaround disappears. Also lift a shared test helper for the in-memory-SQLite injection. **Do this before scaling to M2.2.**
+
+**M2.1 status:** ✅ GO. **Next:** M2.0.1 adapter hardening (below) → then M2.2 routes batch.
+
+---
+
+## 8. DB-2 — M2.0.1 adapter hardening + pg-test concurrency fix — 2026-06-01
+
+Done before M2.2 so the 633-site grind has clean test ergonomics.
+
+- **Adapter `createRequire` → ESM** (`db/adapter.ts`): `getDb`/`pgPool` now resolved via plain `import` (importing the symbols doesn't call them — `getDb` stays lazy; `new Pool` opens no connection — so it's runtime-neutral). Consequence: `vi.mock('../db/index')` / `vi.mock('../db/pg')` now reach the adapter.
+- **`brands-routes.test.ts`**: dropped the `vi.mock('../db/adapter')` workaround — the existing `vi.mock('../db/index')` now routes the real `getDbAdapter()`→`SqliteAdapter`→mocked `getDb`. **7/7 green on the real adapter.** This is the standard template for every route test in M2.2+ (no per-test adapter mock needed).
+- **`m2_1_pilot_pg.test.ts`**: injects the test-branch pool via a `getDbAdapter` mock (one pool/file) rather than opening `pg.ts`'s production `max:20` pool — see next item.
+
+### Test-infra defect found + fixed (would have flaked M2.7 badly)
+The pg-backed test files share ONE Neon branch + `public` schema, and vitest runs files **concurrently** → one file's `reset()` `TRUNCATE` wiped another's freshly-seeded rows mid-test (intermittent "expected 2 brands, got 0"). Also, driving the *real* pg branch opened `pg.ts`'s `max:20` pool per file → connection exhaustion on the branch. Fixes:
+- **`pg-test-target.ts`**: `getMigratedTestPg()` takes a **Postgres session advisory lock** on a dedicated client and holds it until `teardown()` → pg-backed files **serialize** against the shared branch (no concurrent TRUNCATE; also serializes `migrate()`). Auto-releases if the process dies.
+- **`vitest.config.ts`**: raised `hookTimeout` 10s→60s (+ `testTimeout` 30s) so a file *waiting* on the lock doesn't hit the 10s default and time out. Timeouts, not delays — fast SQLite tests unaffected.
+- M2.7 scaling follow-up noted in `pg-test-target.ts`: per-file unique `search_path` schema for full parallelism when there are many pg files.
+
+**Verification:** full suite **921 passed / 0 failed / 19 skipped (40 files)**, deterministic across 3 runs; `db/__tests__` subset 29/29; tsc baseline-only. The pg path (pg-test-target, adapter PgAdapter, pg-parity, m2_1 pilot — 13 pg tests) all run green against the Neon branch.
+
+**M2.0.1 + M2.1 status:** ✅ complete & green. **Next:** M2.2 — routes batch (leaf-first, one file/commit, the `vi.mock('../db/index')` template + `getDbAdapter()` conversion).
