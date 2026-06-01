@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { createMessage } from '../services/llm-gateway.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
@@ -124,10 +124,9 @@ Rules:
 /*  Routes                                                            */
 /* ------------------------------------------------------------------ */
 
-function getUserMetaToken(userId: string): string | undefined {
+async function getUserMetaToken(userId: string): Promise<string | undefined> {
   try {
-    const db = getDb();
-    const row = db.prepare('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+    const row = await getDbAdapter().get<{ encrypted_access_token: string }>('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?', [userId]);
     if (!row) return undefined;
     return decryptToken(row.encrypted_access_token);
   } catch {
@@ -144,7 +143,7 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
     const { query, country, limit } = parsed;
 
     try {
-      const userToken = getUserMetaToken(request.user.id);
+      const userToken = await getUserMetaToken(request.user.id);
       const ads = await searchAdLibrary(query, country || 'IN', limit, userToken);
 
       // Group by page
@@ -184,7 +183,7 @@ export async function competitorSpyRoutes(app: FastifyInstance) {
     const { query, country } = parsed;
 
     try {
-      const userToken = getUserMetaToken(request.user.id);
+      const userToken = await getUserMetaToken(request.user.id);
       const ads = await searchAdLibrary(query, country || 'IN', 25, userToken);
       const analysis = await analyzeCompetitorAds(request.user.id, query, ads);
 

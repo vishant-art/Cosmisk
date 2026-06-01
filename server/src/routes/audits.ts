@@ -5,7 +5,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { runAudit, getAuditHistory, generateMarkdown } from '../audit/index.js';
 import { generatePDF } from '../audit/pdf-export.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import type { AuditConfig } from '../audit/types.js';
 
 interface TriggerAuditBody {
@@ -115,10 +115,9 @@ export async function auditRoutes(app: FastifyInstance) {
     async (request: FastifyRequest<{ Params: GetAuditParams }>, reply: FastifyReply) => {
       const { auditId } = request.params;
 
-      const db = getDb();
-      const row = db.prepare(`
+      const row = await getDbAdapter().get<any>(`
         SELECT * FROM audits WHERE id = ?
-      `).get(auditId) as any;
+      `, [auditId]);
 
       if (!row) {
         return reply.status(404).send({ error: 'Audit not found' });
@@ -157,8 +156,6 @@ export async function auditRoutes(app: FastifyInstance) {
     async (request: FastifyRequest<{ Querystring: ListAuditsQuery }>, reply: FastifyReply) => {
       const { brandId, limit = 20 } = request.query;
 
-      const db = getDb();
-
       let query = `
         SELECT id, brand_id, brand_name, date_range_start, date_range_end,
                health_score, wasted_spend, best_cpa, top_priority, created_at
@@ -175,7 +172,7 @@ export async function auditRoutes(app: FastifyInstance) {
       query += ' ORDER BY created_at DESC LIMIT ?';
       params.push(limit);
 
-      const rows = db.prepare(query).all(...params) as any[];
+      const rows = await getDbAdapter().all<any>(query, params);
 
       return {
         audits: rows.map(row => ({
@@ -226,9 +223,7 @@ export async function auditRoutes(app: FastifyInstance) {
     '/brands',
     { preHandler: [app.authenticate] },
     async (request, reply) => {
-      const db = getDb();
-
-      const rows = db.prepare(`
+      const rows = await getDbAdapter().all<any>(`
         SELECT b.id, b.name, b.domain, b.category, b.stage,
                b.meta_ad_account_id, b.shopify_domain,
                COUNT(a.id) as audit_count,
@@ -237,7 +232,7 @@ export async function auditRoutes(app: FastifyInstance) {
         LEFT JOIN audits a ON b.id = a.brand_id
         GROUP BY b.id
         ORDER BY b.name
-      `).all() as any[];
+      `);
 
       return {
         brands: rows.map(row => ({
@@ -266,10 +261,9 @@ export async function auditRoutes(app: FastifyInstance) {
     async (request: FastifyRequest<{ Params: GetAuditParams }>, reply: FastifyReply) => {
       const { auditId } = request.params;
 
-      const db = getDb();
-      const row = db.prepare(`
+      const row = await getDbAdapter().get<any>(`
         SELECT brand_name, full_output FROM audits WHERE id = ?
-      `).get(auditId) as any;
+      `, [auditId]);
 
       if (!row) {
         return reply.status(404).send({ error: 'Audit not found' });

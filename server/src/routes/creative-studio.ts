@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
@@ -46,10 +46,10 @@ export async function creativeStudioRoutes(app: FastifyInstance) {
     }
 
     try {
-      const db = getDb();
+      const db = getDbAdapter();
 
       // Check cache first
-      const cached = db.prepare('SELECT result_json FROM url_analysis_cache WHERE url = ?').get(url) as { result_json: string } | undefined;
+      const cached = await db.get<{ result_json: string }>('SELECT result_json FROM url_analysis_cache WHERE url = ?', [url]);
       if (cached) {
         return { success: true, analysis: JSON.parse(cached.result_json) };
       }
@@ -93,7 +93,10 @@ Return ONLY valid JSON, no markdown.`,
       const parsedResult = JSON.parse(cleanText);
 
       // Cache the result
-      db.prepare('INSERT OR REPLACE INTO url_analysis_cache (url, result_json) VALUES (?, ?)').run(url, JSON.stringify(parsedResult));
+      await db.run(
+        'INSERT INTO url_analysis_cache (url, result_json) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET result_json = excluded.result_json',
+        [url, JSON.stringify(parsedResult)],
+      );
 
       return { success: true, analysis: parsedResult };
     } catch (err: any) {
@@ -114,32 +117,32 @@ Return ONLY valid JSON, no markdown.`,
     }
 
     try {
-      const db = getDb();
+      const db = getDbAdapter();
       const generationId = randomUUID();
       const userId = request.user.id;
 
       // Create generation record
-      db.prepare(`
+      await db.run(`
         INSERT INTO studio_generations (id, user_id, brief_json, formats, meta_account_id, status)
         VALUES (?, ?, ?, ?, ?, 'generating')
-      `).run(generationId, userId, JSON.stringify(brief), JSON.stringify(formats), meta_account_id || null);
+      `, [generationId, userId, JSON.stringify(brief), JSON.stringify(formats), meta_account_id || null]);
 
       // Create output records for each format
       const outputIds: Record<string, string> = {};
       for (const format of formats) {
         const outputId = randomUUID();
         outputIds[format] = outputId;
-        db.prepare(`
+        await db.run(`
           INSERT INTO studio_outputs (id, generation_id, format, status)
           VALUES (?, ?, ?, 'pending')
-        `).run(outputId, generationId, format);
+        `, [outputId, generationId, format]);
       }
 
       // Return immediately, process in background
       reply.send({ success: true, generation_id: generationId });
 
       // Kick off async generation (don't await)
-      processGeneration(db, generationId, brief, formats, outputIds).catch(err => {
+      processGeneration(generationId, brief, formats, outputIds).catch(err => {
         logger.error({ err: err.message, generationId }, 'Background generation failed');
       });
 
@@ -157,14 +160,14 @@ Return ONLY valid JSON, no markdown.`,
     const userId = request.user.id;
 
     try {
-      const db = getDb();
-      const generation = db.prepare('SELECT * FROM studio_generations WHERE id = ? AND user_id = ?').get(id, userId) as any;
+      const db = getDbAdapter();
+      const generation = await db.get<any>('SELECT * FROM studio_generations WHERE id = ? AND user_id = ?', [id, userId]);
 
       if (!generation) {
         return reply.status(404).send({ success: false, error: 'Generation not found' });
       }
 
-      const outputs = db.prepare('SELECT * FROM studio_outputs WHERE generation_id = ? ORDER BY created_at ASC').all(id) as any[];
+      const outputs = await db.all<any>('SELECT * FROM studio_outputs WHERE generation_id = ? ORDER BY created_at ASC', [id]);
 
       return {
         success: true,
@@ -191,8 +194,8 @@ Return ONLY valid JSON, no markdown.`,
     const userId = request.user.id;
 
     try {
-      const db = getDb();
-      const rows = db.prepare('SELECT * FROM studio_generations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(userId) as any[];
+      const db = getDbAdapter();
+      const rows = await db.all<any>('SELECT * FROM studio_generations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [userId]);
 
       return {
         success: true,
@@ -262,24 +265,24 @@ Return ONLY valid JSON, no markdown.`,
 /* ------------------------------------------------------------------ */
 
 async function processGeneration(
-  db: ReturnType<typeof getDb>,
   generationId: string,
   brief: Brief,
   formats: string[],
   outputIds: Record<string, string>,
 ): Promise<void> {
+  const db = getDbAdapter();
   const now = () => new Date().toISOString();
 
   // Look up userId from generation record
-  const genRow = db.prepare('SELECT user_id, meta_account_id FROM studio_generations WHERE id = ?').get(generationId) as { user_id: string; meta_account_id: string | null } | undefined;
+  const genRow = await db.get<{ user_id: string; meta_account_id: string | null }>('SELECT user_id, meta_account_id FROM studio_generations WHERE id = ?', [generationId]);
   const userId = genRow?.user_id || '';
   const metaAccountId = genRow?.meta_account_id || undefined;
 
-  const updateOutput = (outputId: string, status: string, outputJson?: string, errorMessage?: string, costCents?: number) => {
-    db.prepare(`
+  const updateOutput = async (outputId: string, status: string, outputJson?: string, errorMessage?: string, costCents?: number) => {
+    await db.run(`
       UPDATE studio_outputs SET status = ?, output_json = ?, error_message = ?, cost_cents = ?, updated_at = ?
       WHERE id = ?
-    `).run(status, outputJson || null, errorMessage || null, costCents || 0, now(), outputId);
+    `, [status, outputJson || null, errorMessage || null, costCents || 0, now(), outputId]);
   };
 
   const briefContext = [
@@ -333,17 +336,17 @@ Each script object must have:
                 metaAccountId,
               });
               // Insert prediction record
-              db.prepare(`
+              await db.run(`
                 INSERT INTO score_predictions (id, user_id, studio_output_id, format, dna_tags, predicted_score, predicted_roas_mid, score_breakdown, confidence)
                 VALUES (?, ?, ?, 'scripts', ?, ?, ?, ?, ?)
-              `).run(
+              `, [
                 randomUUID(), userId, outputId,
                 JSON.stringify(score.matchedPatterns),
                 score.total,
                 score.predictedRoasRange?.p50 || null,
                 JSON.stringify(score.dimensions),
                 score.confidence,
-              );
+              ]);
               return { ...script, score };
             } catch {
               return script; // scoring failed — return unscored
@@ -351,8 +354,8 @@ Each script object must have:
           }));
 
           const scoreJson = JSON.stringify(scoredScripts.map((s: any) => s.score).filter(Boolean));
-          updateOutput(outputId, 'completed', JSON.stringify(scoredScripts), undefined, 5);
-          db.prepare('UPDATE studio_outputs SET score_json = ? WHERE id = ?').run(scoreJson, outputId);
+          await updateOutput(outputId, 'completed', JSON.stringify(scoredScripts), undefined, 5);
+          await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [scoreJson, outputId]);
           break;
         }
 
@@ -379,14 +382,14 @@ Each script object must have:
             const staticScore = await scoreCreative({
               userId, format: 'static', platform: 'meta', metaAccountId,
             });
-            db.prepare('UPDATE studio_outputs SET score_json = ? WHERE id = ?').run(JSON.stringify([staticScore]), outputId);
-            db.prepare(`
+            await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [JSON.stringify([staticScore]), outputId]);
+            await db.run(`
               INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
               VALUES (?, ?, ?, 'static', ?, ?, ?, ?)
-            `).run(randomUUID(), userId, outputId, staticScore.total, staticScore.predictedRoasRange?.p50 || null, JSON.stringify(staticScore.dimensions), staticScore.confidence);
+            `, [randomUUID(), userId, outputId, staticScore.total, staticScore.predictedRoasRange?.p50 || null, JSON.stringify(staticScore.dimensions), staticScore.confidence]);
           } catch { /* scoring non-critical */ }
 
-          updateOutput(outputId, 'completed', JSON.stringify(images), undefined, 16);
+          await updateOutput(outputId, 'completed', JSON.stringify(images), undefined, 16);
           break;
         }
 
@@ -430,20 +433,20 @@ Each script object must have:
             const carouselScore = await scoreCreative({
               userId, format: 'carousel', platform: 'meta', metaAccountId,
             });
-            db.prepare('UPDATE studio_outputs SET score_json = ? WHERE id = ?').run(JSON.stringify([carouselScore]), outputId);
-            db.prepare(`
+            await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [JSON.stringify([carouselScore]), outputId]);
+            await db.run(`
               INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
               VALUES (?, ?, ?, 'carousel', ?, ?, ?, ?)
-            `).run(randomUUID(), userId, outputId, carouselScore.total, carouselScore.predictedRoasRange?.p50 || null, JSON.stringify(carouselScore.dimensions), carouselScore.confidence);
+            `, [randomUUID(), userId, outputId, carouselScore.total, carouselScore.predictedRoasRange?.p50 || null, JSON.stringify(carouselScore.dimensions), carouselScore.confidence]);
           } catch { /* scoring non-critical */ }
 
-          updateOutput(outputId, 'completed', JSON.stringify(slides), undefined, 100);
+          await updateOutput(outputId, 'completed', JSON.stringify(slides), undefined, 100);
           break;
         }
 
         case 'video': {
           // Video requires HeyGen which is async — mark as pending with info
-          updateOutput(outputId, 'pending', JSON.stringify({
+          await updateOutput(outputId, 'pending', JSON.stringify({
             message: 'Video generation requires HeyGen integration. Use the UGC Studio or sprint pipeline for video creation.',
             suggestion: 'Scripts have been generated above — use them with HeyGen or your preferred video tool.',
           }));
@@ -451,19 +454,19 @@ Each script object must have:
         }
 
         default: {
-          updateOutput(outputId, 'failed', undefined, `Unsupported format: ${format}`);
+          await updateOutput(outputId, 'failed', undefined, `Unsupported format: ${format}`);
         }
       }
     } catch (err: any) {
       logger.error({ err: err.message, format, generationId }, `Studio generation failed for format: ${format}`);
-      updateOutput(outputId, 'failed', undefined, err.message);
+      await updateOutput(outputId, 'failed', undefined, err.message);
     }
   }
 
   // Update generation status
-  const allOutputs = db.prepare('SELECT status FROM studio_outputs WHERE generation_id = ?').all(generationId) as Array<{ status: string }>;
+  const allOutputs = await db.all<{ status: string }>('SELECT status FROM studio_outputs WHERE generation_id = ?', [generationId]);
   const allFailed = allOutputs.every(o => o.status === 'failed');
   const finalStatus = allFailed ? 'failed' : 'completed';
 
-  db.prepare('UPDATE studio_generations SET status = ?, updated_at = ? WHERE id = ?').run(finalStatus, new Date().toISOString(), generationId);
+  await db.run('UPDATE studio_generations SET status = ?, updated_at = ? WHERE id = ?', [finalStatus, new Date().toISOString(), generationId]);
 }

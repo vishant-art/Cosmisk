@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -19,9 +19,8 @@ interface TargetingConfig {
   interests?: Array<{ id: string; name: string }>;
 }
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -51,7 +50,7 @@ export async function directorRoutes(app: FastifyInstance) {
 
     if (body.account_id) {
       try {
-        const token = getUserMetaToken(request.user.id);
+        const token = await getUserMetaToken(request.user.id);
         if (!token) throw new Error('Meta account not connected');
         const meta = new MetaApiService(token);
 
@@ -319,7 +318,7 @@ export async function directorRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'page_id is required to publish ads. Select a Facebook Page in Settings > Ad Accounts.' });
     }
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }
@@ -474,7 +473,7 @@ export async function directorRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { campaign_id, status } = parsed;
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }

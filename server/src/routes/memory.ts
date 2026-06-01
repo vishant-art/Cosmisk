@@ -9,7 +9,7 @@
  */
 
 import { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import {
   getStrategicContextForAgent,
@@ -131,19 +131,19 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
       );
 
       // Reinforce or penalize related episodes based on outcome
-      const db = getDb();
-      const rec = db.prepare(`
+      const db = getDbAdapter();
+      const rec = await db.get<{ data_json: string }>(`
         SELECT data_json FROM strategic_recommendations WHERE id = ?
-      `).get(recId) as { data_json: string } | undefined;
+      `, [recId]);
 
       if (rec && actualOutcome) {
         // Find related episodes and adjust their relevance
         const recData = JSON.parse(rec.data_json);
-        const episodes = db.prepare(`
+        const episodes = await db.all<{ id: string }>(`
           SELECT id FROM agent_episodes
           WHERE user_id = ? AND event LIKE ?
           ORDER BY created_at DESC LIMIT 5
-        `).all(recData.clientId, `%${recData.recommendation?.slice(0, 50) || ''}%`) as { id: string }[];
+        `, [recData.clientId, `%${recData.recommendation?.slice(0, 50) || ''}%`]);
 
         for (const ep of episodes) {
           if (wasSuccessful) {
@@ -207,10 +207,10 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     const { actualValue, lessonLearned } = request.body;
 
     try {
-      const db = getDb();
-      const pred = db.prepare(`
+      const db = getDbAdapter();
+      const pred = await db.get<{ data_json: string }>(`
         SELECT data_json FROM strategic_predictions WHERE id = ?
-      `).get(predId) as { data_json: string } | undefined;
+      `, [predId]);
 
       if (!pred) {
         return reply.status(404).send({ success: false, error: 'Prediction not found' });

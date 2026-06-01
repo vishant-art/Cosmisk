@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import type { UgcProjectRow, UgcConceptRow, UgcScriptRow } from '../types/index.js';
 import { validate, projectIdBodySchema, projectIdQuerySchema } from '../validation/schemas.js';
 import { safeJsonParse } from '../utils/safe-json.js';
@@ -8,10 +8,11 @@ export async function ugcRoutes(app: FastifyInstance) {
 
   // GET /ugc/projects
   app.get('/projects', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const projects = db.prepare(
-      'SELECT * FROM ugc_projects WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(request.user.id) as UgcProjectRow[];
+    const db = getDbAdapter();
+    const projects = await db.all<UgcProjectRow>(
+      'SELECT * FROM ugc_projects WHERE user_id = ? ORDER BY created_at DESC',
+      [request.user.id]
+    );
 
     return {
       projects: projects.map(p => ({
@@ -31,22 +32,25 @@ export async function ugcRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { project_id } = parsed;
 
-    const db = getDb();
-    const project = db.prepare(
-      'SELECT * FROM ugc_projects WHERE id = ? AND user_id = ?'
-    ).get(project_id, request.user.id) as UgcProjectRow | undefined;
+    const db = getDbAdapter();
+    const project = await db.get<UgcProjectRow>(
+      'SELECT * FROM ugc_projects WHERE id = ? AND user_id = ?',
+      [project_id, request.user.id]
+    );
 
     if (!project) {
       return reply.status(404).send({ error: 'Project not found' });
     }
 
-    const concepts = db.prepare(
-      'SELECT * FROM ugc_concepts WHERE project_id = ? ORDER BY created_at DESC'
-    ).all(project_id) as UgcConceptRow[];
+    const concepts = await db.all<UgcConceptRow>(
+      'SELECT * FROM ugc_concepts WHERE project_id = ? ORDER BY created_at DESC',
+      [project_id]
+    );
 
-    const scripts = db.prepare(
-      'SELECT * FROM ugc_scripts WHERE project_id = ? ORDER BY created_at DESC'
-    ).all(project_id) as UgcScriptRow[];
+    const scripts = await db.all<UgcScriptRow>(
+      'SELECT * FROM ugc_scripts WHERE project_id = ? ORDER BY created_at DESC',
+      [project_id]
+    );
 
     return {
       id: project.id,
@@ -82,13 +86,14 @@ export async function ugcRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { project_id } = parsed;
 
-    const db = getDb();
-    const concepts = db.prepare(
+    const db = getDbAdapter();
+    const concepts = await db.all<UgcConceptRow>(
       `SELECT c.* FROM ugc_concepts c
        JOIN ugc_projects p ON c.project_id = p.id
        WHERE c.project_id = ? AND p.user_id = ?
-       ORDER BY c.created_at DESC`
-    ).all(project_id, request.user.id) as UgcConceptRow[];
+       ORDER BY c.created_at DESC`,
+      [project_id, request.user.id]
+    );
 
     return {
       concepts: concepts.map(c => ({
@@ -108,13 +113,14 @@ export async function ugcRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { project_id } = parsed;
 
-    const db = getDb();
-    const scripts = db.prepare(
+    const db = getDbAdapter();
+    const scripts = await db.all<UgcScriptRow>(
       `SELECT s.* FROM ugc_scripts s
        JOIN ugc_projects p ON s.project_id = p.id
        WHERE s.project_id = ? AND p.user_id = ?
-       ORDER BY s.created_at DESC`
-    ).all(project_id, request.user.id) as UgcScriptRow[];
+       ORDER BY s.created_at DESC`,
+      [project_id, request.user.id]
+    );
 
     return {
       scripts: scripts.map(s => ({

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown, parseAudienceBreakdown } from '../services/insights-parser.js';
@@ -29,9 +29,8 @@ interface MetaInsightRow {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -1242,7 +1241,7 @@ export async function aiRoutes(app: FastifyInstance) {
       };
     }
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return {
         content: 'Your Meta account is not connected. Please go to Settings and connect your Meta account so I can access your ad data.',
@@ -1308,28 +1307,29 @@ export async function aiRoutes(app: FastifyInstance) {
 
   // GET /ai/briefing — fetch latest morning briefing + pending decisions for proactive AI Studio
   app.get('/briefing', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
     const userId = request.user.id;
 
     // Get latest completed morning briefing
-    const briefingRun = db.prepare(
+    const briefingRun = await getDbAdapter().get<{ id: string; summary: string; raw_context: string; completed_at: string }>(
       `SELECT * FROM agent_runs
        WHERE user_id = ? AND agent_type = 'morning_briefing' AND status = 'completed'
-       ORDER BY completed_at DESC LIMIT 1`
-    ).get(userId) as { id: string; summary: string; raw_context: string; completed_at: string } | undefined;
+       ORDER BY completed_at DESC LIMIT 1`,
+      [userId]
+    );
 
     if (!briefingRun) {
       return { briefing: null, pendingDecisions: [], suggestions: [] };
     }
 
     // Get pending watchdog decisions
-    const pendingDecisions = db.prepare(
+    const pendingDecisions = await getDbAdapter().all<{ id: string; type: string; target_name: string; reasoning: string; confidence: string; urgency: string; suggested_action: string; estimated_impact: string }>(
       `SELECT id, type, target_name, reasoning, confidence, urgency, suggested_action, estimated_impact
        FROM agent_decisions
        WHERE user_id = ? AND status = 'pending'
        ORDER BY urgency DESC, created_at DESC
-       LIMIT 5`
-    ).all(userId) as { id: string; type: string; target_name: string; reasoning: string; confidence: string; urgency: string; suggested_action: string; estimated_impact: string }[];
+       LIMIT 5`,
+      [userId]
+    );
 
     // Build context-aware suggestions from real data
     const suggestions: string[] = [];

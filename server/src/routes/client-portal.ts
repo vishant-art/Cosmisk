@@ -6,7 +6,7 @@
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { getRecentReports, getRecommendationHistory, getPredictionAccuracy } from '../services/strategic-memory.js';
 import crypto from 'crypto';
@@ -33,10 +33,9 @@ async function basicAuth(request: FastifyRequest, reply: FastifyReply): Promise<
   const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
   const [clientId, password] = credentials.split(':');
 
-  const db = getDb();
-  const client = db.prepare(`
+  const client = await getDbAdapter().get<{ id: string; brand_name: string; portal_password_hash?: string }>(`
     SELECT id, brand_name, portal_password_hash FROM service_clients WHERE id = ?
-  `).get(clientId) as { id: string; brand_name: string; portal_password_hash?: string } | undefined;
+  `, [clientId]);
 
   if (!client) {
     reply.header('WWW-Authenticate', 'Basic realm="Client Portal"');
@@ -97,10 +96,9 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
     const { reportId } = request.params;
 
     try {
-      const db = getDb();
-      const report = db.prepare(`
+      const report = await getDbAdapter().get<{ data_json: string }>(`
         SELECT data_json FROM strategic_reports WHERE id = ? AND client_id = ?
-      `).get(reportId, clientId) as { data_json: string } | undefined;
+      `, [reportId, clientId]);
 
       if (!report) {
         return reply.status(404).send('Report not found');

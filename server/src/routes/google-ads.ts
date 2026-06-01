@@ -223,9 +223,8 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // POST /google-ads/disconnect
   app.post('/disconnect', { preHandler: [app.authenticate] }, async (request) => {
-    const { getDb } = await import('../db/index.js');
-    const db = getDb();
-    db.prepare('DELETE FROM google_tokens WHERE user_id = ?').run(request.user.id);
+    const { getDbAdapter } = await import('../db/adapter.js');
+    await getDbAdapter().run('DELETE FROM google_tokens WHERE user_id = ?', [request.user.id]);
     return { success: true };
   });
 }

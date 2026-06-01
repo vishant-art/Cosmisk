@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -13,9 +13,8 @@ import { validate, accountIdQuerySchema, campaignIdQuerySchema, campaignLocalCre
 import { internalError } from '../utils/error-response.js';
 import { safeJsonParse } from '../utils/safe-json.js';
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -45,17 +44,18 @@ export async function campaignRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { account_id } = parsed;
 
-    const db = getDb();
     let campaigns: CampaignRow[];
 
     if (account_id) {
-      campaigns = db.prepare(
-        'SELECT * FROM campaigns WHERE user_id = ? AND account_id = ? ORDER BY updated_at DESC'
-      ).all(request.user.id, account_id) as CampaignRow[];
+      campaigns = await getDbAdapter().all<CampaignRow>(
+        'SELECT * FROM campaigns WHERE user_id = ? AND account_id = ? ORDER BY updated_at DESC',
+        [request.user.id, account_id]
+      );
     } else {
-      campaigns = db.prepare(
-        'SELECT * FROM campaigns WHERE user_id = ? ORDER BY updated_at DESC'
-      ).all(request.user.id) as CampaignRow[];
+      campaigns = await getDbAdapter().all<CampaignRow>(
+        'SELECT * FROM campaigns WHERE user_id = ? ORDER BY updated_at DESC',
+        [request.user.id]
+      );
     }
 
     return {
@@ -84,10 +84,10 @@ export async function campaignRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { campaign_id } = parsed;
 
-    const db = getDb();
-    const campaign = db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).get(campaign_id, request.user.id) as CampaignRow | undefined;
+    const campaign = await getDbAdapter().get<CampaignRow>(
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?',
+      [campaign_id, request.user.id]
+    );
 
     if (!campaign) {
       return reply.status(404).send({ success: false, error: 'Campaign not found' });
@@ -118,25 +118,25 @@ export async function campaignRoutes(app: FastifyInstance) {
     const body = validate(campaignLocalCreateSchema, request.body, reply);
     if (!body) return;
 
-    const db = getDb();
     const id = uuidv4();
 
-    db.prepare(
+    await getDbAdapter().run(
       `INSERT INTO campaigns (id, user_id, account_id, name, objective, budget, schedule_start, schedule_end, audience, placements, creative_ids, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      id,
-      request.user.id,
-      body.account_id || null,
-      body.name || 'Untitled Campaign',
-      body.objective || null,
-      body.budget || null,
-      body.schedule_start || null,
-      body.schedule_end || null,
-      body.audience ? JSON.stringify(body.audience) : null,
-      body.placements || null,
-      body.creative_ids ? JSON.stringify(body.creative_ids) : null,
-      body.status || 'draft',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        request.user.id,
+        body.account_id || null,
+        body.name || 'Untitled Campaign',
+        body.objective || null,
+        body.budget || null,
+        body.schedule_start || null,
+        body.schedule_end || null,
+        body.audience ? JSON.stringify(body.audience) : null,
+        body.placements || null,
+        body.creative_ids ? JSON.stringify(body.creative_ids) : null,
+        body.status || 'draft',
+      ]
     );
 
     return { success: true, campaign_id: id };
@@ -147,12 +147,11 @@ export async function campaignRoutes(app: FastifyInstance) {
     const body = validate(campaignUpdateBodySchema, request.body, reply);
     if (!body) return;
 
-    const db = getDb();
-
     // Verify ownership
-    const existing = db.prepare(
-      'SELECT id FROM campaigns WHERE id = ? AND user_id = ?'
-    ).get(body.campaign_id, request.user.id);
+    const existing = await getDbAdapter().get(
+      'SELECT id FROM campaigns WHERE id = ? AND user_id = ?',
+      [body.campaign_id, request.user.id]
+    );
 
     if (!existing) {
       return reply.status(404).send({ success: false, error: 'Campaign not found' });
@@ -179,9 +178,10 @@ export async function campaignRoutes(app: FastifyInstance) {
     updates.push("updated_at = datetime('now')");
     values.push(body.campaign_id, request.user.id);
 
-    db.prepare(
-      `UPDATE campaigns SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`
-    ).run(...values);
+    await getDbAdapter().run(
+      `UPDATE campaigns SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+      values
+    );
 
     return { success: true };
   });
@@ -192,11 +192,10 @@ export async function campaignRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { campaign_id } = parsed;
 
-    const db = getDb();
-
-    const campaign = db.prepare(
-      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?'
-    ).get(campaign_id, request.user.id) as CampaignRow | undefined;
+    const campaign = await getDbAdapter().get<CampaignRow>(
+      'SELECT * FROM campaigns WHERE id = ? AND user_id = ?',
+      [campaign_id, request.user.id]
+    );
 
     if (!campaign) {
       return reply.status(404).send({ success: false, error: 'Campaign not found' });
@@ -206,7 +205,7 @@ export async function campaignRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'No ad account linked to this campaign' });
     }
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }
@@ -282,9 +281,10 @@ export async function campaignRoutes(app: FastifyInstance) {
       const metaAdSet = await safeJson(adSetResp);
 
       // Update campaign in DB with Meta IDs and mark as launched
-      db.prepare(
-        "UPDATE campaigns SET status = 'launched', placements = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
-      ).run(JSON.stringify({ meta_campaign_id: metaCampaignId, meta_adset_id: metaAdSet.id }), campaign_id, request.user.id);
+      await getDbAdapter().run(
+        "UPDATE campaigns SET status = 'launched', placements = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+        [JSON.stringify({ meta_campaign_id: metaCampaignId, meta_adset_id: metaAdSet.id }), campaign_id, request.user.id]
+      );
 
       return {
         success: true,
@@ -310,7 +310,7 @@ export async function campaignRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return { success: true, suggestion: 'Connect your Meta account to get personalized campaign suggestions.' };
       }

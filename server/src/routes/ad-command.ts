@@ -9,7 +9,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -43,9 +43,8 @@ interface CreativeBriefRow {
   created_at: string;
 }
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -63,7 +62,7 @@ export async function adCommandRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({
           success: true,
@@ -127,7 +126,7 @@ export async function adCommandRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, data: [], meta_connected: false });
       }
@@ -165,7 +164,7 @@ export async function adCommandRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, data: [], meta_connected: false });
       }
@@ -200,13 +199,12 @@ export async function adCommandRoutes(app: FastifyInstance) {
     }
 
     try {
-      const db = getDb();
-      const rows = db.prepare(`
+      const rows = await getDbAdapter().all<CreativeBriefRow>(`
         SELECT * FROM creative_briefs
         WHERE user_id = ? AND account_id = ?
         ORDER BY created_at DESC
         LIMIT 20
-      `).all(request.user.id, account_id) as CreativeBriefRow[];
+      `, [request.user.id, account_id]);
 
       const briefs = rows.map(row => ({
         id: row.id,
@@ -244,7 +242,7 @@ export async function adCommandRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(400).send({ success: false, error: 'Meta account not connected' });
       }
@@ -273,12 +271,12 @@ export async function adCommandRoutes(app: FastifyInstance) {
       if (!targetCreative) {
         // Generate a generic brief
         const brief = generateGenericBrief();
-        return saveBrief(request.user.id, accountId, brief, reply);
+        return await saveBrief(request.user.id, accountId, brief, reply);
       }
 
       // Generate brief based on winning creative
       const brief = generateBriefFromCreative(targetCreative, replacementFor);
-      return saveBrief(request.user.id, accountId, brief, reply);
+      return await saveBrief(request.user.id, accountId, brief, reply);
 
     } catch (err: any) {
       logger.error({ err, accountId }, 'ad-command/briefs/generate failed');
@@ -449,14 +447,13 @@ function extractProductName(adName: string): string {
 }
 
 async function saveBrief(userId: string, accountId: string, brief: any, reply: any) {
-  const db = getDb();
   const id = randomUUID();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO creative_briefs (id, user_id, account_id, product_name, product_id, format, length, hook_suggestion, cta_suggestion, reasoning, status, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     id,
     userId,
     accountId,
@@ -468,8 +465,8 @@ async function saveBrief(userId: string, accountId: string, brief: any, reply: a
     brief.ctaSuggestion || null,
     brief.reasoning,
     'pending',
-    now
-  );
+    now,
+  ]);
 
   return {
     success: true,

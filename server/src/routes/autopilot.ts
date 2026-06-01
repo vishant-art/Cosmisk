@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { runAutopilot } from '../services/autopilot-engine.js';
 import { sendWhatsAppNotification, type Alert } from '../services/notifications.js';
 import type { AutopilotAlertRow } from '../types/index.js';
@@ -45,7 +45,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     const parsed = validate(autopilotAlertsQuerySchema, request.query, reply);
     if (!parsed) return;
 
-    const db = getDb();
+    const db = getDbAdapter();
 
     let query = 'SELECT * FROM autopilot_alerts WHERE user_id = ?';
     const params: (string | number)[] = [request.user.id];
@@ -57,7 +57,7 @@ export async function autopilotRoutes(app: FastifyInstance) {
     query += ' ORDER BY created_at DESC LIMIT ?';
     params.push(parsed.limit);
 
-    const alerts = db.prepare(query).all(...params) as AutopilotAlertRow[];
+    const alerts = await db.all<AutopilotAlertRow>(query, params);
 
     return {
       success: true,
@@ -71,14 +71,14 @@ export async function autopilotRoutes(app: FastifyInstance) {
         read: !!a.read,
         created_at: a.created_at,
       })),
-      unread_count: db.prepare('SELECT COUNT(*) as cnt FROM autopilot_alerts WHERE user_id = ? AND read = 0').get(request.user.id) as { cnt: number },
+      unread_count: await db.get<{ cnt: number }>('SELECT COUNT(*) as cnt FROM autopilot_alerts WHERE user_id = ? AND read = 0', [request.user.id]),
     };
   });
 
   // GET /autopilot/unread-count — badge count for notification bell
   app.get('/unread-count', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const result = db.prepare('SELECT COUNT(*) as count FROM autopilot_alerts WHERE user_id = ? AND read = 0').get(request.user.id) as { count: number };
+    const db = getDbAdapter();
+    const result = await db.get<{ count: number }>('SELECT COUNT(*) as count FROM autopilot_alerts WHERE user_id = ? AND read = 0', [request.user.id]) as { count: number };
     return { success: true, count: result.count };
   });
 
@@ -86,14 +86,14 @@ export async function autopilotRoutes(app: FastifyInstance) {
   app.post('/mark-read', { preHandler: [app.authenticate] }, async (request, reply) => {
     const parsed = validate(autopilotMarkReadSchema, request.body, reply);
     if (!parsed) return;
-    const db = getDb();
+    const db = getDbAdapter();
 
     if (parsed.mark_all) {
-      db.prepare('UPDATE autopilot_alerts SET read = 1 WHERE user_id = ?').run(request.user.id);
+      await db.run('UPDATE autopilot_alerts SET read = 1 WHERE user_id = ?', [request.user.id]);
     } else if (parsed.alert_ids && parsed.alert_ids.length > 0) {
       const placeholders = parsed.alert_ids.map(() => '?').join(',');
-      db.prepare(`UPDATE autopilot_alerts SET read = 1 WHERE id IN (${placeholders}) AND user_id = ?`)
-        .run(...parsed.alert_ids, request.user.id);
+      await db.run(`UPDATE autopilot_alerts SET read = 1 WHERE id IN (${placeholders}) AND user_id = ?`,
+        [...parsed.alert_ids, request.user.id]);
     }
 
     return { success: true };
@@ -112,8 +112,8 @@ export async function autopilotRoutes(app: FastifyInstance) {
   app.delete('/alerts/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const parsed = validate(idParamSchema, request.params, reply);
     if (!parsed) return;
-    const db = getDb();
-    const result = db.prepare('DELETE FROM autopilot_alerts WHERE id = ? AND user_id = ?').run(parsed.id, request.user.id);
+    const db = getDbAdapter();
+    const result = await db.run('DELETE FROM autopilot_alerts WHERE id = ? AND user_id = ?', [parsed.id, request.user.id]);
     if (result.changes === 0) {
       return reply.status(404).send({ success: false, error: 'Alert not found' });
     }
