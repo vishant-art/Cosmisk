@@ -102,13 +102,16 @@ export function getDbAdapter(): DbAdapter;   // returns Sqlite or Pg impl per DB
 
 **DoD M2.0:** adapter + shim + flag merged; adapter spec green on both backends; **zero call sites changed yet**; app still boots on SQLite unchanged.
 
-### M2.1 — Pilot one low-risk vertical (prove the loop)
-Convert one self-contained read path end-to-end — **`routes/auth.ts` login** or a **`dashboard` read** — plus its existing test. Run the test on SQLite (flag=sqlite) → green, then on the PG target (flag=postgres) → green. Surfaces placeholder/await/dialect gotchas on a small surface before scaling. **DoD:** the pilot's test passes on both backends; one commit.
+### M2.1 — Pilot ✅ DONE (2026-06-01)
+Converted `routes/brands.ts` (`GET /brands/list`, 2 sites) end-to-end; green on SQLite + the Neon test branch. Plus **M2.0.1 hardening** (adapter `createRequire`→ESM so `vi.mock` reaches it; pg-test serialization via advisory lock + raised `hookTimeout`). See `logs.md §7–8`.
 
-### M2.2 — Routes (300 calls / 30 files), leaf-first, one file per commit
-Order by independence (leaf routes that don't fan into shared services first), heaviest noted:
+### M2.2 — Routes, leaf-first, one file per commit — 🔵 IN PROGRESS
+**Revised taxonomy (from the M2.2 Discover pass, `logs.md §9`):** the "300/30" headline overstates the work — it splits three ways:
+- **0 `.prepare()` (nothing to convert, 9):** `creative-scan, health-score, intelligence, media-gen, quick-wins, schedules, score, static-ads` (+ `brands` ✅).
+- **1–4 calls but NO test (~15) — needs a gate decision:** `analytics, assets, brain, competitor-spy, director, google-ads`(1), `client-portal`(2), `ad-command, ai, memory, shopify, tiktok-ads`(3), `audits`(4), `autopilot`(6). → convert with **tsc-only + manual review** (trivial read-only routes) or **characterization test first** (`audits`/`autopilot`/`client-portal`).
+- **Tested, heavier → batched:** `ugc`(6), `automations`/`reports`(9), `dashboard`(11), `auth`(16), `creative-studio`/`ugc-workflows`(17), `team`(18), `agent`(19), `content`(23), `billing`(39), `creative-engine`(65). **The 9 upserts + 1 `lastInsertRowid` cluster here** (esp. `billing`, `auth`) → manual dialect.
 
-`creative-engine`(65) · `billing`(39) · `content`(23) · `agent`(19) · `team`(18) · `ugc-workflows`(17) · `creative-studio`(17) · `auth`(16) · `dashboard`(11) · `reports`(9) · `campaigns`(9) · `automations`(9) · `ugc`(6) · `autopilot`(6) · `audits`(4) · `ad-accounts`(4) · then the ≤3-each tail (`tiktok-ads, swipe-file, shopify, memory, ai, ad-command, client-portal, brands, google-ads, director, competitor-spy, brain, assets, analytics`).
+**Done:** leaf batch ✅ `swipe-file`(3) + `ad-accounts`(4) (`8067afb`), tests green unchanged via the `vi.mock('../db/index')` template.
 
 Per file: replace `getDb().prepare(sql).get/all/run(...)` → `await getDbAdapter().get/all/run(sql,[...])`; await up to the (already-async) handler; convert that file's upserts/transactions manually. **`vitest` (flag=sqlite) green after each file.** **DoD:** all route files converted; suite green on sqlite.
 

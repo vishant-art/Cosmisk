@@ -159,3 +159,31 @@ The pg-backed test files share ONE Neon branch + `public` schema, and vitest run
 **Verification:** full suite **921 passed / 0 failed / 19 skipped (40 files)**, deterministic across 3 runs; `db/__tests__` subset 29/29; tsc baseline-only. The pg path (pg-test-target, adapter PgAdapter, pg-parity, m2_1 pilot — 13 pg tests) all run green against the Neon branch.
 
 **M2.0.1 + M2.1 status:** ✅ complete & green. **Next:** M2.2 — routes batch (leaf-first, one file/commit, the `vi.mock('../db/index')` template + `getDbAdapter()` conversion).
+
+---
+
+## 9. DB-2 — M2.2 leaf-routes batch (Workflow, composer-gated) — 2026-06-02
+
+Workflow `db2-m2.2-leaf-routes`: Discover → Convert (per-file, parallel) → Composer green-gate.
+
+### Converted (committed `8067afb`)
+| File | sites | async propagation | test |
+|---|---|---|---|
+| `routes/swipe-file.ts` | 3 | none (handler-local) | `swipe-file-routes.test.ts` green, no edits |
+| `routes/ad-accounts.ts` | 4 | none — in-file helper `getUserMetaToken` made async, awaited at its 6 handler call sites | `ad-accounts-routes.test.ts` green, no edits |
+
+Both clean (no upserts/tx/lastInsertRowid). The `vi.mock('../db/index')` template held — **zero test edits**, confirming M2.0.1's payoff.
+**Composer VERDICT: GO** — tsc baseline-only; full suite **40 files / 921 passed / 0 failed / 19 skipped**.
+
+### ⚠️ Planning finding — the route surface is smaller than "30 files" implies
+Discover classified all 30 route files. The real M2.2 work splits into three buckets:
+- **9 routes have 0 `.prepare()` calls** → nothing to convert: `creative-scan, health-score, intelligence, media-gen, quick-wins, schedules, score, static-ads` (+ `brands` done). These are pure Meta/compute/proxy routes.
+- **~15 routes have 1–4 calls but NO test** → blocked from the test-gated leaf path: `analytics, assets, brain, competitor-spy, director, google-ads`(1 ea), `client-portal`(2), `ad-command, ai, memory, shopify, tiktok-ads`(3), `audits`(4), `autopilot`(6). **Decision needed** (see below).
+- **Tested heavier routes** → later M2.2 batches: `ugc`(6), `automations/reports`(9), `dashboard`(11), `auth`(16), `creative-studio/ugc-workflows`(17), `team`(18), `agent`(19), `content`(23), `billing`(39), `creative-engine`(65). The 9 upserts + 1 `lastInsertRowid` cluster here (esp. `billing`, `auth`).
+
+**Open decision for the no-test routes:** (a) convert with **tsc-only + manual review** (faster, no behavioral gate — acceptable for these mostly 1–3 trivial reads), or (b) **write a characterization test first** then convert (safer, slower). Recommend (a) for the 1-call read-only routes, (b) for `audits`/`autopilot`/`client-portal`.
+
+### Flake note (non-blocking, infra not routes)
+One full-suite run had `adapter.test.ts` PgAdapter tests fail (2) at the `exec()` path — a **Neon connectivity/timeout under concurrent full-suite load**, not a route regression. Passed in isolation + two reruns; composer gated on a clean run. The converted route tests are SQLite — green every run. Follow-up candidate: a small retry on pg-network tests or reduced concurrent pg-test load.
+
+**M2.2 status:** leaf batch ✅ committed. **Next:** resolve the no-test-routes decision → convert that bucket → then the tested heavy batches (manual-dialect files flagged).
