@@ -10,6 +10,9 @@ export const config = {
   tokenEncryptionKey: env['TOKEN_ENCRYPTION_KEY'] || 'dev-encryption-key-change-me-now!',
   databasePath: env['DATABASE_PATH'] || './data/cosmisk.db',
   databaseUrl: env['DATABASE_URL'] || '', // PostgreSQL connection string (production)
+  // DB-2/M2.0 strangler flag: selects the DbAdapter backend (src/db/adapter.ts).
+  // Default sqlite; set DB_BACKEND=postgres to route the adapter to Neon.
+  dbBackend: (env['DB_BACKEND'] === 'postgres' ? 'postgres' : 'sqlite') as 'sqlite' | 'postgres',
   nodeEnv: env['NODE_ENV'] || 'development',
   graphApiVersion: 'v22.0',
   graphApiBase: 'https://graph.facebook.com/v22.0',
