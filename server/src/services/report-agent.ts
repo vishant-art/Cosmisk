@@ -18,6 +18,7 @@ import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { correlationStore } from '../utils/request-context.js';
 import {
   reportDataToSignals,
   enhanceReportOutput,
@@ -96,6 +97,7 @@ export async function runReportAgentAll(): Promise<number> {
 export async function runReportAgent(userId: string, accountId: string, metaService?: MetaApiService): Promise<string> {
   const db = getDb();
   const runId = uuidv4();
+  correlationStore.enterWith({ correlationId: runId });
 
   db.prepare(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)

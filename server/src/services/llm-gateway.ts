@@ -13,6 +13,7 @@ import Bottleneck from 'bottleneck';
 import { config } from '../config.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../utils/logger.js';
+import { getCorrelationId } from '../utils/request-context.js';
 
 /* ------------------------------------------------------------------ */
 /*  Pricing                                                            */
@@ -204,10 +205,11 @@ interface CostLedgerInsert {
 function recordCost(row: CostLedgerInsert): void {
   if (row.costCents <= 0) return;
   const db = getDb();
+  const correlationId = getCorrelationId();
   db.prepare(`
     INSERT INTO cost_ledger (user_id, api_provider, operation, cost_cents, metadata)
     VALUES (?, ?, ?, ?, ?)
-  `).run(row.userId, row.apiProvider, row.operation, row.costCents, JSON.stringify(row.metadata));
+  `).run(row.userId, row.apiProvider, row.operation, row.costCents, JSON.stringify(correlationId ? { ...row.metadata, correlationId } : row.metadata));
 }
 
 /* ------------------------------------------------------------------ */

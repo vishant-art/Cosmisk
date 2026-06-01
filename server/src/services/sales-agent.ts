@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PLAN_LIMITS } from '../routes/billing.js';
 import type { SubscriptionRow, UserUsageRow, MetaTokenRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { correlationStore } from '../utils/request-context.js';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -89,6 +90,7 @@ export async function runSalesAgentAll(): Promise<number> {
 export async function getSalesContext(userId: string): Promise<SalesContext> {
   const db = getDb();
   const runId = uuidv4();
+  correlationStore.enterWith({ correlationId: runId });
 
   db.prepare(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)

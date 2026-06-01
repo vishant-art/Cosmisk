@@ -1,6 +1,9 @@
 // IPv4-first DNS for all DB consumers — must precede any pg connection. See db/net-config.ts.
 import './db/net-config.js';
+import * as Sentry from '@sentry/node';
+import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
+import type { FastifyBaseLogger } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -55,8 +58,18 @@ import { extractText } from './utils/claude-helpers.js';
 import { logger } from './utils/logger.js';
 import { internalError } from './utils/error-response.js';
 import { DailyCapExceededError, UpstreamRateLimitedError, createMessage } from './services/llm-gateway.js';
+import { correlationStore } from './utils/request-context.js';
+
+if (process.env['SENTRY_DSN']) {
+  Sentry.init({
+    dsn: process.env['SENTRY_DSN'],
+    environment: config.nodeEnv,
+    tracesSampleRate: 0,
+  });
+}
 
 const app = Fastify({
+  genReqId: () => randomUUID(),
   logger: {
     level: config.nodeEnv === 'production' ? 'info' : 'debug',
     ...(config.nodeEnv === 'production' ? {} : {
@@ -142,12 +155,26 @@ app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => 
   const statusCode = error.statusCode || 500;
   if (statusCode >= 500) {
     logger.error({ err: error, url: request.url, method: request.method }, 'Internal server error');
+    Sentry.captureException(error);
   }
   reply.status(statusCode).send({
     success: false,
     error: statusCode >= 500 ? 'Internal server error' : error.message,
     ...(config.nodeEnv !== 'production' && statusCode >= 500 ? { stack: error.stack } : {}),
   });
+});
+
+// Establish per-request correlation context (ALS) and bind inbound x-request-id.
+app.addHook('onRequest', (request, _reply, done) => {
+  const inbound = request.headers['x-request-id'];
+  const parentRequestId = Array.isArray(inbound) ? inbound[0] : inbound;
+  correlationStore.enterWith({ correlationId: request.id, parentRequestId });
+  if (parentRequestId) {
+    // Fastify types `request.log` as readonly; rebinding the child logger requires
+    // a precise writable view rather than `any` (keeps the FastifyBaseLogger type).
+    (request as { log: FastifyBaseLogger }).log = request.log.child({ parentRequestId });
+  }
+  done();
 });
 
 // Health check — production monitoring

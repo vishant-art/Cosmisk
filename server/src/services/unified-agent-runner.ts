@@ -28,6 +28,7 @@
 import { logger } from '../utils/logger.js';
 import { getAgentBrain } from './agent-brain.js';
 import { v4 as uuidv4 } from 'uuid';
+import { correlationStore } from '../utils/request-context.js';
 import { getDb } from '../db/index.js';
 import { decryptToken } from './token-crypto.js';
 
@@ -192,6 +193,7 @@ export async function runAllAgents(
   }
 
   const runId = uuidv4();
+  correlationStore.enterWith({ correlationId: runId });
   const startedAt = new Date();
 
   // Insert run into agent_runs table (required for FK constraint on decisions)
