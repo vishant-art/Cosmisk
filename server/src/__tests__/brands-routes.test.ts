@@ -14,7 +14,11 @@ import { vi } from 'vitest';
 
 let testDb: Database.Database;
 
-// Mock DB module
+// Mock DB module. The converted route calls getDbAdapter() (src/db/adapter.ts),
+// whose SqliteAdapter imports getDb from './index.js' via a plain ESM import — so
+// this single vi.mock reaches the adapter and routes it at the in-memory testDb.
+// No adapter-level mock needed. DB_BACKEND stays sqlite (default). This is the
+// standard pattern for every route converted in M2.2+.
 vi.mock('../db/index.js', () => ({
   getDb: () => testDb,
   closeDb: () => {},

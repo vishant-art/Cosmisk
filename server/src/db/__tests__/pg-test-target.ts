@@ -45,6 +45,17 @@
  * fully-migrated) database without re-running migrations. Call `reset()` in a
  * `beforeEach`. The migrations table itself is preserved so the schema survives
  * resets. Call `teardown()` once in `afterAll` to end the pool.
+ *
+ * CROSS-FILE SERIALIZATION (shared branch)
+ * ----------------------------------------
+ * vitest runs test FILES concurrently, but every pg-backed file shares this ONE
+ * Neon branch + `public` schema — so a `reset()` TRUNCATE in one file would wipe
+ * another file's freshly-seeded rows mid-test. `getMigratedTestPg()` therefore
+ * takes a Postgres SESSION advisory lock on a dedicated client and holds it until
+ * `teardown()`, so only one pg-backed file touches the branch at a time. The lock
+ * auto-releases if the process dies (session-scoped). This serializes the handful
+ * of pg test files cleanly; per-file SCHEMA isolation (unique search_path) is the
+ * M2.7 scaling fix when there are many such files.
  */
 // IPv4-first DNS + family-race disable — MUST be imported before pg opens a
 // connection. Mirrors db/pg.ts so the test endpoint gets the same connectivity.
@@ -65,6 +76,9 @@ const NO_URL_ERROR =
   'TEST_DATABASE_URL is not set. Set it to a Neon test-branch connection string ' +
   '(NOT the production DATABASE_URL) before running pg-backed tests. ' +
   'See dev_reports/31_05/db2_execution_plan.md A2.';
+
+// Shared key for the cross-file serialization advisory lock (see header).
+const DB2_TEST_LOCK_KEY = 982025;
 
 /** True when a Neon test-branch URL is configured. pg tests should skip when false. */
 export function hasPgTestTarget(): boolean {
@@ -94,7 +108,16 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   const pool = new Pool({ connectionString });
   const db = drizzle(pool);
 
-  // Apply migrations: test schema == migrated prod schema.
+  // Serialize pg-backed test FILES against this shared branch: hold a session
+  // advisory lock on a dedicated client for the file's lifetime so concurrent
+  // vitest files can't clobber each other's data via reset()'s TRUNCATE. Other
+  // files block here until this one's teardown() releases. Auto-released if the
+  // process dies (session-scoped lock).
+  const lockClient = await pool.connect();
+  await lockClient.query('SELECT pg_advisory_lock($1)', [DB2_TEST_LOCK_KEY]);
+
+  // Apply migrations: test schema == migrated prod schema. (Serialized by the
+  // lock above, so concurrent migrate() calls can't race on the migrations table.)
   await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
   const reset = async (): Promise<void> => {
@@ -113,6 +136,12 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   };
 
   const teardown = async (): Promise<void> => {
+    // Release the cross-file serialization lock, then drop the pool.
+    try {
+      await lockClient.query('SELECT pg_advisory_unlock($1)', [DB2_TEST_LOCK_KEY]);
+    } finally {
+      lockClient.release();
+    }
     await pool.end();
   };
 

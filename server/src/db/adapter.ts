@@ -21,14 +21,18 @@
  *   - 1 `lastInsertRowid` reader — Postgres has no implicit lastInsertRowid;
  *     rewrite to `INSERT … RETURNING id` + `get()` (see PgAdapter.run docs).
  */
-import { createRequire } from 'node:module';
 import type { Pool, PoolClient } from 'pg';
 import { config } from '../config.js';
+import { getDb } from './index.js';
+import { pgPool } from './pg.js';
 
-// Lazy CommonJS require usable from this ESM module — lets us defer loading
-// `./index.js` (live SQLite) and `./pg.js` (Neon pool) until a backend is
-// actually selected, so importing this adapter never opens a connection.
-const requireCjs = createRequire(import.meta.url);
+// NOTE on imports: we use plain ESM imports (not createRequire) so that
+// `vi.mock('../db/index')` / `vi.mock('../db/pg')` in the test suite reach the
+// adapter — a CommonJS require() bypasses vitest's ESM module interception.
+// These imports are still side-effect-light: importing `getDb` does not open
+// the SQLite DB (getDb is lazy), and importing `pgPool` constructs an idle
+// pg.Pool that opens no connection until its first query. So importing this
+// adapter never opens a DB connection, exactly as before.
 
 export interface DbAdapter {
   get<T = any>(sql: string, params?: unknown[]): Promise<T | undefined>;
@@ -161,9 +165,7 @@ export class SqliteAdapter implements DbAdapter {
 
   private db(): SqliteHandle {
     if (this.handle) return this.handle;
-    // Imported lazily to avoid opening the live DB at module load.
-    const { getDb } = requireCjs('./index.js') as { getDb: () => SqliteHandle };
-    return getDb();
+    return getDb() as unknown as SqliteHandle;
   }
 
   get<T = any>(sql: string, params: unknown[] = []): Promise<T | undefined> {
@@ -319,8 +321,6 @@ let pgSingleton: PgAdapter | undefined;
 export function getDbAdapter(): DbAdapter {
   if (config.dbBackend === 'postgres') {
     if (!pgSingleton) {
-      // Lazily import the pool so SQLite-only runs never open a Neon pool.
-      const { pgPool } = requireCjs('./pg.js') as { pgPool: Pool };
       pgSingleton = new PgAdapter(pgPool);
     }
     return pgSingleton;
