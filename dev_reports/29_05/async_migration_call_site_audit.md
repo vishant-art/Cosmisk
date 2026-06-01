@@ -1,3 +1,6 @@
+> **Status: 🔵 ACTIVE (2026-05-31)** — source of truth for the 635-call-site cutover (terminology: this doc's "M2" = canonical **DB-2**).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Async Migration — Call-Site Audit (sync better-sqlite3 → async Drizzle/pg)
 
 **Date:** 2026-05-29

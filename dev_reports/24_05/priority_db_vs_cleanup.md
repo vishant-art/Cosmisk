@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-24 priority call (DB stabilisation over cleanup); decision absorbed into the migration arc. Superseded by `26_05/database_state.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Priority — Database Stabilisation vs Repository Cleanup
 
 **Date:** 2026-05-24

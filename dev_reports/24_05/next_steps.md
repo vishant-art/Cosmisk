@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-24 plan adding M1 deliverables. Superseded by `25_05/next_steps.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Next Steps — Updated Plan with M1 Official Deliverables
 
 **Supersedes:** `dev_reports/23_05/next_steps.md` (Tier 1.5 added; everything else preserved).

@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — snapshot of LLM call-site wiring feeding the rate-limiter design.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Findings — Current LLM Wiring (2026-05-02)
 
 Snapshot of how Claude (and Gemini) are called today. Numbers and paths verified against the working tree at branch `analysis-and-cleanup` (commit `c61f025`).

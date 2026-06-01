@@ -1,3 +1,6 @@
+> **Status: 🔵 ACTIVE (2026-05-31)** — deferred-items ledger; still the roadmap for deferrals. **Items 1 & 7 now ✅ RESOLVED** (shopify fix landed — see below). (Terminology: this doc's local "M0/M1/M2/M3" predate `dev_reports/VOCABULARY.md`: its "M1" ≈ DB-1+DB-1.5, its "M2" ≈ DB-2 / post-migration hardening — NOT SoW Milestone 2.)
+> _Status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # ON_HOLD — Deferred Items Ledger
 
 **Purpose:** Single source of truth for everything intentionally deferred. Every item lists root cause, fix, owning phase, and deadline. If it's not in here and not in `next_steps.md`, it's not on the roadmap — it's a future bug report.
@@ -36,7 +39,7 @@
 
 ### Item 1 — `shopify_tokens` schema fork
 
-**Status:** Documented, defer to M1.
+**Status:** ✅ **RESOLVED 2026-05-31.** Fixed in A3 as a 2-line `brand_id`→`user_id` change at `cohort-ltv-analyzer.ts:190` + `unified-agent-runner.ts:178` — **NOT** the JOIN in the "Fix (M1)" block below, which was **invalidated** (the bound value is already a user id; canonical PG is keyed by `user_id`). Canonical `shopifyTokens` shipped in `pg-schema.ts` (DB-1). See `31_05/next_steps.md` §2.
 **Discovered:** 2026-05-25 (see `25_05/shopify_tokens_fork.md`).
 **Symptom:** `db/schema.ts:408-414` declares canonical shape (`user_id` PK + `shop_name`). Local dev DB and (presumably) production DB hold legacy shape (`brand_id` PK, `scope` column, no `shop_name`). `IF NOT EXISTS` made canonical declaration a no-op against the legacy table.
 
@@ -202,7 +205,7 @@ Then `it.skip` → `it` in the 3 tests.
 
 ### Item 7 — `brands.owner_user_id` column existence
 
-**Status:** Open question for M1 entry.
+**Status:** ✅ **RESOLVED 2026-05-31.** `brands` has **no** `owner_user_id` — the column is `brands.user_id` (FK → `users.id ON DELETE SET NULL`). The shopify fix needed no JOIN at all (Item 1), so this question is moot. `brands` ported into `pg-schema.ts` with `user_id` (migration `0001`).
 **Discovered:** 2026-05-25 (during fork reconciliation planning).
 **Question:** Does the `brands` table actually have an `owner_user_id` column? The JOIN strategy in Item 1 depends on it.
 

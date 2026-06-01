@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 backend wiring reference. Superseded by `19_05/backend_wiring.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Backend Wiring & Flows — Engineer Reference (2026-04-26)
 
 **Stack:** Fastify (Node 22, ESM, TypeScript strict), `better-sqlite3`, `@anthropic-ai/sdk`, Angular 17 frontend served by Vercel.

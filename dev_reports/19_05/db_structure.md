@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 DB-structure refresh. Superseded by `26_05/database_state.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Database Structure — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/db_structure.md` (2026-04-26)

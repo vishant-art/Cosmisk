@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — early cleanup plan; restated with current numbers in the 19_05 audit. Superseded by `19_05/suggested.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk Repository Cleanup Plan
 
 **Date:** 2026-05-19 (originally written), updated 2026-05-19 post-merge

@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable inventory of the live HTTP surface from a real probe.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Live HTTP Surface — 2026-05-23
 
 **Method:** `node dist/index.js` inside `cosmisk-dev`. Signed up a fresh user, used the returned JWT for authenticated probes. Hit one representative GET on every registered prefix.

@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — point-in-time gap check of `23_05/next_steps.md` vs the SoW; the gap it flags was closed in `24_05/next_steps.md`. Superseded by `24_05/next_steps.md`. For the durable SoW mapping see `05_05/scope_alignment.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # SoW Alignment — Verifying `next_steps.md` Against the Original Scope of Work
 
 **Source of truth:** `dev_reports/05_05/scope_alignment.md` (Cosmisk Project Documentation, Apr 15 2026).

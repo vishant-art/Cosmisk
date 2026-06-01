@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable codebase/infra orientation guide.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk — Codebase & Infra Guide
 
 > Generated 2026-04-19. Branch `main` @ `69b4352`. 290 files, 3,632 graph nodes, 33,757 edges.

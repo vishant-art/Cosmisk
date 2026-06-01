@@ -1,3 +1,6 @@
+> **Status: ✅ IMPLEMENTED (2026-05-31)** — DB-1 (Postgres/Drizzle stand-up + Neon connectivity) done & verified. (Terminology: this doc's "M1" = canonical **DB-1**.)
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # M1 — Postgres/Drizzle Stand-Up + Neon Connectivity Fix
 
 **Date:** 2026-05-31

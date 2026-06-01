@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — earliest (Apr-26) codebase audit. Superseded by `19_05/audit.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk Codebase Audit — 2026-04-26
 
 Branch: `analysis-and-cleanup` · Commit: `69b4352`

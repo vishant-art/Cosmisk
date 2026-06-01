@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — index for the rate-limiting research bundle; durable design reference.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Rate Limiting — research bundle (2026-05-02)
 
 Five-doc bundle answering: how do we add token + request rate limiting to every LLM call site in the server, and how do we extend the per-user cost ceiling that today only protects creative jobs.

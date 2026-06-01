@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 phasing refresh (S0–S5 + P0–P5). Superseded by `23_05/next_steps.md` → `24_05/next_steps.md` → `25_05/next_steps.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Suggested Phasing — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/suggested.md` (2026-04-26)

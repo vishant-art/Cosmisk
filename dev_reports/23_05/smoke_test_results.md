@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — May-23 devcontainer smoke-test record (build clean, server boots).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Smoke Test Results — Devcontainer (2026-05-23)
 
 **Supersedes:** `dev_reports/19_05/smoke_test_results.md` (2026-05-20)

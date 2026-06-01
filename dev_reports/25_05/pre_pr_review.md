@@ -1,3 +1,6 @@
+> **Status: ✅ IMPLEMENTED (2026-05-31)** — pre-PR review snapshot; the PR (#1) shipped to `main`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Pre-PR Review — `analysis-and-cleanup` → `main`
 
 **Date:** 2026-05-25

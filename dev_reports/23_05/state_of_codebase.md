@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable state-of-codebase snapshot (verified rebuild + smoke + probe).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # State of the Codebase — 2026-05-23
 
 **Branch:** `analysis-and-cleanup` @ `ebff657` + uncommitted session diff

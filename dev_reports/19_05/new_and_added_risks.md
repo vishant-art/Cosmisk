@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 risk refresh (A–N). Superseded by `23_05/risk_register.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Additional Risks — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/new_and_added_risks.md` (2026-04-26) + `analysis/new_added_risks_and_design.md` (2026-05-09).

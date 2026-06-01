@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — local run/setup guide.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk — Local Run Guide
 
 This guide assumes a **completely empty machine** (no Node, no SDKs, no DB) and walks you all the way to a running stack you can poke at while making code changes. Read top-to-bottom the first time; once you're set up, the **Daily loop** section near the bottom is what you'll actually use day-to-day.
