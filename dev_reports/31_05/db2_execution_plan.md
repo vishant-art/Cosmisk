@@ -105,7 +105,8 @@ export function getDbAdapter(): DbAdapter;   // returns Sqlite or Pg impl per DB
 ### M2.1 — Pilot ✅ DONE (2026-06-01)
 Converted `routes/brands.ts` (`GET /brands/list`, 2 sites) end-to-end; green on SQLite + the Neon test branch. Plus **M2.0.1 hardening** (adapter `createRequire`→ESM so `vi.mock` reaches it; pg-test serialization via advisory lock + raised `hookTimeout`). See `logs.md §7–8`.
 
-### M2.2 — Routes, leaf-first, one file per commit — 🔵 IN PROGRESS
+### M2.2 — Routes, leaf-first — ✅ COMPLETE (2026-06-02)
+All route files with `.prepare()` converted: pilot `brands` + leaf `swipe-file`/`ad-accounts` + 26-file batch (`1d77982`) + `creative-engine`(65, done directly `3a7d311`). 9 routes had 0 calls. Next: **M2.3 services** (graph-driven leaf-first waves, composer-barriered — see `logs.md` / `agent_report.md`).
 **Revised taxonomy (from the M2.2 Discover pass, `logs.md §9`):** the "300/30" headline overstates the work — it splits three ways:
 - **0 `.prepare()` (nothing to convert, 9):** `creative-scan, health-score, intelligence, media-gen, quick-wins, schedules, score, static-ads` (+ `brands` ✅).
 - **1–4 calls but NO test (~15) — needs a gate decision:** `analytics, assets, brain, competitor-spy, director, google-ads`(1), `client-portal`(2), `ad-command, ai, memory, shopify, tiktok-ads`(3), `audits`(4), `autopilot`(6). → convert with **tsc-only + manual review** (trivial read-only routes) or **characterization test first** (`audits`/`autopilot`/`client-portal`).
