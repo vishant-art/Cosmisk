@@ -187,3 +187,15 @@ Discover classified all 30 route files. The real M2.2 work splits into three buc
 One full-suite run had `adapter.test.ts` PgAdapter tests fail (2) at the `exec()` path — a **Neon connectivity/timeout under concurrent full-suite load**, not a route regression. Passed in isolation + two reruns; composer gated on a clean run. The converted route tests are SQLite — green every run. Follow-up candidate: a small retry on pg-network tests or reduced concurrent pg-test load.
 
 **M2.2 status:** leaf batch ✅ committed. **Next:** resolve the no-test-routes decision → convert that bucket → then the tested heavy batches (manual-dialect files flagged).
+
+---
+
+## 10. DB-2 — M2.2 routes-all (Workflow `wf_75274046-79d`, graph-driven composer barrier) — 2026-06-02
+
+27 independent per-file convert agents (parallel fan-out) → composer barrier that **updated the code-review-graph, impact-analysed the changed files, ran graph-selected + full smoke + tsc**.
+
+- **26 / 27 routes converted & committed (`1d77982`)** — every remaining route except `creative-engine`. No-test routes (analytics, assets, brain, competitor-spy, director, google-ads, client-portal, ad-command, ai, memory, shopify, tiktok-ads, audits, autopilot) verified tsc + manual diff; tested routes (ugc, automations, campaigns, reports, dashboard, auth, creative-studio, ugc-workflows, team, agent, content, billing) green via the `vi.mock('../db/index')` template. The common pattern was an in-file `getUserMetaToken` helper made async + awaited at its handlers — async colour stayed file-local everywhere.
+- **`creative-engine.ts` (65 sites) FAILED & deferred.** Its convert agent died mid-conversion without returning structured output, leaving a partial file (44 converted + 22 leftover `.prepare()`, `getDb` import removed → **7× TS2304**). **Composer correctly NO-GO'd** on this single compile regression. Fix: reverted the file to original; re-verified the 26 green; committed. Re-doing creative-engine as a dedicated focused pass (Run 3b) — one agent can't reliably do 65 mechanical edits in a single context.
+- **Composer barrier output:** 12 graph-selected route test files **256 passed / 0 failed / 5 skipped**; full suite 920 passed, **sole failure = the known Neon pg-network flake** (`adapter.test.ts` PgAdapter transaction — passes **19/19 in isolation**), explicitly disambiguated, not a route regression.
+
+**M2.2 status:** 28 / 29 remaining routes converted (incl. M2.1+leaf); **only `creative-engine.ts` left** → Run 3b, then M2.3 services.

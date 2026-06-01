@@ -82,3 +82,6 @@ scripts/shopify-auth/.shopify-token*.json
 .claude/
 
 public/
+
+# Local-only agent-orchestration control ledger — never committed.
+dev_reports/agent_report.md

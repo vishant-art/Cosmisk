@@ -111,7 +111,7 @@ Converted `routes/brands.ts` (`GET /brands/list`, 2 sites) end-to-end; green on 
 - **1–4 calls but NO test (~15) — needs a gate decision:** `analytics, assets, brain, competitor-spy, director, google-ads`(1), `client-portal`(2), `ad-command, ai, memory, shopify, tiktok-ads`(3), `audits`(4), `autopilot`(6). → convert with **tsc-only + manual review** (trivial read-only routes) or **characterization test first** (`audits`/`autopilot`/`client-portal`).
 - **Tested, heavier → batched:** `ugc`(6), `automations`/`reports`(9), `dashboard`(11), `auth`(16), `creative-studio`/`ugc-workflows`(17), `team`(18), `agent`(19), `content`(23), `billing`(39), `creative-engine`(65). **The 9 upserts + 1 `lastInsertRowid` cluster here** (esp. `billing`, `auth`) → manual dialect.
 
-**Done:** leaf batch ✅ `swipe-file`(3) + `ad-accounts`(4) (`8067afb`), tests green unchanged via the `vi.mock('../db/index')` template.
+**Done:** leaf batch ✅ `swipe-file`(3) + `ad-accounts`(4) (`8067afb`); **routes-all batch ✅ 26 files** (`1d77982`, all remaining routes except creative-engine). **Only `creative-engine.ts`(65) left** — its convert agent died mid-pass (partial → 7× TS2304); reverted + re-doing as a dedicated focused pass (Run 3b). See `logs.md §10` + `agent_report.md` (local).
 
 Per file: replace `getDb().prepare(sql).get/all/run(...)` → `await getDbAdapter().get/all/run(sql,[...])`; await up to the (already-async) handler; convert that file's upserts/transactions manually. **`vitest` (flag=sqlite) green after each file.** **DoD:** all route files converted; suite green on sqlite.
 
