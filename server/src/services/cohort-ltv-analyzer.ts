@@ -187,7 +187,7 @@ export async function analyzeCohortLTV(
 
   // Get Shopify credentials
   const shopifyRow = db.prepare(
-    'SELECT shop_domain, encrypted_access_token FROM shopify_tokens WHERE brand_id = ?'
+    'SELECT shop_domain, encrypted_access_token FROM shopify_tokens WHERE user_id = ?'
   ).get(userId) as { shop_domain: string; encrypted_access_token: string } | undefined;
 
   if (!shopifyRow) {

@@ -999,21 +999,27 @@ export const entityStateSnapshots = pgTable('entity_state_snapshots', {
 /*  See dev_reports/26_05/hidden_ai_tables_schema.md                       */
 /* ====================================================================== */
 
+// A0: conformed to the app's write contract (ad-watchdog.ts:695 runtime DDL +
+// INSERT at :781). The app supplies its own TEXT id and a nullable client_id
+// with no FK; spend is REAL. The earlier uuid/numeric/notNull+FK shape rejected
+// those writes. Modernising back to uuid/array is a separate M2 ticket.
 export const creativeAnalysis = pgTable('creative_analysis', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  clientId: text('client_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  id: text('id').primaryKey(),
+  clientId: text('client_id'),
   adId: text('ad_id'),
   adName: text('ad_name'),
   creativeType: text('creative_type'),
   hookText: text('hook_text'),
   hookPattern: text('hook_pattern'),
   ctr: real('ctr'),
-  spend: numeric('spend', { precision: 12, scale: 2 }),
+  spend: real('spend'),
   impressions: integer('impressions'),
   imageUrl: text('image_url'),
   videoId: text('video_id'),
   analyzedAt: timestamp('analyzed_at', { mode: 'string', withTimezone: true }).defaultNow(),
-});
+}, (t) => ({
+  clientIdx: index('creative_analysis_client_idx').on(t.clientId),
+}));
 
 export const decisionTraces = pgTable('decision_traces', {
   id: text('id').primaryKey(),
@@ -1055,17 +1061,23 @@ export const evaluationMetrics = pgTable('evaluation_metrics', {
   pk: primaryKey({ columns: [t.date, t.clientId] }),
 }));
 
+// A0: conformed to the app's write contract (pattern-transfer.ts:52 runtime DDL +
+// INSERT at :132). The app supplies its own TEXT id and source_clients as a JSON
+// STRING (not a Postgres text[]); confidence is REAL. The earlier uuid/array shape
+// rejected those writes. Indexes mirror the runtime DDL.
 export const globalPatterns = pgTable('global_patterns', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: text('id').primaryKey(),
   pattern: text('pattern').notNull(),
   category: text('category').notNull(),
-  confidence: numeric('confidence').notNull(),
+  confidence: real('confidence').notNull(),
   sourceClientCount: integer('source_client_count').notNull().default(1),
-  sourceClients: text('source_clients').array().notNull(),
+  sourceClients: text('source_clients').notNull(), // JSON string (app JSON.parses it)
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow(),
 }, (t) => ({
   unq: unique('global_patterns_pattern_category_unq').on(t.pattern, t.category),
+  categoryIdx: index('global_patterns_category_idx').on(t.category),
+  confidenceIdx: index('global_patterns_confidence_idx').on(t.confidence.desc()),
 }));
 
 export const humanReviews = pgTable('human_reviews', {
@@ -1137,3 +1149,122 @@ export const ltvByCreative = pgTable('ltv_by_creative', {
   repeatRate: real('repeat_rate'),
   customerCount: integer('customer_count'),
 }, (t) => ({ unq: unique('ltv_by_creative_unq').on(t.clientId, t.creativeId) }));
+
+/* ====================================================================== */
+/*  ORPHAN / RUNTIME-CREATED TABLES — ported for Phase 1 (additive parity) */
+/*                                                                         */
+/*  These 9 tables were created by runtime `CREATE TABLE IF NOT EXISTS`    */
+/*  (services) and seed scripts, NOT in schema.ts — so they were absent    */
+/*  from the migration-managed schema and the app would 500 on first read  */
+/*  under Postgres. Ported AS-IS (no behavioural change). The runtime DDL  */
+/*  paths stay live on SQLite and are deleted in M2; verified-real merges   */
+/*  (brands→service_clients, strategic_*→predictions/recommendations/...)  */
+/*  are deferred to M2 consolidation. agent_execution_log is intentionally  */
+/*  NOT ported (write-only, zero readers — dropped in M2).                  */
+/*  Date-range bounds on `audits` stay text() (preformatted strings) to    */
+/*  avoid timezone coercion. frequency CHECK is enforced in app code.       */
+/* ====================================================================== */
+
+export const brands = pgTable('brands', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  domain: text('domain').notNull(),
+  category: text('category').notNull().default('other'),
+  stage: text('stage').notNull().default('scaling'),
+  metaAdAccountId: text('meta_ad_account_id'),
+  pixelId: text('pixel_id'),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+});
+
+export const brandContext = pgTable('brand_context', {
+  brandId: text('brand_id').primaryKey().references(() => brands.id, { onDelete: 'cascade' }),
+  pricePoint: text('price_point'),
+  targetAudience: text('target_audience'),
+  winningPatterns: text('winning_patterns').default('[]'), // JSON string
+  failedApproaches: text('failed_approaches').default('[]'), // JSON string
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+});
+
+export const audits = pgTable('audits', {
+  id: text('id').primaryKey(),
+  brandId: text('brand_id').notNull(), // no FK in source DDL
+  brandName: text('brand_name').notNull(),
+  dateRangeStart: text('date_range_start').notNull(),
+  dateRangeEnd: text('date_range_end').notNull(),
+  healthScore: integer('health_score'),
+  wastedSpend: real('wasted_spend'),
+  bestCpa: real('best_cpa'),
+  worstCpa: real('worst_cpa'),
+  topFindings: text('top_findings'),
+  topPriority: text('top_priority'),
+  confidenceLevel: text('confidence_level'),
+  fullOutput: text('full_output'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+});
+
+export const scheduledAudits = pgTable('scheduled_audits', {
+  id: text('id').primaryKey(),
+  brandId: text('brand_id').notNull().references(() => brands.id),
+  brandName: text('brand_name').notNull(),
+  frequency: text('frequency').notNull(),
+  cronExpression: text('cron_expression').notNull(),
+  datePreset: text('date_preset').notNull().default('last_30d'),
+  enabled: integer('enabled').notNull().default(1),
+  lastRunAt: timestamp('last_run_at', { mode: 'string', withTimezone: true }),
+  nextRunAt: timestamp('next_run_at', { mode: 'string', withTimezone: true }),
+  runCount: integer('run_count').notNull().default(0),
+  errorCount: integer('error_count').notNull().default(0),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+});
+
+export const clientContexts = pgTable('client_contexts', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  contextJson: text('context_json').notNull(), // JSON string
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow(),
+});
+
+export const strategicReports = pgTable('strategic_reports', {
+  id: text('id').primaryKey(),
+  clientId: text('client_id').notNull(),
+  reportType: text('report_type').notNull(),
+  generatedAt: timestamp('generated_at', { mode: 'string', withTimezone: true }).notNull(),
+  weekNumber: integer('week_number'),
+  year: integer('year'),
+  dataJson: text('data_json').notNull(), // JSON string
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow(),
+});
+
+export const strategicRecommendations = pgTable('strategic_recommendations', {
+  id: text('id').primaryKey(),
+  clientId: text('client_id').notNull(),
+  reportId: text('report_id'),
+  recommendation: text('recommendation').notNull(),
+  category: text('category'),
+  priority: text('priority'),
+  status: text('status').default('pending'),
+  dataJson: text('data_json').notNull(), // JSON string
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow(),
+});
+
+export const strategicRunningContext = pgTable('strategic_running_context', {
+  clientId: text('client_id').primaryKey(),
+  contextJson: text('context_json').notNull(), // JSON string
+  updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).defaultNow(),
+});
+
+export const strategicPredictions = pgTable('strategic_predictions', {
+  id: text('id').primaryKey(),
+  clientId: text('client_id').notNull(),
+  reportId: text('report_id'),
+  prediction: text('prediction').notNull(),
+  status: text('status').default('pending'),
+  dataJson: text('data_json').notNull(), // JSON string
+  verifyAfter: timestamp('verify_after', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow(),
+});

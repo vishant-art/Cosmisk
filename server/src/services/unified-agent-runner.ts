@@ -175,7 +175,7 @@ export async function runAllAgents(
   }
 
   if ((!shopDomain || !shopifyToken) && includeShopify) {
-    const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE brand_id = ?').get(userId) as { shop_domain: string; encrypted_access_token: string } | undefined;
+    const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(userId) as { shop_domain: string; encrypted_access_token: string } | undefined;
     if (shopifyRow) {
       shopDomain = shopifyRow.shop_domain;
       shopifyToken = decryptToken(shopifyRow.encrypted_access_token);

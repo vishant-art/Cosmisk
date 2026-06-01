@@ -8,6 +8,13 @@
       "when": 1780075619176,
       "tag": "0000_outgoing_scarlet_witch",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780309162502,
+      "tag": "0001_damp_ghost_rider",
+      "breakpoints": true
     }
   ]
 }
