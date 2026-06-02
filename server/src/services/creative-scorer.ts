@@ -871,7 +871,7 @@ export async function scoreCreativesForClient(
   const scorerStore = await getCreativeScorerStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
-  const strategicContext = getStrategicContextForAgent(clientId);
+  const strategicContext = await getStrategicContextForAgent(clientId);
   if (strategicContext) {
     logger.info({ contextLength: strategicContext.length }, '[CreativeScorer] Loaded strategic context');
   }
@@ -1052,7 +1052,7 @@ export async function scoreCreativesForClient(
       shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
       deliveredVia: [],
     };
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
   } catch (repErr) {
     logger.warn({ err: repErr }, '[CreativeScorer] Report recording failed');
   }

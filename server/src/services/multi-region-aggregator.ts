@@ -205,13 +205,13 @@ export async function runMultiRegionAgents(
   logger.info(`[MultiRegion] Starting multi-region run ${runId} for ${clientId}`);
 
   // Get client context
-  const clientContext = getClientContext(clientId);
+  const clientContext = await getClientContext(clientId);
   if (!clientContext) {
     throw new Error(`Client context not found for ${clientId}`);
   }
 
   // Get active Shopify stores
-  const shopifyStores = getActiveShopifyStores(clientId);
+  const shopifyStores = await getActiveShopifyStores(clientId);
 
   // Map regions to Shopify stores
   const regionToShopify = new Map<string, ShopifyStore>();
@@ -350,7 +350,7 @@ export async function runMultiRegionAgents(
   };
 
   try {
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
     logger.info(`[MultiRegion] Recorded multi-region report in strategic memory`);
   } catch (err) {
     logger.error(`[MultiRegion] Failed to record report: ${err}`);

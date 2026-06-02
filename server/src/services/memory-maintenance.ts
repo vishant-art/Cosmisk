@@ -59,7 +59,7 @@ async function checkPendingPredictions(): Promise<void> {
     let totalExpired = 0;
 
     for (const { client_id } of clients) {
-      const pendingPredictions = getPendingPredictions(client_id);
+      const pendingPredictions = await getPendingPredictions(client_id);
 
       for (const pred of pendingPredictions) {
         totalChecked++;

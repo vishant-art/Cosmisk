@@ -390,7 +390,7 @@ export async function detectFatigueForClient(
   const fatigueStore = await getFatigueDetectorStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
-  const strategicContext = getStrategicContextForAgent(clientId);
+  const strategicContext = await getStrategicContextForAgent(clientId);
   if (strategicContext) {
     logger.info({ contextLength: strategicContext.length }, '[Fatigue] Loaded strategic context');
   }
@@ -524,7 +524,7 @@ export async function detectFatigueForClient(
       shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
       deliveredVia: [],
     };
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
   } catch (repErr) {
     logger.warn({ err: repErr }, '[Fatigue] Report recording failed');
   }

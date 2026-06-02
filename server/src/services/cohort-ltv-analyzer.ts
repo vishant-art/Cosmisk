@@ -836,7 +836,7 @@ export async function analyzeCohortLTVForClient(
   const ltvStore = await getCohortLTVStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
-  const strategicContext = getStrategicContextForAgent(clientId);
+  const strategicContext = await getStrategicContextForAgent(clientId);
   if (strategicContext) {
     logger.info({ contextLength: strategicContext.length }, '[CohortLTV] Loaded strategic context');
   }
@@ -963,7 +963,7 @@ export async function analyzeCohortLTVForClient(
       shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
       deliveredVia: [],
     };
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
   } catch (repErr) {
     logger.warn({ err: repErr }, '[CohortLTV] Report recording failed');
   }

@@ -145,17 +145,17 @@ export async function runAllAgents(
 
   if (clientId) {
     // Load client context (multi-account setup, brief, geo segments)
-    clientContext = getClientContext(clientId);
+    clientContext = await getClientContext(clientId);
     if (clientContext) {
-      clientBrief = getClientBriefForAgent(clientId);
+      clientBrief = await getClientBriefForAgent(clientId);
       logger.info(`[AgentRunner] Loaded client context for ${clientId}: ${clientContext.name}`);
     } else {
       logger.warn(`[AgentRunner] No client context found for ${clientId}`);
     }
 
     // Load strategic memory (week-by-week continuity)
-    strategicContext = getStrategicContextForAgent(clientId);
-    const recentReports = getRecentReports(clientId, 4);
+    strategicContext = await getStrategicContextForAgent(clientId);
+    const recentReports = await getRecentReports(clientId, 4);
     previousReportsCount = recentReports.length;
     if (recentReports.length > 0) {
       logger.info(`[AgentRunner] Loaded ${recentReports.length} previous reports for ${clientId}`);
@@ -646,7 +646,7 @@ export async function runAllAgents(
     // Check if we're about to ship duplicate insights
     const headline = findings[0]?.title || 'Agent Run Complete';
     const insights = findings.map(f => f.title);
-    const shipCheck = shouldShipReport(clientId, headline, insights);
+    const shipCheck = await shouldShipReport(clientId, headline, insights);
 
     if (!shipCheck.shouldShip) {
       logger.warn(`[AgentRunner] Deduplication blocked: ${shipCheck.reason}`);
@@ -686,7 +686,7 @@ export async function runAllAgents(
     };
 
     try {
-      recordReport(reportRecord);
+      await recordReport(reportRecord);
       logger.info(`[AgentRunner] Recorded report in strategic memory: ${runId}`);
     } catch (err) {
       logger.error(`[AgentRunner] Failed to record report: ${err}`);
@@ -709,7 +709,7 @@ export async function runAllAgents(
       };
 
       try {
-        recordRecommendation(recRecord);
+        await recordRecommendation(recRecord);
       } catch (err) {
         logger.error(`[AgentRunner] Failed to record recommendation: ${err}`);
       }
@@ -844,9 +844,9 @@ function categorizeRecommendation(agentName: string): RecommendationRecord['cate
 /**
  * Get strategic context summary for logging
  */
-export function getRunContextSummary(clientId: string): string {
-  const context = getStrategicContextForAgent(clientId);
-  const clientBrief = getClientBriefForAgent(clientId);
+export async function getRunContextSummary(clientId: string): Promise<string> {
+  const context = await getStrategicContextForAgent(clientId);
+  const clientBrief = await getClientBriefForAgent(clientId);
 
   return `
 ═══════════════════════════════════════════════════════════════════════

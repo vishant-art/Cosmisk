@@ -242,7 +242,7 @@ export async function getGlobalPatterns(category?: GlobalPattern['category']): P
  */
 export async function getContextWithGlobalPatterns(clientId: string): Promise<string> {
   // Get client's own context first
-  const clientContext = getRunningContext(clientId);
+  const clientContext = await getRunningContext(clientId);
 
   // Get all global patterns
   const globalPatterns = await getGlobalPatterns();

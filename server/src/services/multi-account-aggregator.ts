@@ -122,14 +122,14 @@ export async function runMultiAccountAgents(
   logger.info(`[MultiAccount] Starting multi-account run ${runId} for ${clientId}`);
 
   // Get client context
-  const clientContext = getClientContext(clientId);
+  const clientContext = await getClientContext(clientId);
   if (!clientContext) {
     throw new Error(`Client context not found for ${clientId}`);
   }
 
   // Get active accounts
-  const metaAccounts = getActiveMetaAccounts(clientId);
-  const shopifyStores = getActiveShopifyStores(clientId);
+  const metaAccounts = await getActiveMetaAccounts(clientId);
+  const shopifyStores = await getActiveShopifyStores(clientId);
 
   logger.info(`[MultiAccount] Found ${metaAccounts.length} Meta accounts, ${shopifyStores.length} Shopify stores`);
 
@@ -310,7 +310,7 @@ export async function runMultiAccountAgents(
   };
 
   try {
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
     logger.info(`[MultiAccount] Recorded multi-account report in strategic memory`);
   } catch (err) {
     logger.error(`[MultiAccount] Failed to record report: ${err}`);

@@ -71,9 +71,9 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
     const brandName = request.brandName ?? '';
 
     try {
-      const reports = getRecentReports(clientId, 20);
-      const recommendations = getRecommendationHistory(clientId, 10);
-      const accuracy = getPredictionAccuracy(clientId);
+      const reports = await getRecentReports(clientId, 20);
+      const recommendations = await getRecommendationHistory(clientId, 10);
+      const accuracy = await getPredictionAccuracy(clientId);
 
       const html = generatePortalHTML(brandName, reports, recommendations, accuracy);
 

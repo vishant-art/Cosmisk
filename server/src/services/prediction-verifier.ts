@@ -291,7 +291,7 @@ export async function verifyPendingPredictions(clientId: string): Promise<Verifi
     skipped: 0,
   };
 
-  const pendingPredictions = getPendingPredictions(clientId);
+  const pendingPredictions = await getPendingPredictions(clientId);
 
   if (pendingPredictions.length === 0) {
     logger.info(`[PredictionVerifier] No pending predictions for ${clientId}`);
@@ -336,7 +336,7 @@ export async function verifyPendingPredictions(clientId: string): Promise<Verifi
       }
 
       // Record verification
-      verifyPrediction(pred.id, actualValue, correct, lessonLearned);
+      await verifyPrediction(pred.id, actualValue, correct, lessonLearned);
 
       stats.verified++;
       if (correct) {

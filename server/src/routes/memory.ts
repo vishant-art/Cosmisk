@@ -37,12 +37,12 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     const { clientId } = request.params;
 
     try {
-      const context = getStrategicContextForAgent(clientId);
-      const recentReports = getRecentReports(clientId, 10);
-      const pendingRecs = getPendingRecommendations(clientId);
-      const runningContext = getRunningContext(clientId);
-      const predictionAccuracy = getPredictionAccuracy(clientId);
-      const pendingPredictions = getPendingPredictions(clientId);
+      const context = await getStrategicContextForAgent(clientId);
+      const recentReports = await getRecentReports(clientId, 10);
+      const pendingRecs = await getPendingRecommendations(clientId);
+      const runningContext = await getRunningContext(clientId);
+      const predictionAccuracy = await getPredictionAccuracy(clientId);
+      const pendingPredictions = await getPendingPredictions(clientId);
 
       return reply.send({
         success: true,
@@ -78,7 +78,7 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     const limit = parseInt(request.query.limit || '10', 10);
 
     try {
-      const reports = getRecentReports(clientId, limit);
+      const reports = await getRecentReports(clientId, limit);
       return reply.send({
         success: true,
         data: { clientId, reports },
@@ -99,8 +99,8 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const recommendations = pendingOnly
-        ? getPendingRecommendations(clientId)
-        : getRecommendationHistory(clientId);
+        ? await getPendingRecommendations(clientId)
+        : await getRecommendationHistory(clientId);
 
       return reply.send({
         success: true,
@@ -124,7 +124,7 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     const { status, actualOutcome, wasSuccessful } = request.body;
 
     try {
-      updateRecommendationStatus(
+      await updateRecommendationStatus(
         recId,
         status,
         actualOutcome ? { actualOutcome, wasSuccessful: wasSuccessful ?? true } : undefined
@@ -178,8 +178,8 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     const { clientId } = request.params;
 
     try {
-      const pendingPredictions = getPendingPredictions(clientId);
-      const accuracy = getPredictionAccuracy(clientId);
+      const pendingPredictions = await getPendingPredictions(clientId);
+      const accuracy = await getPredictionAccuracy(clientId);
 
       return reply.send({
         success: true,
@@ -222,7 +222,7 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
 
       const wasCorrect = Math.abs(actualValue - expectedValue) / expectedValue <= tolerance;
 
-      verifyPrediction(predId, actualValue, wasCorrect, lessonLearned);
+      await verifyPrediction(predId, actualValue, wasCorrect, lessonLearned);
 
       return reply.send({
         success: true,
@@ -249,7 +249,7 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
     const { clientId } = request.params;
 
     try {
-      const context = getStrategicContextForAgent(clientId);
+      const context = await getStrategicContextForAgent(clientId);
 
       return reply.send({
         success: true,
