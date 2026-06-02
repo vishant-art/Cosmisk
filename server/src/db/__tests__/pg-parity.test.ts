@@ -11,6 +11,12 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { pgPool, closePgPool } from '../pg.js';
 
+// GATED behind DATABASE_URL (the pooled endpoint this spec verifies). CI runs the
+// default suite with no DATABASE_URL, so this SKIPS cleanly there (like the other
+// pg specs gated on TEST_DATABASE_URL); without the gate, pgPool falls back to
+// localhost:5432 → ECONNREFUSED. Run it by pointing DATABASE_URL at the pooled DB.
+const HAS_DB = !!process.env['DATABASE_URL'];
+
 const PORTED_TABLES = [
   'brands',
   'brand_context',
@@ -25,15 +31,16 @@ const PORTED_TABLES = [
 
 const TEST_ID = '__pgparity_test__';
 
-afterEach(async () => {
-  await pgPool.query('DELETE FROM client_contexts WHERE id = $1', [TEST_ID]);
-});
+describe.skipIf(!HAS_DB)('Postgres parity (pooled Neon endpoint)', () => {
+  // Hooks live INSIDE the gated describe so they don't run (and hit pgPool) when skipped.
+  afterEach(async () => {
+    await pgPool.query('DELETE FROM client_contexts WHERE id = $1', [TEST_ID]);
+  });
 
-afterAll(async () => {
-  await closePgPool();
-});
+  afterAll(async () => {
+    await closePgPool();
+  });
 
-describe('Postgres parity (pooled Neon endpoint)', () => {
   it('has all 9 ported tables in the public schema', async () => {
     // Parameterized query exercises the prepared-statement path on the pooled endpoint.
     const res = await pgPool.query<{ table_name: string }>(
