@@ -4,7 +4,7 @@
 /*  "Every ad you make, makes your next ad better."                    */
 /* ------------------------------------------------------------------ */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { CREATIVE_PATTERNS } from './creative-patterns.js';
 import { getPlatformSignals } from './platform-signals.js';
 import {
@@ -68,18 +68,20 @@ export interface CreativeScore {
 /* ------------------------------------------------------------------ */
 
 export async function scoreCreative(input: CreativeScoreInput): Promise<CreativeScore> {
-  const db = getDb();
+  const db = getDbAdapter();
   const platform = input.platform || 'meta';
   const signals = getPlatformSignals(platform);
 
   // Gather account context
-  const dnaCacheRows = db.prepare(
-    'SELECT hook, visual, audio FROM dna_cache WHERE account_id IN (SELECT account_id FROM creative_assets WHERE user_id = ? GROUP BY account_id)'
-  ).all(input.userId) as Array<{ hook: string; visual: string; audio: string }>;
+  const dnaCacheRows = await db.all(
+    'SELECT hook, visual, audio FROM dna_cache WHERE account_id IN (SELECT account_id FROM creative_assets WHERE user_id = ? GROUP BY account_id)',
+    [input.userId]
+  ) as Array<{ hook: string; visual: string; audio: string }>;
 
-  const trackedAssets = db.prepare(
-    'SELECT format, dna_tags, actual_metrics, predicted_score, status, published_at FROM creative_assets WHERE user_id = ?'
-  ).all(input.userId) as Array<{
+  const trackedAssets = await db.all(
+    'SELECT format, dna_tags, actual_metrics, predicted_score, status, published_at FROM creative_assets WHERE user_id = ?',
+    [input.userId]
+  ) as Array<{
     format: string; dna_tags: string | null; actual_metrics: string | null;
     predicted_score: number | null; status: string; published_at: string | null;
   }>;
@@ -116,7 +118,7 @@ export async function scoreCreative(input: CreativeScoreInput): Promise<Creative
   // Predicted ROAS range (tier 3 only)
   let predictedRoasRange: CreativeScore['predictedRoasRange'];
   if (tier === 3) {
-    predictedRoasRange = computePredictedRoas(input.format, effectiveTags, assetsWithMetrics, input.userId);
+    predictedRoasRange = await computePredictedRoas(input.format, effectiveTags, assetsWithMetrics, input.userId);
   }
 
   const warnings = [
@@ -598,12 +600,12 @@ function scoreNovelty(
 /*  Predicted ROAS range (Tier 3 only)                                 */
 /* ------------------------------------------------------------------ */
 
-function computePredictedRoas(
+async function computePredictedRoas(
   format: string,
   tags: CreativeScoreInput['dnaTags'],
   assetsWithMetrics: Array<{ dna_tags: string | null; actual_metrics: string | null }>,
   userId: string,
-): { p25: number; p50: number; p75: number } | undefined {
+): Promise<{ p25: number; p50: number; p75: number } | undefined> {
   // Find similar assets by format + hook overlap
   const inputHooks = new Set(tags?.hook || []);
   const comparableRoas: number[] = [];
@@ -627,7 +629,7 @@ function computePredictedRoas(
   comparableRoas.sort((a, b) => a - b);
 
   // Apply calibration factor
-  const calibration = getCalibrationFactor(userId);
+  const calibration = await getCalibrationFactor(userId);
 
   const percentile = (arr: number[], p: number) => {
     const idx = Math.floor(arr.length * p);
@@ -645,12 +647,13 @@ function computePredictedRoas(
 /*  Calibration factor — adjusts predictions from past accuracy        */
 /* ------------------------------------------------------------------ */
 
-function getCalibrationFactor(userId: string): number {
+async function getCalibrationFactor(userId: string): Promise<number> {
   try {
-    const db = getDb();
-    const rows = db.prepare(
-      'SELECT predicted_roas_mid, actual_roas FROM score_predictions WHERE user_id = ? AND actual_roas IS NOT NULL AND predicted_roas_mid IS NOT NULL ORDER BY resolved_at DESC LIMIT 50'
-    ).all(userId) as Array<{ predicted_roas_mid: number; actual_roas: number }>;
+    const db = getDbAdapter();
+    const rows = await db.all(
+      'SELECT predicted_roas_mid, actual_roas FROM score_predictions WHERE user_id = ? AND actual_roas IS NOT NULL AND predicted_roas_mid IS NOT NULL ORDER BY resolved_at DESC LIMIT 50',
+      [userId]
+    ) as Array<{ predicted_roas_mid: number; actual_roas: number }>;
 
     if (rows.length < 5) return 1.0; // not enough data
 
@@ -697,19 +700,20 @@ function deriveTopInsight(
 /*  Accuracy stats — for the /accuracy endpoint                        */
 /* ------------------------------------------------------------------ */
 
-export function getAccuracyStats(userId: string): {
+export async function getAccuracyStats(userId: string): Promise<{
   totalPredictions: number;
   resolvedPredictions: number;
   meanAbsoluteError: number | null;
   accuracyByFormat: Record<string, { count: number; meanError: number }>;
   trend: 'improving' | 'stable' | 'declining' | 'insufficient_data';
-} {
-  const db = getDb();
+}> {
+  const db = getDbAdapter();
 
-  const total = (db.prepare('SELECT COUNT(*) as c FROM score_predictions WHERE user_id = ?').get(userId) as { c: number }).c;
-  const resolved = db.prepare(
-    'SELECT * FROM score_predictions WHERE user_id = ? AND actual_roas IS NOT NULL'
-  ).all(userId) as Array<{
+  const total = (await db.get('SELECT COUNT(*) as c FROM score_predictions WHERE user_id = ?', [userId]) as { c: number }).c;
+  const resolved = await db.all(
+    'SELECT * FROM score_predictions WHERE user_id = ? AND actual_roas IS NOT NULL',
+    [userId]
+  ) as Array<{
     format: string; accuracy_error: number; predicted_score: number;
     actual_roas: number; created_at: string; resolved_at: string;
   }>;
@@ -768,11 +772,11 @@ export function getAccuracyStats(userId: string): {
 /*  Feedback loop: resolve predictions with actual data                */
 /* ------------------------------------------------------------------ */
 
-export function resolveScorePredictions(): { resolved: number } {
-  const db = getDb();
+export async function resolveScorePredictions(): Promise<{ resolved: number }> {
+  const db = getDbAdapter();
 
   // Find unresolved predictions linked to assets with actual metrics
-  const unresolved = db.prepare(`
+  const unresolved = await db.all(`
     SELECT sp.id, sp.predicted_score, sp.predicted_roas_mid, ca.actual_metrics
     FROM score_predictions sp
     JOIN creative_assets ca ON ca.user_id = sp.user_id
@@ -782,17 +786,17 @@ export function resolveScorePredictions(): { resolved: number } {
       AND ca.created_at >= sp.created_at
     ORDER BY sp.created_at ASC
     LIMIT 100
-  `).all() as Array<{
+  `) as Array<{
     id: string; predicted_score: number; predicted_roas_mid: number | null;
     actual_metrics: string;
   }>;
 
   let resolved = 0;
-  const updateStmt = db.prepare(`
+  const updateSql = `
     UPDATE score_predictions
     SET actual_roas = ?, actual_ctr = ?, accuracy_error = ?, resolved_at = datetime('now')
     WHERE id = ?
-  `);
+  `;
 
   for (const row of unresolved) {
     try {
@@ -812,7 +816,7 @@ export function resolveScorePredictions(): { resolved: number } {
         error = Math.abs(estimatedRoas - actualRoas) / Math.max(actualRoas, 0.01);
       }
 
-      updateStmt.run(actualRoas, actualCtr, Math.round(error * 1000) / 1000, row.id);
+      await db.run(updateSql, [actualRoas, actualCtr, Math.round(error * 1000) / 1000, row.id]);
       resolved++;
     } catch { /* skip malformed */ }
   }

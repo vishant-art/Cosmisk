@@ -250,9 +250,9 @@ Return ONLY valid JSON, no markdown.`,
   }, async (request, reply) => {
     try {
       // Resolve any pending predictions first
-      resolveScorePredictions();
+      await resolveScorePredictions();
 
-      const stats = getAccuracyStats(request.user.id);
+      const stats = await getAccuracyStats(request.user.id);
       return { success: true, ...stats };
     } catch (err: any) {
       return internalError(reply, err, 'creative-studio/accuracy failed');
