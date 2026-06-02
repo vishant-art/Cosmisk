@@ -86,3 +86,39 @@ Per efficiency review of A1/A2 telemetry (4 fixed-overhead agents + 1 suite/wave
 ## ✅ CONVERSION COMPLETE (Buckets A–D / M2.3–M2.6)
 **Zero** non-test, non-db-layer `.prepare` sites remain in `src/`. The whole app uses the async `DbAdapter`. Remaining `.prepare` is only the SqliteAdapter implementation (db/index.ts, adapter.ts, schema.ts) + test mocks. Next: **Bucket E** — port remaining tests to the pg backend (M2.7), flip `DB_BACKEND` default (M2.8), retire the sqlite path (M2.9), then merge `db-migration` → `main`.
 
+## Bucket E (E1 = M2.7 pg test port) — IN PROGRESS
+
+### E1 harness + batch 1 — `4578bc3`,`0c8aa90`,`98d3f15`
+- **Keystone** (`4578bc3`): separate `vitest.pg.config.ts` runs `*.pg.test.ts` against the migrated Neon test branch (`DB_BACKEND=postgres`, `pgPool`→test branch via `vitest.setup.pg.ts`); default config excludes them (no env leak). Dialect smoke green on real pg.
+- **Batch 1** (workflow `wf_2f6aa237-ebb`, 6 real-sqlite files): surfaced **2 systemic production pg-bug classes** — the value of smoking routes on pg:
+  1. **int8(COUNT/SUM)→string** (node-postgres) broke KPI counts, billing `.spent`, and a real `team.ts` invite-limit bug (`'1'+1='11'`→premature 403). Affects ~18 files.
+  2. **json_extract on TEXT** columns → pg `->>` error 42883.
+- **Systemic fixes (`0c8aa90`)** at the db layer, not per-route: `pg.ts` OID-20 type parser → JS number (safe; no int8 near MAX_SAFE_INTEGER); shim `json_extract` → `(col)::jsonb->>'key'` + shim unit-test update. **Both validated end-to-end on a fresh branch: pg suite 108/0/3, default 818/0/16, tsc baseline-only.**
+- **Batch-1 ports (`98d3f15`):** notifications, llm-gateway, dashboard-routes, content-routes, routes-integration, brands-routes → `*.pg.test.ts`.
+
+### Neon test-branch outage (mid-E1) — RESOLVED
+The test branch (`ep-steep-leaf`) went down mid-batch (`XX000` endpoint-not-found + `28P01` auth-failed → stale `TEST_DATABASE_URL`). Diagnosed via preflight (not a code regression; sqlite suite stayed green). **User provisioned a fresh branch (`ep-plain-breeze`, 7-day autodelete)** → re-verified green. LEARNING: preflight `SELECT 1` before the pg gate; an endpoint-not-found/auth error = stale URL (user action), not a transient sleep.
+
+### E1 remaining
+- Batch 2 (running, `wf_28917196-a3b`): security, media-gen, swipe-file, performance, reports, ugc, automations routes.
+- Batch 3 (heavy): agent-memory(35), agent-routes(31), billing-routes(25), job-queue(25), integrations(22), ad-accounts(21).
+- Batch 4 (pure-mock rewrites): memory-integration, ad-watchdog.
+- Then E2 flip default→postgres · E3 delete sqlite · E4 push branch + PR (STOP before main merge). Bucket F later on `repo-cleanup`.
+
+
+## Bucket E COMPLETE (E1–E3) + cutover decisions — 2026-06-02/03
+
+### E1 (M2.7) — all DB routes smoked GREEN on Postgres
+Ported all 21 DB tests to the Neon test branch (4 batches via the port-only-agent + orchestrator-gate pattern, after the in-agent-barrier ran 58 min and died on StructuredOutput — lesson: the orchestrator owns the long pg gate). Final: pg suite **21 files / 389 / 0 / 10 skipped**; default suite **539 / 0 / 9**.
+- **5 systemic production pg-bug classes were surfaced ONLY by smoking on real pg** (invisible to sqlite + tsc) and fixed at the db layer: int8(COUNT/SUM)→string (pg type parser), json_extract on TEXT (shim `::jsonb` cast), scalar MIN/MAX (shim→LEAST/GREATEST), `INSERT OR IGNORE/REPLACE` not converted (→ON CONFLICT), `ORDER BY rowid` (→created_at/analyzed_at). This validated the user's instinct to smoke all routes on pg before deleting sqlite.
+
+### E2 (M2.8) — `accf96f` — flip default → postgres. E3 (M2.9) — `d4726e5` — SQLite retired entirely.
+Pure-pg: getDbAdapter() always PgAdapter; better-sqlite3 removed; shim retained. pg 388/0/10, default 400/0/9.
+
+### ⭐ SQLITE REVIVAL — REMIND AT NEXT SESSION ⭐
+**Decision (2026-06-02):** shipped **pure-pg**; did NOT build the sqlite/pg dual-backend now. SQLite full implementation is preserved at **git tag `sqlite-dual-backend-ref`** (commit `accf96f`).
+- **Why deferred:** making sqlite truly mimic pg is an emulation treadmill (timestamp format, error codes, isolation never match); a dual-backend can't *guarantee* identical results (pg-in-CI must stay the source of truth) and adds schema-parity upkeep. AND `npm test` is **already fast & Neon-free** (~400 unit/logic/mocked tests, ~20s) — non-technical folks already get quick feedback; only the 20 DB-*integration* tests are Neon-bound.
+- **Revival trigger:** if fast *local DB-integration* testing OR running the app locally without Neon becomes a recurring pain. Then build it **app-only first** (cheap 80%), recovered from the tag, against the then-current code. SqliteAdapter is ~100 lines; the shim already lives in the pure-pg codebase, so revival is bounded.
+- **REMINDER FOR TOMORROW:** raise the sqlite-revival question — decide whether the current fast `npm test` is sufficient or whether to invest in the app-only dual-backend. See tag `sqlite-dual-backend-ref`.
+
+### E4 — push `db-migration` + open PR to `main`; STOP before merge (user coordinates; code freeze + dev team on analysis-and-cleanup). Bucket F afterward on a new `repo-cleanup` branch.
