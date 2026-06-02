@@ -101,7 +101,7 @@ describe('Agent Memory - Episodes', () => {
 // ============================================================================
 
 describe('Strategic Memory - Reports', () => {
-  it('should record and retrieve reports for Pratapsons', () => {
+  it('should record and retrieve reports for Pratapsons', async () => {
     const now = new Date();
     const weekNumber = Math.ceil(
       (now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)
@@ -133,10 +133,10 @@ describe('Strategic Memory - Reports', () => {
       deliveredVia: [],
     };
 
-    recordReport(report);
+    await recordReport(report);
 
     // Retrieve recent reports
-    const reports = getRecentReports(TEST_CLIENT_ID, 10);
+    const reports = await getRecentReports(TEST_CLIENT_ID, 10);
     expect(reports.length).toBeGreaterThan(0);
 
     const found = reports.find(r => r.id === report.id);
@@ -150,7 +150,7 @@ describe('Strategic Memory - Reports', () => {
 // ============================================================================
 
 describe('Strategic Memory - Context', () => {
-  it('should build strategic context for Pratapsons', () => {
+  it('should build strategic context for Pratapsons', async () => {
     // First record some data
     const report: ReportRecord = {
       id: uuidv4(),
@@ -168,10 +168,10 @@ describe('Strategic Memory - Context', () => {
       shipDecision: 'SHIP',
       deliveredVia: ['test'],
     };
-    recordReport(report);
+    await recordReport(report);
 
     // Get context
-    const context = getStrategicContextForAgent(TEST_CLIENT_ID);
+    const context = await getStrategicContextForAgent(TEST_CLIENT_ID);
 
     // Context should exist (may be empty string if no prior data, but function should work)
     expect(typeof context).toBe('string');
@@ -276,7 +276,7 @@ describe('Client Context - Pratapsons', () => {
 // ============================================================================
 
 describe('Strategic Memory - Recommendations', () => {
-  it('should record and retrieve recommendations', () => {
+  it('should record and retrieve recommendations', async () => {
     const now = new Date().toISOString();
     const rec = {
       id: uuidv4(),
@@ -290,9 +290,9 @@ describe('Strategic Memory - Recommendations', () => {
       status: 'pending' as const,
     };
 
-    recordRecommendation(rec);
+    await recordRecommendation(rec);
 
-    const pending = getPendingRecommendations(TEST_CLIENT_ID);
+    const pending = await getPendingRecommendations(TEST_CLIENT_ID);
     expect(pending.length).toBeGreaterThan(0);
   });
 });
@@ -302,7 +302,7 @@ describe('Strategic Memory - Recommendations', () => {
 // ============================================================================
 
 describe('Strategic Memory - Predictions', () => {
-  it('should record predictions for verification', () => {
+  it('should record predictions for verification', async () => {
     const now = new Date();
     // Set verifyAfter to past so it appears in getPendingPredictions (which filters verify_after <= now)
     const verifyAfter = new Date(now.getTime() - 1000).toISOString();
@@ -322,10 +322,10 @@ describe('Strategic Memory - Predictions', () => {
       status: 'pending' as const,
     };
 
-    recordPrediction(pred);
+    await recordPrediction(pred);
 
     // getPendingPredictions filters by verify_after <= now
-    const pending = getPendingPredictions(TEST_CLIENT_ID);
+    const pending = await getPendingPredictions(TEST_CLIENT_ID);
     expect(pending.length).toBeGreaterThan(0);
   });
 });

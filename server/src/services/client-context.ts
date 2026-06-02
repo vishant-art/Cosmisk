@@ -11,7 +11,7 @@
  * - Geographic segmentation rules
  */
 
-import Database from 'better-sqlite3';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 
 // ============================================================================
@@ -87,21 +87,15 @@ export interface ClientContext {
 // DATABASE SETUP
 // ============================================================================
 
-let db: Database.Database;
+let tablesInitialized = false;
 
-function getDb(): Database.Database {
-  if (!db) {
-    db = new Database('./data/cosmisk.db');
-    initClientContextTables();
+async function ensureTables(): Promise<void> {
+  if (tablesInitialized) {
+    return;
   }
-  return db;
-}
-
-function initClientContextTables(): void {
-  const database = db;
 
   // Main client context table
-  database.exec(`
+  await getDbAdapter().exec(`
     CREATE TABLE IF NOT EXISTS client_contexts (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -111,6 +105,7 @@ function initClientContextTables(): void {
     )
   `);
 
+  tablesInitialized = true;
   logger.info('[ClientContext] Tables initialized');
 }
 
@@ -118,34 +113,34 @@ function initClientContextTables(): void {
 // CRUD OPERATIONS
 // ============================================================================
 
-export function createClientContext(context: ClientContext): ClientContext {
-  const database = getDb();
+export async function createClientContext(context: ClientContext): Promise<ClientContext> {
+  await ensureTables();
 
   const now = new Date().toISOString();
   context.createdAt = now;
   context.updatedAt = now;
 
-  database.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO client_contexts (id, name, context_json, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(
+  `, [
     context.id,
     context.name,
     JSON.stringify(context),
     context.createdAt,
     context.updatedAt
-  );
+  ]);
 
   logger.info(`[ClientContext] Created context for ${context.id}`);
   return context;
 }
 
-export function getClientContext(clientId: string): ClientContext | null {
-  const database = getDb();
+export async function getClientContext(clientId: string): Promise<ClientContext | null> {
+  await ensureTables();
 
-  const row = database.prepare(`
+  const row = await getDbAdapter().get<{ context_json: string }>(`
     SELECT context_json FROM client_contexts WHERE id = ?
-  `).get(clientId) as { context_json: string } | undefined;
+  `, [clientId]);
 
   if (!row) {
     return null;
@@ -154,10 +149,10 @@ export function getClientContext(clientId: string): ClientContext | null {
   return JSON.parse(row.context_json) as ClientContext;
 }
 
-export function updateClientContext(clientId: string, updates: Partial<ClientContext>): ClientContext | null {
-  const database = getDb();
+export async function updateClientContext(clientId: string, updates: Partial<ClientContext>): Promise<ClientContext | null> {
+  await ensureTables();
 
-  const existing = getClientContext(clientId);
+  const existing = await getClientContext(clientId);
   if (!existing) {
     return null;
   }
@@ -169,32 +164,32 @@ export function updateClientContext(clientId: string, updates: Partial<ClientCon
     updatedAt: new Date().toISOString()
   };
 
-  database.prepare(`
+  await getDbAdapter().run(`
     UPDATE client_contexts
     SET context_json = ?, updated_at = ?
     WHERE id = ?
-  `).run(JSON.stringify(updated), updated.updatedAt, clientId);
+  `, [JSON.stringify(updated), updated.updatedAt, clientId]);
 
   logger.info(`[ClientContext] Updated context for ${clientId}`);
   return updated;
 }
 
-export function listClientContexts(): ClientContext[] {
-  const database = getDb();
+export async function listClientContexts(): Promise<ClientContext[]> {
+  await ensureTables();
 
-  const rows = database.prepare(`
+  const rows = await getDbAdapter().all<{ context_json: string }>(`
     SELECT context_json FROM client_contexts ORDER BY name
-  `).all() as { context_json: string }[];
+  `);
 
   return rows.map(row => JSON.parse(row.context_json) as ClientContext);
 }
 
-export function deleteClientContext(clientId: string): boolean {
-  const database = getDb();
+export async function deleteClientContext(clientId: string): Promise<boolean> {
+  await ensureTables();
 
-  const result = database.prepare(`
+  const result = await getDbAdapter().run(`
     DELETE FROM client_contexts WHERE id = ?
-  `).run(clientId);
+  `, [clientId]);
 
   return result.changes > 0;
 }
@@ -206,8 +201,8 @@ export function deleteClientContext(clientId: string): boolean {
 /**
  * Get all active Meta accounts for a client
  */
-export function getActiveMetaAccounts(clientId: string): MetaAccount[] {
-  const context = getClientContext(clientId);
+export async function getActiveMetaAccounts(clientId: string): Promise<MetaAccount[]> {
+  const context = await getClientContext(clientId);
   if (!context) return [];
   return context.metaAccounts.filter(a => a.isActive);
 }
@@ -215,8 +210,8 @@ export function getActiveMetaAccounts(clientId: string): MetaAccount[] {
 /**
  * Get all active Shopify stores for a client
  */
-export function getActiveShopifyStores(clientId: string): ShopifyStore[] {
-  const context = getClientContext(clientId);
+export async function getActiveShopifyStores(clientId: string): Promise<ShopifyStore[]> {
+  const context = await getClientContext(clientId);
   if (!context) return [];
   return context.shopifyStores.filter(s => s.isActive);
 }
@@ -224,8 +219,8 @@ export function getActiveShopifyStores(clientId: string): ShopifyStore[] {
 /**
  * Get Meta account by region
  */
-export function getMetaAccountByRegion(clientId: string, region: string): MetaAccount | null {
-  const context = getClientContext(clientId);
+export async function getMetaAccountByRegion(clientId: string, region: string): Promise<MetaAccount | null> {
+  const context = await getClientContext(clientId);
   if (!context) return null;
   return context.metaAccounts.find(a => a.region.toLowerCase() === region.toLowerCase()) || null;
 }
@@ -233,8 +228,8 @@ export function getMetaAccountByRegion(clientId: string, region: string): MetaAc
 /**
  * Get Shopify store by region
  */
-export function getShopifyStoreByRegion(clientId: string, region: string): ShopifyStore | null {
-  const context = getClientContext(clientId);
+export async function getShopifyStoreByRegion(clientId: string, region: string): Promise<ShopifyStore | null> {
+  const context = await getClientContext(clientId);
   if (!context) return null;
   return context.shopifyStores.find(s => s.region.toLowerCase() === region.toLowerCase()) || null;
 }
@@ -242,8 +237,8 @@ export function getShopifyStoreByRegion(clientId: string, region: string): Shopi
 /**
  * Get client brief for agent context injection
  */
-export function getClientBriefForAgent(clientId: string): string {
-  const context = getClientContext(clientId);
+export async function getClientBriefForAgent(clientId: string): Promise<string> {
+  const context = await getClientContext(clientId);
   if (!context) return '';
 
   const brief = context.brief;
@@ -373,8 +368,8 @@ export const PRATAPSONS_CONTEXT: ClientContext = {
 /**
  * Initialize Pratapsons context if not exists
  */
-export function initializePratapsonsContext(): ClientContext {
-  const existing = getClientContext('pratapsons');
+export async function initializePratapsonsContext(): Promise<ClientContext> {
+  const existing = await getClientContext('pratapsons');
   if (existing) {
     logger.info('[ClientContext] Pratapsons context already exists');
     return existing;
