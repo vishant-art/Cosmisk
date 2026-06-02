@@ -224,3 +224,15 @@ First leaf wave of the services layer. Composer barrier (graph update + impact +
 - **Deferred (later waves):** `report-agent`/`content-agent`/`creative-strategist`/`meta-warmup` (all share caller `routes/agent.ts` — need a coordinated single-agent cluster so `agent.ts` is patched once), `notifications` (fan-in 9 services), `creative-scorer`/`cohort-ltv-analyzer`/`agent-memory` (cross-service cascade), the heavy fan-in `service-clients`/`job-queue`/`intelligence-persistence`/`ad-watchdog`, `llm-gateway`, and the M2.4 bypass files.
 
 **M2.3 status:** wave 1 ✅ (4/~20 services). Next: wave 2 — the `agent.ts`-caller cluster as a coordinated unit (shared caller ⇒ not parallel-disjoint), then the heavy fan-in.
+
+---
+
+## 13. DB-2 — M2.3 waves 2 & 3 — 2026-06-02
+
+- **Wave 2 ✅ (`7390af5`)** — `agent.ts`-caller cluster: `report-agent`, `content-agent`, `creative-strategist`, `meta-warmup`. 2-stage (parallel convert → single propagate of `agent.ts`); composer GO; 921/0/19.
+- **Wave 3 ⚠️ workflow FAILED, salvaged (`d44e740`)** — `wf_e9aa7f19-a10` errored: its `agent-memory` convert agent didn't return `StructuredOutput` (recurring big-file failure mode, cf. `creative-engine`). Two findings:
+  - **Plan mis-classified `agent-memory` as a leaf** — it's a **high-fan-in hub (16 importers)**; deferred to a coordinated direct hub-wave (with `notifications`). It was never edited (no cleanup).
+  - **`creative-scorer` was a true clean leaf** (only real caller `routes/creative-studio.ts`; `agent-registry` only string-references it in a config array). Salvaged its conversion + patched 2 `creative-studio` awaits directly → 921/0/19.
+- **Orchestration rule going forward:** fan-out agents only for small disjoint leaves (≤~8 sites); **hubs + heavy + entangled files done DIRECTLY** (controlled transform + tsc/suite gate). The composer-barrier discipline (tsc baseline-only + 921/0/19 deterministic) holds either way.
+
+**M2.3 status:** 11/~20 services converted (waves 1–3). Remaining: hub wave (`agent-memory`, `notifications`) + heavy fan-in (`service-clients`/`job-queue`/`intelligence-persistence`/`ad-watchdog`) + mid-tier + `llm-gateway` + `cohort-ltv` (with ad-watchdog) — mostly DIRECT.
