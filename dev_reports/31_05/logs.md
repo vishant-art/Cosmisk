@@ -212,3 +212,15 @@ The intermittent `PgAdapter (TEST_DATABASE_URL) > transaction() commits on succe
 - **Fix (cause eliminated):** isolate `adapter.test.ts` into its own schema — `CREATE SCHEMA` + pool `options: '-c search_path=<schema>'` (verified honoured on Neon's direct endpoint). Its table lives outside `public`, so no other file's TRUNCATE can reach it. No retry; migrate-based files keep the advisory-lock serialization.
 - **Verified deterministic:** 4× concurrent `db/__tests__` subset + 2× full suite all green — **921 / 0 / 19**; the flaky test passed every run.
 - Memory updated ([[pg-test-connection-verification]]): smoke connection strings + disambiguate any pg failure by isolated rerun before calling it a regression.
+
+---
+
+## 12. DB-2 — M2.3 services wave 1 (Workflow `wf_a3837e8d-43c`, graph-driven) — 2026-06-02
+
+First leaf wave of the services layer. Composer barrier (graph update + impact + smoke).
+- **Converted (committed `8284ab3`):** `morning-briefing`(9), `memory-maintenance`(4), `pattern-transfer`(9), `prediction-verifier`(2) — leaf services whose callers were all already-async, with mutually-disjoint caller files.
+- **Async-colour propagation fully CONTAINED in-file** — their converted fns were already async or only internally called, so **zero caller files needed patching** (the graph confirmed no external callers of the newly-async exports). `pattern-transfer` needed `forEach`→`for...of` to allow `await`; its `setupGlobalPatternsSchema` runtime DDL left for M2.5.
+- **Composer GO**, independently re-verified: tsc baseline-only; full suite **921/0/19 deterministic** (2 runs); graph-selected `agent-routes.test` 31/31; pg flake fix held (no pg failures).
+- **Deferred (later waves):** `report-agent`/`content-agent`/`creative-strategist`/`meta-warmup` (all share caller `routes/agent.ts` — need a coordinated single-agent cluster so `agent.ts` is patched once), `notifications` (fan-in 9 services), `creative-scorer`/`cohort-ltv-analyzer`/`agent-memory` (cross-service cascade), the heavy fan-in `service-clients`/`job-queue`/`intelligence-persistence`/`ad-watchdog`, `llm-gateway`, and the M2.4 bypass files.
+
+**M2.3 status:** wave 1 ✅ (4/~20 services). Next: wave 2 — the `agent.ts`-caller cluster as a coordinated unit (shared caller ⇒ not parallel-disjoint), then the heavy fan-in.
