@@ -309,7 +309,7 @@ await app.register(intelligenceRoutes);
 
 // Initialize audit scheduler
 try {
-  initializeScheduler();
+  await initializeScheduler();
 } catch (error) {
   app.log.warn({ err: error }, 'Failed to initialize audit scheduler');
 }

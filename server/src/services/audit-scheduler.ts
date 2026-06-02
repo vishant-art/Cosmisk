@@ -3,7 +3,7 @@
  */
 
 import { CronJob } from 'cron';
-import Database from 'better-sqlite3';
+import { getDbAdapter } from '../db/adapter.js';
 import { runAudit } from '../audit/index.js';
 
 interface ScheduledAudit {
@@ -28,10 +28,6 @@ const state: SchedulerState = {
   jobs: new Map(),
   isRunning: false,
 };
-
-function getDb(): Database.Database {
-  return new Database('./data/cosmisk.db');
-}
 
 /**
  * Convert frequency to cron expression
@@ -63,8 +59,6 @@ function getNextRunTime(cronExpression: string): Date {
  * Run a scheduled audit
  */
 async function runScheduledAudit(schedule: ScheduledAudit): Promise<void> {
-  const db = getDb();
-
   console.log(`\n⏰ Running scheduled audit for ${schedule.brandName}`);
   console.log(`   Schedule ID: ${schedule.id}`);
   console.log(`   Frequency: ${schedule.frequency}`);
@@ -81,14 +75,14 @@ async function runScheduledAudit(schedule: ScheduledAudit): Promise<void> {
     // Update last run time and next run time
     const nextRunAt = getNextRunTime(schedule.cronExpression).toISOString();
 
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE scheduled_audits
       SET last_run_at = datetime('now'),
           next_run_at = ?,
           run_count = run_count + 1,
           last_error = NULL
       WHERE id = ?
-    `).run(nextRunAt, schedule.id);
+    `, [nextRunAt, schedule.id]);
 
     console.log(`   ✅ Scheduled audit completed successfully`);
     console.log(`   Next run: ${nextRunAt}`);
@@ -96,13 +90,13 @@ async function runScheduledAudit(schedule: ScheduledAudit): Promise<void> {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE scheduled_audits
       SET last_run_at = datetime('now'),
           last_error = ?,
           error_count = error_count + 1
       WHERE id = ?
-    `).run(errorMessage, schedule.id);
+    `, [errorMessage, schedule.id]);
 
     console.error(`   ❌ Scheduled audit failed: ${errorMessage}`);
   }
@@ -124,16 +118,16 @@ function createJob(schedule: ScheduledAudit): CronJob {
 /**
  * Initialize the scheduler with all active schedules
  */
-export function initializeScheduler(): void {
+export async function initializeScheduler(): Promise<void> {
   if (state.isRunning) {
     console.log('Scheduler already running');
     return;
   }
 
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Ensure table exists
-  db.exec(`
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS scheduled_audits (
       id TEXT PRIMARY KEY,
       brand_id TEXT NOT NULL,
@@ -153,9 +147,9 @@ export function initializeScheduler(): void {
   `);
 
   // Load active schedules
-  const schedules = db.prepare(`
+  const schedules = await db.all<any>(`
     SELECT * FROM scheduled_audits WHERE enabled = 1
-  `).all() as any[];
+  `);
 
   console.log(`\n📅 Initializing audit scheduler...`);
   console.log(`   Found ${schedules.length} active schedules`);
@@ -204,23 +198,21 @@ export function stopScheduler(): void {
 /**
  * Create a new scheduled audit
  */
-export function createScheduledAudit(options: {
+export async function createScheduledAudit(options: {
   brandId: string;
   brandName: string;
   frequency: ScheduledAudit['frequency'];
   datePreset?: ScheduledAudit['datePreset'];
-}): ScheduledAudit {
-  const db = getDb();
-
+}): Promise<ScheduledAudit> {
   const id = `sched_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const cronExpression = frequencyToCron(options.frequency);
   const nextRunAt = getNextRunTime(cronExpression).toISOString();
   const datePreset = options.datePreset || 'last_30d';
 
-  db.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO scheduled_audits (id, brand_id, brand_name, frequency, cron_expression, date_preset, next_run_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, options.brandId, options.brandName, options.frequency, cronExpression, datePreset, nextRunAt);
+  `, [id, options.brandId, options.brandName, options.frequency, cronExpression, datePreset, nextRunAt]);
 
   const schedule: ScheduledAudit = {
     id,
@@ -249,13 +241,11 @@ export function createScheduledAudit(options: {
 /**
  * Update a scheduled audit
  */
-export function updateScheduledAudit(
+export async function updateScheduledAudit(
   scheduleId: string,
   updates: Partial<Pick<ScheduledAudit, 'frequency' | 'datePreset' | 'enabled'>>
-): ScheduledAudit | null {
-  const db = getDb();
-
-  const existing = db.prepare('SELECT * FROM scheduled_audits WHERE id = ?').get(scheduleId) as any;
+): Promise<ScheduledAudit | null> {
+  const existing = await getDbAdapter().get<any>('SELECT * FROM scheduled_audits WHERE id = ?', [scheduleId]);
   if (!existing) return null;
 
   const newFrequency = updates.frequency || existing.frequency;
@@ -264,7 +254,7 @@ export function updateScheduledAudit(
   const newEnabled = updates.enabled !== undefined ? (updates.enabled ? 1 : 0) : existing.enabled;
   const newNextRunAt = updates.frequency ? getNextRunTime(newCronExpression).toISOString() : existing.next_run_at;
 
-  db.prepare(`
+  await getDbAdapter().run(`
     UPDATE scheduled_audits
     SET frequency = ?,
         cron_expression = ?,
@@ -272,7 +262,7 @@ export function updateScheduledAudit(
         enabled = ?,
         next_run_at = ?
     WHERE id = ?
-  `).run(newFrequency, newCronExpression, newDatePreset, newEnabled, newNextRunAt, scheduleId);
+  `, [newFrequency, newCronExpression, newDatePreset, newEnabled, newNextRunAt, scheduleId]);
 
   // Update running job
   if (state.isRunning) {
@@ -308,10 +298,8 @@ export function updateScheduledAudit(
 /**
  * Delete a scheduled audit
  */
-export function deleteScheduledAudit(scheduleId: string): boolean {
-  const db = getDb();
-
-  const result = db.prepare('DELETE FROM scheduled_audits WHERE id = ?').run(scheduleId);
+export async function deleteScheduledAudit(scheduleId: string): Promise<boolean> {
+  const result = await getDbAdapter().run('DELETE FROM scheduled_audits WHERE id = ?', [scheduleId]);
 
   // Stop the job
   const job = state.jobs.get(scheduleId);
@@ -326,9 +314,8 @@ export function deleteScheduledAudit(scheduleId: string): boolean {
 /**
  * Get a scheduled audit by ID
  */
-export function getScheduledAudit(scheduleId: string): ScheduledAudit | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM scheduled_audits WHERE id = ?').get(scheduleId) as any;
+export async function getScheduledAudit(scheduleId: string): Promise<ScheduledAudit | null> {
+  const row = await getDbAdapter().get<any>('SELECT * FROM scheduled_audits WHERE id = ?', [scheduleId]);
 
   if (!row) return null;
 
@@ -349,14 +336,14 @@ export function getScheduledAudit(scheduleId: string): ScheduledAudit | null {
 /**
  * List all scheduled audits
  */
-export function listScheduledAudits(brandId?: string): ScheduledAudit[] {
-  const db = getDb();
+export async function listScheduledAudits(brandId?: string): Promise<ScheduledAudit[]> {
+  const db = getDbAdapter();
 
   let rows: any[];
   if (brandId) {
-    rows = db.prepare('SELECT * FROM scheduled_audits WHERE brand_id = ? ORDER BY created_at DESC').all(brandId);
+    rows = await db.all<any>('SELECT * FROM scheduled_audits WHERE brand_id = ? ORDER BY created_at DESC', [brandId]);
   } else {
-    rows = db.prepare('SELECT * FROM scheduled_audits ORDER BY created_at DESC').all();
+    rows = await db.all<any>('SELECT * FROM scheduled_audits ORDER BY created_at DESC');
   }
 
   return rows.map(row => ({
@@ -377,7 +364,7 @@ export function listScheduledAudits(brandId?: string): ScheduledAudit[] {
  * Trigger an immediate run of a scheduled audit
  */
 export async function triggerScheduledAudit(scheduleId: string): Promise<boolean> {
-  const schedule = getScheduledAudit(scheduleId);
+  const schedule = await getScheduledAudit(scheduleId);
   if (!schedule) return false;
 
   await runScheduledAudit(schedule);
@@ -387,12 +374,12 @@ export async function triggerScheduledAudit(scheduleId: string): Promise<boolean
 /**
  * Get scheduler status
  */
-export function getSchedulerStatus(): {
+export async function getSchedulerStatus(): Promise<{
   isRunning: boolean;
   activeJobs: number;
   schedules: Array<{ id: string; brandName: string; nextRun: string | null }>;
-} {
-  const schedules = listScheduledAudits().filter(s => s.enabled);
+}> {
+  const schedules = (await listScheduledAudits()).filter(s => s.enabled);
 
   return {
     isRunning: state.isRunning,
