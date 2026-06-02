@@ -29,8 +29,8 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       // Get stored predictions for scorecard
-      const predictions = persistence.getPredictionsByClient(clientId);
-      const recommendations = persistence.getRecommendationsByClient(clientId);
+      const predictions = await persistence.getPredictionsByClient(clientId);
+      const recommendations = await persistence.getRecommendationsByClient(clientId);
 
       // Generate insights from recent recommendations
       const insights = recommendations.slice(0, 10).map(rec => ({
@@ -58,7 +58,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
     const { clientId, persona } = request.params;
 
     try {
-      const recommendations = persistence.getRecommendationsByClient(clientId);
+      const recommendations = await persistence.getRecommendationsByClient(clientId);
       const insights = recommendations.slice(0, 10).map(rec => ({
         type: rec.type,
         evidence: [],
@@ -128,7 +128,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
       const tracked = trackRecommendation(clientId, type, headline, recommendation, confidence, urgency);
 
       // Also persist to DB
-      persistence.saveRecommendation(tracked);
+      await persistence.saveRecommendation(tracked);
 
       return { success: true, data: { id: tracked.id } };
     } catch (err) {
@@ -147,7 +147,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       recordView(recommendationId);
-      persistence.updateRecommendationView(recommendationId);
+      await persistence.updateRecommendationView(recommendationId);
       return { success: true };
     } catch (err) {
       logger.error({ err, recommendationId }, '[Intelligence] Failed to record view');
@@ -167,7 +167,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       recordAction(recommendationId, action);
-      persistence.updateRecommendationAction(recommendationId, action);
+      await persistence.updateRecommendationAction(recommendationId, action);
       return { success: true };
     } catch (err) {
       logger.error({ err, recommendationId }, '[Intelligence] Failed to record action');
@@ -187,7 +187,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       recordOutcome(recommendationId, positive, notes);
-      persistence.updateRecommendationOutcome(recommendationId, positive, notes);
+      await persistence.updateRecommendationOutcome(recommendationId, positive, notes);
       return { success: true };
     } catch (err) {
       logger.error({ err, recommendationId }, '[Intelligence] Failed to record outcome');
@@ -220,8 +220,8 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
         { freeformFeedback }
       );
 
-      persistence.saveFeedback(feedback);
-      persistence.updateRecommendationRating(recommendationId, rating, freeformFeedback);
+      await persistence.saveFeedback(feedback);
+      await persistence.updateRecommendationRating(recommendationId, rating, freeformFeedback);
 
       return { success: true, data: { id: feedback.id } };
     } catch (err) {
@@ -247,7 +247,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       const event = trackBehavior(clientId, operatorId, eventType as BehaviorEventType, context, { itemId, itemType });
-      persistence.saveBehaviorEvent(event);
+      await persistence.saveBehaviorEvent(event);
       return { success: true, data: { id: event.id } };
     } catch (err) {
       logger.error({ err }, '[Intelligence] Failed to track behavior');
@@ -335,8 +335,8 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       const predictions = unverified === 'true'
-        ? persistence.getUnverifiedPredictions(clientId)
-        : persistence.getPredictionsByClient(clientId);
+        ? await persistence.getUnverifiedPredictions(clientId)
+        : await persistence.getPredictionsByClient(clientId);
 
       return { success: true, data: predictions };
     } catch (err) {
@@ -354,7 +354,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
     const { clientId, operatorId } = request.params;
 
     try {
-      const profile = persistence.getOperatorProfile(clientId, operatorId);
+      const profile = await persistence.getOperatorProfile(clientId, operatorId);
       return { success: true, data: profile };
     } catch (err) {
       logger.error({ err, clientId, operatorId }, '[Intelligence] Failed to get operator profile');
