@@ -9,7 +9,8 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { config } from './config.js';
-import { getDb, closeDb } from './db/index.js';
+import { closeDb } from './db/index.js';
+import { getDbAdapter } from './db/adapter.js';
 import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { adAccountRoutes } from './routes/ad-accounts.js';
@@ -181,7 +182,7 @@ app.addHook('onRequest', (request, _reply, done) => {
 const SERVER_START = new Date().toISOString();
 app.get('/health', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async () => {
   let dbOk = false;
-  try { const db = getDb(); db.prepare('SELECT 1').get(); dbOk = true; } catch (err) { logger.warn({ err }, 'Health check: DB unavailable'); }
+  try { await getDbAdapter().get('SELECT 1'); dbOk = true; } catch (err) { logger.warn({ err }, 'Health check: DB unavailable'); }
   return {
     status: dbOk ? 'ok' : 'degraded',
     uptime: Math.floor(process.uptime()),
@@ -199,12 +200,11 @@ app.post('/leads/capture', async (request, reply) => {
   if (!email || !email.includes('@')) {
     return reply.status(400).send({ success: false, error: 'Valid email required' });
   }
-  const db = getDb();
   const ip = request.ip;
   const ua = request.headers['user-agent'] || '';
   const referrer = request.headers['referer'] || '';
-  db.prepare('INSERT INTO leads (email, source, ip, user_agent, referrer) VALUES (?, ?, ?, ?, ?)')
-    .run(email.toLowerCase().trim(), source, ip, ua, referrer);
+  await getDbAdapter().run('INSERT INTO leads (email, source, ip, user_agent, referrer) VALUES (?, ?, ?, ?, ?)',
+    [email.toLowerCase().trim(), source, ip, ua, referrer]);
   return { success: true };
 });
 
@@ -215,33 +215,14 @@ app.post('/waitlist/join', async (request, reply) => {
   if (!email || !email.includes('@')) {
     return reply.status(400).send({ success: false, error: 'Valid email required' });
   }
-  const db = getDb();
-
-  // Ensure table exists
-  db.exec(`CREATE TABLE IF NOT EXISTS waitlist_leads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    name TEXT,
-    company TEXT,
-    role TEXT,
-    ad_spend TEXT,
-    team_size TEXT,
-    pain_points TEXT,
-    interested_features TEXT,
-    source TEXT DEFAULT 'waitlist',
-    referrer TEXT,
-    signed_up_at TEXT,
-    created_at TEXT DEFAULT (datetime('now'))
-  )`);
-
   // Check for existing
-  const existing = db.prepare('SELECT id FROM waitlist_leads WHERE email = ?').get(email) as { id: number } | undefined;
+  const existing = await getDbAdapter().get<{ id: number }>('SELECT id FROM waitlist_leads WHERE email = ?', [email]);
   if (existing) {
     return { success: true, existing: true, position: existing.id };
   }
 
-  const result = db.prepare(`INSERT INTO waitlist_leads (email, name, company, role, ad_spend, team_size, pain_points, interested_features, source, referrer, signed_up_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  const result = await getDbAdapter().get<{ id: number }>(`INSERT INTO waitlist_leads (email, name, company, role, ad_spend, team_size, pain_points, interested_features, source, referrer, signed_up_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`, [
     email,
     body['name'] || '',
     body['company'] || '',
@@ -253,9 +234,9 @@ app.post('/waitlist/join', async (request, reply) => {
     body['source'] || 'waitlist',
     body['referrer'] || '',
     body['signed_up_at'] || new Date().toISOString()
-  );
+  ]);
 
-  const position = Number(result.lastInsertRowid);
+  const position = result!.id;
 
   // Forward to n8n webhook for Airtable sync (fire-and-forget)
   try {
@@ -346,9 +327,8 @@ if (config.nodeEnv === 'production' && existsSync(frontendDir)) {
 
 // --- Creatives & Dashboard Top-Creatives: real Meta-backed implementations ---
 
-function getMetaTokenForUser(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getMetaTokenForUser(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -357,24 +337,6 @@ function roundNum(value: number, decimals: number): number {
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Safe migration helper                                              */
-/* ------------------------------------------------------------------ */
-function ensureUsersColumn(column: string, definition: string): void {
-  const db = getDb();
-  const cols = db.prepare("PRAGMA table_info('users')").all() as Array<{ name: string }>;
-  if (!cols.some(c => c.name === column)) {
-    db.exec(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
-  }
-}
-
-// Run safe migrations for new user columns
-ensureUsersColumn('brand_name', 'TEXT');
-ensureUsersColumn('website_url', 'TEXT');
-ensureUsersColumn('goals', 'TEXT');
-ensureUsersColumn('competitors', 'TEXT');
-ensureUsersColumn('active_brand', 'TEXT');
 
 // GET /creatives/list — Fetch ads from Meta, mapped to creatives format
 app.get('/creatives/list', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -387,7 +349,7 @@ app.get('/creatives/list', { preHandler: [app.authenticate] }, async (request, r
   }
 
   try {
-    const token = getMetaTokenForUser(request.user.id);
+    const token = await getMetaTokenForUser(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: true, creatives: [], meta_connected: false });
     }
@@ -442,7 +404,7 @@ app.get('/dashboard/top-creatives', { preHandler: [app.authenticate] }, async (r
   }
 
   try {
-    const token = getMetaTokenForUser(request.user.id);
+    const token = await getMetaTokenForUser(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: true, creatives: [], meta_connected: false });
     }
@@ -495,7 +457,7 @@ app.get('/creatives/detail', { preHandler: [app.authenticate] }, async (request,
   }
 
   try {
-    const token = getMetaTokenForUser(request.user.id);
+    const token = await getMetaTokenForUser(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: true, creative: null, meta_connected: false });
     }
@@ -552,7 +514,7 @@ app.post('/creatives/analyze', { preHandler: [app.authenticate] }, async (reques
   }
 
   try {
-    const token = getMetaTokenForUser(request.user.id);
+    const token = await getMetaTokenForUser(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: true, analysis: null, meta_connected: false });
     }
@@ -667,11 +629,10 @@ app.post('/creatives/batch-dna', { preHandler: [app.authenticate] }, async (requ
     return reply.status(400).send({ success: false, error: 'account_id and ads[] required' });
   }
 
-  const db = getDb();
-
   // Check cache first
-  const cached = db.prepare('SELECT ad_id, hook, visual, audio, reasoning FROM dna_cache WHERE account_id = ? AND ad_id IN (' + ads.map(() => '?').join(',') + ')')
-    .all(account_id, ...ads.map(a => a.id)) as { ad_id: string; hook: string; visual: string; audio: string; reasoning: string }[];
+  const cached = await getDbAdapter().all<{ ad_id: string; hook: string; visual: string; audio: string; reasoning: string }>(
+    'SELECT ad_id, hook, visual, audio, reasoning FROM dna_cache WHERE account_id = ? AND ad_id IN (' + ads.map(() => '?').join(',') + ')',
+    [account_id, ...ads.map(a => a.id)]);
 
   const cachedMap = new Map(cached.map(c => {
     try {
@@ -749,14 +710,14 @@ Return ONLY valid JSON array (no markdown):
     }
 
     // Cache results
-    const upsert = db.prepare('INSERT OR REPLACE INTO dna_cache (ad_id, account_id, ad_name, hook, visual, audio, reasoning, analyzed_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))');
-    const tx = db.transaction(() => {
+    await getDbAdapter().transaction(async (tx) => {
       for (const item of analyzed) {
         const ad = uncached.find(a => a.id === item.id);
-        upsert.run(item.id, account_id, ad?.name || '', JSON.stringify(item.hook || []), JSON.stringify(item.visual || []), JSON.stringify(item.audio || []), item.reasoning || '');
+        await tx.run(
+          'INSERT INTO dna_cache (ad_id, account_id, ad_name, hook, visual, audio, reasoning, analyzed_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\')) ON CONFLICT(ad_id) DO UPDATE SET account_id=excluded.account_id, ad_name=excluded.ad_name, hook=excluded.hook, visual=excluded.visual, audio=excluded.audio, reasoning=excluded.reasoning, analyzed_at=excluded.analyzed_at',
+          [item.id, account_id, ad?.name || '', JSON.stringify(item.hook || []), JSON.stringify(item.visual || []), JSON.stringify(item.audio || []), item.reasoning || '']);
       }
     });
-    tx();
 
     // Merge cached + newly analyzed
     const results: Record<string, any> = {};
@@ -788,7 +749,7 @@ app.get('/creatives/recommendations', { preHandler: [app.authenticate] }, async 
   }
 
   try {
-    const token = getMetaTokenForUser(request.user.id);
+    const token = await getMetaTokenForUser(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: true, recommendations: [], meta_connected: false });
     }
@@ -917,9 +878,8 @@ app.post('/auth/refresh', async (request, reply) => {
 
 // POST /onboarding/connect — acknowledge Meta connection
 app.post('/onboarding/connect', { preHandler: [app.authenticate] }, async (request) => {
-  const db = getDb();
   // Check if user actually has a meta token connected
-  const row = db.prepare('SELECT user_id FROM meta_tokens WHERE user_id = ?').get(request.user.id);
+  const row = await getDbAdapter().get('SELECT user_id FROM meta_tokens WHERE user_id = ?', [request.user.id]);
   return {
     success: true,
     connected: !!row,
@@ -935,9 +895,8 @@ app.post('/onboarding/scan', { preHandler: [app.authenticate] }, async (request,
     return reply.status(400).send({ success: false, error: 'brand_name and website_url are required' });
   }
 
-  const db = getDb();
-  db.prepare('UPDATE users SET brand_name = ?, website_url = ? WHERE id = ?')
-    .run(brand_name, website_url, request.user.id);
+  await getDbAdapter().run('UPDATE users SET brand_name = ?, website_url = ? WHERE id = ?',
+    [brand_name, website_url, request.user.id]);
 
   return { success: true, brand_name, website_url };
 });
@@ -950,9 +909,8 @@ app.post('/onboarding/goals', { preHandler: [app.authenticate] }, async (request
     return reply.status(400).send({ success: false, error: 'goals must be an array of strings' });
   }
 
-  const db = getDb();
-  db.prepare('UPDATE users SET goals = ? WHERE id = ?')
-    .run(JSON.stringify(goals), request.user.id);
+  await getDbAdapter().run('UPDATE users SET goals = ? WHERE id = ?',
+    [JSON.stringify(goals), request.user.id]);
 
   return { success: true, goals };
 });
@@ -965,9 +923,8 @@ app.post('/onboarding/competitors', { preHandler: [app.authenticate] }, async (r
     return reply.status(400).send({ success: false, error: 'competitors must be an array of strings' });
   }
 
-  const db = getDb();
-  db.prepare('UPDATE users SET competitors = ? WHERE id = ?')
-    .run(JSON.stringify(competitors), request.user.id);
+  await getDbAdapter().run('UPDATE users SET competitors = ? WHERE id = ?',
+    [JSON.stringify(competitors), request.user.id]);
 
   return { success: true, competitors };
 });
@@ -978,8 +935,7 @@ app.post('/onboarding/competitors', { preHandler: [app.authenticate] }, async (r
 
 // GET /settings/profile — fetch full user data from DB
 app.get('/settings/profile', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const db = getDb();
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(request.user.id) as UserRow | undefined;
+  const user = await getDbAdapter().get<UserRow>('SELECT * FROM users WHERE id = ?', [request.user.id]);
 
   if (!user) {
     return reply.status(404).send({ success: false, error: 'User not found' });
@@ -1021,8 +977,6 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
     return reply.status(400).send({ success: false, error: 'Provide at least one field to update' });
   }
 
-  const db = getDb();
-
   // Build dynamic update
   const updates: string[] = [];
   const values: any[] = [];
@@ -1033,7 +987,7 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   }
   if (email) {
     // Check uniqueness
-    const existing = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, request.user.id);
+    const existing = await getDbAdapter().get('SELECT id FROM users WHERE email = ? AND id != ?', [email, request.user.id]);
     if (existing) {
       return reply.status(409).send({ success: false, error: 'Email already in use by another account' });
     }
@@ -1086,10 +1040,10 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
   }
 
   values.push(request.user.id);
-  db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  await getDbAdapter().run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 
   // Fetch updated user and issue fresh JWT so token stays in sync
-  const updatedUser = db.prepare('SELECT * FROM users WHERE id = ?').get(request.user.id) as UserRow;
+  const updatedUser = (await getDbAdapter().get<UserRow>('SELECT * FROM users WHERE id = ?', [request.user.id]))!;
   const newToken = app.jwt.sign({
     id: updatedUser.id,
     email: updatedUser.email,
@@ -1099,8 +1053,8 @@ app.post('/settings/profile', { preHandler: [app.authenticate] }, async (request
 
   // Log activity
   try {
-    db.prepare('INSERT INTO activity_log (user_id, action, category, details) VALUES (?, ?, ?, ?)').run(
-      request.user.id, 'Updated profile', 'account', updates.map(u => u.split(' = ')[0]).join(', ')
+    await getDbAdapter().run('INSERT INTO activity_log (user_id, action, category, details) VALUES (?, ?, ?, ?)',
+      [request.user.id, 'Updated profile', 'account', updates.map(u => u.split(' = ')[0]).join(', ')]
     );
   } catch { /* activity log is best-effort */ }
 
@@ -1121,8 +1075,7 @@ app.post('/settings/change-password', { preHandler: [app.authenticate] }, async 
   const parsed = validate(changePasswordSchema, request.body, reply);
   if (!parsed) return;
 
-  const db = getDb();
-  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(request.user.id) as { password_hash: string } | undefined;
+  const user = await getDbAdapter().get<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', [request.user.id]);
   if (!user) return reply.status(404).send({ success: false, error: 'User not found' });
 
   const bcryptMod = await import('bcryptjs');
@@ -1131,11 +1084,11 @@ app.post('/settings/change-password', { preHandler: [app.authenticate] }, async 
   }
 
   const newHash = bcryptMod.default.hashSync(parsed.newPassword, 10);
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, request.user.id);
+  await getDbAdapter().run('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, request.user.id]);
 
   // Log activity
-  db.prepare('INSERT INTO activity_log (user_id, action, category) VALUES (?, ?, ?)').run(
-    request.user.id, 'Changed password', 'security'
+  await getDbAdapter().run('INSERT INTO activity_log (user_id, action, category) VALUES (?, ?, ?)',
+    [request.user.id, 'Changed password', 'security']
   );
 
   return { success: true };
@@ -1143,19 +1096,17 @@ app.post('/settings/change-password', { preHandler: [app.authenticate] }, async 
 
 // GET /settings/activity — recent activity log
 app.get('/settings/activity', { preHandler: [app.authenticate] }, async (request) => {
-  const db = getDb();
-  const rows = db.prepare(
-    'SELECT id, action, category, details, created_at FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT 50'
-  ).all(request.user.id);
+  const rows = await getDbAdapter().all(
+    'SELECT id, action, category, details, created_at FROM activity_log WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+    [request.user.id]);
   return { success: true, activities: rows };
 });
 
 // DELETE /settings/account — permanently delete user account
 app.delete('/settings/account', { preHandler: [app.authenticate] }, async (request) => {
-  const db = getDb();
   const userId = request.user.id;
 
-  db.transaction(() => {
+  await getDbAdapter().transaction(async (tx) => {
     // Delete all user data across tables
     const tables = [
       'meta_tokens', 'google_tokens', 'tiktok_tokens', 'reports', 'automations',
@@ -1166,10 +1117,10 @@ app.delete('/settings/account', { preHandler: [app.authenticate] }, async (reque
       'user_usage', 'activity_log', 'studio_generations', 'score_predictions',
     ];
     for (const table of tables) {
-      try { db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId); } catch { /* table may not exist */ }
+      try { await tx.run(`DELETE FROM ${table} WHERE user_id = ?`, [userId]); } catch { /* table may not exist */ }
     }
-    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-  })();
+    await tx.run('DELETE FROM users WHERE id = ?', [userId]);
+  });
 
   return { success: true };
 });
@@ -1178,8 +1129,7 @@ app.delete('/settings/account', { preHandler: [app.authenticate] }, async (reque
 
 // GET /settings/billing — return user's plan + usage from DB
 app.get('/settings/billing', { preHandler: [app.authenticate] }, async (request, reply) => {
-  const db = getDb();
-  const user = db.prepare('SELECT id, plan, created_at FROM users WHERE id = ?').get(request.user.id) as Pick<UserRow, 'id' | 'plan' | 'created_at'> | undefined;
+  const user = await getDbAdapter().get<Pick<UserRow, 'id' | 'plan' | 'created_at'>>('SELECT id, plan, created_at FROM users WHERE id = ?', [request.user.id]);
 
   if (!user) {
     return reply.status(404).send({ success: false, error: 'User not found' });
@@ -1213,7 +1163,7 @@ app.get('/brain/compare', { preHandler: [app.authenticate] }, async (request, re
   }
 
   try {
-    const token = getMetaTokenForUser(request.user.id);
+    const token = await getMetaTokenForUser(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: true, comparison: [], meta_connected: false });
     }
@@ -1291,9 +1241,8 @@ app.post('/brands/switch', { preHandler: [app.authenticate] }, async (request, r
     return reply.status(400).send({ success: false, error: 'brand_name is required' });
   }
 
-  const db = getDb();
-  db.prepare('UPDATE users SET active_brand = ? WHERE id = ?')
-    .run(brand_name, request.user.id);
+  await getDbAdapter().run('UPDATE users SET active_brand = ? WHERE id = ?',
+    [brand_name, request.user.id]);
 
   return {
     success: true,
@@ -1331,7 +1280,7 @@ app.addHook('onResponse', (request, reply, done) => {
 // Frontend is served by Vercel — no static file serving needed here
 
 // Initialize DB on startup
-getDb();
+getDbAdapter();
 
 const shutdown = async () => {
   closeDb();
