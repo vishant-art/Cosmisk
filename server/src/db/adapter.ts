@@ -131,12 +131,14 @@ export function translateSqliteToPg(sql: string): string {
   // datetime('now') → now()
   out = out.replace(/datetime\(\s*'now'\s*\)/gi, 'now()');
 
-  // json_extract(col, '$.key') → col->>'key'
+  // json_extract(col, '$.key') → (col)::jsonb->>'key'
   // `col` may be a qualified identifier (table.column). `key` is a simple
-  // path segment after the leading `$.`.
+  // path segment after the leading `$.`. The JSON-bearing columns are TEXT in
+  // the migrated schema (the app JSON.parses them), and Postgres rejects `->>`
+  // on text (SQLSTATE 42883), so cast to jsonb first. NULL::jsonb stays NULL.
   out = out.replace(
     /json_extract\(\s*([A-Za-z_][\w.]*)\s*,\s*'\$\.([A-Za-z_][\w]*)'\s*\)/gi,
-    (_m, col: string, key: string) => `${col}->>'${key}'`,
+    (_m, col: string, key: string) => `(${col})::jsonb->>'${key}'`,
   );
 
   return out;

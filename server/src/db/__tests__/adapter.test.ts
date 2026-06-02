@@ -59,8 +59,10 @@ describe('dialect shim — translateSqliteToPg', () => {
     );
   });
 
-  it("translates json_extract(c, '$.x') → c->>'x'", () => {
-    expect(translateSqliteToPg("json_extract(c, '$.x')")).toBe("c->>'x'");
+  it("translates json_extract(c, '$.x') → (c)::jsonb->>'x'", () => {
+    // The JSON-bearing columns are TEXT in the migrated schema; Postgres rejects
+    // `->>` on text, so the shim casts to jsonb first.
+    expect(translateSqliteToPg("json_extract(c, '$.x')")).toBe("(c)::jsonb->>'x'");
   });
 
   it('leaves INSERT OR REPLACE verbatim (manual conversion site)', () => {
