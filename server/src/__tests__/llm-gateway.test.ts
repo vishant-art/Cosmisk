@@ -349,9 +349,9 @@ describe('checkDailyLimit — provider filtering', () => {
     insertCostRow('flux', 300);
 
     const { checkDailyLimit } = await import('../services/llm-gateway.js');
-    expect(checkDailyLimit(TEST_USER_ID, { apiProvider: 'anthropic' }).spent).toBe(100);
-    expect(checkDailyLimit(TEST_USER_ID, { apiProvider: 'gemini' }).spent).toBe(200);
+    expect((await checkDailyLimit(TEST_USER_ID, { apiProvider: 'anthropic' })).spent).toBe(100);
+    expect((await checkDailyLimit(TEST_USER_ID, { apiProvider: 'gemini' })).spent).toBe(200);
     // No filter sums everything (used by job-queue).
-    expect(checkDailyLimit(TEST_USER_ID).spent).toBe(600);
+    expect((await checkDailyLimit(TEST_USER_ID)).spent).toBe(600);
   });
 });

@@ -11,7 +11,7 @@ import Anthropic, { RateLimitError as AnthropicRateLimitError } from '@anthropic
 import type { Message, MessageCreateParams } from '@anthropic-ai/sdk/resources/messages.js';
 import Bottleneck from 'bottleneck';
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { getCorrelationId } from '../utils/request-context.js';
 
@@ -88,8 +88,7 @@ export interface DailyLimitOptions {
   apiProvider?: string;
 }
 
-export function getDailySpendCents(userId: string, opts: DailyLimitOptions = {}): number {
-  const db = getDb();
+export async function getDailySpendCents(userId: string, opts: DailyLimitOptions = {}): Promise<number> {
   const today = new Date().toISOString().split('T')[0];
   const sql = opts.apiProvider
     ? `SELECT SUM(cost_cents) as total_cents FROM cost_ledger
@@ -97,15 +96,14 @@ export function getDailySpendCents(userId: string, opts: DailyLimitOptions = {})
     : `SELECT SUM(cost_cents) as total_cents FROM cost_ledger
        WHERE user_id = ? AND DATE(created_at) = ?`;
   const row = (opts.apiProvider
-    ? db.prepare(sql).get(userId, today, opts.apiProvider)
-    : db.prepare(sql).get(userId, today)) as DailyUsageRow;
+    ? await getDbAdapter().get(sql, [userId, today, opts.apiProvider])
+    : await getDbAdapter().get(sql, [userId, today])) as DailyUsageRow;
   return row.total_cents || 0;
 }
 
-export function getUserDailyLimit(userId: string): number {
+export async function getUserDailyLimit(userId: string): Promise<number> {
   if (config.llmDailyUsdCapOverride !== null) return config.llmDailyUsdCapOverride;
-  const db = getDb();
-  const row = db.prepare('SELECT plan FROM users WHERE id = ?').get(userId) as UserPlanRow | undefined;
+  const row = (await getDbAdapter().get('SELECT plan FROM users WHERE id = ?', [userId])) as UserPlanRow | undefined;
   const plan = (row?.plan || 'free').toLowerCase();
   return DAILY_COST_LIMITS[plan] ?? DEFAULT_DAILY_LIMIT;
 }
@@ -117,9 +115,9 @@ export interface DailyLimitResult {
   remaining: number;
 }
 
-export function checkDailyLimit(userId: string, opts: DailyLimitOptions = {}): DailyLimitResult {
-  const spent = getDailySpendCents(userId, opts);
-  const limit = getUserDailyLimit(userId);
+export async function checkDailyLimit(userId: string, opts: DailyLimitOptions = {}): Promise<DailyLimitResult> {
+  const spent = await getDailySpendCents(userId, opts);
+  const limit = await getUserDailyLimit(userId);
   const remaining = Math.max(0, limit - spent);
   return { allowed: spent < limit, spent, limit, remaining };
 }
@@ -202,14 +200,13 @@ interface CostLedgerInsert {
   metadata: Record<string, unknown>;
 }
 
-function recordCost(row: CostLedgerInsert): void {
+async function recordCost(row: CostLedgerInsert): Promise<void> {
   if (row.costCents <= 0) return;
-  const db = getDb();
   const correlationId = getCorrelationId();
-  db.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO cost_ledger (user_id, api_provider, operation, cost_cents, metadata)
     VALUES (?, ?, ?, ?, ?)
-  `).run(row.userId, row.apiProvider, row.operation, row.costCents, JSON.stringify(correlationId ? { ...row.metadata, correlationId } : row.metadata));
+  `, [row.userId, row.apiProvider, row.operation, row.costCents, JSON.stringify(correlationId ? { ...row.metadata, correlationId } : row.metadata)]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -268,7 +265,7 @@ export interface CreateMessageOptions {
 
 export async function createMessage(opts: CreateMessageOptions): Promise<Message> {
   // 1. Per-user, per-provider daily cap
-  const cap = checkDailyLimit(opts.userId, { apiProvider: 'anthropic' });
+  const cap = await checkDailyLimit(opts.userId, { apiProvider: 'anthropic' });
   if (!cap.allowed) {
     logger.warn(
       { userId: opts.userId, spent: cap.spent, limit: cap.limit, operation: opts.operation },
@@ -322,7 +319,7 @@ export async function createMessage(opts: CreateMessageOptions): Promise<Message
 
   // 4. Cost ledger
   const cost = computeCostCents(opts.request.model, response.usage as UsageWithCache);
-  recordCost({
+  await recordCost({
     userId: opts.userId,
     operation: opts.operation,
     apiProvider: 'anthropic',

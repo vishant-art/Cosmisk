@@ -134,7 +134,7 @@ async function dispatchJob(job: JobRow): Promise<void> {
   const db = getDbAdapter();
 
   // Check daily cost limit before dispatching
-  const limitCheck = checkDailyLimit(job.user_id);
+  const limitCheck = await checkDailyLimit(job.user_id);
   if (!limitCheck.allowed) {
     logger.warn({ userId: job.user_id, spent: limitCheck.spent, limit: limitCheck.limit }, '[JobQueue] Daily cost limit reached');
     await db.run(
