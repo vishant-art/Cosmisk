@@ -726,7 +726,7 @@ export async function runDiscountLeakageForClient(
     const topCode = report.leakedCodes[0];
     if (topCode) {
       try {
-        agentRecommend(clientId, 'discount_leakage', {
+        await agentRecommend(clientId, 'discount_leakage', {
           type: 'fix_discount_leak',
           entityType: 'product',
           entityId: topCode.code,

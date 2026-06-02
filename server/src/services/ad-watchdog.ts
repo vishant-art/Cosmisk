@@ -1031,7 +1031,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                   const recType = mapDecisionTypeToRecommendationType(decision.type);
                   const predictedSavings = parseEstimatedImpact(decision.estimatedImpact);
 
-                  agentRecommend(user.id, 'watchdog', {
+                  await agentRecommend(user.id, 'watchdog', {
                     type: recType,
                     entityType: 'campaign',
                     entityId: decision.targetId,
@@ -1450,7 +1450,7 @@ export async function runWatchdogForClient(
         const recType = mapDecisionTypeToRecommendationType(decision.type);
         const predictedSavings = parseEstimatedImpact(decision.estimatedImpact);
 
-        agentRecommend(clientId, 'watchdog', {
+        await agentRecommend(clientId, 'watchdog', {
           type: recType,
           entityType: 'campaign',
           entityId: decision.targetId,

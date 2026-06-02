@@ -1174,7 +1174,7 @@ export async function runOOSCheckForClient(
     const topWasted = result.enhanced?.topWasted?.[0];
     if (topWasted) {
       try {
-        agentRecommend(clientId, 'oos_detector', {
+        await agentRecommend(clientId, 'oos_detector', {
           type: 'fix_oos',
           entityType: 'product',
           entityId: topWasted.productId || topWasted.productName,

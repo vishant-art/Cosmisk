@@ -904,7 +904,7 @@ export async function analyzeCohortLTVForClient(
     // === CLOSED-LOOP OPERATING SYSTEM ===
     if (analysis.worstChannel && analysis.bestChannel) {
       try {
-        agentRecommend(clientId, 'cohort_ltv', {
+        await agentRecommend(clientId, 'cohort_ltv', {
           type: 'change_targeting',
           entityType: 'account',
           entityId: analysis.worstChannel.displayName,

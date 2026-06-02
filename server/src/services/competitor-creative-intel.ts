@@ -2580,7 +2580,7 @@ export async function runCompetitorIntelForClient(
 
     // === CLOSED-LOOP OPERATING SYSTEM ===
     try {
-      agentRecommend(clientId, 'competitor_intel', {
+      await agentRecommend(clientId, 'competitor_intel', {
         type: 'test_creative',
         entityType: 'creative',
         entityId: `competitor-insight-${rec.category}`,

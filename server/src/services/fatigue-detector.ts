@@ -478,7 +478,7 @@ export async function detectFatigueForClient(
     const topFatigued = analyzedCreatives.find(c => newFatiguedCreatives.includes(c.id));
     if (topFatigued) {
       try {
-        agentRecommend(clientId, 'fatigue_detector', {
+        await agentRecommend(clientId, 'fatigue_detector', {
           type: 'refresh_creative',
           entityType: 'creative',
           entityId: topFatigued.id,

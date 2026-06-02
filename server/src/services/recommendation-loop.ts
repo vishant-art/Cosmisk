@@ -13,7 +13,7 @@
  * Every recommendation has a lifecycle, not just a report.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================
@@ -98,13 +98,13 @@ export interface RecommendationInput {
 /**
  * Create a tracked recommendation. Every agent output should go through this.
  */
-export function createRecommendation(input: RecommendationInput): Recommendation {
-  const db = getDb();
+export async function createRecommendation(input: RecommendationInput): Promise<Recommendation> {
+  const db = getDbAdapter();
   const id = uuidv4();
   const now = new Date().toISOString();
 
   // Check for duplicate recommendations (same entity + type in last 7 days)
-  const existingDuplicate = findDuplicateRecommendation(
+  const existingDuplicate = await findDuplicateRecommendation(
     input.clientId,
     input.entityId,
     input.type
@@ -115,14 +115,14 @@ export function createRecommendation(input: RecommendationInput): Recommendation
     return existingDuplicate;
   }
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO recommendations (
       id, client_id, agent_id, type, entity_type, entity_id, entity_name,
       action, reasoning, evidence, confidence,
       predicted_outcome, predicted_metric, predicted_value, predicted_direction,
       status, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     id,
     input.clientId,
     input.agentId,
@@ -140,7 +140,7 @@ export function createRecommendation(input: RecommendationInput): Recommendation
     input.predictedDirection,
     'pending',
     now
-  );
+  ]);
 
   console.log(`[LOOP] Created recommendation ${id}: ${input.action}`);
 
@@ -161,21 +161,21 @@ export function createRecommendation(input: RecommendationInput): Recommendation
 /**
  * Check for duplicate recommendations
  */
-function findDuplicateRecommendation(
+async function findDuplicateRecommendation(
   clientId: string,
   entityId: string,
   type: RecommendationType
-): Recommendation | null {
-  const db = getDb();
+): Promise<Recommendation | null> {
+  const db = getDbAdapter();
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const row = db.prepare(`
+  const row = await db.get(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND entity_id = ? AND type = ?
       AND created_at >= ? AND status = 'pending'
     LIMIT 1
-  `).get(clientId, entityId, type, sevenDaysAgo.toISOString()) as any;  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId, entityId, type, sevenDaysAgo.toISOString()]) as any;  // DB-2: typed when row becomes a Drizzle result
 
   return row ? mapRowToRecommendation(row) : null;
 }
@@ -187,15 +187,15 @@ function findDuplicateRecommendation(
 /**
  * Mark a recommendation as executed (user took the action)
  */
-export function markExecuted(recommendationId: string, _executionNotes?: string): void {
-  const db = getDb();
+export async function markExecuted(recommendationId: string, _executionNotes?: string): Promise<void> {
+  const db = getDbAdapter();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  await db.run(`
     UPDATE recommendations
     SET status = 'executed', executed_at = ?
     WHERE id = ?
-  `).run(now, recommendationId);
+  `, [now, recommendationId]);
 
   console.log(`[LOOP] Marked ${recommendationId} as executed`);
 }
@@ -203,12 +203,12 @@ export function markExecuted(recommendationId: string, _executionNotes?: string)
 /**
  * Mark as ignored (user decided not to act)
  */
-export function markIgnored(recommendationId: string, ignoreReason?: string): void {
-  const db = getDb();
+export async function markIgnored(recommendationId: string, ignoreReason?: string): Promise<void> {
+  const db = getDbAdapter();
 
-  db.prepare(`
+  await db.run(`
     UPDATE recommendations SET status = 'ignored' WHERE id = ?
-  `).run(recommendationId);
+  `, [recommendationId]);
 
   console.log(`[LOOP] Marked ${recommendationId} as ignored: ${ignoreReason || 'no reason'}`);
 }
@@ -216,22 +216,22 @@ export function markIgnored(recommendationId: string, ignoreReason?: string): vo
 /**
  * Detect execution automatically by comparing entity state
  */
-export function detectExecution(
+export async function detectExecution(
   clientId: string,
   entityId: string,
   currentState: Record<string, unknown>
-): void {
-  const db = getDb();
+): Promise<void> {
+  const db = getDbAdapter();
 
-  const pending = db.prepare(`
+  const pending = await db.all(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND entity_id = ? AND status = 'pending'
-  `).all(clientId, entityId) as any[];  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId, entityId]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   for (const rec of pending) {
     const executed = checkIfExecuted(rec, currentState);
     if (executed) {
-      markExecuted(rec.id, 'Auto-detected');
+      await markExecuted(rec.id, 'Auto-detected');
     }
   }
 }
@@ -268,17 +268,17 @@ function checkIfExecuted(
 /**
  * Validate outcome of an executed recommendation
  */
-export function validateOutcome(
+export async function validateOutcome(
   recommendationId: string,
   actualMetricValue: number,
   actualOutcomeDescription: string
-): {
+): Promise<{
   predictionAccurate: boolean;
   accuracyScore: number;
   analysis: string;
-} {
-  const db = getDb();
-  const rec = getRecommendation(recommendationId);
+}> {
+  const db = getDbAdapter();
+  const rec = await getRecommendation(recommendationId);
 
   if (!rec) {
     throw new Error(`Recommendation ${recommendationId} not found`);
@@ -294,15 +294,15 @@ export function validateOutcome(
   const now = new Date().toISOString();
 
   // Update recommendation
-  db.prepare(`
+  await db.run(`
     UPDATE recommendations
     SET validated_at = ?, actual_value = ?, actual_outcome = ?,
         prediction_accurate = ?, accuracy_score = ?
     WHERE id = ?
-  `).run(now, actualMetricValue, actualOutcomeDescription, accurate ? 1 : 0, score, recommendationId);
+  `, [now, actualMetricValue, actualOutcomeDescription, accurate ? 1 : 0, score, recommendationId]);
 
   // Record in prediction accuracy table
-  recordPredictionAccuracy(rec, actualMetricValue, score);
+  await recordPredictionAccuracy(rec, actualMetricValue, score);
 
   console.log(`[LOOP] Validated ${recommendationId}: ${accurate ? 'ACCURATE' : 'INACCURATE'} (${score}%)`);
 
@@ -344,21 +344,21 @@ function calculateAccuracy(
 /**
  * Record prediction accuracy for learning
  */
-function recordPredictionAccuracy(
+async function recordPredictionAccuracy(
   rec: Recommendation,
   actualValue: number,
   score: number
-): void {
-  const db = getDb();
+): Promise<void> {
+  const db = getDbAdapter();
   const id = uuidv4();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO prediction_accuracy (
       id, client_id, agent_id, recommendation_type, entity_type,
       predicted_value, actual_value, accuracy_score, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     id,
     rec.clientId,
     rec.agentId,
@@ -368,7 +368,7 @@ function recordPredictionAccuracy(
     actualValue,
     score,
     now
-  );
+  ]);
 }
 
 // ============================================================
@@ -378,23 +378,23 @@ function recordPredictionAccuracy(
 /**
  * Get agent accuracy stats for learning
  */
-export function getAgentAccuracyStats(
+export async function getAgentAccuracyStats(
   clientId: string,
   agentId: string
-): {
+): Promise<{
   totalPredictions: number;
   accuratePredictions: number;
   averageAccuracyScore: number;
   accuracyByType: Record<string, number>;
   recentTrend: 'improving' | 'declining' | 'stable';
-} {
-  const db = getDb();
+}> {
+  const db = getDbAdapter();
 
-  const results = db.prepare(`
+  const results = await db.all(`
     SELECT * FROM prediction_accuracy
     WHERE client_id = ? AND agent_id = ?
     ORDER BY created_at DESC
-  `).all(clientId, agentId) as any[];  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId, agentId]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   if (results.length === 0) {
     return {
@@ -449,15 +449,15 @@ export function getAgentAccuracyStats(
 /**
  * Get learning insights for an agent
  */
-export function getLearningInsights(
+export async function getLearningInsights(
   clientId: string,
   agentId: string
-): {
+): Promise<{
   strongAreas: string[];
   weakAreas: string[];
   suggestions: string[];
-} {
-  const stats = getAgentAccuracyStats(clientId, agentId);
+}> {
+  const stats = await getAgentAccuracyStats(clientId, agentId);
 
   const strongAreas: string[] = [];
   const weakAreas: string[] = [];
@@ -490,22 +490,22 @@ export function getLearningInsights(
 /**
  * Get a single recommendation
  */
-export function getRecommendation(id: string): Recommendation | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM recommendations WHERE id = ?').get(id) as any;  // DB-2: typed when row becomes a Drizzle result
+export async function getRecommendation(id: string): Promise<Recommendation | null> {
+  const db = getDbAdapter();
+  const row = await db.get('SELECT * FROM recommendations WHERE id = ?', [id]) as any;  // DB-2: typed when row becomes a Drizzle result
   return row ? mapRowToRecommendation(row) : null;
 }
 
 /**
  * Get pending recommendations for a client
  */
-export function getPendingRecommendations(clientId: string): Recommendation[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getPendingRecommendations(clientId: string): Promise<Recommendation[]> {
+  const db = getDbAdapter();
+  const rows = await db.all(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND status = 'pending'
     ORDER BY created_at DESC
-  `).all(clientId) as any[];  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(mapRowToRecommendation);
 }
@@ -513,16 +513,16 @@ export function getPendingRecommendations(clientId: string): Recommendation[] {
 /**
  * Get recommendations needing validation
  */
-export function getRecommendationsNeedingValidation(clientId: string): Recommendation[] {
-  const db = getDb();
+export async function getRecommendationsNeedingValidation(clientId: string): Promise<Recommendation[]> {
+  const db = getDbAdapter();
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const rows = db.prepare(`
+  const rows = await db.all(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND status = 'executed'
       AND executed_at <= ? AND validated_at IS NULL
-  `).all(clientId, sevenDaysAgo.toISOString()) as any[];  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId, sevenDaysAgo.toISOString()]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(mapRowToRecommendation);
 }
@@ -530,13 +530,13 @@ export function getRecommendationsNeedingValidation(clientId: string): Recommend
 /**
  * Get recommendation history for an entity
  */
-export function getEntityHistory(clientId: string, entityId: string): Recommendation[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getEntityHistory(clientId: string, entityId: string): Promise<Recommendation[]> {
+  const db = getDbAdapter();
+  const rows = await db.all(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND entity_id = ?
     ORDER BY created_at DESC
-  `).all(clientId, entityId) as any[];  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId, entityId]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(mapRowToRecommendation);
 }
@@ -579,26 +579,26 @@ function mapRowToRecommendation(row: any): Recommendation {
 /**
  * Get loop status summary for a client
  */
-export function getLoopStatus(clientId: string): {
+export async function getLoopStatus(clientId: string): Promise<{
   pendingRecommendations: number;
   executedAwaitingValidation: number;
   validatedLast30Days: number;
   overallAccuracy: number;
   topPerformingAgents: { agentId: string; accuracy: number }[];
   needsAttention: string[];
-} {
-  const db = getDb();
+}> {
+  const db = getDbAdapter();
 
-  const pending = getPendingRecommendations(clientId);
-  const needingValidation = getRecommendationsNeedingValidation(clientId);
+  const pending = await getPendingRecommendations(clientId);
+  const needingValidation = await getRecommendationsNeedingValidation(clientId);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const validated = db.prepare(`
+  const validated = await db.all(`
     SELECT * FROM recommendations
     WHERE client_id = ? AND validated_at >= ?
-  `).all(clientId, thirtyDaysAgo.toISOString()) as any[];  // DB-2: typed when row becomes a Drizzle result
+  `, [clientId, thirtyDaysAgo.toISOString()]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   const overallAccuracy = validated.length > 0
     ? Math.round(validated.reduce((sum, r) => sum + (r.accuracy_score || 0), 0) / validated.length)
@@ -651,7 +651,7 @@ export function getLoopStatus(clientId: string): {
 /**
  * Helper for agents: Create recommendation with sensible defaults
  */
-export function agentRecommend(
+export async function agentRecommend(
   clientId: string,
   agentId: string,
   params: {
@@ -666,7 +666,7 @@ export function agentRecommend(
     predictedSavings?: number;
     predictedROASIncrease?: number;
   }
-): Recommendation {
+): Promise<Recommendation> {
   // Determine prediction based on type
   let predictedOutcome: string;
   let predictedMetric: string;
@@ -690,7 +690,7 @@ export function agentRecommend(
     predictedDirection = 'maintain';
   }
 
-  return createRecommendation({
+  return await createRecommendation({
     clientId,
     agentId,
     type: params.type,

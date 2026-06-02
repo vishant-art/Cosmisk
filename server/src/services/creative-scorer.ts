@@ -990,7 +990,7 @@ export async function scoreCreativesForClient(
     const worstCreative = scores.sort((a, b) => a.score.total - b.score.total)[0];
     if (worstCreative) {
       try {
-        agentRecommend(clientId, 'creative_scorer', {
+        await agentRecommend(clientId, 'creative_scorer', {
           type: 'refresh_creative',
           entityType: 'creative',
           entityId: worstCreative.input.userId,
