@@ -147,6 +147,26 @@ Once stable: delete `getDb()`/`closeDb()` SQLite path in `db/index.ts`, `schema.
 
 ---
 
+## PART D — Workflow orchestration plan for M2.4 → M2.9 (2026-06-02)
+
+Applying the proven pattern (graph-driven Plan → parallel fan-out for small disjoint files → **composer BARRIER**: update code-review-graph + impact-analyse + run graph-selected + full suite + `tsc`; commit per stage on GO) **plus the hard-won rules**:
+- **Fan-out agents only for ≤~8-site, disjoint-caller files** (small leaves). **Big/hub/entangled files → DIRECT** (controlled perl-transform + tsc-guided cascade — agents fail `StructuredOutput` on big files: creative-engine 65, agent-memory 13).
+- **`tsc` is the missed-`await` detector** (value-consumed sites). **Ordering-dependent fire-and-forget calls must be manually awaited** (tsc won't flag them; a test caught one in job-queue).
+- **Port the owning test file in the same commit** as each conversion (the agent-memory/job-queue test cascades).
+
+| Stage | Shape | Parallelization | Composer barrier focus |
+|---|---|---|---|
+| **M2.4** re-point 5 `new Database()` bypass files (`audit/index`, `strategic-memory` 16, `client-context`, `audit-scheduler` 10; `db/index` at M2.9) | **WORKFLOW fan-out** (files disjoint) + **DIRECT** for `strategic-memory`(16, has upserts/tx — heavy) | per-file agents; the heavy `strategic-memory` direct | `grep "new Database(" src` → only `db/index.ts`; suite green |
+| **M2.5** delete runtime `CREATE TABLE` (6 services) + drop `agent_execution_log` (3 writes) | **WORKFLOW fan-out** (deletion, low-risk, disjoint) | per-owning-service agents remove their DDL block | schema parity (tables exist via migrations); `grep CREATE TABLE` outside migrations empty |
+| **M2.6** boot/cron: `audit/index`(11, in M2.4) + `index.ts`(25) | **DIRECT** (`index.ts` is the central entrypoint — too sensitive/big for fan-out) | — | guarded boot smoke (import-smoke; NOT full `tsx index.ts` — cron/LLM side-effects) |
+| **M2.7** port 423 test calls + per-file schema isolation | **WORKFLOW fan-out, the big one** (36 test files, disjoint) — rework `test-app.ts` first (DIRECT), then per-test-file agents | one agent per test file: async seeds, adapter mock, schema-isolated pg | full **pg** suite green (DB_BACKEND=postgres) |
+| **M2.8** flip `DB_BACKEND` default → postgres | **DIRECT** (1-line + bake) | — | full pg suite + boot smoke; verify sqlite rollback once |
+| **M2.9** retire `getDb`/`schema.ts`/SqliteAdapter + drop `better-sqlite3` | **DIRECT** (deletion + dep removal) | — | `grep better-sqlite3` empty; build + suite green → **merge `db-migration`→`main`** |
+
+**Sequencing:** M2.4 → M2.5 (depends on ports + bypass done) → M2.6. **M2.7 can run in PARALLEL with M2.4–M2.6** (it touches tests, not the conversion targets) — recommended to keep the suite honestly pg-green as code converts. Then M2.8 (needs all code + tests pg-ready) → M2.9. Each stage commits on its composer GO; `DB_BACKEND=sqlite` remains the instant rollback until M2.9.
+
+---
+
 ## C. Cross-cutting
 
 **Verification gate (every commit):** `tsc --noEmit` (≤ baseline 1 error) + `vitest run` (≥ baseline green set) + import-smoke for boot/cron-touching changes.
