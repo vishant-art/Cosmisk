@@ -6,7 +6,7 @@
  * and stores episodes for memory-enriched future context.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { buildContextWindow, recordEpisode } from './agent-memory.js';
 import { notifyAlert } from './notifications.js';
 import { createMessage } from './llm-gateway.js';
@@ -66,10 +66,9 @@ export interface SalesSynthesis {
 /* ------------------------------------------------------------------ */
 
 export async function runSalesAgentAll(): Promise<number> {
-  const db = getDb();
-  const users = db.prepare(`
+  const users = await getDbAdapter().all(`
     SELECT id FROM users WHERE onboarding_complete = 1
-  `).all() as { id: string }[];
+  `) as { id: string }[];
 
   let completed = 0;
   for (const user of users) {
@@ -88,14 +87,13 @@ export async function runSalesAgentAll(): Promise<number> {
 /* ------------------------------------------------------------------ */
 
 export async function getSalesContext(userId: string): Promise<SalesContext> {
-  const db = getDb();
   const runId = uuidv4();
   correlationStore.enterWith({ correlationId: runId });
 
-  db.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
     VALUES (?, 'sales', ?, 'running', datetime('now'))
-  `).run(runId, userId);
+  `, [runId, userId]);
 
   try {
     // Build memory context for sales conversations
@@ -105,55 +103,55 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
     });
 
     // Get recent decisions with outcomes
-    const recentDecisions = db.prepare(`
+    const recentDecisions = await getDbAdapter().all(`
       SELECT type, target_name, outcome FROM agent_decisions
       WHERE user_id = ? AND outcome IS NOT NULL
       ORDER BY rowid DESC LIMIT 10
-    `).all(userId) as Array<{ type: string; target_name: string; outcome: string | null }>;
+    `, [userId]) as Array<{ type: string; target_name: string; outcome: string | null }>;
 
     // Client profile
-    const user = db.prepare('SELECT name, plan, created_at FROM users WHERE id = ?').get(userId) as { name: string; plan: string; created_at: string } | undefined;
-    const sub = db.prepare(
+    const user = await getDbAdapter().get('SELECT name, plan, created_at FROM users WHERE id = ?', [userId]) as { name: string; plan: string; created_at: string } | undefined;
+    const sub = await getDbAdapter().get(
       "SELECT trial_ends_at, status FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1"
-    ).get(userId) as { trial_ends_at: string | null; status: string } | undefined;
+    , [userId]) as { trial_ends_at: string | null; status: string } | undefined;
 
     const trialActive = sub?.status === 'trialing' && sub.trial_ends_at ? new Date(sub.trial_ends_at) > new Date() : false;
 
     // Usage metrics
     const now = new Date();
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const usage = db.prepare('SELECT * FROM user_usage WHERE user_id = ? AND period = ?').get(userId, period) as UserUsageRow | undefined;
+    const usage = await getDbAdapter().get('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]) as UserUsageRow | undefined;
 
-    const sprintCount = (db.prepare(
+    const sprintCount = ((await getDbAdapter().get(
       'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ?'
-    ).get(userId) as { c: number }).c;
+    , [userId])) as { c: number }).c;
 
-    const totalSpendRow = db.prepare(
+    const totalSpendRow = await getDbAdapter().get(
       'SELECT COALESCE(SUM(cost_cents), 0) as total FROM cost_ledger WHERE user_id = ?'
-    ).get(userId) as { total: number };
+    , [userId]) as { total: number };
 
     // Performance snapshot
-    const accountCount = (db.prepare(
+    const accountCount = ((await getDbAdapter().get(
       'SELECT COUNT(*) as c FROM meta_tokens WHERE user_id = ?'
-    ).get(userId) as { c: number }).c;
+    , [userId])) as { c: number }).c;
 
-    const activeAutomations = (db.prepare(
+    const activeAutomations = ((await getDbAdapter().get(
       "SELECT COUNT(*) as c FROM automations WHERE user_id = ? AND is_active = 1"
-    ).get(userId) as { c: number }).c;
+    , [userId])) as { c: number }).c;
 
-    const watchdogDecisions30d = (db.prepare(
+    const watchdogDecisions30d = ((await getDbAdapter().get(
       "SELECT COUNT(*) as c FROM agent_decisions WHERE user_id = ? AND created_at > datetime('now', '-30 days')"
-    ).get(userId) as { c: number }).c;
+    , [userId])) as { c: number }).c;
 
     // Try to enrich ad performance from Meta insights cache
     let totalAdSpend7d = 0;
     let avgRoas7d = 0;
     try {
-      const recentInsights = db.prepare(`
+      const recentInsights = await getDbAdapter().get(`
         SELECT raw_context FROM agent_runs
         WHERE user_id = ? AND agent_type = 'report' AND status = 'completed'
         ORDER BY completed_at DESC LIMIT 1
-      `).get(userId) as { raw_context: string } | undefined;
+      `, [userId]) as { raw_context: string } | undefined;
       if (recentInsights?.raw_context) {
         const reportData = JSON.parse(recentInsights.raw_context);
         totalAdSpend7d = reportData.metrics?.week?.spend || 0;
@@ -180,9 +178,9 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
       upsellSignals.push(`Creative usage at ${usage.creative_count}/${limits.creatives_per_month} — approaching limit`);
     }
     if (limits.team_members === 1 && currentPlan !== 'agency') {
-      const teamCount = (db.prepare(
+      const teamCount = ((await getDbAdapter().get(
         "SELECT COUNT(*) as c FROM team_members WHERE owner_user_id = ? AND status != 'revoked'"
-      ).get(userId) as { c: number }).c;
+      , [userId])) as { c: number }).c;
       if (teamCount > 0) {
         upsellSignals.push('Has invited team members but plan only allows 1 — upgrade needed');
       }
@@ -204,9 +202,9 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
         churnRiskSignals.push(`Trial expires in ${daysLeft} days — critical conversion window`);
       }
     }
-    const lastRun = db.prepare(
+    const lastRun = await getDbAdapter().get(
       "SELECT started_at FROM agent_runs WHERE user_id = ? ORDER BY started_at DESC LIMIT 1"
-    ).get(userId) as { started_at: string } | undefined;
+    , [userId]) as { started_at: string } | undefined;
     if (lastRun) {
       const daysSinceLastActivity = Math.ceil((Date.now() - new Date(lastRun.started_at).getTime()) / 86400000);
       if (daysSinceLastActivity > 14) {
@@ -281,10 +279,10 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
       ? `Sales intel for ${context.clientProfile.name}: ${synthesis.executiveSummary}. Next action: ${synthesis.nextBestAction}`
       : `Sales context: ${upsellSignals.length} upsell signals, ${churnRiskSignals.length} churn risks. Plan: ${context.clientProfile.plan}`;
 
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
       summary = ?, raw_context = ? WHERE id = ?
-    `).run(summaryText, JSON.stringify(context), runId);
+    `, [summaryText, JSON.stringify(context), runId]);
 
     // Record episodes for individual signals
     for (const signal of upsellSignals) {
@@ -324,10 +322,10 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
       summary = ? WHERE id = ?
-    `).run(`Error: ${message}`, runId);
+    `, [`Error: ${message}`, runId]);
     throw err;
   }
 }
