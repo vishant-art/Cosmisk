@@ -307,6 +307,25 @@ export const leads = pgTable('leads', {
   emailIdx: index('leads_email_idx').on(t.email),
 }));
 
+// Landing-page waitlist capture. Ported from the runtime CREATE TABLE that
+// formerly lived in index.ts (DB-2 M2.6): pain_points/interested_features hold
+// JSON.stringify'd arrays, so they stay text() per the porting rules.
+export const waitlistLeads = pgTable('waitlist_leads', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  name: text('name'),
+  company: text('company'),
+  role: text('role'),
+  adSpend: text('ad_spend'),
+  teamSize: text('team_size'),
+  painPoints: text('pain_points'),
+  interestedFeatures: text('interested_features'),
+  source: text('source').default('waitlist'),
+  referrer: text('referrer'),
+  signedUpAt: timestamp('signed_up_at', { mode: 'string', withTimezone: true }),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).defaultNow(),
+});
+
 export const dnaCache = pgTable('dna_cache', {
   adId: text('ad_id').primaryKey(),
   accountId: text('account_id').notNull(),
