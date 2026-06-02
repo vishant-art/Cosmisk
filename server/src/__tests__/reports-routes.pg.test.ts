@@ -1,23 +1,17 @@
 /**
- * Reports Routes Tests
+ * Reports Routes Tests (Postgres integration)
  *
  * Tests for /reports endpoints: templates, list, generate, generate-weekly.
- * Meta API and Claude are mocked. In-memory SQLite with real Zod validation.
+ * Runs against the migrated Neon TEST BRANCH via the pg integration harness
+ * (DB_BACKEND=postgres). Meta API and Claude are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class {
@@ -104,16 +98,12 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 const { reportRoutes } = await import('../routes/reports.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let testUserId: string;
 let authToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -128,22 +118,32 @@ async function buildApp() {
 
   await app.register(reportRoutes, { prefix: '/reports' });
   await app.ready();
+}
 
+async function seedBaseUser() {
   testUserId = uuidv4();
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan, onboarding_complete) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'Report Test User', 'reports@test.com', hash, 'user', 'growth', 1);
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan, onboarding_complete) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [testUserId, 'Report Test User', 'reports@test.com', hash, 'user', 'growth', 1],
+  );
 
   authToken = app.jwt.sign({ id: testUserId, email: 'reports@test.com', name: 'Report Test User', role: 'user' });
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
   await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedBaseUser();
 });
 
 function authHeaders() {
@@ -212,16 +212,17 @@ describe('GET /reports/templates', () => {
 /*  GET /reports/list                                                  */
 /* ------------------------------------------------------------------ */
 describe('GET /reports/list', () => {
-  beforeAll(() => {
-    // Seed some reports
+  beforeEach(async () => {
+    // Seed some reports (pg harness resets between tests, so re-seed here).
     for (let i = 0; i < 3; i++) {
-      testDb.prepare(
-        'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(
-        uuidv4(), testUserId,
-        `Test Report ${i}`, 'performance',
-        'act_123', 'last_7d', 'Ready',
-        JSON.stringify({ type: 'performance', kpis: { spend: 100 + i * 50 } }),
+      await getDbAdapter().run(
+        'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          uuidv4(), testUserId,
+          `Test Report ${i}`, 'performance',
+          'act_123', 'last_7d', 'Ready',
+          JSON.stringify({ type: 'performance', kpis: { spend: 100 + i * 50 } }),
+        ],
       );
     }
   });
@@ -259,11 +260,14 @@ describe('GET /reports/list', () => {
 
   it('does not return other users reports', async () => {
     const otherUserId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(otherUserId, 'Other Report', 'other-report@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free');
-    testDb.prepare(
-      'INSERT INTO reports (id, user_id, title, type, status, data) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(uuidv4(), otherUserId, 'Secret Report', 'performance', 'Ready', '{}');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [otherUserId, 'Other Report', 'other-report@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free'],
+    );
+    await getDbAdapter().run(
+      'INSERT INTO reports (id, user_id, title, type, status, data) VALUES (?, ?, ?, ?, ?, ?)',
+      [uuidv4(), otherUserId, 'Secret Report', 'performance', 'Ready', '{}'],
+    );
 
     const res = await app.inject({
       method: 'GET',
@@ -288,11 +292,12 @@ describe('GET /reports/list', () => {
 /*  POST /reports/generate                                             */
 /* ------------------------------------------------------------------ */
 describe('POST /reports/generate', () => {
-  beforeAll(() => {
-    // User needs a Meta token for report generation
-    testDb.prepare(
-      'INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)'
-    ).run(testUserId, 'encrypted_mock_token', 'meta_u1', 'Meta User');
+  beforeEach(async () => {
+    // User needs a Meta token for report generation (re-seed per test).
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [testUserId, 'encrypted_mock_token', 'meta_u1', 'Meta User'],
+    );
   });
 
   it('generates a performance report', async () => {
@@ -426,8 +431,10 @@ describe('POST /reports/generate', () => {
   it('returns error when Meta not connected', async () => {
     // Create user without meta token
     const noMetaUserId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(noMetaUserId, 'No Meta', 'nometa@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'growth');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [noMetaUserId, 'No Meta', 'nometa@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'growth'],
+    );
     const noMetaToken = app.jwt.sign({ id: noMetaUserId, email: 'nometa@test.com', name: 'No Meta', role: 'user' });
 
     const res = await app.inject({
@@ -460,7 +467,7 @@ describe('POST /reports/generate', () => {
     const body = res.json();
     const reportId = body.report_id;
 
-    const row = testDb.prepare('SELECT * FROM reports WHERE id = ?').get(reportId) as any;
+    const row = await getDbAdapter().get('SELECT * FROM reports WHERE id = ?', [reportId]) as any;
     expect(row).toBeDefined();
     expect(row.type).toBe('performance');
     expect(row.status).toBe('Ready');
@@ -485,6 +492,13 @@ describe('POST /reports/generate', () => {
 /*  POST /reports/generate-weekly                                      */
 /* ------------------------------------------------------------------ */
 describe('POST /reports/generate-weekly', () => {
+  beforeEach(async () => {
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [testUserId, 'encrypted_mock_token', 'meta_u1', 'Meta User'],
+    );
+  });
+
   // SKIP: test's @anthropic-ai/sdk mock lacks `countTokens` and provides no `usage` on `create()` —
   // llm-gateway throws when computing cost from undefined usage. Latent since the gateway shipped;
   // uncovered when intelligence-integration stub unblocked the dependent file load.
@@ -517,8 +531,10 @@ describe('POST /reports/generate-weekly', () => {
 
   it('returns error when Meta not connected', async () => {
     const noMetaUserId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(noMetaUserId, 'No Meta 2', 'nometa2@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'growth');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [noMetaUserId, 'No Meta 2', 'nometa2@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'growth'],
+    );
     const noMetaToken = app.jwt.sign({ id: noMetaUserId, email: 'nometa2@test.com', name: 'No Meta 2', role: 'user' });
 
     const res = await app.inject({
@@ -543,7 +559,7 @@ describe('POST /reports/generate-weekly', () => {
     });
     const body = res.json();
 
-    const row = testDb.prepare('SELECT * FROM reports WHERE id = ?').get(body.report_id) as any;
+    const row = await getDbAdapter().get('SELECT * FROM reports WHERE id = ?', [body.report_id]) as any;
     expect(row).toBeDefined();
     expect(row.type).toBe('weekly-strategy');
     expect(row.status).toBe('Ready');

@@ -7,17 +7,10 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class {
@@ -63,16 +56,12 @@ vi.stubGlobal('fetch', mockFetch);
 
 const { mediaGenRoutes } = await import('../routes/media-gen.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let userId: string;
 let userToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -84,18 +73,28 @@ async function buildApp() {
 
   await app.register(mediaGenRoutes, { prefix: '/media' });
   await app.ready();
+}
 
+async function seedBaseUser() {
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-
   userId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId, 'Test User', 'test@test.com', hash, 'user', 'growth');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, 'Test User', 'test@test.com', hash, 'user', 'growth'],
+  );
   userToken = app.jwt.sign({ id: userId, email: 'test@test.com', name: 'Test User', role: 'user' });
 }
 
-beforeAll(async () => { await buildApp(); });
-afterAll(async () => { await app.close(); testDb.close(); });
-beforeEach(() => { mockFetch.mockReset(); });
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  await buildApp();
+});
+afterAll(async () => { await app.close(); await pg.teardown(); });
+beforeEach(async () => {
+  await pg.reset();
+  await seedBaseUser();
+  mockFetch.mockReset();
+});
 
 /* ------------------------------------------------------------------ */
 /*  Auth                                                               */

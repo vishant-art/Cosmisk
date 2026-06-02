@@ -1,23 +1,18 @@
 /**
- * Swipe File Routes Tests
+ * Swipe File Routes Tests (Postgres integration)
  *
  * Tests for /swipe-file endpoints: list, save, delete.
  * Covers CRUD, validation, auth, user isolation.
+ * Runs against the migrated Neon TEST BRANCH via the pg integration harness
+ * (DB_BACKEND=postgres). External services are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class { async get() { return { data: [] }; } },
@@ -47,6 +42,7 @@ vi.mock('node-cron', () => ({
 
 const { swipeFileRoutes } = await import('../routes/swipe-file.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let testUserId: string;
 let authToken: string;
@@ -54,11 +50,6 @@ let otherUserId: string;
 let otherAuthToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -73,28 +64,41 @@ async function buildApp() {
 
   await app.register(swipeFileRoutes, { prefix: '/swipe-file' });
   await app.ready();
+}
 
-  // Main test user
-  testUserId = uuidv4();
+async function seedUsers() {
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'Swipe Test User', 'swipe@test.com', hash, 'user', 'growth');
+
+  // Main test user (parent row — FK order: users first).
+  testUserId = uuidv4();
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [testUserId, 'Swipe Test User', 'swipe@test.com', hash, 'user', 'growth'],
+  );
   authToken = app.jwt.sign({ id: testUserId, email: 'swipe@test.com', name: 'Swipe Test User', role: 'user' });
 
   // Second user for isolation tests
   otherUserId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(otherUserId, 'Other User', 'other-swipe@test.com', hash, 'user', 'free');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [otherUserId, 'Other User', 'other-swipe@test.com', hash, 'user', 'free'],
+  );
   otherAuthToken = app.jwt.sign({ id: otherUserId, email: 'other-swipe@test.com', name: 'Other User', role: 'user' });
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
   await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedUsers();
 });
 
 function authHeaders(token?: string) {
@@ -235,19 +239,26 @@ describe('POST /swipe-file/save', () => {
 /*  GET /swipe-file/list                                               */
 /* ------------------------------------------------------------------ */
 describe('GET /swipe-file/list', () => {
-  beforeAll(() => {
-    // Seed entries for main user
+  // pg harness resets between tests, so seed list fixtures here per-test.
+  async function seedListFixtures() {
+    // Seed entries for main user (FK: users already seeded in beforeEach).
     for (let i = 0; i < 3; i++) {
-      testDb.prepare(`
-        INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna, notes)
-        VALUES (?, ?, ?, '["hook-tag"]', '["visual-tag"]', '["audio-tag"]', ?)
-      `).run(uuidv4(), testUserId, `Brand ${i}`, `Note ${i}`);
+      await getDbAdapter().run(
+        `INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna, notes)
+         VALUES (?, ?, ?, '["hook-tag"]', '["visual-tag"]', '["audio-tag"]', ?)`,
+        [uuidv4(), testUserId, `Brand ${i}`, `Note ${i}`],
+      );
     }
     // Seed entry for other user
-    testDb.prepare(`
-      INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna, notes)
-      VALUES (?, ?, 'Other Brand', '[]', '[]', '[]', 'should not appear')
-    `).run(uuidv4(), otherUserId);
+    await getDbAdapter().run(
+      `INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna, notes)
+       VALUES (?, ?, 'Other Brand', '[]', '[]', '[]', 'should not appear')`,
+      [uuidv4(), otherUserId],
+    );
+  }
+
+  beforeEach(async () => {
+    await seedListFixtures();
   });
 
   it('returns all swipe file items for user', async () => {
@@ -260,7 +271,6 @@ describe('GET /swipe-file/list', () => {
     expect(res.statusCode).toBe(200);
     expect(body.success).toBe(true);
     expect(Array.isArray(body.items)).toBe(true);
-    // Should have at least 3 (seeded above) plus any from save tests
     expect(body.items.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -322,10 +332,11 @@ describe('GET /swipe-file/list', () => {
 describe('DELETE /swipe-file/:id', () => {
   it('deletes own swipe file entry', async () => {
     const id = uuidv4();
-    testDb.prepare(`
-      INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna)
-      VALUES (?, ?, 'ToDelete', '[]', '[]', '[]')
-    `).run(id, testUserId);
+    await getDbAdapter().run(
+      `INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna)
+       VALUES (?, ?, 'ToDelete', '[]', '[]', '[]')`,
+      [id, testUserId],
+    );
 
     const res = await app.inject({
       method: 'DELETE',
@@ -337,7 +348,7 @@ describe('DELETE /swipe-file/:id', () => {
     expect(body.success).toBe(true);
 
     // Verify it's gone
-    const row = testDb.prepare('SELECT id FROM swipe_file WHERE id = ?').get(id);
+    const row = await getDbAdapter().get('SELECT id FROM swipe_file WHERE id = ?', [id]);
     expect(row).toBeUndefined();
   });
 
@@ -353,10 +364,11 @@ describe('DELETE /swipe-file/:id', () => {
 
   it('cannot delete another users entry', async () => {
     const otherId = uuidv4();
-    testDb.prepare(`
-      INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna)
-      VALUES (?, ?, 'Protected', '[]', '[]', '[]')
-    `).run(otherId, otherUserId);
+    await getDbAdapter().run(
+      `INSERT INTO swipe_file (id, user_id, brand, hook_dna, visual_dna, audio_dna)
+       VALUES (?, ?, 'Protected', '[]', '[]', '[]')`,
+      [otherId, otherUserId],
+    );
 
     const res = await app.inject({
       method: 'DELETE',
@@ -366,7 +378,7 @@ describe('DELETE /swipe-file/:id', () => {
     expect(res.statusCode).toBe(404);
 
     // Verify it still exists
-    const row = testDb.prepare('SELECT id FROM swipe_file WHERE id = ?').get(otherId);
+    const row = await getDbAdapter().get('SELECT id FROM swipe_file WHERE id = ?', [otherId]);
     expect(row).toBeDefined();
   });
 
@@ -379,14 +391,12 @@ describe('DELETE /swipe-file/:id', () => {
   });
 
   it('validates id parameter format', async () => {
-    // The idParamSchema just requires a string, so any non-empty string should pass validation
-    // but should return 404 since no matching row
+    // idParamSchema requires UUID format, so 'some-random-id' fails validation
     const res = await app.inject({
       method: 'DELETE',
       url: '/swipe-file/some-random-id',
       headers: authHeaders(),
     });
-    // idParamSchema requires UUID format, so 'some-random-id' fails validation
     expect(res.statusCode).toBe(400);
   });
 });

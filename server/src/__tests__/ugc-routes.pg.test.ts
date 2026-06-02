@@ -7,17 +7,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+let pg: MigratedTestPg;
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class { async get() { return { data: [] }; } },
@@ -62,11 +57,6 @@ let scriptId1: string;
 let otherProjectId: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -81,70 +71,93 @@ async function buildApp() {
 
   await app.register(ugcRoutes, { prefix: '/ugc' });
   await app.ready();
+}
+
+// Seed the migrated Neon test branch via the same adapter the routes use
+// (getDbAdapter()). Parent rows (users, projects) are inserted before their
+// child rows (concepts, scripts) to satisfy FK ordering.
+async function seedData() {
+  const db = getDbAdapter();
 
   // Main test user
   testUserId = uuidv4();
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'UGC Test User', 'ugc@test.com', hash, 'user', 'growth');
+  await db.run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [testUserId, 'UGC Test User', 'ugc@test.com', hash, 'user', 'growth'],
+  );
   authToken = app.jwt.sign({ id: testUserId, email: 'ugc@test.com', name: 'UGC Test User', role: 'user' });
 
   // Other user for isolation tests
   otherUserId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(otherUserId, 'Other UGC User', 'other-ugc@test.com', hash, 'user', 'free');
+  await db.run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [otherUserId, 'Other UGC User', 'other-ugc@test.com', hash, 'user', 'free'],
+  );
   otherAuthToken = app.jwt.sign({ id: otherUserId, email: 'other-ugc@test.com', name: 'Other UGC User', role: 'user' });
 
-  // Seed UGC data for main user
+  // Seed UGC projects for main user
   projectId1 = uuidv4();
   projectId2 = uuidv4();
-  testDb.prepare(
-    "INSERT INTO ugc_projects (id, user_id, name, brand_name, status, brief) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(projectId1, testUserId, 'Oud Arabia UGC', 'Oud Arabia', 'active', JSON.stringify({ target: 'luxury fragrance', budget: '50000' }));
-  testDb.prepare(
-    "INSERT INTO ugc_projects (id, user_id, name, brand_name, status) VALUES (?, ?, ?, ?, ?)"
-  ).run(projectId2, testUserId, 'Nike Campaign', 'Nike', 'draft');
+  await db.run(
+    'INSERT INTO ugc_projects (id, user_id, name, brand_name, status, brief) VALUES (?, ?, ?, ?, ?, ?)',
+    [projectId1, testUserId, 'Oud Arabia UGC', 'Oud Arabia', 'active', JSON.stringify({ target: 'luxury fragrance', budget: '50000' })],
+  );
+  await db.run(
+    'INSERT INTO ugc_projects (id, user_id, name, brand_name, status) VALUES (?, ?, ?, ?, ?)',
+    [projectId2, testUserId, 'Nike Campaign', 'Nike', 'draft'],
+  );
 
-  // Seed concepts
+  // Seed concepts (children of project1)
   conceptId1 = uuidv4();
   conceptId2 = uuidv4();
-  testDb.prepare(
-    "INSERT INTO ugc_concepts (id, project_id, title, description, status, feedback) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(conceptId1, projectId1, 'ASMR Unboxing', 'Unboxing with ASMR sounds', 'approved', 'Great concept');
-  testDb.prepare(
-    "INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)"
-  ).run(conceptId2, projectId1, 'Testimonial', 'Customer testimonial video', 'pending');
+  await db.run(
+    'INSERT INTO ugc_concepts (id, project_id, title, description, status, feedback) VALUES (?, ?, ?, ?, ?, ?)',
+    [conceptId1, projectId1, 'ASMR Unboxing', 'Unboxing with ASMR sounds', 'approved', 'Great concept'],
+  );
+  await db.run(
+    'INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)',
+    [conceptId2, projectId1, 'Testimonial', 'Customer testimonial video', 'pending'],
+  );
 
-  // Seed scripts
+  // Seed scripts (children of concept1 / project1)
   scriptId1 = uuidv4();
-  testDb.prepare(
-    "INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(scriptId1, conceptId1, projectId1, 'ASMR Script v1', 'Open with close-up of box...', 'approved');
-  testDb.prepare(
-    "INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(uuidv4(), conceptId1, projectId1, 'ASMR Script v2', 'Start with hands touching texture...', 'draft');
+  await db.run(
+    'INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)',
+    [scriptId1, conceptId1, projectId1, 'ASMR Script v1', 'Open with close-up of box...', 'approved'],
+  );
+  await db.run(
+    'INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)',
+    [uuidv4(), conceptId1, projectId1, 'ASMR Script v2', 'Start with hands touching texture...', 'draft'],
+  );
 
-  // Seed other user's project
+  // Seed other user's project + children
   otherProjectId = uuidv4();
-  testDb.prepare(
-    "INSERT INTO ugc_projects (id, user_id, name, brand_name, status) VALUES (?, ?, ?, ?, ?)"
-  ).run(otherProjectId, otherUserId, 'Secret Project', 'Hidden Brand', 'active');
+  await db.run(
+    'INSERT INTO ugc_projects (id, user_id, name, brand_name, status) VALUES (?, ?, ?, ?, ?)',
+    [otherProjectId, otherUserId, 'Secret Project', 'Hidden Brand', 'active'],
+  );
   const otherConceptId = uuidv4();
-  testDb.prepare(
-    "INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)"
-  ).run(otherConceptId, otherProjectId, 'Hidden Concept', 'Should not be visible', 'pending');
-  testDb.prepare(
-    "INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(uuidv4(), otherConceptId, otherProjectId, 'Hidden Script', 'Secret content', 'draft');
+  await db.run(
+    'INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)',
+    [otherConceptId, otherProjectId, 'Hidden Concept', 'Should not be visible', 'pending'],
+  );
+  await db.run(
+    'INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)',
+    [uuidv4(), otherConceptId, otherProjectId, 'Hidden Script', 'Secret content', 'draft'],
+  );
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  await pg.reset();
   await buildApp();
+  await seedData();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
 });
 
 function authHeaders(token?: string) {
@@ -226,8 +239,10 @@ describe('GET /ugc/projects', () => {
 
   it('returns empty array for user with no projects', async () => {
     const emptyUserId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(emptyUserId, 'Empty', 'empty-ugc@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [emptyUserId, 'Empty', 'empty-ugc@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free'],
+    );
     const emptyToken = app.jwt.sign({ id: emptyUserId, email: 'empty-ugc@test.com', name: 'Empty', role: 'user' });
 
     const res = await app.inject({

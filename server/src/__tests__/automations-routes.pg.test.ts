@@ -1,22 +1,17 @@
 /**
- * Automations Route Tests
+ * Automations Route Tests (Postgres integration)
  *
  * Expanded integration tests for /automations endpoints.
  * Tests CRUD operations, admin-only endpoints, validation, and ownership checks.
+ * Runs against the migrated Neon TEST BRANCH via the pg integration harness
+ * (DB_BACKEND=postgres). External services are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class {
@@ -55,6 +50,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 const { automationRoutes } = await import('../routes/automations.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let userToken: string;
 let userId: string;
@@ -64,11 +60,6 @@ let otherUserToken: string;
 let otherUserId: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -80,46 +71,68 @@ async function buildApp() {
 
   await app.register(automationRoutes, { prefix: '/automations' });
   await app.ready();
+}
 
-  // Create test users
-  userId = uuidv4();
+async function seedUsers() {
+  // FK order: users are parents — seed before any automations/meta_tokens.
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId, 'Test User', 'test@test.com', hash, 'user', 'growth');
+
+  userId = uuidv4();
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, 'Test User', 'test@test.com', hash, 'user', 'growth'],
+  );
   userToken = app.jwt.sign({ id: userId, email: 'test@test.com', name: 'Test User', role: 'user' });
 
   adminId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(adminId, 'Admin', 'admin@test.com', hash, 'admin', 'agency');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [adminId, 'Admin', 'admin@test.com', hash, 'admin', 'agency'],
+  );
   adminToken = app.jwt.sign({ id: adminId, email: 'admin@test.com', name: 'Admin', role: 'admin' });
 
   otherUserId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(otherUserId, 'Other User', 'other@test.com', hash, 'user', 'growth');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [otherUserId, 'Other User', 'other@test.com', hash, 'user', 'growth'],
+  );
   otherUserToken = app.jwt.sign({ id: otherUserId, email: 'other@test.com', name: 'Other User', role: 'user' });
 }
 
-beforeAll(async () => { await buildApp(); });
-afterAll(async () => { await app.close(); testDb.close(); });
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  await buildApp();
+});
+
+afterAll(async () => {
+  await app.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedUsers();
+});
 
 /* ------------------------------------------------------------------ */
 /*  Helper                                                             */
 /* ------------------------------------------------------------------ */
 
-function createAutomation(overrides: Record<string, any> = {}) {
+async function createAutomation(overrides: Record<string, any> = {}) {
   const id = uuidv4();
-  testDb.prepare(
-    'INSERT INTO automations (id, user_id, account_id, name, trigger_type, trigger_value, action_type, action_value, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(
-    id,
-    overrides.user_id || userId,
-    overrides.account_id || 'act_123',
-    overrides.name || 'Test Automation',
-    overrides.trigger_type || 'cpa_above',
-    overrides.trigger_value || '{"operator":"gt","value":"50"}',
-    overrides.action_type || 'pause',
-    overrides.action_value || '{}',
-    overrides.is_active ?? 1,
+  await getDbAdapter().run(
+    'INSERT INTO automations (id, user_id, account_id, name, trigger_type, trigger_value, action_type, action_value, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      id,
+      overrides.user_id || userId,
+      overrides.account_id || 'act_123',
+      overrides.name || 'Test Automation',
+      overrides.trigger_type || 'cpa_above',
+      overrides.trigger_value || '{"operator":"gt","value":"50"}',
+      overrides.action_type || 'pause',
+      overrides.action_value || '{}',
+      overrides.is_active ?? 1,
+    ],
   );
   return id;
 }
@@ -163,8 +176,8 @@ describe('GET /automations/list', () => {
   });
 
   it('returns only the authenticated user automations', async () => {
-    const myId = createAutomation({ name: 'My Rule' });
-    const otherId = createAutomation({ user_id: otherUserId, name: 'Other Rule' });
+    await createAutomation({ name: 'My Rule' });
+    await createAutomation({ user_id: otherUserId, name: 'Other Rule' });
 
     const res = await app.inject({
       method: 'GET',
@@ -176,13 +189,10 @@ describe('GET /automations/list', () => {
     const names = body.automations.map((a: any) => a.name);
     expect(names).toContain('My Rule');
     expect(names).not.toContain('Other Rule');
-
-    // Cleanup
-    testDb.prepare('DELETE FROM automations WHERE id IN (?, ?)').run(myId, otherId);
   });
 
   it('formats condition and action display strings', async () => {
-    const id = createAutomation({
+    const id = await createAutomation({
       trigger_type: 'cpa_above',
       trigger_value: '{"operator":"gt","value":"100"}',
       action_type: 'reduce_budget',
@@ -199,15 +209,16 @@ describe('GET /automations/list', () => {
     expect(auto).toBeDefined();
     expect(auto.condition).toContain('CPA_ABOVE');
     expect(auto.action).toContain('Reduce budget');
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(id);
   });
 
   it('returns automations sorted by created_at DESC', async () => {
-    const id1 = createAutomation({ name: 'First' });
+    const id1 = await createAutomation({ name: 'First' });
     // Force different timestamps for deterministic sort order
-    testDb.prepare("UPDATE automations SET created_at = datetime('now', '-1 hour') WHERE id = ?").run(id1);
-    const id2 = createAutomation({ name: 'Second' });
+    await getDbAdapter().run(
+      "UPDATE automations SET created_at = NOW() - INTERVAL '1 hour' WHERE id = ?",
+      [id1],
+    );
+    await createAutomation({ name: 'Second' });
 
     const res = await app.inject({
       method: 'GET',
@@ -218,8 +229,6 @@ describe('GET /automations/list', () => {
     const names = body.automations.map((a: any) => a.name);
     // Most recent first
     expect(names.indexOf('Second')).toBeLessThan(names.indexOf('First'));
-
-    testDb.prepare('DELETE FROM automations WHERE id IN (?, ?)').run(id1, id2);
   });
 });
 
@@ -246,9 +255,6 @@ describe('POST /automations/create', () => {
     expect(body.automation.name).toBe('New CPA Rule');
     expect(body.automation.status).toBe('active');
     expect(body.automation.accountId).toBe('act_999');
-
-    // Cleanup
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(body.automation.id);
   });
 
   it('rejects invalid trigger_type', async () => {
@@ -324,8 +330,6 @@ describe('POST /automations/create', () => {
     expect(res.statusCode).toBe(200);
     expect(body.automation.triggerType).toBe('roas_below');
     expect(body.automation.actionType).toBe('notify');
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(body.automation.id);
   });
 });
 
@@ -335,7 +339,7 @@ describe('POST /automations/create', () => {
 
 describe('PUT /automations/update', () => {
   it('updates automation name', async () => {
-    const id = createAutomation({ name: 'Original Name' });
+    const id = await createAutomation({ name: 'Original Name' });
     const res = await app.inject({
       method: 'PUT',
       url: '/automations/update',
@@ -346,12 +350,10 @@ describe('PUT /automations/update', () => {
     expect(res.statusCode).toBe(200);
     expect(body.success).toBe(true);
     expect(body.automation.name).toBe('Updated Name');
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(id);
   });
 
   it('updates is_active to toggle pause', async () => {
-    const id = createAutomation({ is_active: 1 });
+    const id = await createAutomation({ is_active: 1 });
     const res = await app.inject({
       method: 'PUT',
       url: '/automations/update',
@@ -360,8 +362,6 @@ describe('PUT /automations/update', () => {
     });
     const body = res.json();
     expect(body.automation.status).toBe('paused');
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(id);
   });
 
   it('returns 404 for non-existent automation', async () => {
@@ -375,7 +375,7 @@ describe('PUT /automations/update', () => {
   });
 
   it('returns 404 when updating another user automation', async () => {
-    const id = createAutomation({ user_id: otherUserId, name: 'Not Mine' });
+    const id = await createAutomation({ user_id: otherUserId, name: 'Not Mine' });
     const res = await app.inject({
       method: 'PUT',
       url: '/automations/update',
@@ -383,8 +383,6 @@ describe('PUT /automations/update', () => {
       payload: { id, name: 'Hijacked' },
     });
     expect(res.statusCode).toBe(404);
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(id);
   });
 
   it('returns 400 when no id provided', async () => {
@@ -398,7 +396,7 @@ describe('PUT /automations/update', () => {
   });
 
   it('returns 400 when no fields to update', async () => {
-    const id = createAutomation();
+    const id = await createAutomation();
     const res = await app.inject({
       method: 'PUT',
       url: '/automations/update',
@@ -406,8 +404,6 @@ describe('PUT /automations/update', () => {
       payload: { id },
     });
     expect(res.statusCode).toBe(400);
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(id);
   });
 });
 
@@ -417,7 +413,7 @@ describe('PUT /automations/update', () => {
 
 describe('DELETE /automations/delete', () => {
   it('deletes own automation', async () => {
-    const id = createAutomation({ name: 'To Delete' });
+    const id = await createAutomation({ name: 'To Delete' });
     const res = await app.inject({
       method: 'DELETE',
       url: `/automations/delete?id=${id}`,
@@ -427,20 +423,18 @@ describe('DELETE /automations/delete', () => {
     expect(res.json().success).toBe(true);
 
     // Verify deleted
-    const row = testDb.prepare('SELECT * FROM automations WHERE id = ?').get(id);
+    const row = await getDbAdapter().get('SELECT * FROM automations WHERE id = ?', [id]);
     expect(row).toBeUndefined();
   });
 
   it('returns 404 when deleting another user automation', async () => {
-    const id = createAutomation({ user_id: otherUserId });
+    const id = await createAutomation({ user_id: otherUserId });
     const res = await app.inject({
       method: 'DELETE',
       url: `/automations/delete?id=${id}`,
       headers: { Authorization: `Bearer ${userToken}` },
     });
     expect(res.statusCode).toBe(404);
-
-    testDb.prepare('DELETE FROM automations WHERE id = ?').run(id);
   });
 
   it('returns 400 when no id provided', async () => {
@@ -489,9 +483,11 @@ describe('GET /automations/activity', () => {
   });
 
   it('returns activity array when Meta token exists', async () => {
-    // Seed meta token
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    // Seed meta token (FK: user already seeded in beforeEach).
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     const res = await app.inject({
       method: 'GET',
@@ -502,8 +498,6 @@ describe('GET /automations/activity', () => {
     expect(res.statusCode).toBe(200);
     expect(body.success).toBe(true);
     expect(Array.isArray(body.activity)).toBe(true);
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
 

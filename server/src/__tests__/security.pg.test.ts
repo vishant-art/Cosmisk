@@ -1,22 +1,20 @@
 /**
- * Security Tests
+ * Security Tests (Postgres integration)
  *
  * Tests: JWT validation, SQL injection, password hashing, token encryption,
  * CORS, and auth enforcement.
+ *
+ * DB-2 E1: ported from in-memory SQLite to the Postgres integration harness.
+ * Runs under vitest.pg.config.ts (DB_BACKEND=postgres + Neon test branch).
+ * Seeds via getDbAdapter() against the migrated test branch; per-test isolation
+ * via pg.reset() (TRUNCATE).
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class { async get() { return { data: [] }; } },
@@ -47,16 +45,12 @@ vi.mock('node-cron', () => ({
 
 const { authRoutes } = await import('../routes/auth.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let testUserId: string;
 let validToken: string;
 
-beforeAll(async () => {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
+async function buildApp() {
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -79,20 +73,34 @@ beforeAll(async () => {
   });
 
   await app.register(authRoutes, { prefix: '/auth' });
+  await app.ready();
+}
 
-  // Create test user
+async function seedTestUser() {
+  // Create test user (parent row — FK order: users first).
   testUserId = uuidv4();
   const hash = bcrypt.hashSync('SecurePassword123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(testUserId, 'SecUser', 'sec@test.com', hash);
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',
+    [testUserId, 'SecUser', 'sec@test.com', hash],
+  );
 
   validToken = app.jwt.sign({ id: testUserId, email: 'sec@test.com', name: 'SecUser', role: 'user' });
+}
 
-  await app.ready();
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedTestUser();
 });
 
 /* ------------------------------------------------------------------ */
@@ -186,7 +194,7 @@ describe('SQL Injection Prevention', () => {
     expect(res.statusCode).toBeLessThan(500);
 
     // Verify users table still exists
-    const count = testDb.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
+    const count = await getDbAdapter().get('SELECT COUNT(*) as c FROM users') as { c: number };
     expect(count.c).toBeGreaterThan(0);
   });
 
@@ -202,7 +210,7 @@ describe('SQL Injection Prevention', () => {
     });
     // Should succeed (parameterized query) or fail validation
     // Either way, table should still exist
-    const count = testDb.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
+    const count = await getDbAdapter().get('SELECT COUNT(*) as c FROM users') as { c: number };
     expect(count.c).toBeGreaterThan(0);
   });
 });
@@ -212,19 +220,19 @@ describe('SQL Injection Prevention', () => {
 /* ------------------------------------------------------------------ */
 
 describe('Password Hashing', () => {
-  it('should store passwords as bcrypt hashes, not plaintext', () => {
-    const user = testDb.prepare('SELECT password_hash FROM users WHERE id = ?').get(testUserId) as { password_hash: string };
+  it('should store passwords as bcrypt hashes, not plaintext', async () => {
+    const user = await getDbAdapter().get('SELECT password_hash FROM users WHERE id = ?', [testUserId]) as { password_hash: string };
     expect(user.password_hash).not.toBe('SecurePassword123!');
     expect(user.password_hash).toMatch(/^\$2[aby]\$\d{2}\$/); // bcrypt format
   });
 
-  it('should correctly verify valid password against hash', () => {
-    const user = testDb.prepare('SELECT password_hash FROM users WHERE id = ?').get(testUserId) as { password_hash: string };
+  it('should correctly verify valid password against hash', async () => {
+    const user = await getDbAdapter().get('SELECT password_hash FROM users WHERE id = ?', [testUserId]) as { password_hash: string };
     expect(bcrypt.compareSync('SecurePassword123!', user.password_hash)).toBe(true);
   });
 
-  it('should reject incorrect password against hash', () => {
-    const user = testDb.prepare('SELECT password_hash FROM users WHERE id = ?').get(testUserId) as { password_hash: string };
+  it('should reject incorrect password against hash', async () => {
+    const user = await getDbAdapter().get('SELECT password_hash FROM users WHERE id = ?', [testUserId]) as { password_hash: string };
     expect(bcrypt.compareSync('WrongPassword!', user.password_hash)).toBe(false);
   });
 });
