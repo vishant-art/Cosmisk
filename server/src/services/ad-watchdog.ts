@@ -575,9 +575,9 @@ export async function checkOutcomes(): Promise<number> {
 
       for (const ep of episodes) {
         if (isPositive) {
-          reinforceEpisode(ep.id);
+          await reinforceEpisode(ep.id);
         } else {
-          penalizeEpisode(ep.id);
+          await penalizeEpisode(ep.id);
         }
       }
 
@@ -879,7 +879,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
             try {
               const snapshot = await gatherAccountSnapshot(meta, account.id);
               const pastDecisions = getPastDecisions(user.id, account.id);
-              const memoryContext = buildContextWindow(user.id, 'watchdog', {
+              const memoryContext = await buildContextWindow(user.id, 'watchdog', {
                 maxEpisodes: 10,
                 entityTypes: ['campaign', 'adset', 'metric'],
               });

@@ -34,7 +34,7 @@ async function runMemoryDecay(): Promise<void> {
   logger.info('[MemoryMaintenance] Running daily decay...');
 
   try {
-    const changes = runDecay();
+    const changes = await runDecay();
     logger.info({ changes }, '[MemoryMaintenance] Decay complete');
   } catch (err) {
     logger.error({ err }, '[MemoryMaintenance] Decay failed');

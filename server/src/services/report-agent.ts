@@ -106,7 +106,7 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
 
   try {
     // Build memory context for continuity between reports
-    const memoryContext = buildContextWindow(userId, 'report', {
+    const memoryContext = await buildContextWindow(userId, 'report', {
       maxEpisodes: 10,
       entityTypes: ['campaign', 'metric', 'pattern'],
     });

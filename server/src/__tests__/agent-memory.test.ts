@@ -1,7 +1,7 @@
 /**
  * Tests for agent-memory.ts — three-tier memory system (core, episodic, entity).
  *
- * Tests buildContextWindow(), recordEpisode(), runDecay(), reinforcement,
+ * Tests await buildContextWindow(), recordEpisode(), await runDecay(), reinforcement,
  * penalization, and core memory CRUD operations against real in-memory SQLite.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -58,7 +58,7 @@ vi.mock('../utils/claude-helpers.js', () => ({
 const TEST_USER_ID = 'user-test-1';
 
 describe('Agent Memory', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     testDb = new Database(':memory:');
     testDb.pragma('journal_mode = WAL');
     testDb.pragma('foreign_keys = ON');
@@ -78,7 +78,7 @@ describe('Agent Memory', () => {
   describe('getCoreMemory', () => {
     it('returns empty object when no core memory exists', async () => {
       const { getCoreMemory } = await import('../services/agent-memory.js');
-      const memory = getCoreMemory(TEST_USER_ID, 'watchdog');
+      const memory = await getCoreMemory(TEST_USER_ID, 'watchdog');
       expect(memory).toEqual({});
     });
 
@@ -92,7 +92,7 @@ describe('Agent Memory', () => {
       ).run(uuidv4(), TEST_USER_ID, 'watchdog', 'budget_limit', '$500/day');
 
       const { getCoreMemory } = await import('../services/agent-memory.js');
-      const memory = getCoreMemory(TEST_USER_ID, 'watchdog');
+      const memory = await getCoreMemory(TEST_USER_ID, 'watchdog');
       expect(memory).toEqual({
         strategy: 'Focus on ROAS > 2.0',
         budget_limit: '$500/day',
@@ -105,7 +105,7 @@ describe('Agent Memory', () => {
       ).run(uuidv4(), TEST_USER_ID, 'briefing', 'tone', 'formal');
 
       const { getCoreMemory } = await import('../services/agent-memory.js');
-      const memory = getCoreMemory(TEST_USER_ID, 'watchdog');
+      const memory = await getCoreMemory(TEST_USER_ID, 'watchdog');
       expect(memory).toEqual({});
     });
   });
@@ -113,18 +113,18 @@ describe('Agent Memory', () => {
   describe('setCoreMemory', () => {
     it('inserts new core memory', async () => {
       const { setCoreMemory, getCoreMemory } = await import('../services/agent-memory.js');
-      setCoreMemory(TEST_USER_ID, 'watchdog', 'preference', 'conservative');
+      await setCoreMemory(TEST_USER_ID, 'watchdog', 'preference', 'conservative');
 
-      const memory = getCoreMemory(TEST_USER_ID, 'watchdog');
+      const memory = await getCoreMemory(TEST_USER_ID, 'watchdog');
       expect(memory.preference).toBe('conservative');
     });
 
     it('upserts existing key (updates value)', async () => {
       const { setCoreMemory, getCoreMemory } = await import('../services/agent-memory.js');
-      setCoreMemory(TEST_USER_ID, 'watchdog', 'threshold', '50');
-      setCoreMemory(TEST_USER_ID, 'watchdog', 'threshold', '75');
+      await setCoreMemory(TEST_USER_ID, 'watchdog', 'threshold', '50');
+      await setCoreMemory(TEST_USER_ID, 'watchdog', 'threshold', '75');
 
-      const memory = getCoreMemory(TEST_USER_ID, 'watchdog');
+      const memory = await getCoreMemory(TEST_USER_ID, 'watchdog');
       expect(memory.threshold).toBe('75');
 
       // Verify only one row exists
@@ -138,10 +138,10 @@ describe('Agent Memory', () => {
   describe('deleteCoreMemory', () => {
     it('removes a specific core memory key', async () => {
       const { setCoreMemory, deleteCoreMemory, getCoreMemory } = await import('../services/agent-memory.js');
-      setCoreMemory(TEST_USER_ID, 'watchdog', 'temp', 'value');
-      deleteCoreMemory(TEST_USER_ID, 'watchdog', 'temp');
+      await setCoreMemory(TEST_USER_ID, 'watchdog', 'temp', 'value');
+      await deleteCoreMemory(TEST_USER_ID, 'watchdog', 'temp');
 
-      const memory = getCoreMemory(TEST_USER_ID, 'watchdog');
+      const memory = await getCoreMemory(TEST_USER_ID, 'watchdog');
       expect(memory.temp).toBeUndefined();
     });
   });
@@ -182,7 +182,7 @@ describe('Agent Memory', () => {
       const { recordEpisode, updateEpisodeOutcome } = await import('../services/agent-memory.js');
       const episodeId = await recordEpisode(TEST_USER_ID, 'watchdog', 'Suggested budget increase');
 
-      updateEpisodeOutcome(episodeId, 'ROAS improved from 1.2 to 2.5');
+      await updateEpisodeOutcome(episodeId, 'ROAS improved from 1.2 to 2.5');
 
       const row = testDb.prepare('SELECT outcome FROM agent_episodes WHERE id = ?').get(episodeId) as any;
       expect(row.outcome).toBe('ROAS improved from 1.2 to 2.5');
@@ -194,7 +194,7 @@ describe('Agent Memory', () => {
       const { recordEpisode, reinforceEpisode } = await import('../services/agent-memory.js');
       const episodeId = await recordEpisode(TEST_USER_ID, 'watchdog', 'Good decision');
 
-      reinforceEpisode(episodeId);
+      await reinforceEpisode(episodeId);
 
       const row = testDb.prepare('SELECT relevance_score, reinforcement_count FROM agent_episodes WHERE id = ?').get(episodeId) as any;
       expect(row.relevance_score).toBeCloseTo(1.3, 2);
@@ -207,7 +207,7 @@ describe('Agent Memory', () => {
 
       // Reinforce many times to hit the cap
       for (let i = 0; i < 20; i++) {
-        reinforceEpisode(episodeId);
+        await reinforceEpisode(episodeId);
       }
 
       const row = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(episodeId) as any;
@@ -218,7 +218,7 @@ describe('Agent Memory', () => {
       const { recordEpisode, reinforceEpisode } = await import('../services/agent-memory.js');
       const episodeId = await recordEpisode(TEST_USER_ID, 'watchdog', 'Custom boost');
 
-      reinforceEpisode(episodeId, 0.5);
+      await reinforceEpisode(episodeId, 0.5);
 
       const row = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(episodeId) as any;
       expect(row.relevance_score).toBeCloseTo(1.5, 2);
@@ -230,7 +230,7 @@ describe('Agent Memory', () => {
       const { recordEpisode, penalizeEpisode } = await import('../services/agent-memory.js');
       const episodeId = await recordEpisode(TEST_USER_ID, 'watchdog', 'Bad decision');
 
-      penalizeEpisode(episodeId);
+      await penalizeEpisode(episodeId);
 
       const row = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(episodeId) as any;
       expect(row.relevance_score).toBeCloseTo(0.7, 2);
@@ -241,7 +241,7 @@ describe('Agent Memory', () => {
       const episodeId = await recordEpisode(TEST_USER_ID, 'watchdog', 'Terrible decision');
 
       for (let i = 0; i < 20; i++) {
-        penalizeEpisode(episodeId);
+        await penalizeEpisode(episodeId);
       }
 
       const row = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(episodeId) as any;
@@ -259,7 +259,7 @@ describe('Agent Memory', () => {
       `).run(episodeId, TEST_USER_ID);
 
       const { runDecay } = await import('../services/agent-memory.js');
-      const changed = runDecay();
+      const changed = await runDecay();
 
       expect(changed).toBeGreaterThanOrEqual(1);
 
@@ -275,7 +275,7 @@ describe('Agent Memory', () => {
       `).run(episodeId, TEST_USER_ID);
 
       const { runDecay } = await import('../services/agent-memory.js');
-      runDecay();
+      await runDecay();
 
       const row = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(episodeId) as any;
       expect(row.relevance_score).toBe(1.5); // Unchanged
@@ -289,7 +289,7 @@ describe('Agent Memory', () => {
       `).run(episodeId, TEST_USER_ID);
 
       const { runDecay } = await import('../services/agent-memory.js');
-      runDecay();
+      await runDecay();
 
       const row = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(episodeId) as any;
       expect(row.relevance_score).toBe(1.0);
@@ -303,7 +303,7 @@ describe('Agent Memory', () => {
       `).run(episodeId, TEST_USER_ID);
 
       const { runDecay } = await import('../services/agent-memory.js');
-      runDecay();
+      await runDecay();
 
       const row = testDb.prepare('SELECT * FROM agent_episodes WHERE id = ?').get(episodeId);
       expect(row).toBeUndefined(); // Deleted
@@ -324,7 +324,7 @@ describe('Agent Memory', () => {
       `).run(briefingId, TEST_USER_ID);
 
       const { runDecay } = await import('../services/agent-memory.js');
-      runDecay('watchdog');
+      await runDecay('watchdog');
 
       const watchdogRow = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(watchdogId) as any;
       const briefingRow = testDb.prepare('SELECT relevance_score FROM agent_episodes WHERE id = ?').get(briefingId) as any;
@@ -341,7 +341,7 @@ describe('Agent Memory', () => {
       ).run(uuidv4(), TEST_USER_ID, 'watchdog', 'strategy', 'Focus on ROAS');
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog');
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog');
 
       expect(context).toContain('CORE MEMORY:');
       expect(context).toContain('strategy: Focus on ROAS');
@@ -360,7 +360,7 @@ describe('Agent Memory', () => {
       `).run(uuidv4(), TEST_USER_ID);
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog');
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog');
 
       expect(context).toContain('PAST EPISODES:');
       expect(context).toContain('High relevance event');
@@ -375,7 +375,7 @@ describe('Agent Memory', () => {
       `).run(uuidv4(), TEST_USER_ID);
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog', { relevanceThreshold: 0.3 });
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog', { relevanceThreshold: 0.3 });
 
       expect(context).not.toContain('Irrelevant event');
     });
@@ -387,7 +387,7 @@ describe('Agent Memory', () => {
       `).run(uuidv4(), TEST_USER_ID);
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog');
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog');
 
       expect(context).toContain('KNOWN ENTITIES:');
       expect(context).toContain('campaign:Summer Sale');
@@ -406,7 +406,7 @@ describe('Agent Memory', () => {
       `).run(uuidv4(), TEST_USER_ID);
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog', { entityTypes: ['campaign'] });
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog', { entityTypes: ['campaign'] });
 
       expect(context).toContain('campaign:Summer Sale');
       expect(context).not.toContain('metric:ROAS');
@@ -422,7 +422,7 @@ describe('Agent Memory', () => {
       }
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog', { maxEpisodes: 5 });
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog', { maxEpisodes: 5 });
 
       // Count episode lines (each starts with "- [")
       const episodeLines = context.split('\n').filter(l => l.startsWith('- ['));
@@ -431,7 +431,7 @@ describe('Agent Memory', () => {
 
     it('returns empty string when no memory exists', async () => {
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog');
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog');
       expect(context).toBe('');
     });
 
@@ -442,7 +442,7 @@ describe('Agent Memory', () => {
       `).run(uuidv4(), TEST_USER_ID);
 
       const { buildContextWindow } = await import('../services/agent-memory.js');
-      const context = buildContextWindow(TEST_USER_ID, 'watchdog');
+      const context = await buildContextWindow(TEST_USER_ID, 'watchdog');
 
       expect(context).toContain('status=active');
       expect(context).toContain('budget=500');

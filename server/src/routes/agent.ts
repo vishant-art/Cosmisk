@@ -77,10 +77,10 @@ function startAgentCrons() {
   });
 
   // Memory decay: weekly on Sundays at 3:00 AM UTC
-  cron.schedule('0 3 * * 0', () => {
+  cron.schedule('0 3 * * 0', async () => {
     logger.info('[Brain] Running memory decay...');
     try {
-      const affected = runDecay();
+      const affected = await runDecay();
       logger.info(`[Brain] Memory decay: ${affected} episodes affected`);
     } catch (err: any) {
       logger.error({ err: err.message }, '[Brain] Memory decay failed');
@@ -469,7 +469,7 @@ export async function agentRoutes(app: FastifyInstance) {
       });
     }
 
-    setCoreMemory(request.user.id, 'creative_strategist', body.key, body.value);
+    await setCoreMemory(request.user.id, 'creative_strategist', body.key, body.value);
     return { success: true, message: `Core memory "${body.key}" saved` };
   });
 
@@ -487,7 +487,7 @@ export async function agentRoutes(app: FastifyInstance) {
   // GET /agent/memory/:agentType — context window string
   app.get('/memory/:agentType', { preHandler: [app.authenticate] }, async (request) => {
     const { agentType } = request.params as { agentType: AgentType };
-    const context = buildContextWindow(request.user.id, agentType);
+    const context = await buildContextWindow(request.user.id, agentType);
     return { success: true, context };
   });
 

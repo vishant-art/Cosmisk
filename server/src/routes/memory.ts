@@ -147,9 +147,9 @@ export async function memoryRoutes(app: FastifyInstance): Promise<void> {
 
         for (const ep of episodes) {
           if (wasSuccessful) {
-            reinforceEpisode(ep.id, 0.5);
+            await reinforceEpisode(ep.id, 0.5);
           } else {
-            penalizeEpisode(ep.id, 0.3);
+            await penalizeEpisode(ep.id, 0.3);
           }
         }
 

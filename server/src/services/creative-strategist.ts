@@ -79,7 +79,7 @@ export async function runCreativeStrategist(
 
   try {
     // 1. Build memory context
-    const memoryContext = buildContextWindow(userId, 'creative_strategist', {
+    const memoryContext = await buildContextWindow(userId, 'creative_strategist', {
       maxEpisodes: 20,
       entityTypes: ['brand', 'pattern', 'audience', 'campaign'],
     });
@@ -237,9 +237,9 @@ export async function processConceptFeedback(
 
   if (episode) {
     if (outcome === 'approved') {
-      reinforceEpisode(episode.id, 0.5);
+      await reinforceEpisode(episode.id, 0.5);
     } else {
-      penalizeEpisode(episode.id, 0.4);
+      await penalizeEpisode(episode.id, 0.4);
     }
   }
 
@@ -261,19 +261,19 @@ export async function processConceptFeedback(
 /* ------------------------------------------------------------------ */
 
 export async function seedCreativeStrategistMemory(userId: string): Promise<void> {
-  setCoreMemory(userId, 'creative_strategist', 'production_constraints',
+  await setCoreMemory(userId, 'creative_strategist', 'production_constraints',
     'UGC only. Creator films on phone. No animations, split-screen, documentary footage, professional cinematography. Creator must be on camera. No location shoots — home/outdoors only.');
 
-  setCoreMemory(userId, 'creative_strategist', 'concept_quality',
+  await setCoreMemory(userId, 'creative_strategist', 'concept_quality',
     'Every concept needs a unique DEMO (physical action on camera). Different hooks on same demo = same concept. Verify all math from live website. Reference videos must match concept format.');
 
-  setCoreMemory(userId, 'creative_strategist', 'format_diversity',
+  await setCoreMemory(userId, 'creative_strategist', 'format_diversity',
     'NEVER make all concepts follow the same structure. Mix formats: GRWM, myth buster, reaction, street interview, comment response, third-person narrative, confession/storytime, challenge, routine. If all concepts feel templated, the deck will be rejected.');
 
-  setCoreMemory(userId, 'creative_strategist', 'cultural_awareness',
+  await setCoreMemory(userId, 'creative_strategist', 'cultural_awareness',
     'Adapt hooks to the target market. Indian audience: hydrafacial, glass skin, salon-at-home resonate. Western hooks like "skin barrier" or "microbiome" may not land. Always ask: would a creator in THIS market actually say this?');
 
-  setCoreMemory(userId, 'creative_strategist', 'tone_rule',
+  await setCoreMemory(userId, 'creative_strategist', 'tone_rule',
     'Tone must be CREATOR voice, not brand voice. Test: would a real person say this to their friend? If it sounds like ad copy or a brand manifesto, rewrite it. Preachy/educational tone kills engagement.');
 
   // Seed initial episodes from past work

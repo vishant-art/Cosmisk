@@ -94,7 +94,7 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
 
   try {
     // Build memory context — past format performance is key
-    const memoryContext = buildContextWindow(userId, 'content', {
+    const memoryContext = await buildContextWindow(userId, 'content', {
       maxEpisodes: 15,
       entityTypes: ['campaign', 'pattern', 'ad'],
     });

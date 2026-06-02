@@ -99,7 +99,7 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
 
   try {
     // Build memory context for sales conversations
-    const memoryContext = buildContextWindow(userId, 'sales', {
+    const memoryContext = await buildContextWindow(userId, 'sales', {
       maxEpisodes: 20,
       entityTypes: ['brand', 'campaign', 'metric'],
     });
