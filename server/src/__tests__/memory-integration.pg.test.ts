@@ -3,14 +3,20 @@
  *
  * Tests strategic memory + agent memory with REAL client data (Pratapsons)
  *
- * Run: npm test memory-integration
+ * DB-2 E1: ported from in-memory SQLite to the Postgres integration harness.
+ * Runs under vitest.pg.config.ts (DB_BACKEND=postgres + Neon test branch).
+ * Seeds the FK-parent `system` user via getDbAdapter() against the migrated
+ * test branch; per-test isolation via pg.reset() (TRUNCATE). Because reset()
+ * truncates between tests, each test is self-contained and seeds its own rows.
+ *
+ * Run: npx vitest run -c vitest.pg.config.ts memory-integration
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 
 // Memory imports
-import { recordEpisode, getRecentEpisodes } from '../services/agent-memory.js';
+import { recordEpisode } from '../services/agent-memory.js';
 import {
   recordReport,
   getRecentReports,
@@ -33,8 +39,9 @@ import {
 // Client context
 import { getClientContext, PRATAPSONS_CONTEXT } from '../services/client-context.js';
 
-// Database for test setup
-import { getDb } from '../db/index.js';
+// Postgres integration harness (migrated Neon test branch) + dialect-agnostic adapter.
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 // ============================================================================
 // TEST CONSTANTS
@@ -44,16 +51,27 @@ const TEST_CLIENT_ID = 'pratapsons';
 const TEST_USER_ID = 'system'; // Use 'system' to match what agents use
 
 // ============================================================================
-// TEST SETUP - Create system user to satisfy FK constraint
+// TEST SETUP — migrated pg branch + per-test FK-parent seed
 // ============================================================================
 
-beforeAll(() => {
-  const db = getDb();
-  // Insert system user for FK constraint (used by all agents)
-  db.prepare(`
-    INSERT OR IGNORE INTO users (id, email, created_at)
-    VALUES ('system', 'system@cosmisk.ai', datetime('now'))
-  `).run();
+let pg: MigratedTestPg;
+
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+});
+
+afterAll(async () => {
+  await pg.teardown();
+});
+
+// reset() TRUNCATEs every table between tests, so re-seed the FK-parent `system`
+// user (used by all agents) before EACH test.
+beforeEach(async () => {
+  await pg.reset();
+  await getDbAdapter().run(
+    "INSERT INTO users (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, datetime('now')) ON CONFLICT DO NOTHING",
+    ['system', 'System', 'system@cosmisk.ai', 'hash'],
+  );
 });
 
 // ============================================================================
@@ -63,30 +81,23 @@ beforeAll(() => {
 
 describe('Agent Memory - Episodes', () => {
   it('should record episodes when system user exists', async () => {
-    try {
-      const episodeId = await recordEpisode(
-        TEST_USER_ID,
-        'watchdog',
-        `Test episode for ${TEST_CLIENT_ID}`,
-        JSON.stringify({ clientId: TEST_CLIENT_ID, test: true }),
-        'success'
-      );
+    const episodeId = await recordEpisode(
+      TEST_USER_ID,
+      'watchdog',
+      `Test episode for ${TEST_CLIENT_ID}`,
+      JSON.stringify({ clientId: TEST_CLIENT_ID, test: true }),
+      'success'
+    );
 
-      expect(episodeId).toBeDefined();
-      expect(typeof episodeId).toBe('string');
+    expect(episodeId).toBeDefined();
+    expect(typeof episodeId).toBe('string');
 
-      // Retrieve recent episodes
-      const episodes = getRecentEpisodes(TEST_USER_ID, 'watchdog', 10);
-      expect(episodes.length).toBeGreaterThan(0);
-    } catch (err: any) {
-      // FK constraint means system user not in DB - gracefully skip
-      if (err.code === 'SQLITE_CONSTRAINT_FOREIGNKEY') {
-        console.log('[Test] Skipping episode test - system user not in test DB');
-        expect(true).toBe(true); // Pass the test gracefully
-      } else {
-        throw err;
-      }
-    }
+    // Confirm the episode persisted (agent-memory exposes no getter, so query the adapter).
+    const episodes = await getDbAdapter().all(
+      'SELECT id FROM agent_episodes WHERE user_id = ? AND agent_type = ?',
+      [TEST_USER_ID, 'watchdog']
+    );
+    expect(episodes.length).toBeGreaterThan(0);
   });
 
   it('should handle missing FK gracefully', async () => {

@@ -8,7 +8,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // Use vi.hoisted() for all mock functions that are used in vi.mock() calls
 const {
-  mockDbPrepare,
   mockDbRun,
   mockDbGet,
   mockDbAll,
@@ -30,7 +29,6 @@ const {
   mockRunOOSCheck,
   mockRunDiscountLeakageCheck,
 } = vi.hoisted(() => ({
-  mockDbPrepare: vi.fn(),
   mockDbRun: vi.fn(),
   mockDbGet: vi.fn(),
   mockDbAll: vi.fn(),
@@ -65,10 +63,19 @@ vi.mock('../utils/logger.js', () => ({
   },
 }));
 
-// Mock database
-vi.mock('../db/index.js', () => ({
-  getDb: () => ({
-    prepare: mockDbPrepare,
+// Mock database adapter (getDbAdapter) — the service calls this, not getDb().
+// Mocking the adapter directly keeps this test alive after SQLite deletion (E3).
+// The adapter methods get/all/run are async in production; returning sync values
+// from these vi.fn()s is fine because the code `await`s them.
+vi.mock('../db/adapter.js', () => ({
+  getDbAdapter: () => ({
+    get: mockDbGet,
+    all: mockDbAll,
+    run: mockDbRun,
+    exec: vi.fn(async () => undefined),
+    transaction: vi.fn(async (fn: any) =>
+      fn({ get: mockDbGet, all: mockDbAll, run: mockDbRun })
+    ),
   }),
 }));
 
@@ -166,14 +173,8 @@ describe('Ad Watchdog', () => {
     vi.clearAllMocks();
     uuidCounter = 0;
 
-    // Reset db mock to return chainable methods
-    mockDbPrepare.mockImplementation(() => ({
-      run: mockDbRun,
-      get: mockDbGet,
-      all: mockDbAll,
-    }));
-    // The async DbAdapter reads `changes`/`lastInsertRowid` off the run result,
-    // so the mocked statement must return a result object (better-sqlite3 always does).
+    // The async DbAdapter.run() resolves to an object exposing `changes`/
+    // `lastInsertRowid`; the service reads those, so the mock must return one.
     mockDbRun.mockReturnValue({ changes: 1, lastInsertRowid: 1 });
   });
 
@@ -384,8 +385,9 @@ describe('Ad Watchdog', () => {
 
       await executeDecision('decision-1', 'user-1');
 
-      expect(mockDbPrepare).toHaveBeenCalledWith(
-        expect.stringContaining('user_id = ?')
+      expect(mockDbGet).toHaveBeenCalledWith(
+        expect.stringContaining('user_id = ?'),
+        expect.arrayContaining(['decision-1', 'user-1'])
       );
     });
 
@@ -450,8 +452,8 @@ describe('Ad Watchdog', () => {
 
       expect(result).toBe(1);
       expect(mockDbRun).toHaveBeenCalledWith(
-        expect.stringContaining('positive: confirmed_paused'),
-        'decision-1'
+        expect.stringContaining('UPDATE agent_decisions'),
+        ['positive: confirmed_paused', 'decision-1']
       );
     });
 
@@ -468,8 +470,8 @@ describe('Ad Watchdog', () => {
 
       expect(result).toBe(1);
       expect(mockDbRun).toHaveBeenCalledWith(
-        expect.stringContaining('neutral: still_spending'),
-        'decision-1'
+        expect.stringContaining('UPDATE agent_decisions'),
+        ['neutral: still_spending', 'decision-1']
       );
     });
 
@@ -515,8 +517,11 @@ describe('Ad Watchdog', () => {
       await checkOutcomes();
 
       expect(mockDbRun).toHaveBeenCalledWith(
-        expect.stringContaining('post_reduction'),
-        'decision-1'
+        expect.stringContaining('UPDATE agent_decisions'),
+        expect.arrayContaining([
+          expect.stringContaining('post_reduction'),
+          'decision-1',
+        ])
       );
     });
 
