@@ -199,3 +199,16 @@ One full-suite run had `adapter.test.ts` PgAdapter tests fail (2) at the `exec()
 - **Composer barrier output:** 12 graph-selected route test files **256 passed / 0 failed / 5 skipped**; full suite 920 passed, **sole failure = the known Neon pg-network flake** (`adapter.test.ts` PgAdapter transaction — passes **19/19 in isolation**), explicitly disambiguated, not a route regression.
 
 **M2.2 status:** 28 / 29 remaining routes converted (incl. M2.1+leaf); **only `creative-engine.ts` left** → Run 3b, then M2.3 services.
+
+---
+
+## 11. pg-test Neon flake — root cause found & eliminated (`1e808ce`) — 2026-06-02
+
+The intermittent `PgAdapter (TEST_DATABASE_URL) > transaction() commits on success` failure (full suite only, never isolation) is **fixed at the root**, not retried.
+
+- **Ruled out connections:** smoke-tested all 3 endpoints — `DATABASE_URL` (pooled), `MIGRATION_DATABASE_URL` (direct), `TEST_DATABASE_URL` (direct, separate branch `ep-steep-leaf`); all connect, `max_connections=901`, ~10 in use. Not a limit.
+- **True cause:** cross-file `TRUNCATE` race on the shared **`public`** schema. `adapter.test.ts` created its table in `public` and was the lone pg file NOT serialized (doesn't use `getMigratedTestPg`'s advisory lock); a concurrent `reset()` (TRUNCATE of every `public` base table) wiped its rows mid-test → `expect 2 rows` saw 0.
+- **Rejected approaches:** (a) retry/connection-verification wrapper = masks, not fixes; (b) full per-file `migrate()` into a fresh schema = **hangs ~60s** on cold Neon (full 70-table migration per file); (c) `on('connect')` SET search_path = races to `public`.
+- **Fix (cause eliminated):** isolate `adapter.test.ts` into its own schema — `CREATE SCHEMA` + pool `options: '-c search_path=<schema>'` (verified honoured on Neon's direct endpoint). Its table lives outside `public`, so no other file's TRUNCATE can reach it. No retry; migrate-based files keep the advisory-lock serialization.
+- **Verified deterministic:** 4× concurrent `db/__tests__` subset + 2× full suite all green — **921 / 0 / 19**; the flaky test passed every run.
+- Memory updated ([[pg-test-connection-verification]]): smoke connection strings + disambiguate any pg failure by isolated rerun before calling it a regression.
