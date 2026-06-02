@@ -1072,14 +1072,14 @@ export async function runOOSCheckForClient(
   }
 ): Promise<ClientOOSReport | null> {
   // Get client context
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[OOS Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const oosStore = getOOSAgentStore(clientId);
+  const oosStore = await getOOSAgentStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
   const strategicContext = getStrategicContextForAgent(clientId);
@@ -1152,7 +1152,7 @@ export async function runOOSCheckForClient(
   // Update OOS store
   if (oosStore) {
     const allKnownProducts = [...new Set([...knownProducts, ...currentOOSProducts])];
-    updateOOSAgentStore(clientId, {
+    await updateOOSAgentStore(clientId, {
       lastCheckAt: new Date().toISOString(),
       knownOOSProducts: allKnownProducts,
       cumulativeWaste: (oosStore.cumulativeWaste || 0) + result.verifiedWastedSpend,
@@ -1163,7 +1163,7 @@ export async function runOOSCheckForClient(
 
   // Create recommendation record if alerting
   if (shouldAlert) {
-    createRecommendation(clientId, 'oos_detector', 'pause_oos_ads', {
+    await createRecommendation(clientId, 'oos_detector', 'pause_oos_ads', {
       wastedSpend: result.verifiedWastedSpend,
       productsCount: newOOSProducts.length,
       topProducts: result.enhanced?.topWasted?.slice(0, 5) || [],

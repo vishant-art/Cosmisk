@@ -37,7 +37,7 @@ export interface VerificationStats {
  */
 async function fetchRoas(clientId: string, entityId: string): Promise<number | null> {
   try {
-    const client = getClient(clientId);
+    const client = await getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
     const token = await getMetaAccessToken(clientId);
@@ -64,7 +64,7 @@ async function fetchRoas(clientId: string, entityId: string): Promise<number | n
  */
 async function fetchSpend(clientId: string, entityId: string): Promise<number | null> {
   try {
-    const client = getClient(clientId);
+    const client = await getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
     const token = await getMetaAccessToken(clientId);
@@ -90,7 +90,7 @@ async function fetchSpend(clientId: string, entityId: string): Promise<number | 
  */
 async function fetchRevenue(clientId: string, entityId: string): Promise<number | null> {
   try {
-    const client = getClient(clientId);
+    const client = await getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
     const token = await getMetaAccessToken(clientId);
@@ -117,7 +117,7 @@ async function fetchRevenue(clientId: string, entityId: string): Promise<number 
  */
 async function fetchConversions(clientId: string, entityId: string): Promise<number | null> {
   try {
-    const client = getClient(clientId);
+    const client = await getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
     const token = await getMetaAccessToken(clientId);
@@ -144,7 +144,7 @@ async function fetchConversions(clientId: string, entityId: string): Promise<num
  */
 async function fetchCpa(clientId: string, entityId: string): Promise<number | null> {
   try {
-    const client = getClient(clientId);
+    const client = await getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
     const token = await getMetaAccessToken(clientId);
@@ -174,7 +174,7 @@ async function fetchCpa(clientId: string, entityId: string): Promise<number | nu
  */
 async function fetchCtr(clientId: string, entityId: string): Promise<number | null> {
   try {
-    const client = getClient(clientId);
+    const client = await getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
     const token = await getMetaAccessToken(clientId);

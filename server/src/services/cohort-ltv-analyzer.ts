@@ -825,14 +825,14 @@ export async function analyzeCohortLTVForClient(
   clientId: string,
   options?: { days?: number },
 ): Promise<ClientCohortLTVReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[CohortLTV Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const ltvStore = getCohortLTVStore(clientId);
+  const ltvStore = await getCohortLTVStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
   const strategicContext = getStrategicContextForAgent(clientId);
@@ -881,7 +881,7 @@ export async function analyzeCohortLTVForClient(
   }, '[CohortLTV Client] Alert decision');
 
   // Update LTV store
-  updateCohortLTVStore(clientId, {
+  await updateCohortLTVStore(clientId, {
     lastAnalyzedAt: new Date().toISOString(),
     bestChannel: analysis.bestChannel?.displayName,
     worstChannel: analysis.worstChannel?.displayName,
@@ -893,7 +893,7 @@ export async function analyzeCohortLTVForClient(
 
   // Create recommendation if significant gap found
   if (shouldAlert) {
-    createRecommendation(clientId, 'cohort_ltv', 'rebalance_channel_budget', {
+    await createRecommendation(clientId, 'cohort_ltv', 'rebalance_channel_budget', {
       bestChannel: analysis.bestChannel?.displayName,
       worstChannel: analysis.worstChannel?.displayName,
       ltvGap: analysis.ltvGap,

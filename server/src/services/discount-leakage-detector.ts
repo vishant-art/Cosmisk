@@ -622,14 +622,14 @@ export async function runDiscountLeakageForClient(
   clientId: string,
   options: { shopifyToken: string; days?: number },
 ): Promise<ClientLeakageReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[Leakage Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const leakageStore = getDiscountLeakageStore(clientId);
+  const leakageStore = await getDiscountLeakageStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
   const strategicContext = getStrategicContextForAgent(clientId);
@@ -704,7 +704,7 @@ export async function runDiscountLeakageForClient(
   // Update leakage store
   if (leakageStore) {
     const allKnownCodes = [...new Set([...knownCodes, ...currentLeakedCodes])];
-    updateDiscountLeakageStore(clientId, {
+    await updateDiscountLeakageStore(clientId, {
       lastCheckAt: new Date().toISOString(),
       knownLeakedCodes: allKnownCodes,
       cumulativeLeakage: (leakageStore.cumulativeLeakage || 0) + report.totalRevenueLeakage,
@@ -715,7 +715,7 @@ export async function runDiscountLeakageForClient(
 
   // Create recommendation record if alerting
   if (shouldAlert) {
-    createRecommendation(clientId, 'discount_leakage', 'rotate_leaked_codes', {
+    await createRecommendation(clientId, 'discount_leakage', 'rotate_leaked_codes', {
       totalLeakage: report.totalRevenueLeakage,
       codesCount: newLeakedCodes.length,
       topCodes: report.leakedCodes.slice(0, 5),

@@ -861,14 +861,14 @@ export async function scoreCreativesForClient(
   clientId: string,
   creatives: Array<Omit<CreativeScoreInput, 'userId'>>,
 ): Promise<ClientCreativeScoreReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[CreativeScorer Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const scorerStore = getCreativeScorerStore(clientId);
+  const scorerStore = await getCreativeScorerStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
   const strategicContext = getStrategicContextForAgent(clientId);
@@ -965,7 +965,7 @@ export async function scoreCreativesForClient(
     ? Math.round(((existingAvg * existingCount) + (avgScore * totalScored)) / (existingCount + totalScored))
     : avgScore;
 
-  updateCreativeScorerStore(clientId, {
+  await updateCreativeScorerStore(clientId, {
     lastScoredAt: new Date().toISOString(),
     totalCreativesScored: existingCount + totalScored,
     avgScore: newAvg,
@@ -977,7 +977,7 @@ export async function scoreCreativesForClient(
 
   // Create recommendation if quality is low
   if (shouldAlert) {
-    createRecommendation(clientId, 'creative_scorer', 'improve_creative_quality', {
+    await createRecommendation(clientId, 'creative_scorer', 'improve_creative_quality', {
       avgScore,
       threshold: scoreThreshold,
       belowThreshold,

@@ -320,7 +320,7 @@ function registerCampaignAgent(): void {
       try {
         // Get client info and credentials
         const { getClient } = await import('./service-clients.js');
-        const client = getClient(task.clientId);
+        const client = await getClient(task.clientId);
         const metaAccessToken = task.context['metaToken'] as string || process.env['META_ACCESS_TOKEN'];
 
         if (!client) {
@@ -414,7 +414,7 @@ function registerAnalysisAgent(): void {
       try {
         // Get client info
         const { getClient } = await import('./service-clients.js');
-        const client = getClient(task.clientId);
+        const client = await getClient(task.clientId);
 
         if (!client) {
           return { success: false, output: {}, error: 'Client not found' };

@@ -376,18 +376,18 @@ export interface ClientFatigueReport {
  * - Tracks known fatigued creatives for deduplication
  * - Generates client-specific recommendations
  */
-export function detectFatigueForClient(
+export async function detectFatigueForClient(
   clientId: string,
   creatives: CreativeMetrics[],
-): ClientFatigueReport | null {
-  const ctx = getClientContext(clientId);
+): Promise<ClientFatigueReport | null> {
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[Fatigue Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const fatigueStore = getFatigueDetectorStore(clientId);
+  const fatigueStore = await getFatigueDetectorStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
   const strategicContext = getStrategicContextForAgent(clientId);
@@ -446,7 +446,7 @@ export function detectFatigueForClient(
 
   // Update fatigue store
   const allKnownIds = [...new Set([...knownIds, ...fatiguedIds])];
-  updateFatigueDetectorStore(clientId, {
+  await updateFatigueDetectorStore(clientId, {
     lastCheckedAt: new Date().toISOString(),
     knownFatiguedCreatives: allKnownIds,
     totalFatiguedCount: (fatigueStore?.totalFatiguedCount || 0) + newFatiguedCreatives.length,
@@ -456,7 +456,7 @@ export function detectFatigueForClient(
 
   // Create recommendation if new fatigued creatives found
   if (shouldAlert) {
-    createRecommendation(clientId, 'fatigue_detector', 'replace_fatigued_creatives', {
+    await createRecommendation(clientId, 'fatigue_detector', 'replace_fatigued_creatives', {
       newFatiguedCount: newFatiguedCreatives.length,
       frequencyThreshold,
       topFatigued: analyzedCreatives

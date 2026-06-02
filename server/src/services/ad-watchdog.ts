@@ -1301,14 +1301,14 @@ export async function runWatchdogForClient(
   clientId: string,
   options: { metaToken?: string; shopifyToken?: string } = {},
 ): Promise<ClientWatchdogReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[Watchdog Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const watchdogStore = getWatchdogStore(clientId);
+  const watchdogStore = await getWatchdogStore(clientId);
 
   logger.info({
     clientId,
@@ -1426,7 +1426,7 @@ export async function runWatchdogForClient(
     }, '[Watchdog Client] Run complete');
 
     // Update watchdog store
-    updateWatchdogStore(clientId, {
+    await updateWatchdogStore(clientId, {
       lastRunAt: new Date().toISOString(),
       totalDecisions: (watchdogStore?.totalDecisions || 0) + decisions.length,
       alertsSent: shouldAlert ? (watchdogStore?.alertsSent || 0) + 1 : watchdogStore?.alertsSent || 0,
@@ -1436,7 +1436,7 @@ export async function runWatchdogForClient(
 
     // Create recommendations for filtered decisions
     for (const decision of filteredDecisions) {
-      createRecommendation(clientId, 'watchdog', decision.type, {
+      await createRecommendation(clientId, 'watchdog', decision.type, {
         targetName: decision.targetName,
         reasoning: decision.reasoning,
         suggestedAction: decision.suggestedAction,

@@ -2417,7 +2417,7 @@ export async function runCompetitorIntelForClient(
   const { extraQueries = [], limit = 300, analyzeTop = 25 } = options;
 
   // Get client context
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[ClientIntel] Client not found');
     return null;
@@ -2478,7 +2478,7 @@ export async function runCompetitorIntelForClient(
 
   for (const ad of allAds) {
     // Skip already shown references
-    if (hasReferenceBeenShown(clientId, ad.adId)) {
+    if (await hasReferenceBeenShown(clientId, ad.adId)) {
       alreadyShownCount.count++;
       continue;
     }
@@ -2535,13 +2535,13 @@ export async function runCompetitorIntelForClient(
 
   // Track these as shown references
   for (const ad of analyzedAds) {
-    addReferenceShown(clientId, ad.adId);
+    await addReferenceShown(clientId, ad.adId);
   }
 
   // Update search queries used in store
   if (competitorIntel) {
     const updatedQueries = [...new Set([...(competitorIntel.searchQueriesUsed || []), ...usedQueries])];
-    updateCompetitorIntelStore(clientId, {
+    await updateCompetitorIntelStore(clientId, {
       searchQueriesUsed: updatedQueries,
       lastScrapeAt: new Date().toISOString(),
       lastReportAt: new Date().toISOString(),
@@ -2571,7 +2571,7 @@ export async function runCompetitorIntelForClient(
 
   // Create recommendation records for tracking
   for (const rec of recommendations.slice(0, 5)) {
-    createRecommendation(clientId, 'competitor_intel', rec.category, {
+    await createRecommendation(clientId, 'competitor_intel', rec.category, {
       insight: rec.insight,
       action: rec.action,
       basedOn: rec.basedOn,
