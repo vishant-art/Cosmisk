@@ -85,3 +85,6 @@ public/
 
 # Local-only agent-orchestration control ledger — never committed.
 dev_reports/agent_report.md
+
+# Portable scratch — copied out of project, never committed
+temp_reports/
