@@ -447,7 +447,7 @@ export async function agentRoutes(app: FastifyInstance) {
       });
     }
 
-    processConceptFeedback(
+    await processConceptFeedback(
       request.user.id,
       body.runId,
       body.conceptIndex,
@@ -480,7 +480,7 @@ export async function agentRoutes(app: FastifyInstance) {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
 
-    seedCreativeStrategistMemory(request.user.id);
+    await seedCreativeStrategistMemory(request.user.id);
     return { success: true, message: 'Creative strategist memory seeded' };
   });
 

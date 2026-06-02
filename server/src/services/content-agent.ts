@@ -6,7 +6,7 @@
  * Memory tracks which formats/hooks have worked — avoids repeating failures.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics } from './insights-parser.js';
@@ -45,17 +45,17 @@ interface ContentBrief {
 /* ------------------------------------------------------------------ */
 
 export async function runContentAgentAll(): Promise<number> {
-  const db = getDb();
-  const users = db.prepare(`
+  const db = getDbAdapter();
+  const users = await db.all(`
     SELECT u.id FROM users u
     WHERE u.onboarding_complete = 1
     AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-  `).all() as { id: string }[];
+  `) as { id: string }[];
 
   let completed = 0;
   for (const user of users) {
     try {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+      const tokenRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [user.id]) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
 
       const accessToken = decryptToken(tokenRow.encrypted_access_token);
@@ -84,13 +84,13 @@ export async function runContentAgentAll(): Promise<number> {
 /* ------------------------------------------------------------------ */
 
 export async function runContentAgent(userId: string, accountId: string, metaService?: MetaApiService): Promise<string> {
-  const db = getDb();
+  const db = getDbAdapter();
   const runId = uuidv4();
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
     VALUES (?, 'content', ?, 'running', datetime('now'))
-  `).run(runId, userId);
+  `, [runId, userId]);
 
   try {
     // Build memory context — past format performance is key
@@ -102,17 +102,17 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
     // Get Meta API
     let meta = metaService;
     if (!meta) {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+      const tokenRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]) as MetaTokenRow | undefined;
       if (!tokenRow) throw new Error('No Meta token found');
       meta = new MetaApiService(decryptToken(tokenRow.encrypted_access_token));
     }
 
     // 1. Gather top-performing creatives from DNA cache
-    const topCreatives = db.prepare(`
+    const topCreatives = await db.all(`
       SELECT ad_name, hook, visual, audio, visual_analysis FROM dna_cache
       WHERE account_id = ? AND visual_analysis IS NOT NULL
       ORDER BY rowid DESC LIMIT 20
-    `).all(accountId) as Array<{ ad_name: string; hook: string; visual: string; audio: string; visual_analysis: string }>;
+    `, [accountId]) as Array<{ ad_name: string; hook: string; visual: string; audio: string; visual_analysis: string }>;
 
     // 2. Gather recent ad performance
     const adPerformance = await meta.get<any>(`/${accountId}/insights`, {
@@ -122,18 +122,18 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
     }).catch(() => ({ data: [] }));
 
     // 3. Get swipe file patterns for inspiration
-    const swipePatterns = db.prepare(`
+    const swipePatterns = await db.all(`
       SELECT hook_dna, visual_dna, audio_dna, brand FROM swipe_file
       WHERE user_id = ? ORDER BY created_at DESC LIMIT 15
-    `).all(userId) as Array<{ hook_dna: string; visual_dna: string; audio_dna: string; brand: string }>;
+    `, [userId]) as Array<{ hook_dna: string; visual_dna: string; audio_dna: string; brand: string }>;
 
     // 4. Get completed creative assets and their DNA
-    const recentAssets = db.prepare(`
+    const recentAssets = await db.all(`
       SELECT ca.format, ca.dna_tags, ca.predicted_score, ca.actual_metrics, ca.status
       FROM creative_assets ca
       WHERE ca.user_id = ? AND ca.account_id = ?
       ORDER BY ca.created_at DESC LIMIT 20
-    `).all(userId, accountId) as Array<{ format: string; dna_tags: string; predicted_score: number | null; actual_metrics: string | null; status: string }>;
+    `, [userId, accountId]) as Array<{ format: string; dna_tags: string; predicted_score: number | null; actual_metrics: string | null; status: string }>;
 
     // 5. Account info
     const accountInfo = await meta.get<any>(`/${accountId}`, { fields: 'name' }).catch(() => ({ name: accountId }));
@@ -191,10 +191,10 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
     // Update agent run
     const summary = `Content brief for ${fullBrief.accountName}: ${fullBrief.recommendedFormats.length} format recommendations, ${fullBrief.avoidFormats.length} formats to avoid. Theme: ${fullBrief.weeklyTheme}`;
 
-    db.prepare(`
+    await db.run(`
       UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
       summary = ?, raw_context = ? WHERE id = ?
-    `).run(summary, JSON.stringify(fullBrief), runId);
+    `, [summary, JSON.stringify(fullBrief), runId]);
 
     // Record episode for future briefs
     const formatNames = fullBrief.recommendedFormats.map(f => f.format).join(', ');
@@ -218,10 +218,10 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    db.prepare(`
+    await db.run(`
       UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
       summary = ? WHERE id = ?
-    `).run(`Error: ${message}`, runId);
+    `, [`Error: ${message}`, runId]);
     throw err;
   }
 }

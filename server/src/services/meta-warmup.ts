@@ -14,7 +14,7 @@
  * Runs every 2 hours via cron. All calls are read-only.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { logger } from '../utils/logger.js';
@@ -62,14 +62,14 @@ async function safeCall(meta: MetaApiService, endpoint: string, params: Record<s
 }
 
 export async function runMetaWarmup(): Promise<WarmupResult> {
-  const db = getDb();
+  const db = getDbAdapter();
   const result: WarmupResult = { usersProcessed: 0, totalCalls: 0, errors: [] };
 
-  const users = db.prepare(`
+  const users = await db.all(`
     SELECT u.id FROM users u
     WHERE u.onboarding_complete = 1
     AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-  `).all() as { id: string }[];
+  `) as { id: string }[];
 
   const variant = getRunVariant();
   const preset1 = DATE_PRESETS[variant % DATE_PRESETS.length];
@@ -83,7 +83,7 @@ export async function runMetaWarmup(): Promise<WarmupResult> {
 
   for (const user of users) {
     try {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+      const tokenRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [user.id]) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
         logger.warn(`[MetaWarmup] Skipping user ${user.id}: token expired`);
