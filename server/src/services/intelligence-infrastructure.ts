@@ -10,7 +10,7 @@
  * 4. Vector-ready Pattern Storage — Abstraction for future vector DB
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import type { Evidence } from './quality-gate.js';
 
@@ -193,8 +193,8 @@ export class ReasoningTraceBuilder {
       synthesisDepth: this.trace.dataSourcesUsed?.length || 0,
     } as ReasoningTrace;
 
-    // Store in database
-    storeReasoningTrace(trace);
+    // Store in database (fire-and-forget — preserve sync build() signature)
+    storeReasoningTrace(trace).catch(err => logger.debug({ err }, '[Infrastructure] storeReasoningTrace failed'));
 
     return trace;
   }
@@ -203,17 +203,17 @@ export class ReasoningTraceBuilder {
 /**
  * Store a reasoning trace in the database
  */
-function storeReasoningTrace(trace: ReasoningTrace): void {
-  const db = getDb();
+async function storeReasoningTrace(trace: ReasoningTrace): Promise<void> {
+  const db = getDbAdapter();
 
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO decision_traces (
         id, client_id, agent_type, decision_id, steps_json, evidence_json,
         alternatives_json, final_action, final_target, final_confidence,
         final_reasoning, total_duration, data_sources, synthesis_depth, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    `).run(
+    `, [
       trace.id,
       trace.clientId,
       trace.agentType,
@@ -228,7 +228,7 @@ function storeReasoningTrace(trace: ReasoningTrace): void {
       trace.totalDuration,
       JSON.stringify(trace.dataSourcesUsed),
       trace.synthesisDepth
-    );
+    ]);
   } catch (err) {
     logger.debug({ err }, '[Infrastructure] decision_traces table not found');
   }
@@ -237,13 +237,13 @@ function storeReasoningTrace(trace: ReasoningTrace): void {
 /**
  * Get reasoning trace for a decision
  */
-export function getReasoningTrace(decisionId: string): ReasoningTrace | null {
-  const db = getDb();
+export async function getReasoningTrace(decisionId: string): Promise<ReasoningTrace | null> {
+  const db = getDbAdapter();
 
   try {
-    const row = db.prepare(`
+    const row = await db.get(`
       SELECT * FROM decision_traces WHERE decision_id = ?
-    `).get(decisionId) as any;  // DB-2: typed when row becomes a Drizzle result
+    `, [decisionId]) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (!row) return null;
 
@@ -274,8 +274,8 @@ export function getReasoningTrace(decisionId: string): ReasoningTrace | null {
 /**
  * Explain a decision in human-readable format
  */
-export function explainDecision(decisionId: string): string {
-  const trace = getReasoningTrace(decisionId);
+export async function explainDecision(decisionId: string): Promise<string> {
+  const trace = await getReasoningTrace(decisionId);
 
   if (!trace) {
     return 'No reasoning trace found for this decision.';
@@ -361,7 +361,7 @@ export interface EvaluationMetrics {
  * Capture daily evaluation metrics for a client
  */
 export async function captureEvaluationMetrics(clientId: string): Promise<EvaluationMetrics> {
-  const db = getDb();
+  const db = getDbAdapter();
   const today = new Date().toISOString().split('T')[0];
 
   const metrics: EvaluationMetrics = {
@@ -387,14 +387,14 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
 
   try {
     // Decision metrics (from agent_decisions table)
-    const decisionStats = db.prepare(`
+    const decisionStats = await db.get(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status != 'filtered' THEN 1 ELSE 0 END) as passed,
         AVG(CAST(json_extract(metadata, '$.confidence') as REAL)) as avg_conf
       FROM agent_decisions
       WHERE user_id = ? AND date(created_at) = ?
-    `).get(clientId, today) as any;  // DB-2: typed when row becomes a Drizzle result
+    `, [clientId, today]) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (decisionStats) {
       metrics.decisionsGenerated = decisionStats.total || 0;
@@ -407,14 +407,14 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
     }
 
     // Human review metrics
-    const reviewStats = db.prepare(`
+    const reviewStats = await db.get(`
       SELECT
         SUM(CASE WHEN date(created_at) = ? THEN 1 ELSE 0 END) as created,
         SUM(CASE WHEN date(reviewed_at) = ? THEN 1 ELSE 0 END) as resolved,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
       FROM human_reviews
       WHERE client_id = ?
-    `).get(today, today, clientId) as any;  // DB-2: typed when row becomes a Drizzle result
+    `, [today, today, clientId]) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (reviewStats) {
       metrics.humanReviewsCreated = reviewStats.created || 0;
@@ -423,14 +423,14 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
     }
 
     // Prediction metrics
-    const predStats = db.prepare(`
+    const predStats = await db.get(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status IN ('verified_correct', 'verified_incorrect') THEN 1 ELSE 0 END) as verified,
         SUM(CASE WHEN status = 'verified_correct' THEN 1 ELSE 0 END) as correct
       FROM predictions
       WHERE client_id = ?
-    `).get(clientId) as any;  // DB-2: typed when row becomes a Drizzle result
+    `, [clientId]) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (predStats) {
       metrics.predictionsGenerated = predStats.total || 0;
@@ -442,13 +442,13 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
     }
 
     // Trace metrics (synthesis depth, decision time)
-    const traceStats = db.prepare(`
+    const traceStats = await db.get(`
       SELECT
         AVG(synthesis_depth) as avg_depth,
         AVG(total_duration) as avg_time
       FROM decision_traces
       WHERE client_id = ? AND date(created_at) = ?
-    `).get(clientId, today) as any;  // DB-2: typed when row becomes a Drizzle result
+    `, [clientId, today]) as any;  // DB-2: typed when row becomes a Drizzle result
 
     if (traceStats) {
       metrics.synthesisDepthAvg = traceStats.avg_depth || 0;
@@ -461,7 +461,7 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
 
   // Store metrics
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO evaluation_metrics (
         date, client_id, decisions_generated, decisions_passed, decisions_filtered,
         avg_confidence, contradictions_detected, human_reviews_created, human_reviews_resolved,
@@ -473,14 +473,14 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
         decisions_generated = excluded.decisions_generated,
         decisions_passed = excluded.decisions_passed,
         avg_confidence = excluded.avg_confidence
-    `).run(
+    `, [
       today, clientId, metrics.decisionsGenerated, metrics.decisionsPassed,
       metrics.decisionsFiltered, metrics.avgConfidence, metrics.contradictionsDetected,
       metrics.humanReviewsCreated, metrics.humanReviewsResolved, metrics.humanReviewsPending,
       metrics.predictionsGenerated, metrics.predictionsVerified, metrics.predictionsCorrect,
       metrics.predictionAccuracyRate, metrics.filterRate, metrics.evidenceQualityAvg,
       metrics.synthesisDepthAvg, metrics.avgDecisionTime
-    );
+    ]);
   } catch {
     logger.debug('[Infrastructure] evaluation_metrics table not found');
   }
@@ -491,18 +491,18 @@ export async function captureEvaluationMetrics(clientId: string): Promise<Evalua
 /**
  * Get evaluation metrics trend over time
  */
-export function getMetricsTrend(
+export async function getMetricsTrend(
   clientId: string,
   days = 30
-): EvaluationMetrics[] {
-  const db = getDb();
+): Promise<EvaluationMetrics[]> {
+  const db = getDbAdapter();
 
   try {
-    return db.prepare(`
+    return await db.all(`
       SELECT * FROM evaluation_metrics
       WHERE client_id = ? AND date >= date('now', '-' || ? || ' days')
       ORDER BY date ASC
-    `).all(clientId, days) as EvaluationMetrics[];
+    `, [clientId, days]) as EvaluationMetrics[];
   } catch {
     return [];
   }
@@ -511,12 +511,12 @@ export function getMetricsTrend(
 /**
  * Get summary stats for dashboard
  */
-export function getDashboardSummary(clientId: string): {
+export async function getDashboardSummary(clientId: string): Promise<{
   last7Days: { avgConfidence: number; filterRate: number; accuracyRate: number };
   last30Days: { avgConfidence: number; filterRate: number; accuracyRate: number };
   trend: 'improving' | 'stable' | 'declining';
-} {
-  const last30 = getMetricsTrend(clientId, 30);
+}> {
+  const last30 = await getMetricsTrend(clientId, 30);
   const last7 = last30.slice(-7);
 
   const avg = (arr: EvaluationMetrics[], field: keyof EvaluationMetrics) => {
@@ -674,32 +674,32 @@ export interface PatternStore {
  */
 export class SQLitePatternStore implements PatternStore {
   async store(pattern: EmbeddablePattern): Promise<void> {
-    const db = getDb();
+    const db = getDbAdapter();
 
     try {
-      db.prepare(`
+      await db.run(`
         INSERT INTO pattern_store (id, client_id, type, content, metadata, created_at)
         VALUES (?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(id) DO UPDATE SET
           content = excluded.content,
           metadata = excluded.metadata
-      `).run(
+      `, [
         pattern.id,
         pattern.clientId,
         pattern.type,
         pattern.content,
         JSON.stringify(pattern.metadata)
-      );
+      ]);
     } catch {
       logger.debug('[Infrastructure] pattern_store table not found');
     }
   }
 
   async get(id: string): Promise<EmbeddablePattern | null> {
-    const db = getDb();
+    const db = getDbAdapter();
 
     try {
-      const row = db.prepare(`SELECT * FROM pattern_store WHERE id = ?`).get(id) as any;  // DB-2: typed when row becomes a Drizzle result
+      const row = await db.get(`SELECT * FROM pattern_store WHERE id = ?`, [id]) as any;  // DB-2: typed when row becomes a Drizzle result
       if (!row) return null;
 
       return {
@@ -716,17 +716,17 @@ export class SQLitePatternStore implements PatternStore {
   }
 
   async delete(id: string): Promise<void> {
-    const db = getDb();
+    const db = getDbAdapter();
 
     try {
-      db.prepare(`DELETE FROM pattern_store WHERE id = ?`).run(id);
+      await db.run(`DELETE FROM pattern_store WHERE id = ?`, [id]);
     } catch {
       // Ignore
     }
   }
 
   async findByClient(clientId: string, type?: EmbeddablePattern['type']): Promise<EmbeddablePattern[]> {
-    const db = getDb();
+    const db = getDbAdapter();
 
     try {
       let query = `SELECT * FROM pattern_store WHERE client_id = ?`;
@@ -739,7 +739,7 @@ export class SQLitePatternStore implements PatternStore {
 
       query += ` ORDER BY created_at DESC`;
 
-      const rows = db.prepare(query).all(...params) as any[];  // DB-2: typed when row becomes a Drizzle result
+      const rows = await db.all(query, params) as any[];  // DB-2: typed when row becomes a Drizzle result
 
       return rows.map(row => ({
         id: row.id,
@@ -757,15 +757,15 @@ export class SQLitePatternStore implements PatternStore {
   async findSimilar(clientId: string, query: string, limit = 10): Promise<EmbeddablePattern[]> {
     // Current implementation: simple text matching
     // Future: vector similarity search
-    const db = getDb();
+    const db = getDbAdapter();
 
     try {
-      const rows = db.prepare(`
+      const rows = await db.all(`
         SELECT * FROM pattern_store
         WHERE client_id = ? AND content LIKE ?
         ORDER BY created_at DESC
         LIMIT ?
-      `).all(clientId, `%${query}%`, limit) as any[];  // DB-2: typed when row becomes a Drizzle result
+      `, [clientId, `%${query}%`, limit]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
       return rows.map(row => ({
         id: row.id,
