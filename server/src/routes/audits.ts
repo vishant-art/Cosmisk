@@ -205,7 +205,7 @@ export async function auditRoutes(app: FastifyInstance) {
       const { brandId } = request.params;
       const { limit = 10 } = request.query;
 
-      const history = getAuditHistory(brandId, limit);
+      const history = await getAuditHistory(brandId, limit);
 
       return {
         brandId,

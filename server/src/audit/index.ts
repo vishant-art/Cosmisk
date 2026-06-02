@@ -2,8 +2,8 @@
  * Adaptive Audit System - Main Entry Point
  */
 
-import Database from 'better-sqlite3';
 import { createDecipheriv } from 'crypto';
+import { getDbAdapter } from '../db/adapter.js';
 import { fetchMetaSnapshot } from './meta-ingestion.js';
 import { fetchGoogleAdsSnapshot } from './google-ads-ingestion.js';
 import { fetchShopifySnapshot } from './shopify-ingestion.js';
@@ -47,21 +47,21 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
 
   // 1. Load brand from database
   console.log('\n📦 Loading brand data...');
-  const brand = getBrand(brandId);
+  const brand = await getBrand(brandId);
   if (!brand) {
     throw new Error(`Brand not found: ${brandId}`);
   }
   console.log(`   Brand: ${brand.name} (${brand.category})`);
 
   // 2. Load brand context
-  const context = getBrandContext(brandId);
+  const context = await getBrandContext(brandId);
   if (context) {
     console.log(`   Context loaded: ${context.winningCreativePatterns.length} winning patterns`);
   }
 
   // 3. Get Meta access token
   console.log('\n🔑 Getting Meta access token...');
-  const accessToken = getMetaAccessToken();
+  const accessToken = await getMetaAccessToken();
   if (!accessToken) {
     throw new Error('No Meta access token found');
   }
@@ -82,7 +82,7 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
     console.log('\n📈 Fetching Google Ads data...');
     try {
       // Get user ID from brand's associated user (for token lookup)
-      const userId = getBrandUserId(brandId);
+      const userId = await getBrandUserId(brandId);
       if (userId) {
         googleAdsData = await fetchGoogleAdsSnapshot({
           customerId: brand.googleAdsCustomerId,
@@ -103,7 +103,7 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
   // 7. Fetch Shopify data (if available)
   let shopifyData: ShopifySnapshot | null = null;
   if (brand.shopifyDomain) {
-    const shopifyToken = getShopifyAccessToken(brandId);
+    const shopifyToken = await getShopifyAccessToken(brandId);
     if (shopifyToken) {
       console.log('\n🛒 Fetching Shopify data...');
       try {
@@ -138,7 +138,7 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
   }
 
   // 9. Build audit input
-  const userId = getBrandUserId(brandId);
+  const userId = await getBrandUserId(brandId);
   if (!userId) {
     throw new Error(`Cannot run audit: no user owns brand ${brandId} (required for cost-ledger attribution)`);
   }
@@ -162,7 +162,7 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
 
   // 10b. Compare with previous audit (if exists)
   console.log('\n📊 Checking for previous audits...');
-  const previousAudit = getPreviousAudit(brandId);
+  const previousAudit = await getPreviousAudit(brandId);
   if (previousAudit) {
     console.log(`   Found previous audit: ${previousAudit.auditId}`);
     const comparison = calculateAuditComparison(audit, previousAudit);
@@ -269,7 +269,7 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
 
   // 14. Save audit to database
   console.log('\n💾 Saving audit to database...');
-  saveAudit(audit);
+  await saveAudit(audit);
 
   // 15. Extract and save learnings (optional - may fail for ad-hoc audits)
   console.log('🧠 Extracting learnings...');
@@ -286,15 +286,9 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
 
 // ============ DATABASE HELPERS ============
 
-function getDb(): Database.Database {
-  return new Database('./data/cosmisk.db');
-}
-
-function getBrand(brandId: string): Brand | null {
-  const db = getDb();
-
+async function getBrand(brandId: string): Promise<Brand | null> {
   // First check if brand exists in brands table
-  let row = db.prepare('SELECT * FROM brands WHERE id = ?').get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
+  let row = await getDbAdapter().get<any>('SELECT * FROM brands WHERE id = ?', [brandId]);  // DB-2: typed when row becomes a Drizzle result
 
   if (row) {
     return {
@@ -331,22 +325,18 @@ function getBrand(brandId: string): Brand | null {
   return null;
 }
 
-function getBrandUserId(brandId: string): string | null {
-  const db = getDb();
-
+async function getBrandUserId(brandId: string): Promise<string | null> {
   // Get user_id associated with brand
-  const row = db.prepare('SELECT user_id FROM brands WHERE id = ?').get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
+  const row = await getDbAdapter().get<any>('SELECT user_id FROM brands WHERE id = ?', [brandId]);  // DB-2: typed when row becomes a Drizzle result
   if (row?.user_id) return row.user_id;
 
   // Fallback: get first user with google token
-  const fallback = db.prepare('SELECT user_id FROM google_tokens LIMIT 1').get() as any;  // DB-2: typed when row becomes a Drizzle result
+  const fallback = await getDbAdapter().get<any>('SELECT user_id FROM google_tokens LIMIT 1');  // DB-2: typed when row becomes a Drizzle result
   return fallback?.user_id || null;
 }
 
-function getBrandContext(brandId: string): BrandContext | null {
-  const db = getDb();
-
-  const row = db.prepare('SELECT * FROM brand_context WHERE brand_id = ?').get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
+async function getBrandContext(brandId: string): Promise<BrandContext | null> {
+  const row = await getDbAdapter().get<any>('SELECT * FROM brand_context WHERE brand_id = ?', [brandId]);  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 
@@ -360,27 +350,23 @@ function getBrandContext(brandId: string): BrandContext | null {
   };
 }
 
-function getMetaAccessToken(): string | null {
-  const db = getDb();
-
+async function getMetaAccessToken(): Promise<string | null> {
   // Get token for default user (first user with meta token)
-  const row = db.prepare(`
+  const row = await getDbAdapter().get<any>(`
     SELECT encrypted_access_token FROM meta_tokens
     WHERE user_id = (SELECT id FROM users WHERE email = 'vishant@gmail.com')
-  `).get() as any;  // DB-2: typed when row becomes a Drizzle result
+  `);  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 
   return decryptToken(row.encrypted_access_token);
 }
 
-function getShopifyAccessToken(brandId: string): string | null {
-  const db = getDb();
-
-  const row = db.prepare(`
+async function getShopifyAccessToken(brandId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<any>(`
     SELECT encrypted_access_token FROM shopify_tokens
     WHERE brand_id = ?
-  `).get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
+  `, [brandId]);  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 
@@ -407,18 +393,14 @@ function decryptToken(stored: string): string {
 
 // ============ AUDIT PERSISTENCE ============
 
-function saveAudit(audit: AuditOutput): void {
-  const db = getDb();
-
-  const stmt = db.prepare(`
+async function saveAudit(audit: AuditOutput): Promise<void> {
+  await getDbAdapter().run(`
     INSERT INTO audits (
       id, brand_id, brand_name, date_range_start, date_range_end,
       health_score, wasted_spend, best_cpa, worst_cpa,
       top_findings, top_priority, confidence_level, full_output, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  stmt.run(
+  `, [
     audit.auditId,
     audit.brandId,
     audit.brandName,
@@ -432,15 +414,13 @@ function saveAudit(audit: AuditOutput): void {
     audit.summary.topPriority,
     audit.confidence.level,
     JSON.stringify(audit),
-    audit.createdAt
-  );
+    audit.createdAt,
+  ]);
 
   console.log(`   Saved audit: ${audit.auditId}`);
 }
 
 async function extractAndSaveLearnings(audit: AuditOutput, brandId: string): Promise<void> {
-  const db = getDb();
-
   // Extract winning patterns from winners
   const winningPatterns: string[] = [];
   for (const winner of audit.creativeAnalysis.winners.slice(0, 3)) {
@@ -458,26 +438,26 @@ async function extractAndSaveLearnings(audit: AuditOutput, brandId: string): Pro
   }
 
   // Get existing context or create new
-  const existing = getBrandContext(brandId);
+  const existing = await getBrandContext(brandId);
 
   if (existing) {
     // Merge with existing patterns (dedupe and limit to 10 each)
     const allWinning = [...new Set([...winningPatterns, ...existing.winningCreativePatterns])].slice(0, 10);
     const allFailed = [...new Set([...failedApproaches, ...existing.failedApproaches])].slice(0, 10);
 
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE brand_context
       SET winning_patterns = ?, failed_approaches = ?, updated_at = datetime('now')
       WHERE brand_id = ?
-    `).run(JSON.stringify(allWinning), JSON.stringify(allFailed), brandId);
+    `, [JSON.stringify(allWinning), JSON.stringify(allFailed), brandId]);
 
     console.log(`   Updated context: ${allWinning.length} winning, ${allFailed.length} failed patterns`);
   } else if (winningPatterns.length > 0 || failedApproaches.length > 0) {
     // Create new context
-    db.prepare(`
+    await getDbAdapter().run(`
       INSERT INTO brand_context (brand_id, winning_patterns, failed_approaches, updated_at)
       VALUES (?, ?, ?, datetime('now'))
-    `).run(brandId, JSON.stringify(winningPatterns), JSON.stringify(failedApproaches));
+    `, [brandId, JSON.stringify(winningPatterns), JSON.stringify(failedApproaches)]);
 
     console.log(`   Created context: ${winningPatterns.length} winning, ${failedApproaches.length} failed patterns`);
   } else {
@@ -488,17 +468,15 @@ async function extractAndSaveLearnings(audit: AuditOutput, brandId: string): Pro
 /**
  * Get audit history for a brand
  */
-export function getAuditHistory(brandId: string, limit: number = 10): any[] {
-  const db = getDb();
-
-  const rows = db.prepare(`
+export async function getAuditHistory(brandId: string, limit: number = 10): Promise<any[]> {
+  const rows = await getDbAdapter().all<any>(`
     SELECT id, brand_name, date_range_start, date_range_end,
            health_score, wasted_spend, best_cpa, top_priority, created_at
     FROM audits
     WHERE brand_id = ?
     ORDER BY created_at DESC
     LIMIT ?
-  `).all(brandId, limit);
+  `, [brandId, limit]);
 
   return rows;
 }
@@ -506,15 +484,13 @@ export function getAuditHistory(brandId: string, limit: number = 10): any[] {
 /**
  * Get the previous audit for a brand (for comparison)
  */
-export function getPreviousAudit(brandId: string): AuditOutput | null {
-  const db = getDb();
-
-  const row = db.prepare(`
+export async function getPreviousAudit(brandId: string): Promise<AuditOutput | null> {
+  const row = await getDbAdapter().get<any>(`
     SELECT full_output FROM audits
     WHERE brand_id = ?
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(brandId) as any;  // DB-2: typed when row becomes a Drizzle result
+  `, [brandId]);  // DB-2: typed when row becomes a Drizzle result
 
   if (!row) return null;
 

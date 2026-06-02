@@ -15,6 +15,9 @@ vi.mock('better-sqlite3', () => {
   return {
     default: class MockDatabase {
       prepare = mockDbPrepare;
+      pragma = vi.fn();
+      exec = vi.fn();
+      close = vi.fn();
     },
   };
 });
@@ -577,34 +580,52 @@ describe('calculateAuditComparison', () => {
 describe('getAuditHistory', () => {
   beforeEach(() => {
     mockDbPrepare.mockReset();
+    // Default statement: satisfies seedReviewerAccount (get -> undefined, run -> result)
+    mockDbPrepare.mockReturnValue({
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+      all: vi.fn().mockReturnValue([]),
+    });
   });
 
-  it('returns audit history for a brand', () => {
+  it('returns audit history for a brand', async () => {
     const mockHistory = [
       { id: 'audit_1', brand_name: 'Test', health_score: 80, created_at: '2024-01-15' },
       { id: 'audit_2', brand_name: 'Test', health_score: 75, created_at: '2024-01-01' },
     ];
-    mockDbPrepare.mockReturnValue({ all: vi.fn().mockReturnValue(mockHistory) });
+    mockDbPrepare.mockReturnValue({
+      all: vi.fn().mockReturnValue(mockHistory),
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+    });
 
-    const history = getAuditHistory('brand_123', 10);
+    const history = await getAuditHistory('brand_123', 10);
 
     expect(history).toEqual(mockHistory);
     expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('SELECT'));
     expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('brand_id = ?'));
   });
 
-  it('returns empty array when no history', () => {
-    mockDbPrepare.mockReturnValue({ all: vi.fn().mockReturnValue([]) });
+  it('returns empty array when no history', async () => {
+    mockDbPrepare.mockReturnValue({
+      all: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+    });
 
-    const history = getAuditHistory('brand_123', 10);
+    const history = await getAuditHistory('brand_123', 10);
 
     expect(history).toEqual([]);
   });
 
-  it('queries with correct SQL structure', () => {
-    mockDbPrepare.mockReturnValue({ all: vi.fn().mockReturnValue([]) });
+  it('queries with correct SQL structure', async () => {
+    mockDbPrepare.mockReturnValue({
+      all: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+    });
 
-    getAuditHistory('brand_123', 5);
+    await getAuditHistory('brand_123', 5);
 
     expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('ORDER BY created_at DESC'));
     expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('LIMIT'));
@@ -614,42 +635,56 @@ describe('getAuditHistory', () => {
 describe('getPreviousAudit', () => {
   beforeEach(() => {
     mockDbPrepare.mockReset();
+    // Default statement: satisfies seedReviewerAccount (get -> undefined, run -> result)
+    mockDbPrepare.mockReturnValue({
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+      all: vi.fn().mockReturnValue([]),
+    });
   });
 
-  it('returns null when no previous audit exists', () => {
-    mockDbPrepare.mockReturnValue({ get: vi.fn().mockReturnValue(undefined) });
+  it('returns null when no previous audit exists', async () => {
+    mockDbPrepare.mockReturnValue({
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+    });
 
-    const result = getPreviousAudit('brand_123');
+    const result = await getPreviousAudit('brand_123');
 
     expect(result).toBeNull();
   });
 
-  it('returns parsed audit output when exists', () => {
+  it('returns parsed audit output when exists', async () => {
     const mockAudit = createMockAuditOutput();
     mockDbPrepare.mockReturnValue({
       get: vi.fn().mockReturnValue({ full_output: JSON.stringify(mockAudit) }),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
     });
 
-    const result = getPreviousAudit('brand_123');
+    const result = await getPreviousAudit('brand_123');
 
     expect(result).toEqual(mockAudit);
     expect(result?.auditId).toBe('audit_123');
   });
 
-  it('returns null on JSON parse error', () => {
+  it('returns null on JSON parse error', async () => {
     mockDbPrepare.mockReturnValue({
       get: vi.fn().mockReturnValue({ full_output: 'invalid json {{{' }),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
     });
 
-    const result = getPreviousAudit('brand_123');
+    const result = await getPreviousAudit('brand_123');
 
     expect(result).toBeNull();
   });
 
-  it('queries with correct SQL structure', () => {
-    mockDbPrepare.mockReturnValue({ get: vi.fn().mockReturnValue(undefined) });
+  it('queries with correct SQL structure', async () => {
+    mockDbPrepare.mockReturnValue({
+      get: vi.fn().mockReturnValue(undefined),
+      run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
+    });
 
-    getPreviousAudit('brand_123');
+    await getPreviousAudit('brand_123');
 
     expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('SELECT full_output'));
     expect(mockDbPrepare).toHaveBeenCalledWith(expect.stringContaining('ORDER BY created_at DESC'));
