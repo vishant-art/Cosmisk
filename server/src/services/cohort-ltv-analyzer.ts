@@ -15,7 +15,7 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import {
   getClientContext, getCohortLTVStore, updateCohortLTVStore,
@@ -183,12 +183,13 @@ export async function analyzeCohortLTV(
 
   logger.info(`[CohortLTV] Analyzing for user ${userId}, last ${days} days`);
 
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Get Shopify credentials
-  const shopifyRow = db.prepare(
-    'SELECT shop_domain, encrypted_access_token FROM shopify_tokens WHERE user_id = ?'
-  ).get(userId) as { shop_domain: string; encrypted_access_token: string } | undefined;
+  const shopifyRow = await db.get<{ shop_domain: string; encrypted_access_token: string }>(
+    'SELECT shop_domain, encrypted_access_token FROM shopify_tokens WHERE user_id = ?',
+    [userId]
+  );
 
   if (!shopifyRow) {
     logger.warn(`[CohortLTV] No Shopify connected for user ${userId}`);
@@ -851,7 +852,6 @@ export async function analyzeCohortLTVForClient(
   logger.info({ gapThreshold }, '[CohortLTV Client] Using gap threshold');
 
   // Get Shopify credentials from database
-  const db = getDb();
   // Note: In real usage, we'd need a user association to get the Shopify token
   // For now, we'll use the existing analyzeCohortLTV which handles this internally
 

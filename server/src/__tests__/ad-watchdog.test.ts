@@ -172,6 +172,9 @@ describe('Ad Watchdog', () => {
       get: mockDbGet,
       all: mockDbAll,
     }));
+    // The async DbAdapter reads `changes`/`lastInsertRowid` off the run result,
+    // so the mocked statement must return a result object (better-sqlite3 always does).
+    mockDbRun.mockReturnValue({ changes: 1, lastInsertRowid: 1 });
   });
 
   afterEach(() => {
