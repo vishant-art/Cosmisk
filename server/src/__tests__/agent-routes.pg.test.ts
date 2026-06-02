@@ -1,23 +1,18 @@
 /**
- * Agent Route Tests
+ * Agent Route Tests (Postgres integration)
  *
  * Integration tests for /agent endpoints.
  * Tests runs, decisions, approve/reject, admin-only triggers,
  * memory, briefing, and sales context.
+ * Runs against the migrated Neon TEST BRANCH via the pg integration harness
+ * (DB_BACKEND=postgres). External services are mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class {
@@ -93,6 +88,7 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 const { agentRoutes } = await import('../routes/agent.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let userId: string;
 let userToken: string;
@@ -102,11 +98,6 @@ let otherUserId: string;
 let otherUserToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -118,66 +109,91 @@ async function buildApp() {
 
   await app.register(agentRoutes, { prefix: '/agent' });
   await app.ready();
+}
 
+async function seedUsers() {
+  // FK order: users are parents — seed before any agent_runs / agent_decisions.
   const hash = bcrypt.hashSync('SecurePass123!', 10);
 
   userId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId, 'Test User', 'test@test.com', hash, 'user', 'growth');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, 'Test User', 'test@test.com', hash, 'user', 'growth'],
+  );
   userToken = app.jwt.sign({ id: userId, email: 'test@test.com', name: 'Test User', role: 'user' });
 
   adminId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(adminId, 'Admin', 'admin@test.com', hash, 'admin', 'agency');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [adminId, 'Admin', 'admin@test.com', hash, 'admin', 'agency'],
+  );
   adminToken = app.jwt.sign({ id: adminId, email: 'admin@test.com', name: 'Admin', role: 'admin' });
 
   otherUserId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(otherUserId, 'Other', 'other@test.com', hash, 'user', 'growth');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [otherUserId, 'Other', 'other@test.com', hash, 'user', 'growth'],
+  );
   otherUserToken = app.jwt.sign({ id: otherUserId, email: 'other@test.com', name: 'Other', role: 'user' });
 }
 
-beforeAll(async () => { await buildApp(); });
-afterAll(async () => { await app.close(); testDb.close(); });
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  await buildApp();
+});
+
+afterAll(async () => {
+  await app.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedUsers();
+});
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function seedAgentRun(overrides: Record<string, any> = {}) {
+async function seedAgentRun(overrides: Record<string, any> = {}) {
+  // FK: agent_runs.user_id -> users (already seeded in beforeEach).
   const id = uuidv4();
-  testDb.prepare(
-    "INSERT INTO agent_runs (id, agent_type, user_id, status, started_at, completed_at, summary, raw_context) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?)"
-  ).run(
-    id,
-    overrides.agent_type || 'watchdog',
-    overrides.user_id || userId,
-    overrides.status || 'completed',
-    overrides.summary || 'Test run summary',
-    overrides.raw_context || null,
+  await getDbAdapter().run(
+    "INSERT INTO agent_runs (id, agent_type, user_id, status, started_at, completed_at, summary, raw_context) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'), ?, ?)",
+    [
+      id,
+      overrides.agent_type || 'watchdog',
+      overrides.user_id || userId,
+      overrides.status || 'completed',
+      overrides.summary || 'Test run summary',
+      overrides.raw_context || null,
+    ],
   );
   return id;
 }
 
-function seedAgentDecision(runId: string, overrides: Record<string, any> = {}) {
+async function seedAgentDecision(runId: string, overrides: Record<string, any> = {}) {
+  // FK: agent_decisions.run_id -> agent_runs, agent_decisions.user_id -> users.
   const id = uuidv4();
-  testDb.prepare(
+  await getDbAdapter().run(
     `INSERT INTO agent_decisions (id, run_id, user_id, account_id, type, target_id, target_name, reasoning, confidence, urgency, suggested_action, estimated_impact, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(
-    id,
-    runId,
-    overrides.user_id || userId,
-    overrides.account_id || 'act_123',
-    overrides.type || 'pause',
-    overrides.target_id || 'ad_456',
-    overrides.target_name || 'Test Ad',
-    overrides.reasoning || 'CPA too high',
-    overrides.confidence || 'high',
-    overrides.urgency || 'medium',
-    overrides.suggested_action || 'Pause this ad',
-    overrides.estimated_impact || 'Save $50/day',
-    overrides.status || 'pending',
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      runId,
+      overrides.user_id || userId,
+      overrides.account_id || 'act_123',
+      overrides.type || 'pause',
+      overrides.target_id || 'ad_456',
+      overrides.target_name || 'Test Ad',
+      overrides.reasoning || 'CPA too high',
+      overrides.confidence || 'high',
+      overrides.urgency || 'medium',
+      overrides.suggested_action || 'Pause this ad',
+      overrides.estimated_impact || 'Save $50/day',
+      overrides.status || 'pending',
+    ],
   );
   return id;
 }
@@ -210,7 +226,7 @@ describe('Agent Routes — Auth', () => {
 
 describe('GET /agent/runs', () => {
   it('returns runs for authenticated user', async () => {
-    const runId = seedAgentRun();
+    await seedAgentRun();
 
     const res = await app.inject({
       method: 'GET',
@@ -224,13 +240,11 @@ describe('GET /agent/runs', () => {
     expect(body.runs[0]).toHaveProperty('id');
     expect(body.runs[0]).toHaveProperty('agent_type');
     expect(body.runs[0]).toHaveProperty('status');
-
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('filters by agent_type', async () => {
-    const watchdogId = seedAgentRun({ agent_type: 'watchdog' });
-    const briefingId = seedAgentRun({ agent_type: 'briefing' });
+    await seedAgentRun({ agent_type: 'watchdog' });
+    await seedAgentRun({ agent_type: 'briefing' });
 
     const res = await app.inject({
       method: 'GET',
@@ -239,12 +253,12 @@ describe('GET /agent/runs', () => {
     });
     const body = res.json();
     expect(body.runs.every((r: any) => r.agent_type === 'watchdog')).toBe(true);
-
-    testDb.prepare('DELETE FROM agent_runs WHERE id IN (?, ?)').run(watchdogId, briefingId);
   });
 
   it('respects limit parameter', async () => {
-    const ids = [seedAgentRun(), seedAgentRun(), seedAgentRun()];
+    await seedAgentRun();
+    await seedAgentRun();
+    await seedAgentRun();
 
     const res = await app.inject({
       method: 'GET',
@@ -253,12 +267,10 @@ describe('GET /agent/runs', () => {
     });
     const body = res.json();
     expect(body.runs.length).toBeLessThanOrEqual(2);
-
-    for (const id of ids) testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(id);
   });
 
   it('does not return other user runs', async () => {
-    const otherId = seedAgentRun({ user_id: otherUserId });
+    const otherId = await seedAgentRun({ user_id: otherUserId });
 
     const res = await app.inject({
       method: 'GET',
@@ -268,8 +280,6 @@ describe('GET /agent/runs', () => {
     const body = res.json();
     const ids = body.runs.map((r: any) => r.id);
     expect(ids).not.toContain(otherId);
-
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(otherId);
   });
 
   it('rejects invalid agent_type', async () => {
@@ -288,8 +298,8 @@ describe('GET /agent/runs', () => {
 
 describe('GET /agent/decisions', () => {
   it('returns decisions for authenticated user', async () => {
-    const runId = seedAgentRun();
-    const decId = seedAgentDecision(runId);
+    const runId = await seedAgentRun();
+    const decId = await seedAgentDecision(runId);
 
     const res = await app.inject({
       method: 'GET',
@@ -306,15 +316,12 @@ describe('GET /agent/decisions', () => {
     expect(decision).toHaveProperty('reasoning');
     expect(decision).toHaveProperty('confidence');
     expect(decision).toHaveProperty('suggested_action');
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('filters by status', async () => {
-    const runId = seedAgentRun();
-    const pendingId = seedAgentDecision(runId, { status: 'pending' });
-    const approvedId = seedAgentDecision(runId, { status: 'approved' });
+    const runId = await seedAgentRun();
+    await seedAgentDecision(runId, { status: 'pending' });
+    await seedAgentDecision(runId, { status: 'approved' });
 
     const res = await app.inject({
       method: 'GET',
@@ -323,18 +330,13 @@ describe('GET /agent/decisions', () => {
     });
     const body = res.json();
     expect(body.decisions.every((d: any) => d.status === 'pending')).toBe(true);
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id IN (?, ?)').run(pendingId, approvedId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('respects limit parameter', async () => {
-    const runId = seedAgentRun();
-    const ids = [
-      seedAgentDecision(runId),
-      seedAgentDecision(runId),
-      seedAgentDecision(runId),
-    ];
+    const runId = await seedAgentRun();
+    await seedAgentDecision(runId);
+    await seedAgentDecision(runId);
+    await seedAgentDecision(runId);
 
     const res = await app.inject({
       method: 'GET',
@@ -343,14 +345,11 @@ describe('GET /agent/decisions', () => {
     });
     const body = res.json();
     expect(body.decisions.length).toBeLessThanOrEqual(2);
-
-    for (const id of ids) testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(id);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('does not return other user decisions', async () => {
-    const runId = seedAgentRun({ user_id: otherUserId });
-    const decId = seedAgentDecision(runId, { user_id: otherUserId });
+    const runId = await seedAgentRun({ user_id: otherUserId });
+    const decId = await seedAgentDecision(runId, { user_id: otherUserId });
 
     const res = await app.inject({
       method: 'GET',
@@ -360,9 +359,6 @@ describe('GET /agent/decisions', () => {
     const body = res.json();
     const ids = body.decisions.map((d: any) => d.id);
     expect(ids).not.toContain(decId);
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 });
 
@@ -372,8 +368,8 @@ describe('GET /agent/decisions', () => {
 
 describe('POST /agent/decisions/:id/approve', () => {
   it('approves a pending decision', async () => {
-    const runId = seedAgentRun();
-    const decId = seedAgentDecision(runId, { status: 'pending' });
+    const runId = await seedAgentRun();
+    const decId = await seedAgentDecision(runId, { status: 'pending' });
 
     const res = await app.inject({
       method: 'POST',
@@ -385,12 +381,9 @@ describe('POST /agent/decisions/:id/approve', () => {
     expect(body.success).toBe(true);
 
     // Verify DB state
-    const row = testDb.prepare('SELECT status, approved_at FROM agent_decisions WHERE id = ?').get(decId) as any;
+    const row = await getDbAdapter().get('SELECT status, approved_at FROM agent_decisions WHERE id = ?', [decId]) as any;
     expect(row.status).toBe('approved');
     expect(row.approved_at).not.toBeNull();
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('returns 404 for non-existent decision', async () => {
@@ -403,8 +396,8 @@ describe('POST /agent/decisions/:id/approve', () => {
   });
 
   it('returns 400 for already approved decision', async () => {
-    const runId = seedAgentRun();
-    const decId = seedAgentDecision(runId, { status: 'approved' });
+    const runId = await seedAgentRun();
+    const decId = await seedAgentDecision(runId, { status: 'approved' });
 
     const res = await app.inject({
       method: 'POST',
@@ -413,14 +406,11 @@ describe('POST /agent/decisions/:id/approve', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toContain('not pending');
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('returns 404 when approving another user decision', async () => {
-    const runId = seedAgentRun({ user_id: otherUserId });
-    const decId = seedAgentDecision(runId, { user_id: otherUserId });
+    const runId = await seedAgentRun({ user_id: otherUserId });
+    const decId = await seedAgentDecision(runId, { user_id: otherUserId });
 
     const res = await app.inject({
       method: 'POST',
@@ -428,9 +418,6 @@ describe('POST /agent/decisions/:id/approve', () => {
       headers: { Authorization: `Bearer ${userToken}` },
     });
     expect(res.statusCode).toBe(404);
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 });
 
@@ -440,8 +427,8 @@ describe('POST /agent/decisions/:id/approve', () => {
 
 describe('POST /agent/decisions/:id/reject', () => {
   it('rejects a pending decision', async () => {
-    const runId = seedAgentRun();
-    const decId = seedAgentDecision(runId, { status: 'pending' });
+    const runId = await seedAgentRun();
+    const decId = await seedAgentDecision(runId, { status: 'pending' });
 
     const res = await app.inject({
       method: 'POST',
@@ -453,11 +440,8 @@ describe('POST /agent/decisions/:id/reject', () => {
     expect(body.success).toBe(true);
     expect(body.message).toContain('Rejected');
 
-    const row = testDb.prepare('SELECT status FROM agent_decisions WHERE id = ?').get(decId) as any;
+    const row = await getDbAdapter().get('SELECT status FROM agent_decisions WHERE id = ?', [decId]) as any;
     expect(row.status).toBe('rejected');
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('returns 404 for non-existent decision', async () => {
@@ -470,8 +454,8 @@ describe('POST /agent/decisions/:id/reject', () => {
   });
 
   it('returns 400 for already rejected decision', async () => {
-    const runId = seedAgentRun();
-    const decId = seedAgentDecision(runId, { status: 'rejected' });
+    const runId = await seedAgentRun();
+    const decId = await seedAgentDecision(runId, { status: 'rejected' });
 
     const res = await app.inject({
       method: 'POST',
@@ -479,9 +463,6 @@ describe('POST /agent/decisions/:id/reject', () => {
       headers: { Authorization: `Bearer ${userToken}` },
     });
     expect(res.statusCode).toBe(400);
-
-    testDb.prepare('DELETE FROM agent_decisions WHERE id = ?').run(decId);
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 });
 
@@ -587,7 +568,7 @@ describe('GET /agent/briefing/latest', () => {
   });
 
   it('returns latest briefing when one exists', async () => {
-    const runId = seedAgentRun({
+    await seedAgentRun({
       agent_type: 'briefing',
       summary: 'Morning briefing: 3 accounts reviewed',
       raw_context: JSON.stringify({ accounts: 3, alerts: 1 }),
@@ -604,12 +585,10 @@ describe('GET /agent/briefing/latest', () => {
     expect(body.briefing).not.toBeNull();
     expect(body.briefing.summary).toContain('Morning briefing');
     expect(body.briefing.data).toHaveProperty('accounts');
-
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(runId);
   });
 
   it('returns only the user own briefing', async () => {
-    const otherRunId = seedAgentRun({
+    await seedAgentRun({
       agent_type: 'briefing',
       user_id: otherUserId,
       summary: 'Other user briefing',
@@ -625,7 +604,5 @@ describe('GET /agent/briefing/latest', () => {
     if (body.briefing) {
       expect(body.briefing.summary).not.toContain('Other user');
     }
-
-    testDb.prepare('DELETE FROM agent_runs WHERE id = ?').run(otherRunId);
   });
 });

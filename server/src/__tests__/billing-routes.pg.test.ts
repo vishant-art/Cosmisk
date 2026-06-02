@@ -1,24 +1,22 @@
 /**
- * Billing Routes Tests
+ * Billing Routes Tests (Postgres integration)
  *
  * Tests /billing/plans, /billing/status, /billing/start-trial, /billing/cancel endpoints.
- * Uses in-memory SQLite with mocked Stripe/Razorpay.
+ * Runs against the migrated Neon TEST BRANCH via the pg integration harness
+ * (DB_BACKEND=postgres). Stripe/Razorpay and other external services are mocked.
+ *
+ * DB-2 E1: ported from in-memory SQLite to the Postgres integration harness.
+ * Seeds via getDbAdapter() against the migrated test branch; per-test isolation
+ * via pg.reset() (TRUNCATE), so every test seeds its own rows (FK parent→child:
+ * users first, then subscriptions).
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
 import { vi } from 'vitest';
-
-let testDb: Database.Database;
-
-// Mock DB module
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 // Mock Stripe
 vi.mock('stripe', () => {
@@ -45,29 +43,36 @@ vi.mock('razorpay', () => {
   };
 });
 
-// Mock config to have Stripe/Razorpay keys absent (for "not configured" tests)
-vi.mock('../config.js', () => ({
-  config: {
-    stripeSecretKey: '',
-    stripeWebhookSecret: '',
-    razorpayKeyId: '',
-    razorpayKeySecret: '',
-    razorpayWebhookSecret: '',
-    appUrl: 'http://localhost:4200',
-    stripePriceSoloMonthly: 'price_solo_m',
-    stripePriceSoloAnnual: 'price_solo_a',
-    stripePriceGrowthMonthly: 'price_growth_m',
-    stripePriceGrowthAnnual: 'price_growth_a',
-    stripePriceAgencyMonthly: 'price_agency_m',
-    stripePriceAgencyAnnual: 'price_agency_a',
-    razorpayPlanSoloMonthly: 'plan_solo_m',
-    razorpayPlanSoloAnnual: 'plan_solo_a',
-    razorpayPlanGrowthMonthly: 'plan_growth_m',
-    razorpayPlanGrowthAnnual: 'plan_growth_a',
-    razorpayPlanAgencyMonthly: 'plan_agency_m',
-    razorpayPlanAgencyAnnual: 'plan_agency_a',
-  },
-}));
+// Mock config: spread the REAL env-driven config (preserving dbBackend ===
+// 'postgres' so the adapter routes to the pg test branch) and override only the
+// billing-gateway fields. Stripe/Razorpay keys are blank so getStripe()/
+// getRazorpay() return null (for the "not configured" tests).
+vi.mock('../config.js', async (orig) => {
+  const actual = (await orig()) as { config: Record<string, any> };
+  return {
+    config: {
+      ...actual.config,
+      stripeSecretKey: '',
+      stripeWebhookSecret: '',
+      razorpayKeyId: '',
+      razorpayKeySecret: '',
+      razorpayWebhookSecret: '',
+      appUrl: 'http://localhost:4200',
+      stripePriceSoloMonthly: 'price_solo_m',
+      stripePriceSoloAnnual: 'price_solo_a',
+      stripePriceGrowthMonthly: 'price_growth_m',
+      stripePriceGrowthAnnual: 'price_growth_a',
+      stripePriceAgencyMonthly: 'price_agency_m',
+      stripePriceAgencyAnnual: 'price_agency_a',
+      razorpayPlanSoloMonthly: 'plan_solo_m',
+      razorpayPlanSoloAnnual: 'plan_solo_a',
+      razorpayPlanGrowthMonthly: 'plan_growth_m',
+      razorpayPlanGrowthAnnual: 'plan_growth_a',
+      razorpayPlanAgencyMonthly: 'plan_agency_m',
+      razorpayPlanAgencyAnnual: 'plan_agency_a',
+    },
+  };
+});
 
 vi.mock('../services/meta-api.js', () => ({
   MetaApiService: class { async get() { return { data: [] }; } },
@@ -98,16 +103,12 @@ vi.mock('node-cron', () => ({
 // Import after mocks
 const { billingRoutes, PLAN_LIMITS, PLAN_PRICING } = await import('../routes/billing.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let testUserId: string;
 let authToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -122,23 +123,33 @@ async function buildApp() {
 
   await app.register(billingRoutes, { prefix: '/billing' });
   await app.ready();
+}
 
-  // Create test user on free plan
+async function seedBaseUser() {
+  // Create test user on free plan (parent row — FK order: users first).
   testUserId = uuidv4();
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'Billing Test', 'billing@test.com', hash, 'user', 'free');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [testUserId, 'Billing Test', 'billing@test.com', hash, 'user', 'free'],
+  );
 
   authToken = app.jwt.sign({ id: testUserId, email: 'billing@test.com', name: 'Billing Test', role: 'user' });
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
   await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedBaseUser();
 });
 
 /* ------------------------------------------------------------------ */
@@ -276,13 +287,14 @@ describe('GET /billing/status', () => {
   });
 
   it('returns subscription details when active subscription exists', async () => {
-    // Seed an active subscription
+    // Seed an active subscription (FK: user already seeded in beforeEach).
     const subId = uuidv4();
-    testDb.prepare(`
-      INSERT INTO subscriptions (id, user_id, plan, status, gateway, current_period_start, current_period_end, created_at, updated_at)
-      VALUES (?, ?, 'growth', 'active', 'stripe', datetime('now'), datetime('now', '+30 days'), datetime('now'), datetime('now'))
-    `).run(subId, testUserId);
-    testDb.prepare("UPDATE users SET plan = 'growth' WHERE id = ?").run(testUserId);
+    await getDbAdapter().run(
+      `INSERT INTO subscriptions (id, user_id, plan, status, gateway, current_period_start, current_period_end, created_at, updated_at)
+       VALUES (?, ?, 'growth', 'active', 'stripe', datetime('now'), datetime('now', '+30 days'), datetime('now'), datetime('now'))`,
+      [subId, testUserId],
+    );
+    await getDbAdapter().run("UPDATE users SET plan = 'growth' WHERE id = ?", [testUserId]);
 
     const res = await app.inject({
       method: 'GET',
@@ -294,10 +306,6 @@ describe('GET /billing/status', () => {
     expect(body.subscription).not.toBeNull();
     expect(body.subscription.status).toBe('active');
     expect(body.subscription.gateway).toBe('stripe');
-
-    // Clean up
-    testDb.prepare('DELETE FROM subscriptions WHERE id = ?').run(subId);
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
   });
 });
 
@@ -316,10 +324,7 @@ describe('POST /billing/start-trial', () => {
   });
 
   it('starts a 14-day trial for free user', async () => {
-    // Ensure user is on free plan
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
-    testDb.prepare('DELETE FROM subscriptions WHERE user_id = ?').run(testUserId);
-
+    // User is on free plan with no subscriptions (from beforeEach seed).
     const res = await app.inject({
       method: 'POST',
       url: '/billing/start-trial',
@@ -341,7 +346,9 @@ describe('POST /billing/start-trial', () => {
   });
 
   it('rejects trial if user already on paid plan', async () => {
-    // User is now on growth trial from previous test
+    // Seed self-contained state: user is on a paid plan.
+    await getDbAdapter().run("UPDATE users SET plan = 'growth' WHERE id = ?", [testUserId]);
+
     const res = await app.inject({
       method: 'POST',
       url: '/billing/start-trial',
@@ -355,9 +362,16 @@ describe('POST /billing/start-trial', () => {
   });
 
   it('rejects second trial after first trial used', async () => {
-    // Reset user to free but keep the trial subscription record
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
-    testDb.prepare("UPDATE subscriptions SET status = 'expired' WHERE user_id = ?").run(testUserId);
+    // Seed self-contained state: user is free but has a prior trial sub
+    // (trial_ends_at IS NOT NULL marks the trial as already used).
+    const subId = uuidv4();
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 14);
+    await getDbAdapter().run(
+      `INSERT INTO subscriptions (id, user_id, plan, status, trial_ends_at, gateway, created_at, updated_at)
+       VALUES (?, ?, 'growth', 'expired', ?, 'none', datetime('now'), datetime('now'))`,
+      [subId, testUserId, trialEnd.toISOString()],
+    );
 
     const res = await app.inject({
       method: 'POST',
@@ -371,10 +385,7 @@ describe('POST /billing/start-trial', () => {
   });
 
   it('rejects invalid plan body', async () => {
-    // Clean up all subscriptions for this user to reset state
-    testDb.prepare('DELETE FROM subscriptions WHERE user_id = ?').run(testUserId);
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
-
+    // User is free with no subscriptions (from beforeEach seed).
     const res = await app.inject({
       method: 'POST',
       url: '/billing/start-trial',
@@ -400,10 +411,7 @@ describe('POST /billing/cancel', () => {
   });
 
   it('returns 400 when no active subscription exists', async () => {
-    // Clean up any subscriptions
-    testDb.prepare('DELETE FROM subscriptions WHERE user_id = ?').run(testUserId);
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
-
+    // User is free with no subscriptions (from beforeEach seed).
     const res = await app.inject({
       method: 'POST',
       url: '/billing/cancel',
@@ -415,15 +423,16 @@ describe('POST /billing/cancel', () => {
   });
 
   it('cancels a trialing subscription immediately', async () => {
-    // Seed a trialing subscription
+    // Seed a trialing subscription (FK: user already seeded in beforeEach).
     const subId = uuidv4();
     const trialEnd = new Date();
     trialEnd.setDate(trialEnd.getDate() + 14);
-    testDb.prepare(`
-      INSERT INTO subscriptions (id, user_id, plan, status, trial_ends_at, gateway, created_at, updated_at)
-      VALUES (?, ?, 'growth', 'trialing', ?, 'none', datetime('now'), datetime('now'))
-    `).run(subId, testUserId, trialEnd.toISOString());
-    testDb.prepare("UPDATE users SET plan = 'growth' WHERE id = ?").run(testUserId);
+    await getDbAdapter().run(
+      `INSERT INTO subscriptions (id, user_id, plan, status, trial_ends_at, gateway, created_at, updated_at)
+       VALUES (?, ?, 'growth', 'trialing', ?, 'none', datetime('now'), datetime('now'))`,
+      [subId, testUserId, trialEnd.toISOString()],
+    );
+    await getDbAdapter().run("UPDATE users SET plan = 'growth' WHERE id = ?", [testUserId]);
 
     const res = await app.inject({
       method: 'POST',
@@ -436,11 +445,11 @@ describe('POST /billing/cancel', () => {
     expect(body.cancelled).toBe(true);
 
     // Verify user is back to free
-    const user = testDb.prepare('SELECT plan FROM users WHERE id = ?').get(testUserId) as { plan: string };
+    const user = await getDbAdapter().get('SELECT plan FROM users WHERE id = ?', [testUserId]) as { plan: string };
     expect(user.plan).toBe('free');
 
     // Verify subscription is cancelled
-    const sub = testDb.prepare('SELECT status FROM subscriptions WHERE id = ?').get(subId) as { status: string };
+    const sub = await getDbAdapter().get('SELECT status FROM subscriptions WHERE id = ?', [subId]) as { status: string };
     expect(sub.status).toBe('cancelled');
   });
 });
@@ -460,10 +469,8 @@ describe('POST /billing/create-checkout', () => {
   });
 
   it('returns 503 when Stripe is not configured', async () => {
-    // Config mock has empty stripeSecretKey, so getStripe() returns null
-    testDb.prepare('DELETE FROM subscriptions WHERE user_id = ?').run(testUserId);
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
-
+    // Config mock has empty stripeSecretKey, so getStripe() returns null.
+    // User is free with no subscriptions (from beforeEach seed).
     const res = await app.inject({
       method: 'POST',
       url: '/billing/create-checkout',
@@ -512,9 +519,7 @@ describe('POST /billing/create-portal', () => {
   });
 
   it('returns 400 when no active subscription', async () => {
-    testDb.prepare('DELETE FROM subscriptions WHERE user_id = ?').run(testUserId);
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
-
+    // User is free with no subscriptions (from beforeEach seed).
     const res = await app.inject({
       method: 'POST',
       url: '/billing/create-portal',
@@ -526,12 +531,14 @@ describe('POST /billing/create-portal', () => {
   });
 
   it('returns manage_url null for razorpay subscriptions', async () => {
+    // Seed an active razorpay subscription (FK: user already seeded in beforeEach).
     const subId = uuidv4();
-    testDb.prepare(`
-      INSERT INTO subscriptions (id, user_id, plan, status, gateway, created_at, updated_at)
-      VALUES (?, ?, 'growth', 'active', 'razorpay', datetime('now'), datetime('now'))
-    `).run(subId, testUserId);
-    testDb.prepare("UPDATE users SET plan = 'growth' WHERE id = ?").run(testUserId);
+    await getDbAdapter().run(
+      `INSERT INTO subscriptions (id, user_id, plan, status, gateway, created_at, updated_at)
+       VALUES (?, ?, 'growth', 'active', 'razorpay', datetime('now'), datetime('now'))`,
+      [subId, testUserId],
+    );
+    await getDbAdapter().run("UPDATE users SET plan = 'growth' WHERE id = ?", [testUserId]);
 
     const res = await app.inject({
       method: 'POST',
@@ -543,9 +550,5 @@ describe('POST /billing/create-portal', () => {
     expect(body.success).toBe(true);
     expect(body.gateway).toBe('razorpay');
     expect(body.manage_url).toBeNull();
-
-    // Clean up
-    testDb.prepare('DELETE FROM subscriptions WHERE id = ?').run(subId);
-    testDb.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(testUserId);
   });
 });

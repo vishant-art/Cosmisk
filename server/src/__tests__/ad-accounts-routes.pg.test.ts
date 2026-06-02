@@ -1,22 +1,17 @@
 /**
- * Ad Accounts Route Tests
+ * Ad Accounts Route Tests (Postgres integration)
  *
  * Integration tests for /ad-accounts endpoints.
  * Tests list, KPIs, top-ads, video-source, portfolio-health, pages.
+ * Runs against the migrated Neon TEST BRANCH via the pg integration harness
+ * (DB_BACKEND=postgres). External services are mocked.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
-
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 const mockMetaGet = vi.fn().mockResolvedValue({ data: [] });
 const mockMetaGetAllPages = vi.fn().mockResolvedValue([]);
@@ -52,16 +47,12 @@ vi.mock('@anthropic-ai/sdk', () => ({
 
 const { adAccountRoutes } = await import('../routes/ad-accounts.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let userId: string;
 let userToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -73,18 +64,33 @@ async function buildApp() {
 
   await app.register(adAccountRoutes, { prefix: '/ad-accounts' });
   await app.ready();
+}
 
+async function seedUser() {
+  // FK order: users are parents — seed before any meta_tokens.
   const hash = bcrypt.hashSync('SecurePass123!', 10);
 
   userId = uuidv4();
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId, 'Test User', 'test@test.com', hash, 'user', 'growth');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, 'Test User', 'test@test.com', hash, 'user', 'growth'],
+  );
   userToken = app.jwt.sign({ id: userId, email: 'test@test.com', name: 'Test User', role: 'user' });
 }
 
-beforeAll(async () => { await buildApp(); });
-afterAll(async () => { await app.close(); testDb.close(); });
-beforeEach(() => {
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  await buildApp();
+});
+
+afterAll(async () => {
+  await app.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+  await seedUser();
   mockMetaGet.mockReset().mockResolvedValue({ data: [] });
   mockMetaGetAllPages.mockReset().mockResolvedValue([]);
 });
@@ -130,8 +136,10 @@ describe('GET /ad-accounts/list', () => {
   });
 
   it('returns accounts from Meta API when token exists', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGetAllPages.mockResolvedValue([
       { id: 'act_111', account_id: '111', name: 'Brand One', business_name: 'Biz', account_status: 1, currency: 'INR' },
@@ -151,13 +159,13 @@ describe('GET /ad-accounts/list', () => {
     expect(body.accounts[0].status).toBe('active');
     expect(body.accounts[0].currency).toBe('INR');
     expect(body.accounts[1].status).toBe('inactive');
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 
   it('handles rate limit errors gracefully', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGetAllPages.mockRejectedValue(new Error('too many calls to this API'));
 
@@ -168,8 +176,6 @@ describe('GET /ad-accounts/list', () => {
     });
     // Route catches the error — returns 200 with empty data or error status
     expect(res.statusCode).toBeLessThan(500);
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
 
@@ -200,8 +206,10 @@ describe('GET /ad-accounts/kpis', () => {
   });
 
   it('returns KPI data when Meta token exists', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGet.mockResolvedValue({
       data: [{ spend: '500.00', impressions: '10000', clicks: '200', ctr: '2.0', cpc: '2.50' }],
@@ -220,13 +228,13 @@ describe('GET /ad-accounts/kpis', () => {
     expect(body.kpis).toHaveProperty('cpa');
     expect(body.kpis.spend).toHaveProperty('value');
     expect(body.kpis.spend).toHaveProperty('change');
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 
   it('accepts date_preset parameter', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGet.mockResolvedValue({ data: [{}] });
 
@@ -236,8 +244,6 @@ describe('GET /ad-accounts/kpis', () => {
       headers: { Authorization: `Bearer ${userToken}` },
     });
     expect(res.statusCode).toBe(200);
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
 
@@ -267,8 +273,10 @@ describe('GET /ad-accounts/top-ads', () => {
   });
 
   it('returns ads sorted by spend descending', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGet.mockResolvedValue({
       data: [
@@ -302,8 +310,6 @@ describe('GET /ad-accounts/top-ads', () => {
     expect(body.ads[0].name).toBe('High Spend Ad');
     expect(body.ads[0].metrics.spend).toBeGreaterThan(body.ads[1].metrics.spend);
     expect(body.ads[1].campaign_name).toBe('Campaign A');
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
 
@@ -333,8 +339,10 @@ describe('GET /ad-accounts/video-source', () => {
   });
 
   it('returns video URL from direct source', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGet.mockResolvedValue({ source: 'https://video.fb.com/v123.mp4' });
 
@@ -347,13 +355,13 @@ describe('GET /ad-accounts/video-source', () => {
     expect(res.statusCode).toBe(200);
     expect(body.success).toBe(true);
     expect(body.video_url).toBe('https://video.fb.com/v123.mp4');
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 
   it('falls back to embed_html when direct source unavailable', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     // First call (direct source) fails, second call returns embed_html
     mockMetaGet
@@ -369,8 +377,6 @@ describe('GET /ad-accounts/video-source', () => {
     expect(res.statusCode).toBe(200);
     expect(body.success).toBe(true);
     expect(body.video_url).toContain('facebook.com');
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
 
@@ -391,8 +397,10 @@ describe('GET /ad-accounts/portfolio-health', () => {
   });
 
   it('returns portfolio summary when token exists', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGetAllPages.mockResolvedValue([
       { id: 'act_111', account_id: '111', name: 'Brand A', account_status: 1, currency: 'INR' },
@@ -415,13 +423,13 @@ describe('GET /ad-accounts/portfolio-health', () => {
     expect(body.portfolio).toHaveProperty('avgRoas');
     expect(body.portfolio).toHaveProperty('needsAttention');
     expect(Array.isArray(body.accounts)).toBe(true);
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 
   it('handles rate limit errors on portfolio health', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGetAllPages.mockRejectedValue(new Error('rate limit reached'));
 
@@ -432,8 +440,6 @@ describe('GET /ad-accounts/portfolio-health', () => {
     });
     // Route catches the error gracefully — doesn't crash with 500
     expect(res.statusCode).toBeLessThan(500);
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
 
@@ -454,8 +460,10 @@ describe('GET /ad-accounts/pages', () => {
   });
 
   it('returns pages from Meta API', async () => {
-    testDb.prepare('INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)')
-      .run(userId, 'enc_token', 'meta_123', 'Meta User');
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [userId, 'enc_token', 'meta_123', 'Meta User'],
+    );
 
     mockMetaGet.mockResolvedValue({
       data: [
@@ -475,7 +483,5 @@ describe('GET /ad-accounts/pages', () => {
     expect(body.pages[0].name).toBe('My Page');
     expect(body.pages[0].picture_url).toBe('https://img.com/pic.jpg');
     expect(body.pages[1].picture_url).toBe('');
-
-    testDb.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(userId);
   });
 });
