@@ -287,7 +287,7 @@ async function getPastDecisions(userId: string, accountId: string): Promise<Agen
   return await getDbAdapter().all<AgentDecisionRow>(`
     SELECT * FROM agent_decisions
     WHERE user_id = ? AND account_id = ?
-    ORDER BY rowid DESC LIMIT 20
+    ORDER BY created_at DESC LIMIT 20
   `, [userId, accountId]);
 }
 

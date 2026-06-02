@@ -141,6 +141,15 @@ export function translateSqliteToPg(sql: string): string {
     (_m, col: string, key: string) => `(${col})::jsonb->>'${key}'`,
   );
 
+  // SQLite scalar MIN(a, b) / MAX(a, b) → Postgres LEAST(a, b) / GREATEST(a, b).
+  // In Postgres MIN/MAX are AGGREGATE-only; scalar min/max is LEAST/GREATEST.
+  // Only the TWO-ARGUMENT form with simple (paren/comma-free) args is matched, so
+  // single-arg aggregates `MIN(col)` / `MAX(col)` and `SELECT MIN(a), MAX(b)` are
+  // left untouched. Runs before placeholder substitution, so `?` is still present
+  // inside the args (allowed by the [^(),] arg class).
+  out = out.replace(/\bMIN\(\s*([^(),]+?)\s*,\s*([^(),]+?)\s*\)/gi, 'LEAST($1, $2)');
+  out = out.replace(/\bMAX\(\s*([^(),]+?)\s*,\s*([^(),]+?)\s*\)/gi, 'GREATEST($1, $2)');
+
   return out;
 }
 

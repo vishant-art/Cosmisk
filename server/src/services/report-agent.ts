@@ -144,7 +144,7 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
     const topCreatives = await db.all(`
       SELECT ad_name, hook, visual, audio, visual_analysis FROM dna_cache
       WHERE account_id = ? AND visual_analysis IS NOT NULL
-      ORDER BY rowid DESC LIMIT 10
+      ORDER BY analyzed_at DESC LIMIT 10
     `, [accountId]) as Array<{ ad_name: string; hook: string; visual: string; audio: string; visual_analysis: string }>;
 
     // Get last report for comparison

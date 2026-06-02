@@ -111,7 +111,7 @@ export async function runContentAgent(userId: string, accountId: string, metaSer
     const topCreatives = await db.all(`
       SELECT ad_name, hook, visual, audio, visual_analysis FROM dna_cache
       WHERE account_id = ? AND visual_analysis IS NOT NULL
-      ORDER BY rowid DESC LIMIT 20
+      ORDER BY analyzed_at DESC LIMIT 20
     `, [accountId]) as Array<{ ad_name: string; hook: string; visual: string; audio: string; visual_analysis: string }>;
 
     // 2. Gather recent ad performance

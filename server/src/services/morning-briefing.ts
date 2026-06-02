@@ -62,7 +62,7 @@ async function gatherBriefingSources(userId: string): Promise<BriefingSource> {
     db.all<AgentDecisionRow>(`
         SELECT * FROM agent_decisions
         WHERE user_id = ? AND status = 'pending'
-        ORDER BY rowid DESC LIMIT 20
+        ORDER BY created_at DESC LIMIT 20
       `, [userId]),
 
     // Recently executed decisions (last 24h)
@@ -70,7 +70,7 @@ async function gatherBriefingSources(userId: string): Promise<BriefingSource> {
         SELECT * FROM agent_decisions
         WHERE user_id = ? AND status = 'executed'
         AND executed_at > datetime('now', '-1 day')
-        ORDER BY rowid DESC LIMIT 10
+        ORDER BY created_at DESC LIMIT 10
       `, [userId]),
 
     // Unread autopilot alerts (last 24h)

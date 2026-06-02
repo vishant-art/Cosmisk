@@ -65,6 +65,17 @@ describe('dialect shim — translateSqliteToPg', () => {
     expect(translateSqliteToPg("json_extract(c, '$.x')")).toBe("(c)::jsonb->>'x'");
   });
 
+  it('translates scalar MIN(a,b)/MAX(a,b) → LEAST/GREATEST (pg has no scalar MIN/MAX)', () => {
+    expect(translateSqliteToPg('MIN(relevance_score + 1, 3.0)')).toBe('LEAST(relevance_score + 1, 3.0)');
+    expect(translateSqliteToPg('MAX(relevance_score - 1, 0.1)')).toBe('GREATEST(relevance_score - 1, 0.1)');
+  });
+
+  it('leaves single-arg aggregate MIN(col)/MAX(col) untouched', () => {
+    expect(translateSqliteToPg('SELECT MIN(created_at), MAX(updated_at) FROM t')).toBe(
+      'SELECT MIN(created_at), MAX(updated_at) FROM t',
+    );
+  });
+
   it('leaves INSERT OR REPLACE verbatim (manual conversion site)', () => {
     const sql = 'INSERT OR REPLACE INTO t (id) VALUES (?)';
     expect(translateSqliteToPg(sql)).toBe(sql);

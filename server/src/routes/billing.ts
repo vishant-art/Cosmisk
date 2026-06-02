@@ -128,7 +128,7 @@ export async function getUsage(userId: string): Promise<UserUsageRow> {
   const period = getCurrentPeriod();
   let row = await getDbAdapter().get<UserUsageRow>('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]);
   if (!row) {
-    await getDbAdapter().run('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)', [userId, period]);
+    await getDbAdapter().run('INSERT INTO user_usage (user_id, period) VALUES (?, ?) ON CONFLICT (user_id, period) DO NOTHING', [userId, period]);
     row = await getDbAdapter().get<UserUsageRow>('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]) as UserUsageRow;
   }
   return row;
@@ -138,7 +138,7 @@ export type UsageField = 'chat_count' | 'image_count' | 'video_count' | 'creativ
 
 export async function incrementUsage(userId: string, field: UsageField, amount = 1): Promise<void> {
   const period = getCurrentPeriod();
-  await getDbAdapter().run('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)', [userId, period]);
+  await getDbAdapter().run('INSERT INTO user_usage (user_id, period) VALUES (?, ?) ON CONFLICT (user_id, period) DO NOTHING', [userId, period]);
   await getDbAdapter().run(`UPDATE user_usage SET ${field} = ${field} + ? WHERE user_id = ? AND period = ?`, [amount, userId, period]);
 }
 

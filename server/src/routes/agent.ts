@@ -254,7 +254,7 @@ export async function agentRoutes(app: FastifyInstance) {
       params.push(status);
     }
 
-    query += ' ORDER BY rowid DESC LIMIT ?';
+    query += ' ORDER BY created_at DESC LIMIT ?';
     params.push(limit);
 
     const decisions = await getDbAdapter().all<AgentDecisionRow>(query, params);

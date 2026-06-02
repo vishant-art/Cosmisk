@@ -329,7 +329,7 @@ function mapRowToBehaviorEvent(row: any): BehaviorEvent {
 export async function saveOperatorProfile(profile: OperatorProfile): Promise<void> {
   const db = getDbAdapter();
   await db.run(`
-    INSERT OR REPLACE INTO operator_profiles (
+    INSERT INTO operator_profiles (
       operator_id, client_id, last_updated, preferred_times, avg_session_duration,
       sessions_per_week, preferred_insight_types, ignored_insight_types,
       preferred_detail_level, urgency_threshold, avg_decision_time, action_rate,

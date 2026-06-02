@@ -106,7 +106,7 @@ export async function getSalesContext(userId: string): Promise<SalesContext> {
     const recentDecisions = await getDbAdapter().all(`
       SELECT type, target_name, outcome FROM agent_decisions
       WHERE user_id = ? AND outcome IS NOT NULL
-      ORDER BY rowid DESC LIMIT 10
+      ORDER BY created_at DESC LIMIT 10
     `, [userId]) as Array<{ type: string; target_name: string; outcome: string | null }>;
 
     // Client profile
