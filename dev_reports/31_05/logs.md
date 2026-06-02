@@ -236,3 +236,13 @@ First leaf wave of the services layer. Composer barrier (graph update + impact +
 - **Orchestration rule going forward:** fan-out agents only for small disjoint leaves (≤~8 sites); **hubs + heavy + entangled files done DIRECTLY** (controlled transform + tsc/suite gate). The composer-barrier discipline (tsc baseline-only + 921/0/19 deterministic) holds either way.
 
 **M2.3 status:** 11/~20 services converted (waves 1–3). Remaining: hub wave (`agent-memory`, `notifications`) + heavy fan-in (`service-clients`/`job-queue`/`intelligence-persistence`/`ad-watchdog`) + mid-tier + `llm-gateway` + `cohort-ltv` (with ad-watchdog) — mostly DIRECT.
+
+---
+
+## 14. DB-2 — M2.3 hubs (DIRECT) — 2026-06-02
+
+Per the orchestration rule (hubs/heavy done directly, not fan-out):
+- **`agent-memory` (`6c86ed4`)** — the real hub: 13 sites; **8 fns flipped sync→async** + private `upsertEntity` + the `recordEpisode` `.then` callback. Cascade resolved by `tsc`-guided `await` patching across **7 importers** (already-converted services got awaits; `ad-watchdog`/`sales-agent` got awaits only on their already-async fns — partial, rest stays sync until their wave; the `runDecay` cron made async) + ported `agent-memory.test.ts`. 921/0/19 ×2.
+- **`notifications` (`2dbb7fa`)** — 9 importers but **1 site, zero cascade**: both exports were already async + already awaited at every call site. Converted the lone `notifyAlert` lookup; no importer changes. 921/0/19.
+
+**M2.3 status:** routes 100%; services ≈15 done; **21 service files remain** (~190 sites): heavy (`service-clients`27/`job-queue`23/`intelligence-persistence`23/`ad-watchdog`19/`sales-agent`16/`recommendation-loop`13/`learning-engine`13/`intelligence-infrastructure`13), mid-tier (12 files, ≤5 sites), `llm-gateway`(4, last). All DIRECT (heavy) or small fan-out (trivial). Then M2.4→M2.9.
