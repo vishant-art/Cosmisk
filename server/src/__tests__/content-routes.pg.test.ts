@@ -1,24 +1,19 @@
 /**
- * Content Routes Tests
+ * Content Routes Tests (Postgres integration — DB-2 E1 port)
  *
  * Tests for /content endpoints: weekly-stats, save, save-batch, bank CRUD, generate.
- * External APIs (Claude, Meta) are mocked. In-memory SQLite with real Zod validation.
+ * External APIs (Claude, Meta) are mocked. Runs against the migrated Neon TEST
+ * BRANCH via the pg harness (DB_BACKEND=postgres) with real Zod validation.
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
-let testDb: Database.Database;
-
-// Mock DB
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+let pg: MigratedTestPg;
 
 // Mock external services
 vi.mock('../services/meta-api.js', () => ({
@@ -75,11 +70,6 @@ let testUserId: string;
 let authToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -97,19 +87,26 @@ async function buildApp() {
 
   testUserId = uuidv4();
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'Content Test User', 'content@test.com', hash, 'user', 'growth');
+  // FK order: users (parent) must exist before any content_bank rows.
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [testUserId, 'Content Test User', 'content@test.com', hash, 'user', 'growth'],
+  );
 
   authToken = app.jwt.sign({ id: testUserId, email: 'content@test.com', name: 'Content Test User', role: 'user' });
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
+  // Single isolated run: clean the shared branch once, then seed incrementally
+  // across the describe-block beforeAll hooks (this suite never resets per-test).
+  await pg.reset();
   await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
 });
 
 function authHeaders() {
@@ -326,10 +323,10 @@ describe('GET /content/bank', () => {
     for (let i = 0; i < 5; i++) {
       const id = uuidv4();
       if (i === 0) savedContentId = id;
-      testDb.prepare(`
+      await getDbAdapter().run(`
         INSERT INTO content_bank (id, user_id, platform, content_type, title, body, status, source)
         VALUES (?, ?, ?, 'post', ?, ?, ?, 'manual')
-      `).run(id, testUserId, platforms[i % 3], `Post ${i}`, `Body of post ${i}`, i === 0 ? 'scheduled' : 'draft');
+      `, [id, testUserId, platforms[i % 3], `Post ${i}`, `Body of post ${i}`, i === 0 ? 'scheduled' : 'draft']);
     }
   });
 
@@ -404,12 +401,12 @@ describe('GET /content/bank', () => {
 
   it('does not return other users content', async () => {
     const otherUserId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(otherUserId, 'Other', 'other-content@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free');
-    testDb.prepare(`
+    await getDbAdapter().run('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [otherUserId, 'Other', 'other-content@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free']);
+    await getDbAdapter().run(`
       INSERT INTO content_bank (id, user_id, platform, content_type, body, status)
       VALUES (?, ?, 'twitter', 'post', 'Other users content', 'draft')
-    `).run(uuidv4(), otherUserId);
+    `, [uuidv4(), otherUserId]);
 
     const res = await app.inject({
       method: 'GET',
@@ -429,12 +426,12 @@ describe('GET /content/bank', () => {
 describe('PUT /content/bank/:id', () => {
   let contentId: string;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     contentId = uuidv4();
-    testDb.prepare(`
+    await getDbAdapter().run(`
       INSERT INTO content_bank (id, user_id, platform, content_type, body, status)
       VALUES (?, ?, 'twitter', 'post', 'Original body', 'draft')
-    `).run(contentId, testUserId);
+    `, [contentId, testUserId]);
   });
 
   it('updates content body', async () => {
@@ -500,12 +497,12 @@ describe('PUT /content/bank/:id', () => {
   it('does not allow updating another users content', async () => {
     const otherUserId = uuidv4();
     const otherId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(otherUserId, 'Other2', 'other2-content@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free');
-    testDb.prepare(`
+    await getDbAdapter().run('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [otherUserId, 'Other2', 'other2-content@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free']);
+    await getDbAdapter().run(`
       INSERT INTO content_bank (id, user_id, platform, content_type, body, status)
       VALUES (?, ?, 'twitter', 'post', 'Other body', 'draft')
-    `).run(otherId, otherUserId);
+    `, [otherId, otherUserId]);
 
     const res = await app.inject({
       method: 'PUT',
@@ -523,10 +520,10 @@ describe('PUT /content/bank/:id', () => {
 describe('DELETE /content/bank/:id', () => {
   it('deletes content item', async () => {
     const id = uuidv4();
-    testDb.prepare(`
+    await getDbAdapter().run(`
       INSERT INTO content_bank (id, user_id, platform, content_type, body, status)
       VALUES (?, ?, 'twitter', 'post', 'To be deleted', 'draft')
-    `).run(id, testUserId);
+    `, [id, testUserId]);
 
     const res = await app.inject({
       method: 'DELETE',
@@ -551,12 +548,12 @@ describe('DELETE /content/bank/:id', () => {
   it('cannot delete another users content', async () => {
     const otherUserId = uuidv4();
     const otherId = uuidv4();
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(otherUserId, 'Other3', 'other3-content@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free');
-    testDb.prepare(`
+    await getDbAdapter().run('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [otherUserId, 'Other3', 'other3-content@test.com', bcrypt.hashSync('Test123!', 10), 'user', 'free']);
+    await getDbAdapter().run(`
       INSERT INTO content_bank (id, user_id, platform, content_type, body, status)
       VALUES (?, ?, 'twitter', 'post', 'Protected body', 'draft')
-    `).run(otherId, otherUserId);
+    `, [otherId, otherUserId]);
 
     const res = await app.inject({
       method: 'DELETE',

@@ -3,17 +3,17 @@
  *
  * Tests notifyAlert() with various user preference configurations,
  * Slack webhook payloads, email dispatch, and alert type filtering.
+ *
+ * DB-2 E1: ported from in-memory SQLite to the Postgres integration harness.
+ * Runs under vitest.pg.config.ts (DB_BACKEND=postgres + Neon test branch).
+ * Seeds via getDbAdapter() against the migrated test branch; per-test isolation
+ * via pg.reset() (TRUNCATE).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
-import { createTables } from '../db/schema.js';
-import { v4 as uuidv4 } from 'uuid';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from 'vitest';
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
-let testDb: Database.Database;
-
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-}));
+let pg: MigratedTestPg;
 
 // Mock safeFetch to capture outgoing HTTP calls
 const mockSafeFetch = vi.fn();
@@ -21,15 +21,25 @@ vi.mock('../utils/safe-fetch.js', () => ({
   safeFetch: (...args: any[]) => mockSafeFetch(...args),
 }));
 
-// Mock config with controllable values
-const mockConfig = {
+// Controllable config values the tests mutate at runtime. We spread the REAL
+// env-driven config (preserving dbBackend === 'postgres' so the adapter routes
+// to the pg test branch) and override only the notification-channel fields via
+// a Proxy, so dbBackend and everything else fall through to the real config.
+const mockConfig: Record<string, any> = {
   slackWebhookUrl: 'https://hooks.slack.com/global-webhook',
   resendApiKey: 'test-resend-key',
   alertEmailFrom: 'alerts@cosmisk.ai',
 };
-vi.mock('../config.js', () => ({
-  config: mockConfig,
-}));
+vi.mock('../config.js', async (orig) => {
+  const actual = (await orig()) as { config: Record<string, any> };
+  return {
+    config: new Proxy(actual.config, {
+      get(target, prop: string) {
+        return prop in mockConfig ? mockConfig[prop] : (target as any)[prop];
+      },
+    }),
+  };
+});
 
 vi.mock('../utils/logger.js', () => ({
   logger: {
@@ -41,17 +51,22 @@ vi.mock('../utils/logger.js', () => ({
 
 const TEST_USER_ID = 'user-notif-1';
 
-describe('Notifications — notifyAlert', () => {
-  beforeEach(() => {
-    testDb = new Database(':memory:');
-    testDb.pragma('journal_mode = WAL');
-    testDb.pragma('foreign_keys = ON');
-    createTables(testDb);
+beforeAll(async () => {
+  pg = await getMigratedTestPg();
+});
+afterAll(async () => {
+  await pg.teardown();
+});
 
-    // Insert test user
-    testDb.prepare(
-      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
-    ).run(TEST_USER_ID, 'Test User', 'test@cosmisk.com', 'hash');
+describe('Notifications — notifyAlert', () => {
+  beforeEach(async () => {
+    await pg.reset();
+
+    // Insert test user (FK parent — no dependents seeded here).
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',
+      [TEST_USER_ID, 'Test User', 'test@cosmisk.com', 'hash'],
+    );
 
     mockSafeFetch.mockReset();
     // Default: all fetches succeed
@@ -59,7 +74,6 @@ describe('Notifications — notifyAlert', () => {
   });
 
   afterEach(() => {
-    testDb.close();
     vi.restoreAllMocks();
   });
 
@@ -93,8 +107,10 @@ describe('Notifications — notifyAlert', () => {
     });
 
     it('uses user-level Slack webhook when set in preferences', async () => {
-      testDb.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?')
-        .run(JSON.stringify({ slack_webhook: 'https://hooks.slack.com/user-webhook' }), TEST_USER_ID);
+      await getDbAdapter().run(
+        'UPDATE users SET notification_preferences = ? WHERE id = ?',
+        [JSON.stringify({ slack_webhook: 'https://hooks.slack.com/user-webhook' }), TEST_USER_ID],
+      );
 
       const { notifyAlert } = await import('../services/notifications.js');
       await notifyAlert(TEST_USER_ID, {
@@ -149,8 +165,10 @@ describe('Notifications — notifyAlert', () => {
     });
 
     it('sends email when user has email_alerts enabled', async () => {
-      testDb.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?')
-        .run(JSON.stringify({ email_alerts: true }), TEST_USER_ID);
+      await getDbAdapter().run(
+        'UPDATE users SET notification_preferences = ? WHERE id = ?',
+        [JSON.stringify({ email_alerts: true }), TEST_USER_ID],
+      );
 
       const { notifyAlert } = await import('../services/notifications.js');
       await notifyAlert(TEST_USER_ID, {
@@ -185,8 +203,10 @@ describe('Notifications — notifyAlert', () => {
       const origKey = mockConfig.resendApiKey;
       mockConfig.resendApiKey = '';
 
-      testDb.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?')
-        .run(JSON.stringify({ email_alerts: true }), TEST_USER_ID);
+      await getDbAdapter().run(
+        'UPDATE users SET notification_preferences = ? WHERE id = ?',
+        [JSON.stringify({ email_alerts: true }), TEST_USER_ID],
+      );
 
       const { notifyAlert } = await import('../services/notifications.js');
       await notifyAlert(TEST_USER_ID, {
@@ -207,8 +227,10 @@ describe('Notifications — notifyAlert', () => {
 
   describe('Alert type filtering', () => {
     it('skips alerts not in the user alert_types filter list', async () => {
-      testDb.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?')
-        .run(JSON.stringify({ alert_types: ['automation_trigger', 'sprint_complete'] }), TEST_USER_ID);
+      await getDbAdapter().run(
+        'UPDATE users SET notification_preferences = ? WHERE id = ?',
+        [JSON.stringify({ alert_types: ['automation_trigger', 'sprint_complete'] }), TEST_USER_ID],
+      );
 
       const { notifyAlert } = await import('../services/notifications.js');
       await notifyAlert(TEST_USER_ID, {
@@ -222,8 +244,10 @@ describe('Notifications — notifyAlert', () => {
     });
 
     it('sends alerts that are in the user alert_types filter list', async () => {
-      testDb.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?')
-        .run(JSON.stringify({ alert_types: ['automation_trigger'] }), TEST_USER_ID);
+      await getDbAdapter().run(
+        'UPDATE users SET notification_preferences = ? WHERE id = ?',
+        [JSON.stringify({ alert_types: ['automation_trigger'] }), TEST_USER_ID],
+      );
 
       const { notifyAlert } = await import('../services/notifications.js');
       await notifyAlert(TEST_USER_ID, {
@@ -264,8 +288,10 @@ describe('Notifications — notifyAlert', () => {
     });
 
     it('handles malformed notification_preferences JSON gracefully', async () => {
-      testDb.prepare('UPDATE users SET notification_preferences = ? WHERE id = ?')
-        .run('not-valid-json', TEST_USER_ID);
+      await getDbAdapter().run(
+        'UPDATE users SET notification_preferences = ? WHERE id = ?',
+        ['not-valid-json', TEST_USER_ID],
+      );
 
       const { notifyAlert } = await import('../services/notifications.js');
       // Should not throw, should fall back to defaults

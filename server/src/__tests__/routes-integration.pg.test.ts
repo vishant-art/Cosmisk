@@ -15,21 +15,14 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
-// We need to mock getDb before importing routes
 import { vi } from 'vitest';
 
-let testDb: Database.Database;
-
-// Mock the DB module to use our test database
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+let pg: MigratedTestPg;
 
 // Mock external services that routes depend on
 vi.mock('../services/meta-api.js', () => ({
@@ -71,10 +64,9 @@ let testUserId: string;
 let authToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
+  // Clean the shared test branch for this file's run, then seed via the adapter
+  // (DB_BACKEND=postgres → getDbAdapter() routes to the migrated Neon test branch).
+  await pg.reset();
 
   app = Fastify({ logger: false });
 
@@ -98,22 +90,25 @@ async function buildApp() {
 
   await app.ready();
 
-  // Create a test user directly in DB
+  // Create a test user directly in DB (users has no FK parent — seed first).
   testUserId = uuidv4();
   const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'Integration Test', 'integration@test.com', hash, 'user', 'growth');
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [testUserId, 'Integration Test', 'integration@test.com', hash, 'user', 'growth'],
+  );
 
   authToken = app.jwt.sign({ id: testUserId, email: 'integration@test.com', name: 'Integration Test', role: 'user' });
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
   await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
 });
 
 /* ------------------------------------------------------------------ */
@@ -137,7 +132,7 @@ describe('POST /auth/signup', () => {
     expect(body.user.onboardingComplete).toBe(false);
 
     // Verify user is actually in DB
-    const dbUser = testDb.prepare('SELECT * FROM users WHERE email = ?').get('new@cosmisk.com') as any;
+    const dbUser = await getDbAdapter().get<any>('SELECT * FROM users WHERE email = ?', ['new@cosmisk.com']);
     expect(dbUser).toBeDefined();
     expect(dbUser.name).toBe('New User');
   });
@@ -298,7 +293,7 @@ describe('Automations CRUD', () => {
     expect(body.success).toBe(true);
 
     // Verify in DB
-    const rule = testDb.prepare('SELECT * FROM automations WHERE id = ?').get(automationId) as any;
+    const rule = await getDbAdapter().get<any>('SELECT * FROM automations WHERE id = ?', [automationId]);
     expect(rule.name).toBe('Pause VERY high CPA');
     expect(rule.is_active).toBe(0);
   });
@@ -311,8 +306,8 @@ describe('Automations CRUD', () => {
     });
     expect(res.statusCode).toBe(200);
 
-    const remaining = testDb.prepare('SELECT COUNT(*) as c FROM automations WHERE user_id = ?').get(testUserId) as any;
-    expect(remaining.c).toBe(0);
+    const remaining = await getDbAdapter().get<any>('SELECT COUNT(*) as c FROM automations WHERE user_id = ?', [testUserId]);
+    expect(Number(remaining.c)).toBe(0);
   });
 
   it('rejects creating an automation with missing name', async () => {
@@ -418,7 +413,7 @@ describe('Team Management', () => {
     expect(body.success).toBe(true);
 
     // Verify invitation stored in DB
-    const invite = testDb.prepare('SELECT * FROM team_members WHERE email = ?').get('teammate@test.com') as any;
+    const invite = await getDbAdapter().get<any>('SELECT * FROM team_members WHERE email = ?', ['teammate@test.com']);
     expect(invite).toBeDefined();
     expect(invite.role).toBe('viewer');
     expect(invite.status).toBe('pending');

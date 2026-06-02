@@ -1,28 +1,18 @@
 /**
- * Brands Routes Tests
+ * Brands Routes Tests (Postgres integration)
  *
- * Tests /brands/list endpoint.
- * Uses in-memory SQLite with mocked Meta API and token-crypto.
+ * Tests /brands/list endpoint against the migrated Neon TEST BRANCH
+ * (DB_BACKEND=postgres). Ported from the in-memory SQLite suite to the pg
+ * harness (vitest.pg.config.ts + getMigratedTestPg()). Meta API and
+ * token-crypto remain mocked; the DB is real pg via getDbAdapter().
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { createTables } from '../db/schema.js';
 import { vi } from 'vitest';
-
-let testDb: Database.Database;
-
-// Mock DB module. The converted route calls getDbAdapter() (src/db/adapter.ts),
-// whose SqliteAdapter imports getDb from './index.js' via a plain ESM import — so
-// this single vi.mock reaches the adapter and routes it at the in-memory testDb.
-// No adapter-level mock needed. DB_BACKEND stays sqlite (default). This is the
-// standard pattern for every route converted in M2.2+.
-vi.mock('../db/index.js', () => ({
-  getDb: () => testDb,
-  closeDb: () => {},
-}));
+import { getMigratedTestPg, type MigratedTestPg } from '../db/__tests__/pg-test-target.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 // Mock Meta API with configurable responses
 let mockMetaAccounts: any[] = [];
@@ -59,16 +49,12 @@ vi.mock('node-cron', () => ({
 // Import after mocks
 const { brandRoutes } = await import('../routes/brands.js');
 
+let pg: MigratedTestPg;
 let app: FastifyInstance;
 let testUserId: string;
 let authToken: string;
 
 async function buildApp() {
-  testDb = new Database(':memory:');
-  testDb.pragma('journal_mode = WAL');
-  testDb.pragma('foreign_keys = ON');
-  createTables(testDb);
-
   app = Fastify({ logger: false });
 
   const jwt = await import('@fastify/jwt');
@@ -83,23 +69,30 @@ async function buildApp() {
 
   await app.register(brandRoutes, { prefix: '/brands' });
   await app.ready();
-
-  // Create test user
-  testUserId = uuidv4();
-  const hash = bcrypt.hashSync('SecurePass123!', 10);
-  testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(testUserId, 'Brands Test', 'brands@test.com', hash, 'user', 'growth');
-
-  authToken = app.jwt.sign({ id: testUserId, email: 'brands@test.com', name: 'Brands Test', role: 'user' });
 }
 
 beforeAll(async () => {
+  pg = await getMigratedTestPg();
   await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
-  testDb.close();
+  await pg.teardown();
+});
+
+beforeEach(async () => {
+  await pg.reset();
+
+  // Seed base test user (parent row before any meta_tokens child rows).
+  testUserId = uuidv4();
+  const hash = bcrypt.hashSync('SecurePass123!', 10);
+  await getDbAdapter().run(
+    'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+    [testUserId, 'Brands Test', 'brands@test.com', hash, 'user', 'growth'],
+  );
+
+  authToken = app.jwt.sign({ id: testUserId, email: 'brands@test.com', name: 'Brands Test', role: 'user' });
 });
 
 /* ------------------------------------------------------------------ */
@@ -127,10 +120,11 @@ describe('GET /brands/list', () => {
   });
 
   it('returns brands grouped by business_name from Meta', async () => {
-    // Seed Meta token for the user
-    testDb.prepare(
-      'INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)'
-    ).run(testUserId, 'encrypted_mock_token', 'meta_u1', 'Meta User');
+    // Seed Meta token for the user (parent user already seeded in beforeEach)
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [testUserId, 'encrypted_mock_token', 'meta_u1', 'Meta User'],
+    );
 
     // Set up mock Meta API response
     mockMetaAccounts = [
@@ -168,11 +162,14 @@ describe('GET /brands/list', () => {
     // Create a fresh user so cache does not interfere
     const freshUserId = uuidv4();
     const hash = bcrypt.hashSync('Fresh123!', 10);
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(freshUserId, 'John Smith', 'john@test.com', hash, 'user', 'growth');
-    testDb.prepare(
-      'INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)'
-    ).run(freshUserId, 'encrypted_mock_token', 'meta_u2', 'Meta User 2');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [freshUserId, 'John Smith', 'john@test.com', hash, 'user', 'growth'],
+    );
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [freshUserId, 'encrypted_mock_token', 'meta_u2', 'Meta User 2'],
+    );
 
     const freshToken = app.jwt.sign({ id: freshUserId, email: 'john@test.com', name: 'John Smith', role: 'user' });
 
@@ -197,8 +194,10 @@ describe('GET /brands/list', () => {
     // Create second user with no Meta token
     const otherUserId = uuidv4();
     const hash = bcrypt.hashSync('OtherPass123!', 10);
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(otherUserId, 'Other User', 'other-brands@test.com', hash, 'user', 'growth');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [otherUserId, 'Other User', 'other-brands@test.com', hash, 'user', 'growth'],
+    );
     const otherToken = app.jwt.sign({ id: otherUserId, email: 'other-brands@test.com', name: 'Other User', role: 'user' });
 
     const res = await app.inject({
@@ -219,11 +218,14 @@ describe('GET /brands/list', () => {
     // Use a fresh user to avoid cache
     const structUserId = uuidv4();
     const hash = bcrypt.hashSync('Struct123!', 10);
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(structUserId, 'Struct User', 'struct@test.com', hash, 'user', 'growth');
-    testDb.prepare(
-      'INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)'
-    ).run(structUserId, 'encrypted_mock_token', 'meta_u3', 'Meta User 3');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [structUserId, 'Struct User', 'struct@test.com', hash, 'user', 'growth'],
+    );
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [structUserId, 'encrypted_mock_token', 'meta_u3', 'Meta User 3'],
+    );
     const structToken = app.jwt.sign({ id: structUserId, email: 'struct@test.com', name: 'Struct User', role: 'user' });
 
     const res = await app.inject({
@@ -252,11 +254,14 @@ describe('GET /brands/list', () => {
 
     const mixedUserId = uuidv4();
     const hash = bcrypt.hashSync('Mixed123!', 10);
-    testDb.prepare('INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(mixedUserId, 'Mixed User', 'mixed@test.com', hash, 'user', 'growth');
-    testDb.prepare(
-      'INSERT OR REPLACE INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)'
-    ).run(mixedUserId, 'encrypted_mock_token', 'meta_u4', 'Meta User 4');
+    await getDbAdapter().run(
+      'INSERT INTO users (id, name, email, password_hash, role, plan) VALUES (?, ?, ?, ?, ?, ?)',
+      [mixedUserId, 'Mixed User', 'mixed@test.com', hash, 'user', 'growth'],
+    );
+    await getDbAdapter().run(
+      'INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name) VALUES (?, ?, ?, ?)',
+      [mixedUserId, 'encrypted_mock_token', 'meta_u4', 'Meta User 4'],
+    );
     const mixedToken = app.jwt.sign({ id: mixedUserId, email: 'mixed@test.com', name: 'Mixed User', role: 'user' });
 
     const res = await app.inject({
