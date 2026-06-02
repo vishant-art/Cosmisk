@@ -8,16 +8,16 @@ declare module 'fastify' {
     checkImageLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     checkVideoLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     checkCreativeLimit: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-    trackChatUsage: (request: FastifyRequest, reply: FastifyReply) => void;
-    trackImageUsage: (request: FastifyRequest, reply: FastifyReply) => void;
-    trackVideoUsage: (request: FastifyRequest, reply: FastifyReply) => void;
-    trackCreativeUsage: (request: FastifyRequest, amount?: number) => void;
+    trackChatUsage: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    trackImageUsage: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    trackVideoUsage: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    trackCreativeUsage: (request: FastifyRequest, amount?: number) => Promise<void>;
   }
 }
 
 async function usageLimiter(app: FastifyInstance) {
   app.decorate('checkChatLimit', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { allowed, current, limit } = checkLimit(request.user.id, 'chat_count');
+    const { allowed, current, limit } = await checkLimit(request.user.id, 'chat_count');
     if (!allowed) {
       reply.status(429).send({
         success: false,
@@ -29,7 +29,7 @@ async function usageLimiter(app: FastifyInstance) {
   });
 
   app.decorate('checkImageLimit', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { allowed, current, limit } = checkLimit(request.user.id, 'image_count');
+    const { allowed, current, limit } = await checkLimit(request.user.id, 'image_count');
     if (!allowed) {
       reply.status(429).send({
         success: false,
@@ -41,7 +41,7 @@ async function usageLimiter(app: FastifyInstance) {
   });
 
   app.decorate('checkVideoLimit', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { allowed, current, limit } = checkLimit(request.user.id, 'video_count');
+    const { allowed, current, limit } = await checkLimit(request.user.id, 'video_count');
     if (!allowed) {
       reply.status(429).send({
         success: false,
@@ -53,7 +53,7 @@ async function usageLimiter(app: FastifyInstance) {
   });
 
   app.decorate('checkCreativeLimit', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { allowed, current, limit } = checkLimit(request.user.id, 'creative_count');
+    const { allowed, current, limit } = await checkLimit(request.user.id, 'creative_count');
     if (!allowed) {
       reply.status(429).send({
         success: false,
@@ -65,20 +65,20 @@ async function usageLimiter(app: FastifyInstance) {
   });
 
   // Track usage hooks (call after successful response)
-  app.decorate('trackChatUsage', (request: FastifyRequest) => {
-    incrementUsage(request.user.id, 'chat_count');
+  app.decorate('trackChatUsage', async (request: FastifyRequest) => {
+    await incrementUsage(request.user.id, 'chat_count');
   });
 
-  app.decorate('trackImageUsage', (request: FastifyRequest) => {
-    incrementUsage(request.user.id, 'image_count');
+  app.decorate('trackImageUsage', async (request: FastifyRequest) => {
+    await incrementUsage(request.user.id, 'image_count');
   });
 
-  app.decorate('trackVideoUsage', (request: FastifyRequest) => {
-    incrementUsage(request.user.id, 'video_count');
+  app.decorate('trackVideoUsage', async (request: FastifyRequest) => {
+    await incrementUsage(request.user.id, 'video_count');
   });
 
-  app.decorate('trackCreativeUsage', (request: FastifyRequest, amount = 1) => {
-    incrementUsage(request.user.id, 'creative_count', amount);
+  app.decorate('trackCreativeUsage', async (request: FastifyRequest, amount = 1) => {
+    await incrementUsage(request.user.id, 'creative_count', amount);
   });
 }
 

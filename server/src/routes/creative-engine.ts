@@ -782,7 +782,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ?"
     , [id]) as CountRow).c;
 
-    const { allowed, current, limit } = checkLimit(request.user.id, 'creative_count');
+    const { allowed, current, limit } = await checkLimit(request.user.id, 'creative_count');
     if (!allowed) {
       return reply.status(429).send({
         success: false,
@@ -805,7 +805,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Track usage upfront
-    incrementUsage(request.user.id, 'creative_count', jobCount);
+    await incrementUsage(request.user.id, 'creative_count', jobCount);
 
     await db.run(
       "UPDATE creative_sprints SET status = 'generating', updated_at = datetime('now') WHERE id = ?"
@@ -1162,7 +1162,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     };
 
     // Plan limits
-    const { current, limit } = checkLimit(request.user.id, 'creative_count');
+    const { current, limit } = await checkLimit(request.user.id, 'creative_count');
 
     return {
       success: true,

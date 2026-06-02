@@ -58,7 +58,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { email, role: memberRole, name } = parsed;
 
     // Check plan limits
-    const limits = getUserEffectiveLimits(userId);
+    const limits = await getUserEffectiveLimits(userId);
     const currentCount = (await db.get<{ c: number }>(
       "SELECT COUNT(*) as c FROM team_members WHERE owner_user_id = ? AND status != 'revoked'",
       [userId],

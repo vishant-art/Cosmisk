@@ -4,7 +4,6 @@ import crypto from 'crypto';
 import Stripe from 'stripe';
 import Razorpay from 'razorpay';
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
 import { getDbAdapter } from '../db/adapter.js';
 import type { SubscriptionRow, UserRow, UserUsageRow, StripeSubscriptionWithPeriod, RazorpayWebhookEvent, FastifyRawBodyRequest } from '../types/index.js';
 import { validate, checkoutSchema, verifyPaymentSchema } from '../validation/schemas.js';
@@ -84,16 +83,15 @@ export function getCurrentPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function getUserPlan(userId: string): PlanName {
-  return getUserPlanInfo(userId).plan;
+export async function getUserPlan(userId: string): Promise<PlanName> {
+  return (await getUserPlanInfo(userId)).plan;
 }
 
-export function getUserPlanInfo(userId: string): { plan: PlanName; isTrial: boolean } {
-  const db = getDb();
-
-  const sub = db.prepare(
-    "SELECT plan, trial_ends_at, status FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1"
-  ).get(userId) as { plan: string; trial_ends_at: string | null; status: string } | undefined;
+export async function getUserPlanInfo(userId: string): Promise<{ plan: PlanName; isTrial: boolean }> {
+  const sub = await getDbAdapter().get<{ plan: string; trial_ends_at: string | null; status: string }>(
+    "SELECT plan, trial_ends_at, status FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1",
+    [userId]
+  );
 
   if (sub) {
     if (sub.trial_ends_at) {
@@ -102,51 +100,51 @@ export function getUserPlanInfo(userId: string): { plan: PlanName; isTrial: bool
         return { plan: sub.plan as PlanName, isTrial: true };
       }
       // Trial expired — auto-downgrade
-      db.prepare("UPDATE subscriptions SET status = 'expired', updated_at = datetime('now') WHERE user_id = ? AND status = 'trialing'")
-        .run(userId);
-      db.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(userId);
+      await getDbAdapter().run(
+        "UPDATE subscriptions SET status = 'expired', updated_at = datetime('now') WHERE user_id = ? AND status = 'trialing'",
+        [userId]
+      );
+      await getDbAdapter().run("UPDATE users SET plan = 'free' WHERE id = ?", [userId]);
       return { plan: 'free', isTrial: false };
     }
     return { plan: sub.plan as PlanName, isTrial: false };
   }
 
-  const user = db.prepare('SELECT plan FROM users WHERE id = ?').get(userId) as { plan: string } | undefined;
+  const user = await getDbAdapter().get<{ plan: string }>('SELECT plan FROM users WHERE id = ?', [userId]);
   return { plan: (user?.plan as PlanName) || 'free', isTrial: false };
 }
 
 type PlanLimitsShape = { ad_accounts: number; chats_per_day: number; images_per_month: number; videos_per_month: number; creatives_per_month: number; autopilot_rules: number; competitors: number; team_members: number };
 
-export function getUserEffectiveLimits(userId: string): PlanLimitsShape {
-  const { plan, isTrial } = getUserPlanInfo(userId);
+export async function getUserEffectiveLimits(userId: string): Promise<PlanLimitsShape> {
+  const { plan, isTrial } = await getUserPlanInfo(userId);
   if (isTrial && plan !== 'free' && plan in TRIAL_LIMITS) {
     return TRIAL_LIMITS[plan as keyof typeof TRIAL_LIMITS];
   }
   return PLAN_LIMITS[plan];
 }
 
-export function getUsage(userId: string): UserUsageRow {
-  const db = getDb();
+export async function getUsage(userId: string): Promise<UserUsageRow> {
   const period = getCurrentPeriod();
-  let row = db.prepare('SELECT * FROM user_usage WHERE user_id = ? AND period = ?').get(userId, period) as UserUsageRow | undefined;
+  let row = await getDbAdapter().get<UserUsageRow>('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]);
   if (!row) {
-    db.prepare('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)').run(userId, period);
-    row = db.prepare('SELECT * FROM user_usage WHERE user_id = ? AND period = ?').get(userId, period) as UserUsageRow;
+    await getDbAdapter().run('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)', [userId, period]);
+    row = await getDbAdapter().get<UserUsageRow>('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]) as UserUsageRow;
   }
   return row;
 }
 
 export type UsageField = 'chat_count' | 'image_count' | 'video_count' | 'creative_count';
 
-export function incrementUsage(userId: string, field: UsageField, amount = 1): void {
-  const db = getDb();
+export async function incrementUsage(userId: string, field: UsageField, amount = 1): Promise<void> {
   const period = getCurrentPeriod();
-  db.prepare('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)').run(userId, period);
-  db.prepare(`UPDATE user_usage SET ${field} = ${field} + ? WHERE user_id = ? AND period = ?`).run(amount, userId, period);
+  await getDbAdapter().run('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)', [userId, period]);
+  await getDbAdapter().run(`UPDATE user_usage SET ${field} = ${field} + ? WHERE user_id = ? AND period = ?`, [amount, userId, period]);
 }
 
-export function checkLimit(userId: string, field: UsageField): { allowed: boolean; current: number; limit: number } {
-  const limits = getUserEffectiveLimits(userId);
-  const usage = getUsage(userId);
+export async function checkLimit(userId: string, field: UsageField): Promise<{ allowed: boolean; current: number; limit: number }> {
+  const limits = await getUserEffectiveLimits(userId);
+  const usage = await getUsage(userId);
 
   const limitMap: Record<UsageField, number> = {
     chat_count: limits.chats_per_day,
@@ -263,9 +261,9 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // GET /billing/status — current subscription status
   app.get('/status', { preHandler: [app.authenticate] }, async (request) => {
-    const { plan, isTrial } = getUserPlanInfo(request.user.id);
-    const usage = getUsage(request.user.id);
-    const limits = getUserEffectiveLimits(request.user.id);
+    const { plan, isTrial } = await getUserPlanInfo(request.user.id);
+    const usage = await getUsage(request.user.id);
+    const limits = await getUserEffectiveLimits(request.user.id);
 
     const sub = await getDbAdapter().get<SubscriptionRow>(
       "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1",
@@ -296,7 +294,7 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { plan } = parsed;
 
-    const currentPlan = getUserPlan(request.user.id);
+    const currentPlan = await getUserPlan(request.user.id);
     if (currentPlan !== 'free') {
       return reply.status(400).send({ success: false, error: 'Already on a paid plan or trial' });
     }
