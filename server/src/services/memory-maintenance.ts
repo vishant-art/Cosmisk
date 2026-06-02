@@ -10,7 +10,7 @@
 import { CronJob } from 'cron';
 import { runDecay } from './agent-memory.js';
 import { getPendingPredictions, verifyPrediction } from './strategic-memory.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 
 interface MaintenanceState {
@@ -47,13 +47,13 @@ async function runMemoryDecay(): Promise<void> {
 async function checkPendingPredictions(): Promise<void> {
   logger.info('[MemoryMaintenance] Checking pending predictions...');
 
-  const db = getDb();
+  const db = getDbAdapter();
 
   try {
     // Get all clients
-    const clients = db.prepare(`
+    const clients = await db.all(`
       SELECT DISTINCT client_id FROM strategic_predictions WHERE status = 'pending'
-    `).all() as { client_id: string }[];
+    `) as { client_id: string }[];
 
     let totalChecked = 0;
     let totalExpired = 0;
@@ -88,30 +88,30 @@ async function checkPendingPredictions(): Promise<void> {
 async function runWeeklyCleanup(): Promise<void> {
   logger.info('[MemoryMaintenance] Running weekly cleanup...');
 
-  const db = getDb();
+  const db = getDbAdapter();
 
   try {
     // Delete very old episodes (90+ days, low relevance)
-    const episodesDeleted = db.prepare(`
+    const episodesDeleted = await db.run(`
       DELETE FROM agent_episodes
       WHERE created_at < datetime('now', '-90 days')
       AND relevance_score < 0.2
-    `).run();
+    `);
 
     // Delete expired recommendations (60+ days old, never acted upon)
-    const recsDeleted = db.prepare(`
+    const recsDeleted = await db.run(`
       DELETE FROM strategic_recommendations
       WHERE status = 'pending'
       AND created_at < datetime('now', '-60 days')
-    `).run();
+    `);
 
     // Mark very old predictions as expired
-    const predsExpired = db.prepare(`
+    const predsExpired = await db.run(`
       UPDATE strategic_predictions
       SET status = 'expired'
       WHERE status = 'pending'
       AND verify_after < datetime('now', '-30 days')
-    `).run();
+    `);
 
     logger.info({
       episodesDeleted: episodesDeleted.changes,

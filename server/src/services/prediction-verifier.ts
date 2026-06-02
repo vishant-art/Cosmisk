@@ -10,7 +10,7 @@ import { getClient } from './service-clients.js';
 import { MetaApiService } from './meta-api.js';
 import { getShopifyClientForUser } from './shopify-client.js';
 import { logger } from '../utils/logger.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 
 // ============================================================================
@@ -40,7 +40,7 @@ async function fetchRoas(clientId: string, entityId: string): Promise<number | n
     const client = getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
-    const token = getMetaAccessToken(clientId);
+    const token = await getMetaAccessToken(clientId);
     if (!token) return null;
 
     const metaApi = new MetaApiService(token);
@@ -67,7 +67,7 @@ async function fetchSpend(clientId: string, entityId: string): Promise<number | 
     const client = getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
-    const token = getMetaAccessToken(clientId);
+    const token = await getMetaAccessToken(clientId);
     if (!token) return null;
 
     const metaApi = new MetaApiService(token);
@@ -93,7 +93,7 @@ async function fetchRevenue(clientId: string, entityId: string): Promise<number 
     const client = getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
-    const token = getMetaAccessToken(clientId);
+    const token = await getMetaAccessToken(clientId);
     if (!token) return null;
 
     const metaApi = new MetaApiService(token);
@@ -120,7 +120,7 @@ async function fetchConversions(clientId: string, entityId: string): Promise<num
     const client = getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
-    const token = getMetaAccessToken(clientId);
+    const token = await getMetaAccessToken(clientId);
     if (!token) return null;
 
     const metaApi = new MetaApiService(token);
@@ -147,7 +147,7 @@ async function fetchCpa(clientId: string, entityId: string): Promise<number | nu
     const client = getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
-    const token = getMetaAccessToken(clientId);
+    const token = await getMetaAccessToken(clientId);
     if (!token) return null;
 
     const metaApi = new MetaApiService(token);
@@ -177,7 +177,7 @@ async function fetchCtr(clientId: string, entityId: string): Promise<number | nu
     const client = getClient(clientId);
     if (!client?.metaAdAccountId) return null;
 
-    const token = getMetaAccessToken(clientId);
+    const token = await getMetaAccessToken(clientId);
     if (!token) return null;
 
     const metaApi = new MetaApiService(token);
@@ -216,12 +216,12 @@ const METRIC_FETCHERS: Record<string, MetricFetcher> = {
 /**
  * Get Meta access token for client
  */
-function getMetaAccessToken(clientId: string): string | null {
+async function getMetaAccessToken(clientId: string): Promise<string | null> {
   try {
-    const db = getDb();
-    const row = db.prepare(`
+    const db = getDbAdapter();
+    const row = await db.get(`
       SELECT encrypted_access_token FROM meta_tokens WHERE brand_id = ?
-    `).get(clientId) as { encrypted_access_token: string } | undefined;
+    `, [clientId]) as { encrypted_access_token: string } | undefined;
 
     if (!row) return null;
     return decryptToken(row.encrypted_access_token);
@@ -360,8 +360,8 @@ export async function verifyPendingPredictions(clientId: string): Promise<Verifi
  * Verify pending predictions for all clients
  */
 export async function verifyAllClientsPredictions(): Promise<Record<string, VerificationStats>> {
-  const db = getDb();
-  const clients = db.prepare('SELECT id FROM service_clients WHERE status = ?').all('active') as { id: string }[];
+  const db = getDbAdapter();
+  const clients = await db.all('SELECT id FROM service_clients WHERE status = ?', ['active']) as { id: string }[];
 
   const results: Record<string, VerificationStats> = {};
 

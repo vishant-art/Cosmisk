@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { config } from '../config.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
@@ -54,46 +54,38 @@ interface SynthesizedBriefing {
 /* ------------------------------------------------------------------ */
 
 async function gatherBriefingSources(userId: string): Promise<BriefingSource> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Parallel gather
-  const [watchdogPending, watchdogRecent, autopilotAlerts, pendingJobs, adPerformance, n8nData] = await Promise.all([
+  const [watchdogPending, watchdogRecent, autopilotAlerts, pendingJobsRow, adPerformance, n8nData] = await Promise.all([
     // Pending watchdog decisions
-    Promise.resolve(
-      db.prepare(`
+    db.all<AgentDecisionRow>(`
         SELECT * FROM agent_decisions
         WHERE user_id = ? AND status = 'pending'
         ORDER BY rowid DESC LIMIT 20
-      `).all(userId) as AgentDecisionRow[]
-    ),
+      `, [userId]),
 
     // Recently executed decisions (last 24h)
-    Promise.resolve(
-      db.prepare(`
+    db.all<AgentDecisionRow>(`
         SELECT * FROM agent_decisions
         WHERE user_id = ? AND status = 'executed'
         AND executed_at > datetime('now', '-1 day')
         ORDER BY rowid DESC LIMIT 10
-      `).all(userId) as AgentDecisionRow[]
-    ),
+      `, [userId]),
 
     // Unread autopilot alerts (last 24h)
-    Promise.resolve(
-      db.prepare(`
+    db.all<{ title: string; content: string; severity: string; created_at: string }>(`
         SELECT title, content, severity, created_at FROM autopilot_alerts
         WHERE user_id = ? AND read = 0
         AND created_at > datetime('now', '-1 day')
         ORDER BY created_at DESC LIMIT 10
-      `).all(userId) as Array<{ title: string; content: string; severity: string; created_at: string }>
-    ),
+      `, [userId]),
 
     // Pending creative jobs
-    Promise.resolve(
-      (db.prepare(`
+    db.get<{ count: number }>(`
         SELECT COUNT(*) as count FROM creative_jobs
         WHERE user_id = ? AND status IN ('pending', 'generating', 'polling')
-      `).get(userId) as { count: number }).count
-    ),
+      `, [userId]),
 
     // Today's ad performance
     gatherAdPerformance(userId),
@@ -101,6 +93,8 @@ async function gatherBriefingSources(userId: string): Promise<BriefingSource> {
     // n8n agency data
     fetchN8nBriefingData(),
   ]);
+
+  const pendingJobs = pendingJobsRow?.count ?? 0;
 
   return {
     watchdog: { pendingDecisions: watchdogPending, recentExecutions: watchdogRecent },
@@ -116,8 +110,8 @@ async function gatherBriefingSources(userId: string): Promise<BriefingSource> {
 /* ------------------------------------------------------------------ */
 
 async function gatherAdPerformance(userId: string): Promise<BriefingSource['adPerformance']> {
-  const db = getDb();
-  const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+  const db = getDbAdapter();
+  const tokenRow = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!tokenRow) return null;
 
   try {
@@ -341,22 +335,22 @@ Rules:
 /* ------------------------------------------------------------------ */
 
 export async function runMorningBriefing(): Promise<number> {
-  const db = getDb();
-  const users = db.prepare(`
+  const db = getDbAdapter();
+  const users = await db.all<Pick<UserRow, 'id' | 'name' | 'email'>>(`
     SELECT u.id, u.name, u.email FROM users u
     WHERE u.onboarding_complete = 1
     AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-  `).all() as Pick<UserRow, 'id' | 'name' | 'email'>[];
+  `);
 
   let sent = 0;
 
   for (const user of users) {
     const runId = uuidv4();
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
       VALUES (?, 'briefing', ?, 'running', datetime('now'))
-    `).run(runId, user.id);
+    `, [runId, user.id]);
 
     try {
       // 1. Gather all sources
@@ -391,19 +385,19 @@ export async function runMorningBriefing(): Promise<number> {
       ).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'recordEpisode failed in morning-briefing'));
 
       // 6. Complete run
-      db.prepare(`
+      await db.run(`
         UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
         summary = ?, raw_context = ?
         WHERE id = ?
-      `).run(briefing.summary, JSON.stringify(briefing), runId);
+      `, [briefing.summary, JSON.stringify(briefing), runId]);
 
       if (slackSent) sent++;
       logger.info(`[Briefing] Sent to ${user.name || user.email}`);
     } catch (err: any) {
-      db.prepare(`
+      await db.run(`
         UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
         summary = ? WHERE id = ?
-      `).run(`Error: ${err.message}`, runId);
+      `, [`Error: ${err.message}`, runId]);
       logger.error({ err: err.message }, `[Briefing] Failed for user ${user.id}`);
     }
   }
