@@ -136,7 +136,7 @@ describe('Job Queue', () => {
       insertTestJob(sprintId, { status: 'failed' });
 
       const { recoverInterruptedSprints } = await import('../services/job-queue.js');
-      recoverInterruptedSprints();
+      await recoverInterruptedSprints();
 
       const sprint = testDb.prepare('SELECT status FROM creative_sprints WHERE id = ?').get(sprintId) as any;
       expect(sprint.status).toBe('reviewing');
@@ -147,8 +147,8 @@ describe('Job Queue', () => {
       insertTestJob(sprintId, { status: 'completed' });
 
       const { recoverInterruptedSprints } = await import('../services/job-queue.js');
-      // Should not throw
-      expect(() => recoverInterruptedSprints()).not.toThrow();
+      // Should not reject
+      await expect(recoverInterruptedSprints()).resolves.not.toThrow();
     });
   });
 
@@ -164,7 +164,7 @@ describe('Job Queue', () => {
       const sprintId = insertTestSprint({ status: 'generating' });
 
       const { stopSprintGeneration } = await import('../services/job-queue.js');
-      stopSprintGeneration(sprintId);
+      await stopSprintGeneration(sprintId);
 
       const sprint = testDb.prepare('SELECT status FROM creative_sprints WHERE id = ?').get(sprintId) as any;
       expect(sprint.status).toBe('approved');

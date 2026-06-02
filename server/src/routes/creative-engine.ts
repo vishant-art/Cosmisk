@@ -1198,7 +1198,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     if (sprint.status === 'generating') {
-      stopSprintGeneration(id);
+      await stopSprintGeneration(id);
       // Cancel pending/generating jobs
       await db.run(
         "UPDATE creative_jobs SET status = 'cancelled' WHERE sprint_id = ? AND status IN ('pending', 'script_ready', 'generating', 'polling')"
@@ -1544,7 +1544,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
     // If generating, stop the queue first
     if (sprint.status === 'generating') {
-      stopSprintGeneration(id);
+      await stopSprintGeneration(id);
     }
 
     await db.run('DELETE FROM cost_ledger WHERE sprint_id = ?', [id]);
