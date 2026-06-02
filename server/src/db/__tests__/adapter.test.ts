@@ -156,19 +156,26 @@ const PG_URL = process.env['TEST_DATABASE_URL'];
 describe.skipIf(!PG_URL)('PgAdapter (TEST_DATABASE_URL)', () => {
   let pool: Pool;
   let adapter: PgAdapter;
-  // Unique table name avoids collisions across concurrent runs.
-  const table = `adapter_test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+  const table = 'adapter_t';
+  // ISOLATED SCHEMA (root-cause fix for the cross-file flake): pin this pool's
+  // search_path to a unique schema so this file's table lives OUTSIDE `public`.
+  // The other pg files (pg-test-target/m2_1_pilot) run `reset()` = TRUNCATE over
+  // `public`; with our table in its own schema, their TRUNCATE can never wipe it
+  // mid-test (that race was the intermittent `transaction()` failure). The
+  // `-c search_path=` startup option is honoured on the Neon direct endpoint.
+  const schema = `adapter_test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
 
   beforeEach(async () => {
-    pool = new Pool({ connectionString: PG_URL });
+    pool = new Pool({ connectionString: PG_URL, options: `-c search_path=${schema}` });
     adapter = new PgAdapter(pool);
+    await pool.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
     await adapter.exec(
       `CREATE TABLE ${table} (id SERIAL PRIMARY KEY, name TEXT, qty INTEGER)`,
     );
   });
 
   afterEach(async () => {
-    await pool.query(`DROP TABLE IF EXISTS ${table}`);
+    await pool.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
     await pool.end();
   });
 
