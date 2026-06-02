@@ -597,7 +597,7 @@ export class ShopifyClient {
 
 // ============ HELPER: Get client from stored token ============
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../utils/encryption.js';
 
 interface ShopifyTokenRow {
@@ -610,9 +610,8 @@ interface ShopifyTokenRow {
 /**
  * Get Shopify client for a user from stored OAuth token
  */
-export function getShopifyClientForUser(userId: string): ShopifyClient | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(userId) as ShopifyTokenRow | undefined;
+export async function getShopifyClientForUser(userId: string): Promise<ShopifyClient | null> {
+  const row = await getDbAdapter().get('SELECT * FROM shopify_tokens WHERE user_id = ?', [userId]) as ShopifyTokenRow | undefined;
 
   if (!row) return null;
 
@@ -623,8 +622,7 @@ export function getShopifyClientForUser(userId: string): ShopifyClient | null {
 /**
  * Check if user has Shopify connected
  */
-export function hasShopifyConnected(userId: string): boolean {
-  const db = getDb();
-  const row = db.prepare('SELECT user_id FROM shopify_tokens WHERE user_id = ?').get(userId);
+export async function hasShopifyConnected(userId: string): Promise<boolean> {
+  const row = await getDbAdapter().get('SELECT user_id FROM shopify_tokens WHERE user_id = ?', [userId]);
   return !!row;
 }

@@ -198,7 +198,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
     }
 
     // Validate token still works
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
     const isValid = client ? await client.validateAccess() : false;
 
     return {
@@ -229,7 +229,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
 
   // GET /shopify/products — Get products with inventory
   app.get('/products', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -255,7 +255,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
   // GET /shopify/oos — Get out-of-stock products
   app.get('/oos', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { lowStock } = request.query as { lowStock?: string };
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -285,7 +285,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
   // GET /shopify/orders — Get recent orders
   app.get('/orders', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { months } = request.query as { months?: string };
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -311,7 +311,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
 
   // GET /shopify/summary — Get full shop summary
   app.get('/summary', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -337,7 +337,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
   // GET /shopify/abandoned-checkouts — Get abandoned checkouts
   app.get('/abandoned-checkouts', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { months } = request.query as { months?: string };
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({

@@ -269,7 +269,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
 
     try {
       // Build context with whatever data is available
-      const context = buildCreativeContext(clientId, {});
+      const context = await buildCreativeContext(clientId, {});
       return { success: true, data: context };
     } catch (err) {
       logger.error({ err, clientId }, '[Intelligence] Failed to get creative context');
@@ -294,7 +294,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
     const { creativeId, analysis, brand } = request.body;
 
     try {
-      const validation = validateCreativeQuality(creativeId, analysis, brand);
+      const validation = await validateCreativeQuality(creativeId, analysis, brand);
       return { success: true, data: validation };
     } catch (err) {
       logger.error({ err, creativeId }, '[Intelligence] Failed to validate creative');
@@ -311,7 +311,7 @@ export default async function intelligenceRoutes(fastify: FastifyInstance): Prom
     const { category } = request.params;
 
     try {
-      const knowledge = getCategoryKnowledge(category);
+      const knowledge = await getCategoryKnowledge(category);
       return { success: true, data: knowledge };
     } catch (err) {
       logger.error({ err, category }, '[Intelligence] Failed to get category knowledge');

@@ -34,7 +34,7 @@ export async function fetchGoogleAdsSnapshot(options: GoogleAdsIngestionOptions)
   const googleDateRange = mapDatePreset(datePreset);
 
   // Get and refresh token if needed
-  const tokenData = getGoogleToken(userId);
+  const tokenData = await getGoogleToken(userId);
   if (!tokenData) {
     throw new Error('No Google Ads token found for user');
   }

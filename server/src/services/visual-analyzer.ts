@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { CREATIVE_PATTERNS, type VideoDNA } from './creative-patterns.js';
 import type { MetaApiService } from './meta-api.js';
@@ -49,11 +49,11 @@ export function selectAdsForAnalysis(ads: AdForAnalysis[], limit = 5): AdForAnal
 /*  Cache helpers                                                      */
 /* ------------------------------------------------------------------ */
 
-function getCachedAnalyses(adIds: string[]): Map<string, VideoDNA> {
-  const db = getDb();
+async function getCachedAnalyses(adIds: string[]): Promise<Map<string, VideoDNA>> {
+  const db = getDbAdapter();
   const result = new Map<string, VideoDNA>();
   for (const id of adIds) {
-    const row = db.prepare('SELECT visual_analysis FROM dna_cache WHERE ad_id = ?').get(id) as { visual_analysis?: string } | undefined;
+    const row = await db.get<{ visual_analysis?: string }>('SELECT visual_analysis FROM dna_cache WHERE ad_id = ?', [id]);
     if (row?.visual_analysis) {
       try {
         const parsed = JSON.parse(row.visual_analysis);
@@ -556,7 +556,7 @@ export async function analyzeTopAdVisuals(
   if (selected.length === 0) return new Map();
 
   // Check cache first
-  const cached = getCachedAnalyses(selected.map(a => a.id));
+  const cached = await getCachedAnalyses(selected.map(a => a.id));
   const uncached = selected.filter(a => !cached.has(a.id));
 
   if (uncached.length === 0) return cached;
@@ -621,14 +621,14 @@ export async function analyzeTopAdVisuals(
   }
 
   // Upsert into dna_cache
-  const db = getDb();
+  const db = getDbAdapter();
   for (const [adId, analysis] of fresh) {
     const ad = uncached.find(a => a.id === adId);
-    db.prepare(`
+    await db.run(`
       INSERT INTO dna_cache (ad_id, account_id, ad_name, visual_analysis)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(ad_id) DO UPDATE SET visual_analysis = excluded.visual_analysis
-    `).run(adId, accountId, ad?.name || '', JSON.stringify(analysis));
+    `, [adId, accountId, ad?.name || '', JSON.stringify(analysis)]);
   }
 
   // Merge cached + fresh

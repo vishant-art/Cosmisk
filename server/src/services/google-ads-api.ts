@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { v4 as uuidv4 } from 'uuid';
 import { encryptToken, decryptToken } from './token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
@@ -213,10 +213,8 @@ export class GoogleAdsApiService {
 /*  DB helpers for Google tokens                                       */
 /* ------------------------------------------------------------------ */
 
-export function saveGoogleToken(userId: string, accessToken: string, refreshToken: string, expiresAt: string, customerIds: string[]): void {
-  const db = getDb();
-
-  db.prepare(`
+export async function saveGoogleToken(userId: string, accessToken: string, refreshToken: string, expiresAt: string, customerIds: string[]): Promise<void> {
+  await getDbAdapter().run(`
     INSERT INTO google_tokens (user_id, encrypted_access_token, encrypted_refresh_token, customer_ids, expires_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
@@ -225,12 +223,11 @@ export function saveGoogleToken(userId: string, accessToken: string, refreshToke
       customer_ids = excluded.customer_ids,
       expires_at = excluded.expires_at,
       created_at = datetime('now')
-  `).run(userId, encryptToken(accessToken), encryptToken(refreshToken), JSON.stringify(customerIds), expiresAt);
+  `, [userId, encryptToken(accessToken), encryptToken(refreshToken), JSON.stringify(customerIds), expiresAt]);
 }
 
-export function getGoogleToken(userId: string): { accessToken: string; refreshToken: string; customerIds: string[]; expiresAt: string | null } | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM google_tokens WHERE user_id = ?').get(userId) as GoogleTokenRow | undefined;
+export async function getGoogleToken(userId: string): Promise<{ accessToken: string; refreshToken: string; customerIds: string[]; expiresAt: string | null } | null> {
+  const row = await getDbAdapter().get('SELECT * FROM google_tokens WHERE user_id = ?', [userId]) as GoogleTokenRow | undefined;
   if (!row) return null;
 
   return {
