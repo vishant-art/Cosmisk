@@ -9,7 +9,7 @@
  */
 
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { safeFetch } from '../utils/safe-fetch.js';
 import { logger } from '../utils/logger.js';
 
@@ -181,12 +181,13 @@ export async function sendWhatsAppNotification(toPhone: string, alert: Alert): P
 /* ------------------------------------------------------------------ */
 
 export async function notifyAlert(userId: string, alert: Alert): Promise<void> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Get user preferences + email
-  const user = db.prepare(
-    'SELECT email, notification_preferences FROM users WHERE id = ?'
-  ).get(userId) as { email: string; notification_preferences?: string } | undefined;
+  const user = await db.get(
+    'SELECT email, notification_preferences FROM users WHERE id = ?',
+    [userId],
+  ) as { email: string; notification_preferences?: string } | undefined;
 
   if (!user) return;
 
