@@ -9,7 +9,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { config } from './config.js';
-import { closeDb } from './db/index.js';
+import { closePgPool } from './db/pg.js';
 import { getDbAdapter } from './db/adapter.js';
 import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
@@ -1283,7 +1283,7 @@ app.addHook('onResponse', (request, reply, done) => {
 getDbAdapter();
 
 const shutdown = async () => {
-  closeDb();
+  await closePgPool();
   await app.close();
   process.exit(0);
 };

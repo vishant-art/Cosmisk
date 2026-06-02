@@ -1,11 +1,9 @@
 /**
  * Postgres (Neon) connection layer — Drizzle + node-postgres.
  *
- * M1 NOTE: This module is ADDITIVE. The live application still runs on
- * better-sqlite3 via `getDb()` in ./index.ts. Nothing in the request path
- * imports this file yet. It exists so the Postgres schema can be migrated and
- * verified out-of-band while SQLite stays live. The call-site cutover happens
- * in M2 (see dev_reports/29_05/async_migration_call_site_audit.md).
+ * This is the live application backend. `getDbAdapter()` (src/db/adapter.ts)
+ * wraps `pgPool` in a PgAdapter for all runtime queries; `closePgPool()` is
+ * called on shutdown. The SQLite path was removed in DB-2 / M2.9.
  */
 // IPv4-first DNS — MUST be imported before pg opens a connection. See net-config.ts.
 import './net-config.js';

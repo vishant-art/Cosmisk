@@ -14,7 +14,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { getMigratedTestPg, type MigratedTestPg } from './pg-test-target.js';
 import { getDbAdapter } from '../adapter.js';
-import { config } from '../../config.js';
 
 let pg: MigratedTestPg;
 
@@ -29,10 +28,6 @@ beforeEach(async () => {
 });
 
 describe('pg harness smoke (DB_BACKEND=postgres, Neon test branch)', () => {
-  it('selects the postgres backend', () => {
-    expect(config.dbBackend).toBe('postgres');
-  });
-
   it('round-trips a row via getDbAdapter() against the test branch (? -> $n)', async () => {
     await getDbAdapter().run(
       'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',

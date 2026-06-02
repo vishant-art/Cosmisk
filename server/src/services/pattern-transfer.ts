@@ -10,7 +10,6 @@
  * - Used to bootstrap new client intelligence faster
  */
 
-import { getDb } from '../db/index.js';
 import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { getRunningContext } from './strategic-memory.js';
@@ -35,46 +34,6 @@ interface PatternCandidate {
   clientId: string;
   evidence: string;
   learnedAt: string;
-}
-
-// ============================================================================
-// DATABASE SETUP
-// ============================================================================
-
-/**
- * Initialize global patterns table
- * Call this during app startup or first use
- */
-export function setupGlobalPatternsSchema(): void {
-  const db = getDb();
-
-  // Global patterns table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS global_patterns (
-      id TEXT PRIMARY KEY,
-      pattern TEXT NOT NULL,
-      category TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      source_client_count INTEGER NOT NULL DEFAULT 1,
-      source_clients TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Index for fast category lookups
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_global_patterns_category
-    ON global_patterns(category)
-  `);
-
-  // Index for confidence-based queries
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_global_patterns_confidence
-    ON global_patterns(confidence DESC)
-  `);
-
-  logger.info('[PatternTransfer] Global patterns schema initialized');
 }
 
 // ============================================================================

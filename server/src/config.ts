@@ -8,12 +8,7 @@ export const config = {
   metaAppId: env['META_APP_ID'] || '675224542133938',
   metaAppSecret: env['META_APP_SECRET'] || '',
   tokenEncryptionKey: env['TOKEN_ENCRYPTION_KEY'] || 'dev-encryption-key-change-me-now!',
-  databasePath: env['DATABASE_PATH'] || './data/cosmisk.db',
   databaseUrl: env['DATABASE_URL'] || '', // PostgreSQL connection string (production)
-  // DB-2/M2.8 cutover: Postgres (Neon) is the default backend. SQLite remains
-  // selectable via DB_BACKEND=sqlite as a temporary local-dev convenience only
-  // (retired in M2.9). The DbAdapter (src/db/adapter.ts) reads this.
-  dbBackend: (env['DB_BACKEND'] === 'sqlite' ? 'sqlite' : 'postgres') as 'sqlite' | 'postgres',
   nodeEnv: env['NODE_ENV'] || 'development',
   graphApiVersion: 'v22.0',
   graphApiBase: 'https://graph.facebook.com/v22.0',

@@ -1,6 +1,6 @@
 /**
- * Postgres / Drizzle schema — ported from the canonical SQLite DDL in
- * ./schema.ts (createTables) plus the 10 locked AI tables.
+ * Postgres / Drizzle schema — the canonical runtime schema, originally ported
+ * from the legacy SQLite DDL plus the 10 locked AI tables.
  *
  * Porting rules applied:
  *  - TEXT  -> text()   (JSON-bearing TEXT columns stay text(); the app does

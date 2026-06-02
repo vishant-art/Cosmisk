@@ -1,21 +1,17 @@
 /**
- * Strangler adapter tests (DB-2 / M2.0).
+ * DB adapter tests (DB-2 / M2.9).
  *
  *   - Pure dialect-shim tests: no DB, fully deterministic.
- *   - SqliteAdapter tests: backed by a `:memory:` better-sqlite3 handle
- *     injected into the adapter (no live DB touched).
  *   - PgAdapter tests: GATED behind TEST_DATABASE_URL via describe.skipIf —
  *     they SKIP (not fail) when the env var is unset, keeping the suite green.
  *
  * Run only this file (siblings may be mid-edit by other agents):
  *   npx vitest run src/db/__tests__/adapter.test.ts
  */
-import Database from 'better-sqlite3';
 import { Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   PgAdapter,
-  SqliteAdapter,
   toPgPlaceholders,
   translateSqliteToPg,
 } from '../adapter.js';
@@ -79,84 +75,6 @@ describe('dialect shim — translateSqliteToPg', () => {
   it('leaves INSERT OR REPLACE verbatim (manual conversion site)', () => {
     const sql = 'INSERT OR REPLACE INTO t (id) VALUES (?)';
     expect(translateSqliteToPg(sql)).toBe(sql);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// SqliteAdapter tests — in-memory better-sqlite3 handle injected.
-// ---------------------------------------------------------------------------
-
-describe('SqliteAdapter (:memory:)', () => {
-  let db: Database.Database;
-  let adapter: SqliteAdapter;
-
-  beforeEach(() => {
-    db = new Database(':memory:');
-    db.exec(
-      'CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, qty INTEGER)',
-    );
-    adapter = new SqliteAdapter(db);
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  it('run() inserts and reports changes + lastInsertRowid', async () => {
-    const res = await adapter.run('INSERT INTO items (name, qty) VALUES (?, ?)', [
-      'widget',
-      3,
-    ]);
-    expect(res.changes).toBe(1);
-    expect(res.lastInsertRowid).toBe(1);
-  });
-
-  it('get() returns a single row or undefined', async () => {
-    await adapter.run('INSERT INTO items (name, qty) VALUES (?, ?)', ['gadget', 9]);
-    const row = await adapter.get<{ name: string; qty: number }>(
-      'SELECT name, qty FROM items WHERE name = ?',
-      ['gadget'],
-    );
-    expect(row).toEqual({ name: 'gadget', qty: 9 });
-
-    const missing = await adapter.get('SELECT * FROM items WHERE name = ?', ['nope']);
-    expect(missing).toBeUndefined();
-  });
-
-  it('all() returns every matching row', async () => {
-    await adapter.run('INSERT INTO items (name, qty) VALUES (?, ?)', ['a', 1]);
-    await adapter.run('INSERT INTO items (name, qty) VALUES (?, ?)', ['b', 2]);
-    const rows = await adapter.all<{ name: string }>('SELECT name FROM items ORDER BY name');
-    expect(rows.map((r) => r.name)).toEqual(['a', 'b']);
-  });
-
-  it('exec() runs raw DDL', async () => {
-    await adapter.exec('CREATE TABLE more (x INTEGER)');
-    const row = await adapter.get<{ name: string }>(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='more'",
-    );
-    expect(row?.name).toBe('more');
-  });
-
-  it('transaction() commits all statements on success', async () => {
-    await adapter.transaction(async (tx) => {
-      await tx.run('INSERT INTO items (name, qty) VALUES (?, ?)', ['x', 1]);
-      await tx.run('INSERT INTO items (name, qty) VALUES (?, ?)', ['y', 2]);
-    });
-    const rows = await adapter.all('SELECT * FROM items');
-    expect(rows.length).toBe(2);
-  });
-
-  it('transaction() rolls back all statements when fn throws', async () => {
-    await expect(
-      adapter.transaction(async (tx) => {
-        await tx.run('INSERT INTO items (name, qty) VALUES (?, ?)', ['z', 1]);
-        throw new Error('boom');
-      }),
-    ).rejects.toThrow('boom');
-
-    const rows = await adapter.all('SELECT * FROM items');
-    expect(rows.length).toBe(0);
   });
 });
 

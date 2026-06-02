@@ -5,9 +5,7 @@
  * and send alerts. Not smoke tests — these validate the business logic
  * that touches real money.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { v4 as uuidv4 } from 'uuid';
+import { describe, it, expect } from 'vitest';
 
 // We're testing the rule evaluation logic by reconstructing it from the
 // automation engine's approach, since the function isn't exported directly.
@@ -194,74 +192,5 @@ describe('Budget calculation logic', () => {
   it('rounds to nearest cent', () => {
     expect(calculateNewBudget(1000, 'increase_budget', 33)).toBe(1330);
     expect(calculateNewBudget(333, 'increase_budget', 10)).toBe(366);
-  });
-});
-
-describe('Alert storage schema', () => {
-  let db: Database.Database;
-
-  beforeEach(() => {
-    db = new Database(':memory:');
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        role TEXT DEFAULT 'user',
-        plan TEXT DEFAULT 'free',
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-      CREATE TABLE IF NOT EXISTS autopilot_alerts (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL REFERENCES users(id),
-        account_id TEXT,
-        type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        severity TEXT DEFAULT 'info',
-        is_read INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-    `);
-    db.prepare('INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)').run(
-      'user-1', 'Test User', 'test@test.com', 'hash'
-    );
-  });
-
-  afterEach(() => db.close());
-
-  it('stores automation alerts correctly', () => {
-    const alertId = uuidv4();
-    db.prepare(`
-      INSERT INTO autopilot_alerts (id, user_id, account_id, type, title, content, severity)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(alertId, 'user-1', 'act_123', 'automation_trigger', 'CPA Alert', 'CPA exceeded $100', 'warning');
-
-    const alert = db.prepare('SELECT * FROM autopilot_alerts WHERE id = ?').get(alertId) as any;
-    expect(alert.type).toBe('automation_trigger');
-    expect(alert.severity).toBe('warning');
-    expect(alert.is_read).toBe(0);
-    expect(alert.user_id).toBe('user-1');
-  });
-
-  it('allows multiple alerts per user', () => {
-    for (let i = 0; i < 5; i++) {
-      db.prepare(`
-        INSERT INTO autopilot_alerts (id, user_id, type, title, content) VALUES (?, ?, ?, ?, ?)
-      `).run(uuidv4(), 'user-1', 'automation_trigger', `Alert ${i}`, `Content ${i}`);
-    }
-    const count = (db.prepare('SELECT COUNT(*) as c FROM autopilot_alerts WHERE user_id = ?').get('user-1') as any).c;
-    expect(count).toBe(5);
-  });
-
-  it('marks alerts as read', () => {
-    const id = uuidv4();
-    db.prepare(`INSERT INTO autopilot_alerts (id, user_id, type, title, content) VALUES (?, ?, ?, ?, ?)`).run(
-      id, 'user-1', 'test', 'Title', 'Content'
-    );
-    db.prepare('UPDATE autopilot_alerts SET is_read = 1 WHERE id = ?').run(id);
-    const alert = db.prepare('SELECT is_read FROM autopilot_alerts WHERE id = ?').get(id) as any;
-    expect(alert.is_read).toBe(1);
   });
 });

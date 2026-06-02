@@ -1,38 +1,26 @@
 /**
- * Strangler adapter (DB-2 / M2.0) — ADDITIVE INFRASTRUCTURE ONLY.
+ * DB adapter (DB-2 / M2.9).
  *
- * Provides a single async DB interface (`DbAdapter`) with two backends:
- *   - SqliteAdapter — wraps the live better-sqlite3 handle from `./index.js`.
- *   - PgAdapter     — wraps the pooled Neon connection from `./pg.js`,
- *                     applying a SQLite→Postgres dialect shim to every query.
+ * Provides a single async DB interface (`DbAdapter`) backed by Postgres:
+ *   - PgAdapter — wraps the pooled Neon connection from `./pg.js`,
+ *                 applying a SQLite→Postgres dialect shim to every query.
  *
- * `getDbAdapter()` returns the backend selected by `config.dbBackend`
- * (env `DB_BACKEND`; default sqlite).
+ * `getDbAdapter()` always returns the PgAdapter singleton. The SQLite path
+ * (SqliteAdapter, getDb/closeDb, the dbBackend flag) was removed in M2.9;
+ * Postgres is the only backend.
  *
- * IMPORTANT: Nothing in the runtime request path imports this module yet.
- * Converting the ~635 existing `.prepare()` call sites is M2.1+. This file
- * exists so the adapter + dialect shim can be unit-tested in isolation.
- *
- * Manual-conversion sites NOT auto-handled by the dialect shim (M2.2/M2.3):
- *   - ~9 sites using `INSERT OR REPLACE` / `INSERT OR IGNORE` / sqlite
- *     `ON CONFLICT` upserts — left verbatim; ported to Postgres upserts by hand.
- *   - 7 `db.transaction()` sites — must be reworked onto `adapter.transaction()`
- *     (better-sqlite3 transactions are sync; Postgres uses BEGIN/COMMIT).
- *   - 1 `lastInsertRowid` reader — Postgres has no implicit lastInsertRowid;
- *     rewrite to `INSERT … RETURNING id` + `get()` (see PgAdapter.run docs).
+ * The dialect shim (translateSqliteToPg/toPgPlaceholders) is retained because
+ * the converted call sites still emit SQLite-flavored SQL that Postgres needs
+ * translated at runtime.
  */
 import type { Pool, PoolClient } from 'pg';
-import { config } from '../config.js';
-import { getDb } from './index.js';
 import { pgPool } from './pg.js';
 
 // NOTE on imports: we use plain ESM imports (not createRequire) so that
-// `vi.mock('../db/index')` / `vi.mock('../db/pg')` in the test suite reach the
-// adapter — a CommonJS require() bypasses vitest's ESM module interception.
-// These imports are still side-effect-light: importing `getDb` does not open
-// the SQLite DB (getDb is lazy), and importing `pgPool` constructs an idle
-// pg.Pool that opens no connection until its first query. So importing this
-// adapter never opens a DB connection, exactly as before.
+// `vi.mock('../db/pg')` in the test suite reaches the adapter — a CommonJS
+// require() bypasses vitest's ESM module interception. Importing `pgPool`
+// constructs an idle pg.Pool that opens no connection until its first query,
+// so importing this adapter never opens a DB connection.
 
 export interface DbAdapter {
   get<T = any>(sql: string, params?: unknown[]): Promise<T | undefined>;
@@ -154,95 +142,6 @@ export function translateSqliteToPg(sql: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// SqliteAdapter — wraps the live better-sqlite3 handle.
-// ---------------------------------------------------------------------------
-
-// better-sqlite3 is the canonical handle type; we only need a structural slice
-// of it so the adapter can also wrap a `:memory:` Database in tests.
-interface SqliteStatement {
-  get(...params: unknown[]): unknown;
-  all(...params: unknown[]): unknown[];
-  run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint };
-}
-interface SqliteHandle {
-  prepare(sql: string): SqliteStatement;
-  exec(sql: string): unknown;
-}
-
-export class SqliteAdapter implements DbAdapter {
-  // Lazily resolve the live handle so importing this module never opens a DB.
-  // Tests may inject a `:memory:` handle directly.
-  constructor(private readonly handle?: SqliteHandle) {}
-
-  private db(): SqliteHandle {
-    if (this.handle) return this.handle;
-    return getDb() as unknown as SqliteHandle;
-  }
-
-  get<T = any>(sql: string, params: unknown[] = []): Promise<T | undefined> {
-    const row = this.db().prepare(sql).get(...params) as T | undefined;
-    return Promise.resolve(row);
-  }
-
-  all<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
-    const rows = this.db().prepare(sql).all(...params) as T[];
-    return Promise.resolve(rows);
-  }
-
-  run(
-    sql: string,
-    params: unknown[] = [],
-  ): Promise<{ changes: number; lastInsertRowid: number | string | null }> {
-    const res = this.db().prepare(sql).run(...params);
-    // better-sqlite3 returns lastInsertRowid as number | bigint.
-    const rowid =
-      typeof res.lastInsertRowid === 'bigint'
-        ? res.lastInsertRowid.toString()
-        : res.lastInsertRowid;
-    return Promise.resolve({ changes: res.changes, lastInsertRowid: rowid });
-  }
-
-  exec(sql: string): Promise<void> {
-    this.db().exec(sql);
-    return Promise.resolve();
-  }
-
-  /**
-   * better-sqlite3 transactions are SYNCHRONOUS — there is no async tx API,
-   * and you cannot `await` across the boundary of `db.transaction(...)`
-   * without losing atomicity (other queries could interleave once the event
-   * loop yields).
-   *
-   * Rather than fight that, we drive the transaction with explicit, fully
-   * synchronous `BEGIN` / `COMMIT` / `ROLLBACK` statements and `await fn`
-   * normally. Because EVERY statement issued through the tx adapter is itself
-   * synchronous (better-sqlite3 executes inline; our adapter only wraps the
-   * already-computed result in `Promise.resolve`), no event-loop yield ever
-   * occurs in between as long as `fn` only awaits adapter operations. The
-   * outer method stays `async` for interface parity; the SQLite engine work
-   * happens synchronously between BEGIN and COMMIT.
-   *
-   * If `fn` rejects, we ROLLBACK and re-throw. This mirrors better-sqlite3's
-   * own `transaction()` rollback-on-throw semantics while permitting the
-   * async `DbAdapter` signature.
-   */
-  async transaction<T>(fn: (tx: DbAdapter) => Promise<T>): Promise<T> {
-    const handle = this.db();
-    const txAdapter = new SqliteAdapter(handle);
-
-    handle.exec('BEGIN');
-    try {
-      const result = await fn(txAdapter);
-      handle.exec('COMMIT');
-      return result;
-    } catch (err) {
-      handle.exec('ROLLBACK');
-      throw err;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // PgAdapter — wraps the pooled Neon connection; applies the dialect shim.
 // ---------------------------------------------------------------------------
 
@@ -326,18 +225,9 @@ function clientQueryable(client: PoolClient): PgQueryable {
 // Backend selection — module singletons.
 // ---------------------------------------------------------------------------
 
-let sqliteSingleton: SqliteAdapter | undefined;
 let pgSingleton: PgAdapter | undefined;
 
 export function getDbAdapter(): DbAdapter {
-  if (config.dbBackend === 'postgres') {
-    if (!pgSingleton) {
-      pgSingleton = new PgAdapter(pgPool);
-    }
-    return pgSingleton;
-  }
-  if (!sqliteSingleton) {
-    sqliteSingleton = new SqliteAdapter();
-  }
-  return sqliteSingleton;
+  if (!pgSingleton) pgSingleton = new PgAdapter(pgPool);
+  return pgSingleton;
 }
