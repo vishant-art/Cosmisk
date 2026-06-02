@@ -15,7 +15,7 @@
  * 7. Creative format classification (before/after, founder, podcast, UGC, etc.)
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { decryptToken } from './token-crypto.js';
@@ -1478,8 +1478,8 @@ export async function runCompetitorCreativeIntel(
   let userToken: string | undefined;
   if (userId) {
     try {
-      const db = getDb();
-      const row = db.prepare('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+      const db = getDbAdapter();
+      const row = await db.get('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?', [userId]) as { encrypted_access_token: string } | undefined;
       if (row) {
         userToken = decryptToken(row.encrypted_access_token);
       }
@@ -1760,8 +1760,8 @@ export async function runCompetitorIntelFromDiscovery(
   let userToken: string | undefined;
   if (userId) {
     try {
-      const db = getDb();
-      const row = db.prepare('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+      const db = getDbAdapter();
+      const row = await db.get('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?', [userId]) as { encrypted_access_token: string } | undefined;
       if (row) {
         userToken = decryptToken(row.encrypted_access_token);
       }
