@@ -1176,7 +1176,7 @@ export const ltvByCreative = pgTable('ltv_by_creative', {
 /*  (services) and seed scripts, NOT in schema.ts — so they were absent    */
 /*  from the migration-managed schema and the app would 500 on first read  */
 /*  under Postgres. Ported AS-IS (no behavioural change). The runtime DDL  */
-/*  paths stay live on SQLite and are deleted in M2; verified-real merges   */
+/*  paths were on SQLite; removed in M2 (DB-2). verified-real merges        */
 /*  (brands→service_clients, strategic_*→predictions/recommendations/...)  */
 /*  are deferred to M2 consolidation. agent_execution_log is intentionally  */
 /*  NOT ported (write-only, zero readers — dropped in M2).                  */

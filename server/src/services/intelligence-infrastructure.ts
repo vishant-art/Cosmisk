@@ -669,10 +669,10 @@ export interface PatternStore {
 }
 
 /**
- * SQLite-based pattern store (current implementation)
- * Future: Replace with SQLite-vec or Turso vector extension
+ * Postgres-backed pattern store (current implementation)
+ * Future: Replace with pgvector or a dedicated vector extension
  */
-export class SQLitePatternStore implements PatternStore {
+export class PostgresPatternStore implements PatternStore {
   async store(pattern: EmbeddablePattern): Promise<void> {
     const db = getDbAdapter();
 
@@ -786,7 +786,7 @@ export class SQLitePatternStore implements PatternStore {
  * Future: This will return vector-enabled store when available
  */
 export function getPatternStore(): PatternStore {
-  return new SQLitePatternStore();
+  return new PostgresPatternStore();
 }
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Intelligence Persistence Layer — Cosmisk
  *
- * Replaces in-memory Maps with SQLite persistence for all intelligence stores.
+ * Replaces in-memory Maps with Postgres persistence for all intelligence stores.
  * Provides CRUD operations for predictions, recommendations, feedback, behavior, etc.
  */
 
@@ -557,4 +557,4 @@ export async function getUnacknowledgedMovements(clientId: string): Promise<any[
 // Logging
 // ============================================================================
 
-logger.info('[IntelligencePersistence] SQLite persistence layer loaded');
+logger.info('[IntelligencePersistence] Postgres persistence layer loaded');

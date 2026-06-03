@@ -343,7 +343,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
       // Only process active accounts
       const activeAccounts = rawAccounts.filter((a: any) => a.account_status === 1);
 
-      // Batch SQLite queries
+      // Batch DB queries
       const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
 
       const sprintRows = await getDbAdapter().all<any>(`
@@ -422,7 +422,7 @@ export async function adAccountRoutes(app: FastifyInstance) {
             const cpaTrend = computeTrend(dailyMetrics.map((m: any) => m.cpa));
             const spendTrend = computeTrend(dailyMetrics.map((m: any) => m.spend));
 
-            // SQLite supplementary data
+            // DB supplementary data
             const sprintData = sprintMap.get(acc.account_id) || sprintMap.get(accountId);
             const alertData = alertMap.get(acc.account_id) || alertMap.get(accountId);
             const decisionData = decisionMap.get(acc.account_id) || decisionMap.get(accountId);

@@ -6,7 +6,7 @@
  * A reusable helper that hands pg-backend tests a freshly *migrated* Postgres
  * schema (schema == migrated prod schema, NOT the legacy SQLite `createTables`
  * DDL) on an isolated Neon test branch. It is strictly OPT-IN: only tests that
- * import it touch Postgres. The live SQLite suite is unaffected.
+ * import it touch Postgres. The default (mocked) suite is unaffected.
  *
  * It NEVER connects to the production `DATABASE_URL`. It reads a separate
  * `TEST_DATABASE_URL` (a Neon test-branch connection string). When that env var
