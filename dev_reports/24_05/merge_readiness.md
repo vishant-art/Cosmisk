@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-24 merge-readiness assessment; the PR-to-main work landed. Superseded by `25_05/pre_pr_review.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Merge Readiness — Pushing `analysis-and-cleanup` to `main`
 
 **Date:** 2026-05-24

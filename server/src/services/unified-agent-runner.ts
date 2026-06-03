@@ -28,7 +28,8 @@
 import { logger } from '../utils/logger.js';
 import { getAgentBrain } from './agent-brain.js';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb } from '../db/index.js';
+import { correlationStore } from '../utils/request-context.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 
 // Import Client Context + Strategic Memory
@@ -144,17 +145,17 @@ export async function runAllAgents(
 
   if (clientId) {
     // Load client context (multi-account setup, brief, geo segments)
-    clientContext = getClientContext(clientId);
+    clientContext = await getClientContext(clientId);
     if (clientContext) {
-      clientBrief = getClientBriefForAgent(clientId);
+      clientBrief = await getClientBriefForAgent(clientId);
       logger.info(`[AgentRunner] Loaded client context for ${clientId}: ${clientContext.name}`);
     } else {
       logger.warn(`[AgentRunner] No client context found for ${clientId}`);
     }
 
     // Load strategic memory (week-by-week continuity)
-    strategicContext = getStrategicContextForAgent(clientId);
-    const recentReports = getRecentReports(clientId, 4);
+    strategicContext = await getStrategicContextForAgent(clientId);
+    const recentReports = await getRecentReports(clientId, 4);
     previousReportsCount = recentReports.length;
     if (recentReports.length > 0) {
       logger.info(`[AgentRunner] Loaded ${recentReports.length} previous reports for ${clientId}`);
@@ -165,17 +166,17 @@ export async function runAllAgents(
 
   // Auto-fetch tokens from database if not provided in options
   let { metaToken, shopDomain, shopifyToken } = options;
-  const db = getDb();
+  const db = getDbAdapter();
 
   if (!metaToken && includeMeta) {
-    const metaRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+    const metaRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]) as { encrypted_access_token: string } | undefined;
     if (metaRow) {
       metaToken = decryptToken(metaRow.encrypted_access_token);
     }
   }
 
   if ((!shopDomain || !shopifyToken) && includeShopify) {
-    const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE brand_id = ?').get(userId) as { shop_domain: string; encrypted_access_token: string } | undefined;
+    const shopifyRow = await db.get('SELECT * FROM shopify_tokens WHERE user_id = ?', [userId]) as { shop_domain: string; encrypted_access_token: string } | undefined;
     if (shopifyRow) {
       shopDomain = shopifyRow.shop_domain;
       shopifyToken = decryptToken(shopifyRow.encrypted_access_token);
@@ -185,20 +186,21 @@ export async function runAllAgents(
   // Auto-fetch Meta ad account ID from brands table if not provided
   let resolvedAccountId = accountId;
   if (!resolvedAccountId && includeMeta) {
-    const brandRow = db.prepare('SELECT meta_ad_account_id FROM brands WHERE id = ? OR user_id = ?').get(userId, userId) as { meta_ad_account_id: string } | undefined;
+    const brandRow = await db.get('SELECT meta_ad_account_id FROM brands WHERE id = ? OR user_id = ?', [userId, userId]) as { meta_ad_account_id: string } | undefined;
     if (brandRow?.meta_ad_account_id) {
       resolvedAccountId = brandRow.meta_ad_account_id;
     }
   }
 
   const runId = uuidv4();
+  correlationStore.enterWith({ correlationId: runId });
   const startedAt = new Date();
 
   // Insert run into agent_runs table (required for FK constraint on decisions)
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
     VALUES (?, 'unified', ?, 'running', datetime('now'))
-  `).run(runId, userId);
+  `, [runId, userId]);
 
   logger.info(`[AgentRunner] Starting unified run ${runId} for user ${userId}, account ${resolvedAccountId}`);
   logger.info(`[AgentRunner] Tokens: Meta=${!!metaToken}, Shopify=${!!shopDomain && !!shopifyToken}, Account=${resolvedAccountId || 'none'}`);
@@ -644,7 +646,7 @@ export async function runAllAgents(
     // Check if we're about to ship duplicate insights
     const headline = findings[0]?.title || 'Agent Run Complete';
     const insights = findings.map(f => f.title);
-    const shipCheck = shouldShipReport(clientId, headline, insights);
+    const shipCheck = await shouldShipReport(clientId, headline, insights);
 
     if (!shipCheck.shouldShip) {
       logger.warn(`[AgentRunner] Deduplication blocked: ${shipCheck.reason}`);
@@ -684,7 +686,7 @@ export async function runAllAgents(
     };
 
     try {
-      recordReport(reportRecord);
+      await recordReport(reportRecord);
       logger.info(`[AgentRunner] Recorded report in strategic memory: ${runId}`);
     } catch (err) {
       logger.error(`[AgentRunner] Failed to record report: ${err}`);
@@ -707,7 +709,7 @@ export async function runAllAgents(
       };
 
       try {
-        recordRecommendation(recRecord);
+        await recordRecommendation(recRecord);
       } catch (err) {
         logger.error(`[AgentRunner] Failed to record recommendation: ${err}`);
       }
@@ -739,10 +741,10 @@ export async function runAllAgents(
   };
 
   // Update run status in database
-  db.prepare(`
+  await db.run(`
     UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
     summary = ? WHERE id = ?
-  `).run(JSON.stringify({ findings: findings.length, savings: estimatedSavings, clientId }), runId);
+  `, [JSON.stringify({ findings: findings.length, savings: estimatedSavings, clientId }), runId]);
 
   logger.info(
     `[AgentRunner] Run ${runId} complete: ${findings.length} findings, ` +
@@ -842,9 +844,9 @@ function categorizeRecommendation(agentName: string): RecommendationRecord['cate
 /**
  * Get strategic context summary for logging
  */
-export function getRunContextSummary(clientId: string): string {
-  const context = getStrategicContextForAgent(clientId);
-  const clientBrief = getClientBriefForAgent(clientId);
+export async function getRunContextSummary(clientId: string): Promise<string> {
+  const context = await getStrategicContextForAgent(clientId);
+  const clientBrief = await getClientBriefForAgent(clientId);
 
   return `
 ═══════════════════════════════════════════════════════════════════════

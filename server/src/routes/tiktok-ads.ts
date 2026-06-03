@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { safeFetch, safeJson, ExternalApiError } from '../utils/safe-fetch.js';
 import { validate, oauthCodeSchema, tiktokAdsQuerySchema } from '../validation/schemas.js';
@@ -80,16 +80,15 @@ async function tiktokGet(path: string, accessToken: string, params: Record<strin
 
 // tiktok_tokens table is created centrally in db/schema.ts
 
-function saveTikTokToken(userId: string, accessToken: string, advertiserId: string): void {
-  const db = getDb();
-  db.prepare(`
+async function saveTikTokToken(userId: string, accessToken: string, advertiserId: string): Promise<void> {
+  await getDbAdapter().run(`
     INSERT INTO tiktok_tokens (user_id, encrypted_access_token, advertiser_id)
     VALUES (?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       encrypted_access_token = excluded.encrypted_access_token,
       advertiser_id = excluded.advertiser_id,
       created_at = datetime('now')
-  `).run(userId, encryptToken(accessToken), advertiserId);
+  `, [userId, encryptToken(accessToken), advertiserId]);
 }
 
 /** Row shape for the tiktok_tokens table */
@@ -100,9 +99,8 @@ interface TikTokTokenRow {
   created_at: string;
 }
 
-function getTikTokToken(userId: string): { accessToken: string; advertiserId: string } | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM tiktok_tokens WHERE user_id = ?').get(userId) as TikTokTokenRow | undefined;
+async function getTikTokToken(userId: string): Promise<{ accessToken: string; advertiserId: string } | null> {
+  const row = await getDbAdapter().get<TikTokTokenRow>('SELECT * FROM tiktok_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return { accessToken: decryptToken(row.encrypted_access_token), advertiserId: row.advertiser_id };
 }
@@ -129,7 +127,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
     try {
       const { accessToken, advertiserId } = await exchangeTikTokCode(code);
-      saveTikTokToken(request.user.id, accessToken, advertiserId);
+      await saveTikTokToken(request.user.id, accessToken, advertiserId);
       return { success: true, advertiser_id: advertiserId };
     } catch (err: any) {
       return reply.status(400).send({ success: false, error: err.message });
@@ -138,7 +136,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
   // GET /tiktok-ads/status
   app.get('/status', { preHandler: [app.authenticate] }, async (request) => {
-    const tokenData = getTikTokToken(request.user.id);
+    const tokenData = await getTikTokToken(request.user.id);
     return { success: true, connected: !!tokenData, advertiser_id: tokenData?.advertiserId || null };
   });
 
@@ -147,7 +145,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
     const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
     if (!qParsed) return;
     const { date_preset } = qParsed;
-    const tokenData = getTikTokToken(request.user.id);
+    const tokenData = await getTikTokToken(request.user.id);
     if (!tokenData) return reply.status(200).send({ success: false, error: 'TikTok not connected' });
 
     try {
@@ -186,7 +184,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
     const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
     if (!qParsed) return;
     const { date_preset } = qParsed;
-    const tokenData = getTikTokToken(request.user.id);
+    const tokenData = await getTikTokToken(request.user.id);
     if (!tokenData) return reply.status(200).send({ success: false, error: 'TikTok not connected' });
 
     try {
@@ -224,7 +222,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
     const qParsed = validate(tiktokAdsQuerySchema, request.query, reply);
     if (!qParsed) return;
     const { date_preset } = qParsed;
-    const tokenData = getTikTokToken(request.user.id);
+    const tokenData = await getTikTokToken(request.user.id);
     if (!tokenData) return reply.status(200).send({ success: false, error: 'TikTok not connected' });
 
     try {
@@ -290,8 +288,7 @@ export async function tiktokAdsRoutes(app: FastifyInstance) {
 
   // POST /tiktok-ads/disconnect
   app.post('/disconnect', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    db.prepare('DELETE FROM tiktok_tokens WHERE user_id = ?').run(request.user.id);
+    await getDbAdapter().run('DELETE FROM tiktok_tokens WHERE user_id = ?', [request.user.id]);
     return { success: true };
   });
 }

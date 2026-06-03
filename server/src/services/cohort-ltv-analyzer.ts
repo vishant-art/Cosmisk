@@ -15,7 +15,7 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import {
   getClientContext, getCohortLTVStore, updateCohortLTVStore,
@@ -183,12 +183,13 @@ export async function analyzeCohortLTV(
 
   logger.info(`[CohortLTV] Analyzing for user ${userId}, last ${days} days`);
 
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Get Shopify credentials
-  const shopifyRow = db.prepare(
-    'SELECT shop_domain, encrypted_access_token FROM shopify_tokens WHERE brand_id = ?'
-  ).get(userId) as { shop_domain: string; encrypted_access_token: string } | undefined;
+  const shopifyRow = await db.get<{ shop_domain: string; encrypted_access_token: string }>(
+    'SELECT shop_domain, encrypted_access_token FROM shopify_tokens WHERE user_id = ?',
+    [userId]
+  );
 
   if (!shopifyRow) {
     logger.warn(`[CohortLTV] No Shopify connected for user ${userId}`);
@@ -825,17 +826,17 @@ export async function analyzeCohortLTVForClient(
   clientId: string,
   options?: { days?: number },
 ): Promise<ClientCohortLTVReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[CohortLTV Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const ltvStore = getCohortLTVStore(clientId);
+  const ltvStore = await getCohortLTVStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
-  const strategicContext = getStrategicContextForAgent(clientId);
+  const strategicContext = await getStrategicContextForAgent(clientId);
   if (strategicContext) {
     logger.info({ contextLength: strategicContext.length }, '[CohortLTV] Loaded strategic context');
   }
@@ -851,7 +852,6 @@ export async function analyzeCohortLTVForClient(
   logger.info({ gapThreshold }, '[CohortLTV Client] Using gap threshold');
 
   // Get Shopify credentials from database
-  const db = getDb();
   // Note: In real usage, we'd need a user association to get the Shopify token
   // For now, we'll use the existing analyzeCohortLTV which handles this internally
 
@@ -881,7 +881,7 @@ export async function analyzeCohortLTVForClient(
   }, '[CohortLTV Client] Alert decision');
 
   // Update LTV store
-  updateCohortLTVStore(clientId, {
+  await updateCohortLTVStore(clientId, {
     lastAnalyzedAt: new Date().toISOString(),
     bestChannel: analysis.bestChannel?.displayName,
     worstChannel: analysis.worstChannel?.displayName,
@@ -893,7 +893,7 @@ export async function analyzeCohortLTVForClient(
 
   // Create recommendation if significant gap found
   if (shouldAlert) {
-    createRecommendation(clientId, 'cohort_ltv', 'rebalance_channel_budget', {
+    await createRecommendation(clientId, 'cohort_ltv', 'rebalance_channel_budget', {
       bestChannel: analysis.bestChannel?.displayName,
       worstChannel: analysis.worstChannel?.displayName,
       ltvGap: analysis.ltvGap,
@@ -904,7 +904,7 @@ export async function analyzeCohortLTVForClient(
     // === CLOSED-LOOP OPERATING SYSTEM ===
     if (analysis.worstChannel && analysis.bestChannel) {
       try {
-        agentRecommend(clientId, 'cohort_ltv', {
+        await agentRecommend(clientId, 'cohort_ltv', {
           type: 'change_targeting',
           entityType: 'account',
           entityId: analysis.worstChannel.displayName,
@@ -963,7 +963,7 @@ export async function analyzeCohortLTVForClient(
       shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
       deliveredVia: [],
     };
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
   } catch (repErr) {
     logger.warn({ err: repErr }, '[CohortLTV] Report recording failed');
   }

@@ -1,3 +1,6 @@
+> **Status: ❌ INVALIDATED (2026-05-31)** — its two-shape/JOIN reconciliation premise was wrong; the real fix is a 2-line `brand_id`→`user_id` change (`brands.owner_user_id` never existed). Corrected in `31_05/next_steps.md` §2.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # `shopify_tokens` — Schema Fork Forensic + M1 Reconciliation Plan
 
 **Date:** 2026-05-25

@@ -426,7 +426,7 @@ export async function collectCommentSignals(
         pattern,
         frequency: data.count,
         trend: 'stable' as TrendDirection,
-        severity: data.count > 10 ? 'high' : data.count > 5 ? 'moderate' : 'low' as any,
+        severity: data.count > 10 ? 'high' : data.count > 5 ? 'moderate' : 'low',
         exampleComments: data.examples,
       })),
 

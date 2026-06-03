@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -15,9 +15,8 @@ interface ProjectIdRow { id: string }
 /** Minimal row shape for script ownership check */
 interface ScriptIdRow { id: string }
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -302,37 +301,37 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
       currency?: string;
       num_concepts?: number;
     };
-    const db = getDb();
     const id = uuidv4();
     const currency = body.currency || 'USD';
 
-    db.prepare(
-      'INSERT INTO ugc_projects (id, user_id, name, brand_name, status, brief) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, request.user.id, body.name || 'New Project', body.brand_name || null, 'onboarding', body.brief ? JSON.stringify(body.brief) : null);
+    await getDbAdapter().run(
+      'INSERT INTO ugc_projects (id, user_id, name, brand_name, status, brief) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, request.user.id, body.name || 'New Project', body.brand_name || null, 'onboarding', body.brief ? JSON.stringify(body.brief) : null]
+    );
 
     // If account is connected, fetch top performers and generate concepts
     let conceptCount = 0;
     if (body.account_id) {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (token) {
         try {
           const meta = new MetaApiService(token);
           const topAds = await fetchTopAds(meta, body.account_id, currency);
           const concepts = generateConceptsFromData(topAds, body.brief, currency, body.num_concepts || 6);
 
-          const stmt = db.prepare(
-            'INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)'
-          );
           for (const c of concepts) {
-            stmt.run(uuidv4(), id, c.title, c.description, 'pending');
+            await getDbAdapter().run(
+              'INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)',
+              [uuidv4(), id, c.title, c.description, 'pending']
+            );
             conceptCount++;
           }
 
           // Move to concepts phase
-          db.prepare("UPDATE ugc_projects SET status = 'concepts', updated_at = datetime('now') WHERE id = ?").run(id);
+          await getDbAdapter().run("UPDATE ugc_projects SET status = 'concepts', updated_at = datetime('now') WHERE id = ?", [id]);
         } catch {
           // Still create project even if data fetch fails
-          db.prepare("UPDATE ugc_projects SET status = 'concepts', updated_at = datetime('now') WHERE id = ?").run(id);
+          await getDbAdapter().run("UPDATE ugc_projects SET status = 'concepts', updated_at = datetime('now') WHERE id = ?", [id]);
         }
       }
     }
@@ -340,14 +339,14 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
     // If no account, generate generic concepts from brief
     if (conceptCount === 0) {
       const concepts = generateConceptsFromData([], body.brief, currency, body.num_concepts || 4);
-      const stmt = db.prepare(
-        'INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)'
-      );
       for (const c of concepts) {
-        stmt.run(uuidv4(), id, c.title, c.description, 'pending');
+        await getDbAdapter().run(
+          'INSERT INTO ugc_concepts (id, project_id, title, description, status) VALUES (?, ?, ?, ?, ?)',
+          [uuidv4(), id, c.title, c.description, 'pending']
+        );
         conceptCount++;
       }
-      db.prepare("UPDATE ugc_projects SET status = 'concepts', updated_at = datetime('now') WHERE id = ?").run(id);
+      await getDbAdapter().run("UPDATE ugc_projects SET status = 'concepts', updated_at = datetime('now') WHERE id = ?", [id]);
     }
 
     return { success: true, project_id: id, concepts_generated: conceptCount };
@@ -356,9 +355,10 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
   // POST /ugc-phase1 (research)
   app.post('/ugc-phase1', { preHandler: [app.authenticate] }, async (request) => {
     const { project_id } = request.body as { project_id: string };
-    const db = getDb();
-    db.prepare("UPDATE ugc_projects SET status = 'research', updated_at = datetime('now') WHERE id = ? AND user_id = ?")
-      .run(project_id, request.user.id);
+    await getDbAdapter().run(
+      "UPDATE ugc_projects SET status = 'research', updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      [project_id, request.user.id]
+    );
     return { success: true };
   });
 
@@ -367,11 +367,11 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
     const { project_id, action, concept_ids, notes } = request.body as {
       project_id: string; action: string; concept_ids?: string[]; notes?: string;
     };
-    const db = getDb();
-
     // Verify ownership
-    const project = db.prepare('SELECT id FROM ugc_projects WHERE id = ? AND user_id = ?')
-      .get(project_id, request.user.id) as ProjectIdRow | undefined;
+    const project = await getDbAdapter().get<ProjectIdRow>(
+      'SELECT id FROM ugc_projects WHERE id = ? AND user_id = ?',
+      [project_id, request.user.id]
+    );
     if (!project) {
       return reply.status(403).send({ success: false, error: 'Not authorized to modify this project' });
     }
@@ -380,9 +380,11 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
 
     if (concept_ids?.length) {
       // Only update concepts belonging to this project
-      const stmt = db.prepare('UPDATE ugc_concepts SET status = ?, feedback = ? WHERE id = ? AND project_id = ?');
       for (const cid of concept_ids) {
-        stmt.run(newStatus, notes || null, cid, project_id);
+        await getDbAdapter().run(
+          'UPDATE ugc_concepts SET status = ?, feedback = ? WHERE id = ? AND project_id = ?',
+          [newStatus, notes || null, cid, project_id]
+        );
       }
     }
 
@@ -396,12 +398,13 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
       account_id?: string;
       currency?: string;
     };
-    const db = getDb();
     const cur = currency || 'USD';
 
     // Get project brief
-    const project = db.prepare('SELECT * FROM ugc_projects WHERE id = ? AND user_id = ?')
-      .get(project_id, request.user.id) as UgcProjectRow | undefined;
+    const project = await getDbAdapter().get<UgcProjectRow>(
+      'SELECT * FROM ugc_projects WHERE id = ? AND user_id = ?',
+      [project_id, request.user.id]
+    );
     if (!project) return { success: false, error: 'Project not found' };
 
     const brief = safeJsonParse(project.brief, {});
@@ -409,7 +412,7 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
     // Fetch top ads for data context
     let topAds: TopAd[] = [];
     if (account_id) {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (token) {
         try {
           const meta = new MetaApiService(token);
@@ -419,15 +422,13 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
     }
 
     // Get approved concepts
-    const approvedConcepts = db.prepare(
-      "SELECT * FROM ugc_concepts WHERE project_id = ? AND status = 'approved'"
-    ).all(project_id) as UgcConceptRow[];
+    const approvedConcepts = await getDbAdapter().all<UgcConceptRow>(
+      "SELECT * FROM ugc_concepts WHERE project_id = ? AND status = 'approved'",
+      [project_id]
+    );
 
     // Generate scripts for each approved concept
     let scriptCount = 0;
-    const stmtScript = db.prepare(
-      'INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)'
-    );
     for (const concept of approvedConcepts) {
       const content = generateScriptFromConcept(
         { title: concept.title, description: concept.description || '' },
@@ -435,12 +436,17 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
         topAds,
         cur
       );
-      stmtScript.run(uuidv4(), concept.id, project_id, concept.title + ' — Script', content, 'draft');
+      await getDbAdapter().run(
+        'INSERT INTO ugc_scripts (id, concept_id, project_id, title, content, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [uuidv4(), concept.id, project_id, concept.title + ' — Script', content, 'draft']
+      );
       scriptCount++;
     }
 
-    db.prepare("UPDATE ugc_projects SET status = 'scripting', updated_at = datetime('now') WHERE id = ? AND user_id = ?")
-      .run(project_id, request.user.id);
+    await getDbAdapter().run(
+      "UPDATE ugc_projects SET status = 'scripting', updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      [project_id, request.user.id]
+    );
 
     return { success: true, scripts_generated: scriptCount };
   });
@@ -448,31 +454,34 @@ export async function ugcWorkflowRoutes(app: FastifyInstance) {
   // POST /ugc-delivery
   app.post('/ugc-delivery', { preHandler: [app.authenticate] }, async (request) => {
     const { project_id } = request.body as { project_id: string };
-    const db = getDb();
-    db.prepare("UPDATE ugc_projects SET status = 'delivered', updated_at = datetime('now') WHERE id = ? AND user_id = ?")
-      .run(project_id, request.user.id);
+    await getDbAdapter().run(
+      "UPDATE ugc_projects SET status = 'delivered', updated_at = datetime('now') WHERE id = ? AND user_id = ?",
+      [project_id, request.user.id]
+    );
     return { success: true };
   });
 
   // POST /ugc-script-revision
   app.post('/ugc-script-revision', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { script_id, content } = request.body as { script_id: string; content?: string };
-    const db = getDb();
 
     // Verify ownership: script must belong to a project owned by this user
-    const script = db.prepare(
+    const script = await getDbAdapter().get<ScriptIdRow>(
       `SELECT s.id FROM ugc_scripts s
        JOIN ugc_projects p ON s.project_id = p.id
-       WHERE s.id = ? AND p.user_id = ?`
-    ).get(script_id, request.user.id) as ScriptIdRow | undefined;
+       WHERE s.id = ? AND p.user_id = ?`,
+      [script_id, request.user.id]
+    );
 
     if (!script) {
       return reply.status(403).send({ success: false, error: 'Not authorized to edit this script' });
     }
 
     if (content) {
-      db.prepare("UPDATE ugc_scripts SET content = ?, status = 'in_review', updated_at = datetime('now') WHERE id = ?")
-        .run(content, script_id);
+      await getDbAdapter().run(
+        "UPDATE ugc_scripts SET content = ?, status = 'in_review', updated_at = datetime('now') WHERE id = ?",
+        [content, script_id]
+      );
     }
     return { success: true };
   });

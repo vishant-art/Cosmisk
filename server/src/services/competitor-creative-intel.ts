@@ -15,7 +15,7 @@
  * 7. Creative format classification (before/after, founder, podcast, UGC, etc.)
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
 import { decryptToken } from './token-crypto.js';
@@ -1478,8 +1478,8 @@ export async function runCompetitorCreativeIntel(
   let userToken: string | undefined;
   if (userId) {
     try {
-      const db = getDb();
-      const row = db.prepare('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+      const db = getDbAdapter();
+      const row = await db.get('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?', [userId]) as { encrypted_access_token: string } | undefined;
       if (row) {
         userToken = decryptToken(row.encrypted_access_token);
       }
@@ -1760,8 +1760,8 @@ export async function runCompetitorIntelFromDiscovery(
   let userToken: string | undefined;
   if (userId) {
     try {
-      const db = getDb();
-      const row = db.prepare('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?').get(userId) as { encrypted_access_token: string } | undefined;
+      const db = getDbAdapter();
+      const row = await db.get('SELECT encrypted_access_token FROM meta_tokens WHERE user_id = ?', [userId]) as { encrypted_access_token: string } | undefined;
       if (row) {
         userToken = decryptToken(row.encrypted_access_token);
       }
@@ -2417,7 +2417,7 @@ export async function runCompetitorIntelForClient(
   const { extraQueries = [], limit = 300, analyzeTop = 25 } = options;
 
   // Get client context
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[ClientIntel] Client not found');
     return null;
@@ -2478,7 +2478,7 @@ export async function runCompetitorIntelForClient(
 
   for (const ad of allAds) {
     // Skip already shown references
-    if (hasReferenceBeenShown(clientId, ad.adId)) {
+    if (await hasReferenceBeenShown(clientId, ad.adId)) {
       alreadyShownCount.count++;
       continue;
     }
@@ -2535,13 +2535,13 @@ export async function runCompetitorIntelForClient(
 
   // Track these as shown references
   for (const ad of analyzedAds) {
-    addReferenceShown(clientId, ad.adId);
+    await addReferenceShown(clientId, ad.adId);
   }
 
   // Update search queries used in store
   if (competitorIntel) {
     const updatedQueries = [...new Set([...(competitorIntel.searchQueriesUsed || []), ...usedQueries])];
-    updateCompetitorIntelStore(clientId, {
+    await updateCompetitorIntelStore(clientId, {
       searchQueriesUsed: updatedQueries,
       lastScrapeAt: new Date().toISOString(),
       lastReportAt: new Date().toISOString(),
@@ -2571,7 +2571,7 @@ export async function runCompetitorIntelForClient(
 
   // Create recommendation records for tracking
   for (const rec of recommendations.slice(0, 5)) {
-    createRecommendation(clientId, 'competitor_intel', rec.category, {
+    await createRecommendation(clientId, 'competitor_intel', rec.category, {
       insight: rec.insight,
       action: rec.action,
       basedOn: rec.basedOn,
@@ -2580,7 +2580,7 @@ export async function runCompetitorIntelForClient(
 
     // === CLOSED-LOOP OPERATING SYSTEM ===
     try {
-      agentRecommend(clientId, 'competitor_intel', {
+      await agentRecommend(clientId, 'competitor_intel', {
         type: 'test_creative',
         entityType: 'creative',
         entityId: `competitor-insight-${rec.category}`,

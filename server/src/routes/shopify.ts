@@ -18,7 +18,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { encryptToken, decryptToken } from '../utils/encryption.js';
 import { ShopifyClient, getShopifyClientForUser, hasShopifyConnected } from '../services/shopify-client.js';
 import { logger } from '../utils/logger.js';
@@ -65,8 +65,8 @@ export async function shopifyRoutes(app: FastifyInstance) {
     }
 
     // Check if Shopify OAuth is configured
-    const shopifyApiKey = (config as any).shopifyApiKey;
-    const shopifyApiSecret = (config as any).shopifyApiSecret;
+    const shopifyApiKey = config.shopifyApiKey;
+    const shopifyApiSecret = config.shopifyApiSecret;
 
     if (!shopifyApiKey || !shopifyApiSecret) {
       return reply.status(503).send({
@@ -129,8 +129,8 @@ export async function shopifyRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'Shop mismatch' });
     }
 
-    const shopifyApiKey = (config as any).shopifyApiKey;
-    const shopifyApiSecret = (config as any).shopifyApiSecret;
+    const shopifyApiKey = config.shopifyApiKey;
+    const shopifyApiSecret = config.shopifyApiSecret;
 
     // TODO: Verify HMAC signature for security
     // This is BLOCKED until auth security fix lands
@@ -161,10 +161,9 @@ export async function shopifyRoutes(app: FastifyInstance) {
       const shopInfo = await client.getShopInfo();
 
       // Store encrypted token
-      const db = getDb();
       const encryptedToken = encryptToken(data.access_token);
 
-      db.prepare(`
+      await getDbAdapter().run(`
         INSERT INTO shopify_tokens (user_id, encrypted_access_token, shop_domain, shop_name)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
@@ -172,7 +171,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
           shop_domain = excluded.shop_domain,
           shop_name = excluded.shop_name,
           created_at = datetime('now')
-      `).run(stateData.userId, encryptedToken, cleanShop, shopInfo.name);
+      `, [stateData.userId, encryptedToken, cleanShop, shopInfo.name]);
 
       logger.info(`[Shopify] Connected ${cleanShop} for user ${stateData.userId}`);
 
@@ -186,10 +185,10 @@ export async function shopifyRoutes(app: FastifyInstance) {
 
   // GET /shopify/status — Check connection status
   app.get('/status', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const row = db.prepare(
-      'SELECT shop_domain, shop_name, created_at FROM shopify_tokens WHERE user_id = ?'
-    ).get(request.user.id) as Partial<ShopifyTokenRow> | undefined;
+    const row = await getDbAdapter().get<Partial<ShopifyTokenRow>>(
+      'SELECT shop_domain, shop_name, created_at FROM shopify_tokens WHERE user_id = ?',
+      [request.user.id]
+    );
 
     if (!row) {
       return {
@@ -199,7 +198,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
     }
 
     // Validate token still works
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
     const isValid = client ? await client.validateAccess() : false;
 
     return {
@@ -216,8 +215,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
 
   // DELETE /shopify/disconnect — Remove connection
   app.delete('/disconnect', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const result = db.prepare('DELETE FROM shopify_tokens WHERE user_id = ?').run(request.user.id);
+    const result = await getDbAdapter().run('DELETE FROM shopify_tokens WHERE user_id = ?', [request.user.id]);
 
     if (result.changes === 0) {
       return { success: true, message: 'No Shopify connection found' };
@@ -231,7 +229,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
 
   // GET /shopify/products — Get products with inventory
   app.get('/products', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -257,7 +255,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
   // GET /shopify/oos — Get out-of-stock products
   app.get('/oos', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { lowStock } = request.query as { lowStock?: string };
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -287,7 +285,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
   // GET /shopify/orders — Get recent orders
   app.get('/orders', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { months } = request.query as { months?: string };
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -313,7 +311,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
 
   // GET /shopify/summary — Get full shop summary
   app.get('/summary', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({
@@ -339,7 +337,7 @@ export async function shopifyRoutes(app: FastifyInstance) {
   // GET /shopify/abandoned-checkouts — Get abandoned checkouts
   app.get('/abandoned-checkouts', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { months } = request.query as { months?: string };
-    const client = getShopifyClientForUser(request.user.id);
+    const client = await getShopifyClientForUser(request.user.id);
 
     if (!client) {
       return reply.status(400).send({

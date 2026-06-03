@@ -57,7 +57,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
         customerIds = await service.getAccessibleCustomers();
       } catch { /* may fail if no accounts */ }
 
-      saveGoogleToken(request.user.id, accessToken, refreshToken, expiresAt, customerIds);
+      await saveGoogleToken(request.user.id, accessToken, refreshToken, expiresAt, customerIds);
 
       return { success: true, customer_ids: customerIds, accountCount: customerIds.length };
     } catch (err: any) {
@@ -68,7 +68,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // GET /google-ads/status — check connection status
   app.get('/status', { preHandler: [app.authenticate] }, async (request) => {
-    const tokenData = getGoogleToken(request.user.id);
+    const tokenData = await getGoogleToken(request.user.id);
     if (!tokenData) {
       return { success: true, connected: false };
     }
@@ -83,7 +83,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // GET /google-ads/accounts — list accessible ad accounts
   app.get('/accounts', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const tokenData = getGoogleToken(request.user.id);
+    const tokenData = await getGoogleToken(request.user.id);
     if (!tokenData) {
       return reply.status(200).send({ success: true, accounts: [], connected: false });
     }
@@ -94,7 +94,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
       if (tokenData.expiresAt && new Date(tokenData.expiresAt) < new Date()) {
         const refreshed = await refreshGoogleToken(tokenData.refreshToken);
         accessToken = refreshed.accessToken;
-        saveGoogleToken(request.user.id, accessToken, tokenData.refreshToken,
+        await saveGoogleToken(request.user.id, accessToken, tokenData.refreshToken,
           new Date(Date.now() + refreshed.expiresIn * 1000).toISOString(), tokenData.customerIds);
       }
 
@@ -116,7 +116,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'customer_id required' });
     }
 
-    const tokenData = getGoogleToken(request.user.id);
+    const tokenData = await getGoogleToken(request.user.id);
     if (!tokenData) {
       return reply.status(200).send({ success: false, error: 'Google Ads not connected' });
     }
@@ -146,7 +146,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'customer_id required' });
     }
 
-    const tokenData = getGoogleToken(request.user.id);
+    const tokenData = await getGoogleToken(request.user.id);
     if (!tokenData) {
       return reply.status(200).send({ success: false, error: 'Google Ads not connected' });
     }
@@ -176,7 +176,7 @@ export async function googleAdsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'customer_id required' });
     }
 
-    const tokenData = getGoogleToken(request.user.id);
+    const tokenData = await getGoogleToken(request.user.id);
     if (!tokenData) {
       return reply.status(200).send({ success: false, error: 'Google Ads not connected' });
     }
@@ -223,9 +223,8 @@ export async function googleAdsRoutes(app: FastifyInstance) {
 
   // POST /google-ads/disconnect
   app.post('/disconnect', { preHandler: [app.authenticate] }, async (request) => {
-    const { getDb } = await import('../db/index.js');
-    const db = getDb();
-    db.prepare('DELETE FROM google_tokens WHERE user_id = ?').run(request.user.id);
+    const { getDbAdapter } = await import('../db/adapter.js');
+    await getDbAdapter().run('DELETE FROM google_tokens WHERE user_id = ?', [request.user.id]);
     return { success: true };
   });
 }

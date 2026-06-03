@@ -22,7 +22,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    * Get scheduler status
    */
   app.get('/status', { preHandler: [app.authenticate] }, async () => {
-    return getSchedulerStatus();
+    return await getSchedulerStatus();
   });
 
   /**
@@ -30,7 +30,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    * Start the scheduler
    */
   app.post('/start', { preHandler: [app.authenticate] }, async () => {
-    initializeScheduler();
+    await initializeScheduler();
     return { success: true, message: 'Scheduler started' };
   });
 
@@ -49,7 +49,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get('/', { preHandler: [app.authenticate] }, async (request) => {
     const { brandId } = request.query as { brandId?: string };
-    return listScheduledAudits(brandId);
+    return await listScheduledAudits(brandId);
   });
 
   /**
@@ -59,7 +59,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
   app.get<{
     Params: { id: string };
   }>('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const schedule = getScheduledAudit(request.params.id);
+    const schedule = await getScheduledAudit(request.params.id);
 
     if (!schedule) {
       reply.status(404);
@@ -93,7 +93,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
       return { error: 'Invalid frequency. Must be: daily, weekly, biweekly, or monthly' };
     }
 
-    const schedule = createScheduledAudit({
+    const schedule = await createScheduledAudit({
       brandId,
       brandName,
       frequency,
@@ -118,7 +118,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
   }>('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { frequency, datePreset, enabled } = request.body;
 
-    const schedule = updateScheduledAudit(request.params.id, {
+    const schedule = await updateScheduledAudit(request.params.id, {
       frequency,
       datePreset,
       enabled,
@@ -139,7 +139,7 @@ export async function scheduleRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{
     Params: { id: string };
   }>('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const deleted = deleteScheduledAudit(request.params.id);
+    const deleted = await deleteScheduledAudit(request.params.id);
 
     if (!deleted) {
       reply.status(404);

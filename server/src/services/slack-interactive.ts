@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { executeDecision } from './ad-watchdog.js';
 import { safeFetch } from '../utils/safe-fetch.js';
 import type { AgentDecisionRow } from '../types/index.js';
@@ -167,16 +167,15 @@ export async function handleSlackAction(payload: any): Promise<{ text: string }>
   const actionId: string = action.action_id || '';
   const decisionId: string = action.value || '';
 
-  const db = getDb();
-  const decision = db.prepare('SELECT * FROM agent_decisions WHERE id = ?').get(decisionId) as AgentDecisionRow | undefined;
+  const decision = await getDbAdapter().get('SELECT * FROM agent_decisions WHERE id = ?', [decisionId]) as AgentDecisionRow | undefined;
   if (!decision) return { text: `Decision ${decisionId} not found` };
 
   if (actionId.startsWith('watchdog_approve_')) {
     // Approve and execute
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE agent_decisions SET status = 'approved', approved_at = datetime('now')
       WHERE id = ?
-    `).run(decisionId);
+    `, [decisionId]);
 
     const result = await executeDecision(decisionId);
     const actionLabel = ACTION_LABELS[decision.suggested_action] || decision.suggested_action;
@@ -187,10 +186,10 @@ export async function handleSlackAction(payload: any): Promise<{ text: string }>
       return { text: `Approved but execution failed: ${result.message}` };
     }
   } else if (actionId.startsWith('watchdog_reject_')) {
-    db.prepare(`
+    await getDbAdapter().run(`
       UPDATE agent_decisions SET status = 'rejected'
       WHERE id = ?
-    `).run(decisionId);
+    `, [decisionId]);
     return { text: `Rejected recommendation for "${decision.target_name}"` };
   }
 

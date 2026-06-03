@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.js';
@@ -339,18 +339,17 @@ function generateFallbackContent(type: string, data: any): string {
 /* ------------------------------------------------------------------ */
 
 export async function runAutopilot(): Promise<number> {
-  const db = getDb();
-  const users = db.prepare(`
+  const users = await getDbAdapter().all(`
     SELECT u.id, u.plan FROM users u
     WHERE u.onboarding_complete = 1
     AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-  `).all() as Pick<UserRow, 'id' | 'plan'>[];
+  `) as Pick<UserRow, 'id' | 'plan'>[];
 
   let totalAlerts = 0;
 
   for (const user of users) {
     try {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+      const tokenRow = await getDbAdapter().get('SELECT * FROM meta_tokens WHERE user_id = ?', [user.id]) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
         logger.warn(`[autopilot] Skipping user ${user.id}: Meta token expired at ${tokenRow.expires_at}`);
@@ -369,10 +368,10 @@ export async function runAutopilot(): Promise<number> {
 
         // Save alerts to DB
         for (const alert of alerts) {
-          db.prepare(`
+          await getDbAdapter().run(`
             INSERT INTO autopilot_alerts (id, user_id, account_id, type, title, content, severity)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(uuidv4(), alert.user_id, alert.account_id, alert.type, alert.title, alert.content, alert.severity);
+          `, [uuidv4(), alert.user_id, alert.account_id, alert.type, alert.title, alert.content, alert.severity]);
           totalAlerts++;
         }
       }

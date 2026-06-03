@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import cron from 'node-cron';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { runWatchdog, executeDecision, checkOutcomes } from '../services/ad-watchdog.js';
 import { handleSlackAction, verifySlackSignature } from '../services/slack-interactive.js';
 import { buildContextWindow, runDecay, getCoreMemory } from '../services/agent-memory.js';
@@ -77,10 +77,10 @@ function startAgentCrons() {
   });
 
   // Memory decay: weekly on Sundays at 3:00 AM UTC
-  cron.schedule('0 3 * * 0', () => {
+  cron.schedule('0 3 * * 0', async () => {
     logger.info('[Brain] Running memory decay...');
     try {
-      const affected = runDecay();
+      const affected = await runDecay();
       logger.info(`[Brain] Memory decay: ${affected} episodes affected`);
     } catch (err: any) {
       logger.error({ err: err.message }, '[Brain] Memory decay failed');
@@ -213,7 +213,6 @@ export async function agentRoutes(app: FastifyInstance) {
     const parsed = validate(agentRunsQuerySchema, request.query, reply);
     if (!parsed) return;
     const { agent_type, limit } = parsed;
-    const db = getDb();
 
     let query = 'SELECT * FROM agent_runs WHERE user_id = ?';
     const params: (string | number)[] = [request.user.id];
@@ -226,7 +225,7 @@ export async function agentRoutes(app: FastifyInstance) {
     query += ' ORDER BY started_at DESC LIMIT ?';
     params.push(limit);
 
-    const runs = db.prepare(query).all(...params) as AgentRunRow[];
+    const runs = await getDbAdapter().all<AgentRunRow>(query, params);
 
     return {
       success: true,
@@ -246,7 +245,6 @@ export async function agentRoutes(app: FastifyInstance) {
     const parsed = validate(agentDecisionsQuerySchema, request.query, reply);
     if (!parsed) return;
     const { status, limit } = parsed;
-    const db = getDb();
 
     let query = 'SELECT * FROM agent_decisions WHERE user_id = ?';
     const params: (string | number)[] = [request.user.id];
@@ -256,10 +254,10 @@ export async function agentRoutes(app: FastifyInstance) {
       params.push(status);
     }
 
-    query += ' ORDER BY rowid DESC LIMIT ?';
+    query += ' ORDER BY created_at DESC LIMIT ?';
     params.push(limit);
 
-    const decisions = db.prepare(query).all(...params) as AgentDecisionRow[];
+    const decisions = await getDbAdapter().all<AgentDecisionRow>(query, params);
 
     return {
       success: true,
@@ -290,17 +288,17 @@ export async function agentRoutes(app: FastifyInstance) {
     if (!params) return;
     const { id } = params;
 
-    const db = getDb();
-    const decision = db.prepare(
-      'SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as AgentDecisionRow | undefined;
+    const decision = await getDbAdapter().get<AgentDecisionRow>(
+      'SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?',
+      [id, request.user.id]
+    );
 
     if (!decision) return reply.status(404).send({ success: false, error: 'Decision not found' });
     if (decision.status !== 'pending') {
       return reply.status(400).send({ success: false, error: `Decision is ${decision.status}, not pending` });
     }
 
-    db.prepare("UPDATE agent_decisions SET status = 'approved', approved_at = datetime('now') WHERE id = ?").run(id);
+    await getDbAdapter().run("UPDATE agent_decisions SET status = 'approved', approved_at = datetime('now') WHERE id = ?", [id]);
 
     // Execute with user-scoping (#6)
     const result = await executeDecision(id, request.user.id);
@@ -313,24 +311,23 @@ export async function agentRoutes(app: FastifyInstance) {
     if (!params) return;
     const { id } = params;
 
-    const db = getDb();
-    const decision = db.prepare(
-      'SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as AgentDecisionRow | undefined;
+    const decision = await getDbAdapter().get<AgentDecisionRow>(
+      'SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?',
+      [id, request.user.id]
+    );
 
     if (!decision) return reply.status(404).send({ success: false, error: 'Decision not found' });
     if (decision.status !== 'pending') {
       return reply.status(400).send({ success: false, error: `Decision is ${decision.status}, not pending` });
     }
 
-    db.prepare("UPDATE agent_decisions SET status = 'rejected' WHERE id = ?").run(id);
+    await getDbAdapter().run("UPDATE agent_decisions SET status = 'rejected' WHERE id = ?", [id]);
     return { success: true, message: `Rejected: ${decision.suggested_action} on "${decision.target_name}"` };
   });
 
   // POST /agent/watchdog/run — manual trigger (admin only, 2/min)
   app.post('/watchdog/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
-    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    const userRow = await getDbAdapter().get<{ role: string }>('SELECT role FROM users WHERE id = ?', [request.user.id]);
     if (!userRow || userRow.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
@@ -341,8 +338,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agent/report/run — manual trigger (admin only, 2/min)
   app.post('/report/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
-    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    const userRow = await getDbAdapter().get<{ role: string }>('SELECT role FROM users WHERE id = ?', [request.user.id]);
     if (!userRow || userRow.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
@@ -352,8 +348,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agent/content/run — manual trigger (admin only, 2/min)
   app.post('/content/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
-    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    const userRow = await getDbAdapter().get<{ role: string }>('SELECT role FROM users WHERE id = ?', [request.user.id]);
     if (!userRow || userRow.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
@@ -363,8 +358,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agent/sales/run — manual trigger (admin only, 2/min)
   app.post('/sales/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
-    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    const userRow = await getDbAdapter().get<{ role: string }>('SELECT role FROM users WHERE id = ?', [request.user.id]);
     if (!userRow || userRow.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
@@ -374,8 +368,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // POST /agent/meta-warmup/run — manual trigger (admin only, 2/min)
   app.post('/meta-warmup/run', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
-    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    const userRow = await getDbAdapter().get<{ role: string }>('SELECT role FROM users WHERE id = ?', [request.user.id]);
     if (!userRow || userRow.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
@@ -421,8 +414,7 @@ export async function agentRoutes(app: FastifyInstance) {
     });
 
     // Fetch the completed run to return output
-    const db = getDb();
-    const run = db.prepare('SELECT * FROM agent_runs WHERE id = ?').get(runId) as AgentRunRow;
+    const run = (await getDbAdapter().get<AgentRunRow>('SELECT * FROM agent_runs WHERE id = ?', [runId]))!;
 
     return {
       success: true,
@@ -455,7 +447,7 @@ export async function agentRoutes(app: FastifyInstance) {
       });
     }
 
-    processConceptFeedback(
+    await processConceptFeedback(
       request.user.id,
       body.runId,
       body.conceptIndex,
@@ -477,60 +469,59 @@ export async function agentRoutes(app: FastifyInstance) {
       });
     }
 
-    setCoreMemory(request.user.id, 'creative_strategist', body.key, body.value);
+    await setCoreMemory(request.user.id, 'creative_strategist', body.key, body.value);
     return { success: true, message: `Core memory "${body.key}" saved` };
   });
 
   // POST /agent/creative-strategist/seed — seed initial memory (admin only)
   app.post('/creative-strategist/seed', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
-    const userRow = db.prepare('SELECT role FROM users WHERE id = ?').get(request.user.id) as { role: string } | undefined;
+    const userRow = await getDbAdapter().get<{ role: string }>('SELECT role FROM users WHERE id = ?', [request.user.id]);
     if (!userRow || userRow.role !== 'admin') {
       return reply.status(403).send({ success: false, error: 'Admin access required' });
     }
 
-    seedCreativeStrategistMemory(request.user.id);
+    await seedCreativeStrategistMemory(request.user.id);
     return { success: true, message: 'Creative strategist memory seeded' };
   });
 
   // GET /agent/memory/:agentType — context window string
   app.get('/memory/:agentType', { preHandler: [app.authenticate] }, async (request) => {
     const { agentType } = request.params as { agentType: AgentType };
-    const context = buildContextWindow(request.user.id, agentType);
+    const context = await buildContextWindow(request.user.id, agentType);
     return { success: true, context };
   });
 
   // GET /agent/memory-structured — structured memory for UI display
   app.get('/memory-structured', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
     const userId = request.user.id;
 
     // Core memories across all agent types
-    const coreRows = db.prepare(
-      'SELECT agent_type, key, value, updated_at FROM agent_core_memory WHERE user_id = ? ORDER BY updated_at DESC'
-    ).all(userId) as { agent_type: string; key: string; value: string; updated_at: string }[];
+    const coreRows = await getDbAdapter().all<{ agent_type: string; key: string; value: string; updated_at: string }>(
+      'SELECT agent_type, key, value, updated_at FROM agent_core_memory WHERE user_id = ? ORDER BY updated_at DESC',
+      [userId]
+    );
 
     // Recent episodes (top 20 by relevance)
-    const episodes = db.prepare(`
+    const episodes = await getDbAdapter().all<{ id: string; agent_type: string; event: string; context: string | null; outcome: string | null; relevance_score: number; reinforcement_count: number; created_at: string }>(`
       SELECT id, agent_type, event, context, outcome, relevance_score, reinforcement_count, created_at
       FROM agent_episodes
       WHERE user_id = ? AND relevance_score > 0.2
       ORDER BY relevance_score DESC, created_at DESC
       LIMIT 20
-    `).all(userId) as { id: string; agent_type: string; event: string; context: string | null; outcome: string | null; relevance_score: number; reinforcement_count: number; created_at: string }[];
+    `, [userId]);
 
     // Known entities (top 30 by mention count)
-    const entities = db.prepare(`
+    const entities = await getDbAdapter().all<{ entity_type: string; entity_name: string; mention_count: number; first_seen: string; last_seen: string }>(`
       SELECT entity_type, entity_name, mention_count, first_seen, last_seen
       FROM agent_entities
       WHERE user_id = ?
       ORDER BY mention_count DESC, last_seen DESC
       LIMIT 30
-    `).all(userId) as { entity_type: string; entity_name: string; mention_count: number; first_seen: string; last_seen: string }[];
+    `, [userId]);
 
     // Memory stats
-    const totalEpisodes = (db.prepare('SELECT COUNT(*) as cnt FROM agent_episodes WHERE user_id = ?').get(userId) as any)?.cnt || 0;
-    const totalEntities = (db.prepare('SELECT COUNT(*) as cnt FROM agent_entities WHERE user_id = ?').get(userId) as any)?.cnt || 0;
+    const totalEpisodes = (await getDbAdapter().get<any>('SELECT COUNT(*) as cnt FROM agent_episodes WHERE user_id = ?', [userId]))?.cnt || 0;
+    const totalEntities = (await getDbAdapter().get<any>('SELECT COUNT(*) as cnt FROM agent_entities WHERE user_id = ?', [userId]))?.cnt || 0;
     const totalCoreMemories = coreRows.length;
 
     return {
@@ -544,12 +535,11 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // GET /agent/briefing/latest
   app.get('/briefing/latest', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const run = db.prepare(`
+    const run = await getDbAdapter().get<AgentRunRow>(`
       SELECT * FROM agent_runs
       WHERE user_id = ? AND agent_type = 'briefing'
       ORDER BY started_at DESC LIMIT 1
-    `).get(request.user.id) as AgentRunRow | undefined;
+    `, [request.user.id]);
 
     if (!run) return { success: true, briefing: null };
 

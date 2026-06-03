@@ -7,7 +7,7 @@
  * Sources: Meta ad comments, Instagram post comments, Shopify reviews
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { MetaApiService } from './meta-api.js';
 import { ShopifyClient } from './shopify-client.js';
 import { config } from '../config.js';
@@ -1380,7 +1380,7 @@ export async function runCommentMining(
     brandCategory?: string;
   }
 ): Promise<CommentMiningReport> {
-  const db = getDb();
+  const db = getDbAdapter();
   const startTime = Date.now();
 
   logger.info({ clientId }, '[CommentMining] Starting comment mining');
@@ -1512,10 +1512,10 @@ export async function runCommentMining(
 
   // Persist report
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO comment_mining_reports (id, client_id, report, created_at)
       VALUES (?, ?, ?, datetime('now'))
-    `).run(uuidv4(), clientId, JSON.stringify(report));
+    `, [uuidv4(), clientId, JSON.stringify(report)]);
   } catch (err) {
     logger.warn({ err }, '[CommentMining] Failed to persist report');
   }
@@ -1535,14 +1535,14 @@ export async function runCommentMining(
 /**
  * Get latest mining report for client
  */
-export function getLatestReport(clientId: string): CommentMiningReport | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getLatestReport(clientId: string): Promise<CommentMiningReport | null> {
+  const db = getDbAdapter();
+  const row = await db.get(`
     SELECT report FROM comment_mining_reports
     WHERE client_id = ?
     ORDER BY created_at DESC
     LIMIT 1
-  `).get(clientId) as { report: string } | undefined;
+  `, [clientId]) as { report: string } | undefined;
 
   if (!row) return null;
   return JSON.parse(row.report);

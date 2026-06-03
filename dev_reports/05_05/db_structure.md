@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 SQLite schema snapshot. Superseded by `26_05/database_state.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Database Structure — Engineer Reference (2026-04-26)
 
 **Engine:** `better-sqlite3` (synchronous, single shared connection in-process).

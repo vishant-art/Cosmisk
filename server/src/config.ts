@@ -8,7 +8,6 @@ export const config = {
   metaAppId: env['META_APP_ID'] || '675224542133938',
   metaAppSecret: env['META_APP_SECRET'] || '',
   tokenEncryptionKey: env['TOKEN_ENCRYPTION_KEY'] || 'dev-encryption-key-change-me-now!',
-  databasePath: env['DATABASE_PATH'] || './data/cosmisk.db',
   databaseUrl: env['DATABASE_URL'] || '', // PostgreSQL connection string (production)
   nodeEnv: env['NODE_ENV'] || 'development',
   graphApiVersion: 'v22.0',

@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable record of the decision to sacrifice the old Railway SQLite volume (clean cold-start, no data import).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Railway Data — Recovery Decision
 
 **Date:** 2026-05-25

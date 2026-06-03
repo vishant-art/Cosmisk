@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 codebase/infra guide refresh. Superseded by `23_05/state_of_codebase.md`; for durable orientation see `05_05/guide.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk — Codebase & Infra Guide — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/guide.md` (2026-04-19 @ `69b4352`)

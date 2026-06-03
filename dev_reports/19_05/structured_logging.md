@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 structured-logging refresh. Superseded by `23_05/module_inventory.md` and the later migration arc.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Structured Logging — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/structured_logging.md` (2026-05-03)

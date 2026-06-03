@@ -17,7 +17,7 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 
 // ============================================================================
 // 1. CREATIVE QUALITY PHILOSOPHY
@@ -156,7 +156,7 @@ export interface CrossAgentCreativeContext {
 /**
  * Build cross-agent creative context from all intelligence sources
  */
-export function buildCreativeContext(
+export async function buildCreativeContext(
   clientId: string,
   agentData: {
     fatigue?: any;
@@ -170,7 +170,7 @@ export function buildCreativeContext(
     product?: any;
     performance?: any;
   }
-): CrossAgentCreativeContext {
+): Promise<CrossAgentCreativeContext> {
   const context: CrossAgentCreativeContext = {
     clientId,
     lastUpdated: new Date().toISOString(),
@@ -244,7 +244,7 @@ export function buildCreativeContext(
   context.synthesisOutput = synthesizeCreativeRecommendation(context);
 
   // Save to DB
-  saveCreativeContext(context);
+  await saveCreativeContext(context);
 
   return context;
 }
@@ -375,7 +375,7 @@ const BENCHMARK_BRANDS = [
 /**
  * Validate creative quality
  */
-export function validateCreativeQuality(
+export async function validateCreativeQuality(
   creativeId: string,
   creativeAnalysis: {
     typography: any;
@@ -389,7 +389,7 @@ export function validateCreativeQuality(
     category: string;
     pricePoint: 'budget' | 'mid' | 'premium' | 'luxury';
   }
-): QualityValidation {
+): Promise<QualityValidation> {
   const now = new Date().toISOString();
 
   // Score each dimension
@@ -454,7 +454,7 @@ export function validateCreativeQuality(
   };
 
   // Save to DB
-  saveQualityScore(validation);
+  await saveQualityScore(validation);
 
   logger.debug({ creativeId, qualityTier, score: overallQualityScore }, '[Creative] Quality validated');
 
@@ -708,14 +708,14 @@ export interface CreativeEvolution {
 /**
  * Track creative evolution
  */
-export function recordEvolution(
+export async function recordEvolution(
   clientId: string,
   dimension: EvolutionDimension,
   previousState: string,
   newState: string,
   triggerSignals: string[],
   confidence: number
-): CreativeEvolution {
+): Promise<CreativeEvolution> {
   const evolution: CreativeEvolution = {
     id: `evo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     clientId,
@@ -729,13 +729,12 @@ export function recordEvolution(
   };
 
   // Save to DB
-  const db = getDb();
-  db.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO creative_evolution (
       id, client_id, recorded_at, dimension, previous_state, new_state,
       trigger_signals, confidence, applied, outcome
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     evolution.id,
     evolution.clientId,
     evolution.recordedAt,
@@ -745,8 +744,8 @@ export function recordEvolution(
     JSON.stringify(evolution.triggerSignals),
     evolution.confidence,
     evolution.applied ? 1 : 0,
-    evolution.outcome ?? null
-  );
+    evolution.outcome ?? null,
+  ]);
 
   logger.info({ clientId, dimension, confidence }, '[Creative] Evolution recorded');
 
@@ -756,11 +755,10 @@ export function recordEvolution(
 /**
  * Get evolution history for a dimension
  */
-export function getEvolutionHistory(
+export async function getEvolutionHistory(
   clientId: string,
   dimension?: EvolutionDimension
-): CreativeEvolution[] {
-  const db = getDb();
+): Promise<CreativeEvolution[]> {
   let query = 'SELECT * FROM creative_evolution WHERE client_id = ?';
   const params: any[] = [clientId];
 
@@ -771,7 +769,7 @@ export function getEvolutionHistory(
 
   query += ' ORDER BY recorded_at DESC LIMIT 50';
 
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = await getDbAdapter().all(query, params) as any[];
   return rows.map(row => ({
     id: row.id,
     clientId: row.client_id,
@@ -852,9 +850,8 @@ const DEFAULT_CATEGORY_KNOWLEDGE: Record<string, Partial<CategoryKnowledge>> = {
 /**
  * Get or create category knowledge
  */
-export function getCategoryKnowledge(category: string): CategoryKnowledge {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM creative_category_knowledge WHERE category = ?').get(category.toLowerCase()) as any;
+export async function getCategoryKnowledge(category: string): Promise<CategoryKnowledge> {
+  const row = await getDbAdapter().get('SELECT * FROM creative_category_knowledge WHERE category = ?', [category.toLowerCase()]) as any;
 
   if (row) {
     return {
@@ -959,16 +956,29 @@ export function requestHumanReview(
 // PERSISTENCE HELPERS
 // ============================================================================
 
-function saveCreativeContext(context: CrossAgentCreativeContext): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT OR REPLACE INTO creative_intelligence_context (
+async function saveCreativeContext(context: CrossAgentCreativeContext): Promise<void> {
+  await getDbAdapter().run(`
+    INSERT INTO creative_intelligence_context (
       client_id, last_updated, fatigue_signals, ltv_signals, cohort_signals,
       competitor_signals, audience_signals, retention_signals, emotional_signals,
       pricing_signals, product_signals, performance_signals, synthesis_output,
       next_creative_recommendation
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+    ON CONFLICT(client_id) DO UPDATE SET
+      last_updated = excluded.last_updated,
+      fatigue_signals = excluded.fatigue_signals,
+      ltv_signals = excluded.ltv_signals,
+      cohort_signals = excluded.cohort_signals,
+      competitor_signals = excluded.competitor_signals,
+      audience_signals = excluded.audience_signals,
+      retention_signals = excluded.retention_signals,
+      emotional_signals = excluded.emotional_signals,
+      pricing_signals = excluded.pricing_signals,
+      product_signals = excluded.product_signals,
+      performance_signals = excluded.performance_signals,
+      synthesis_output = excluded.synthesis_output,
+      next_creative_recommendation = excluded.next_creative_recommendation
+  `, [
     context.clientId,
     context.lastUpdated,
     JSON.stringify(context.fatigueSignals),
@@ -982,21 +992,20 @@ function saveCreativeContext(context: CrossAgentCreativeContext): void {
     JSON.stringify(context.productSignals),
     JSON.stringify(context.performanceSignals),
     JSON.stringify(context.synthesisOutput),
-    context.synthesisOutput.nextCreativeRecommendation
-  );
+    context.synthesisOutput.nextCreativeRecommendation,
+  ]);
 }
 
-function saveQualityScore(validation: QualityValidation): void {
-  const db = getDb();
+async function saveQualityScore(validation: QualityValidation): Promise<void> {
   const id = `quality_${validation.creativeId}_${Date.now()}`;
-  db.prepare(`
+  await getDbAdapter().run(`
     INSERT INTO creative_quality_scores (
       id, client_id, creative_id, scored_at, sophistication_score, typography_score,
       emotional_impact_score, brand_consistency_score, ai_artifact_score,
       layout_intelligence_score, competitor_benchmark_score, overall_quality_score,
       auto_rejected, rejection_reasons, benchmark_creative_ids, human_override, human_score
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     id,
     '',  // Would need client context
     validation.creativeId,
@@ -1013,8 +1022,8 @@ function saveQualityScore(validation: QualityValidation): void {
     JSON.stringify(validation.rejectionReasons),
     JSON.stringify(validation.comparedToBrands),
     0,
-    null
-  );
+    null,
+  ]);
 }
 
 // ============================================================================

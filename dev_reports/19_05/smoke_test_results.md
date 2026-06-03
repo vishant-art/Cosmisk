@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — May-20 devcontainer smoke-test record.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Smoke Test Results — Devcontainer (2026-05-20)
 
 **Environment:** `cosmisk-dev` Docker container (node:22-bookworm-slim, npm 10.9.8)

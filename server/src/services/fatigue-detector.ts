@@ -376,21 +376,21 @@ export interface ClientFatigueReport {
  * - Tracks known fatigued creatives for deduplication
  * - Generates client-specific recommendations
  */
-export function detectFatigueForClient(
+export async function detectFatigueForClient(
   clientId: string,
   creatives: CreativeMetrics[],
-): ClientFatigueReport | null {
-  const ctx = getClientContext(clientId);
+): Promise<ClientFatigueReport | null> {
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[Fatigue Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const fatigueStore = getFatigueDetectorStore(clientId);
+  const fatigueStore = await getFatigueDetectorStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
-  const strategicContext = getStrategicContextForAgent(clientId);
+  const strategicContext = await getStrategicContextForAgent(clientId);
   if (strategicContext) {
     logger.info({ contextLength: strategicContext.length }, '[Fatigue] Loaded strategic context');
   }
@@ -446,7 +446,7 @@ export function detectFatigueForClient(
 
   // Update fatigue store
   const allKnownIds = [...new Set([...knownIds, ...fatiguedIds])];
-  updateFatigueDetectorStore(clientId, {
+  await updateFatigueDetectorStore(clientId, {
     lastCheckedAt: new Date().toISOString(),
     knownFatiguedCreatives: allKnownIds,
     totalFatiguedCount: (fatigueStore?.totalFatiguedCount || 0) + newFatiguedCreatives.length,
@@ -456,7 +456,7 @@ export function detectFatigueForClient(
 
   // Create recommendation if new fatigued creatives found
   if (shouldAlert) {
-    createRecommendation(clientId, 'fatigue_detector', 'replace_fatigued_creatives', {
+    await createRecommendation(clientId, 'fatigue_detector', 'replace_fatigued_creatives', {
       newFatiguedCount: newFatiguedCreatives.length,
       frequencyThreshold,
       topFatigued: analyzedCreatives
@@ -478,7 +478,7 @@ export function detectFatigueForClient(
     const topFatigued = analyzedCreatives.find(c => newFatiguedCreatives.includes(c.id));
     if (topFatigued) {
       try {
-        agentRecommend(clientId, 'fatigue_detector', {
+        await agentRecommend(clientId, 'fatigue_detector', {
           type: 'refresh_creative',
           entityType: 'creative',
           entityId: topFatigued.id,
@@ -524,7 +524,7 @@ export function detectFatigueForClient(
       shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
       deliveredVia: [],
     };
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
   } catch (repErr) {
     logger.warn({ err: repErr }, '[Fatigue] Report recording failed');
   }

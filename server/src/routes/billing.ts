@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import Stripe from 'stripe';
 import Razorpay from 'razorpay';
 import { config } from '../config.js';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import type { SubscriptionRow, UserRow, UserUsageRow, StripeSubscriptionWithPeriod, RazorpayWebhookEvent, FastifyRawBodyRequest } from '../types/index.js';
 import { validate, checkoutSchema, verifyPaymentSchema } from '../validation/schemas.js';
 import { logger } from '../utils/logger.js';
@@ -83,16 +83,15 @@ export function getCurrentPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function getUserPlan(userId: string): PlanName {
-  return getUserPlanInfo(userId).plan;
+export async function getUserPlan(userId: string): Promise<PlanName> {
+  return (await getUserPlanInfo(userId)).plan;
 }
 
-export function getUserPlanInfo(userId: string): { plan: PlanName; isTrial: boolean } {
-  const db = getDb();
-
-  const sub = db.prepare(
-    "SELECT plan, trial_ends_at, status FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1"
-  ).get(userId) as { plan: string; trial_ends_at: string | null; status: string } | undefined;
+export async function getUserPlanInfo(userId: string): Promise<{ plan: PlanName; isTrial: boolean }> {
+  const sub = await getDbAdapter().get<{ plan: string; trial_ends_at: string | null; status: string }>(
+    "SELECT plan, trial_ends_at, status FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1",
+    [userId]
+  );
 
   if (sub) {
     if (sub.trial_ends_at) {
@@ -101,51 +100,51 @@ export function getUserPlanInfo(userId: string): { plan: PlanName; isTrial: bool
         return { plan: sub.plan as PlanName, isTrial: true };
       }
       // Trial expired — auto-downgrade
-      db.prepare("UPDATE subscriptions SET status = 'expired', updated_at = datetime('now') WHERE user_id = ? AND status = 'trialing'")
-        .run(userId);
-      db.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(userId);
+      await getDbAdapter().run(
+        "UPDATE subscriptions SET status = 'expired', updated_at = datetime('now') WHERE user_id = ? AND status = 'trialing'",
+        [userId]
+      );
+      await getDbAdapter().run("UPDATE users SET plan = 'free' WHERE id = ?", [userId]);
       return { plan: 'free', isTrial: false };
     }
     return { plan: sub.plan as PlanName, isTrial: false };
   }
 
-  const user = db.prepare('SELECT plan FROM users WHERE id = ?').get(userId) as { plan: string } | undefined;
+  const user = await getDbAdapter().get<{ plan: string }>('SELECT plan FROM users WHERE id = ?', [userId]);
   return { plan: (user?.plan as PlanName) || 'free', isTrial: false };
 }
 
 type PlanLimitsShape = { ad_accounts: number; chats_per_day: number; images_per_month: number; videos_per_month: number; creatives_per_month: number; autopilot_rules: number; competitors: number; team_members: number };
 
-export function getUserEffectiveLimits(userId: string): PlanLimitsShape {
-  const { plan, isTrial } = getUserPlanInfo(userId);
+export async function getUserEffectiveLimits(userId: string): Promise<PlanLimitsShape> {
+  const { plan, isTrial } = await getUserPlanInfo(userId);
   if (isTrial && plan !== 'free' && plan in TRIAL_LIMITS) {
     return TRIAL_LIMITS[plan as keyof typeof TRIAL_LIMITS];
   }
   return PLAN_LIMITS[plan];
 }
 
-export function getUsage(userId: string): UserUsageRow {
-  const db = getDb();
+export async function getUsage(userId: string): Promise<UserUsageRow> {
   const period = getCurrentPeriod();
-  let row = db.prepare('SELECT * FROM user_usage WHERE user_id = ? AND period = ?').get(userId, period) as UserUsageRow | undefined;
+  let row = await getDbAdapter().get<UserUsageRow>('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]);
   if (!row) {
-    db.prepare('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)').run(userId, period);
-    row = db.prepare('SELECT * FROM user_usage WHERE user_id = ? AND period = ?').get(userId, period) as UserUsageRow;
+    await getDbAdapter().run('INSERT INTO user_usage (user_id, period) VALUES (?, ?) ON CONFLICT (user_id, period) DO NOTHING', [userId, period]);
+    row = await getDbAdapter().get<UserUsageRow>('SELECT * FROM user_usage WHERE user_id = ? AND period = ?', [userId, period]) as UserUsageRow;
   }
   return row;
 }
 
 export type UsageField = 'chat_count' | 'image_count' | 'video_count' | 'creative_count';
 
-export function incrementUsage(userId: string, field: UsageField, amount = 1): void {
-  const db = getDb();
+export async function incrementUsage(userId: string, field: UsageField, amount = 1): Promise<void> {
   const period = getCurrentPeriod();
-  db.prepare('INSERT OR IGNORE INTO user_usage (user_id, period) VALUES (?, ?)').run(userId, period);
-  db.prepare(`UPDATE user_usage SET ${field} = ${field} + ? WHERE user_id = ? AND period = ?`).run(amount, userId, period);
+  await getDbAdapter().run('INSERT INTO user_usage (user_id, period) VALUES (?, ?) ON CONFLICT (user_id, period) DO NOTHING', [userId, period]);
+  await getDbAdapter().run(`UPDATE user_usage SET ${field} = ${field} + ? WHERE user_id = ? AND period = ?`, [amount, userId, period]);
 }
 
-export function checkLimit(userId: string, field: UsageField): { allowed: boolean; current: number; limit: number } {
-  const limits = getUserEffectiveLimits(userId);
-  const usage = getUsage(userId);
+export async function checkLimit(userId: string, field: UsageField): Promise<{ allowed: boolean; current: number; limit: number }> {
+  const limits = await getUserEffectiveLimits(userId);
+  const usage = await getUsage(userId);
 
   const limitMap: Record<UsageField, number> = {
     chat_count: limits.chats_per_day,
@@ -262,14 +261,14 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // GET /billing/status — current subscription status
   app.get('/status', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const { plan, isTrial } = getUserPlanInfo(request.user.id);
-    const usage = getUsage(request.user.id);
-    const limits = getUserEffectiveLimits(request.user.id);
+    const { plan, isTrial } = await getUserPlanInfo(request.user.id);
+    const usage = await getUsage(request.user.id);
+    const limits = await getUserEffectiveLimits(request.user.id);
 
-    const sub = db.prepare(
-      "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1"
-    ).get(request.user.id) as SubscriptionRow | undefined;
+    const sub = await getDbAdapter().get<SubscriptionRow>(
+      "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1",
+      [request.user.id]
+    );
 
     return {
       success: true,
@@ -295,16 +294,16 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { plan } = parsed;
 
-    const db = getDb();
-    const currentPlan = getUserPlan(request.user.id);
+    const currentPlan = await getUserPlan(request.user.id);
     if (currentPlan !== 'free') {
       return reply.status(400).send({ success: false, error: 'Already on a paid plan or trial' });
     }
 
     // Check if user already had a trial
-    const hadTrial = db.prepare(
-      "SELECT id FROM subscriptions WHERE user_id = ? AND trial_ends_at IS NOT NULL LIMIT 1"
-    ).get(request.user.id);
+    const hadTrial = await getDbAdapter().get(
+      "SELECT id FROM subscriptions WHERE user_id = ? AND trial_ends_at IS NOT NULL LIMIT 1",
+      [request.user.id]
+    );
     if (hadTrial) {
       return reply.status(400).send({ success: false, error: 'Trial already used. Please subscribe to upgrade.' });
     }
@@ -313,12 +312,12 @@ export async function billingRoutes(app: FastifyInstance) {
     trialEnd.setDate(trialEnd.getDate() + 14);
 
     const subId = uuidv4();
-    db.prepare(`
+    await getDbAdapter().run(`
       INSERT INTO subscriptions (id, user_id, plan, status, trial_ends_at, gateway, created_at, updated_at)
       VALUES (?, ?, ?, 'trialing', ?, 'none', datetime('now'), datetime('now'))
-    `).run(subId, request.user.id, plan, trialEnd.toISOString());
+    `, [subId, request.user.id, plan, trialEnd.toISOString()]);
 
-    db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, request.user.id);
+    await getDbAdapter().run('UPDATE users SET plan = ? WHERE id = ?', [plan, request.user.id]);
 
     return { success: true, plan, trial_ends_at: trialEnd.toISOString() };
   });
@@ -329,8 +328,7 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { plan, interval, gateway } = parsed;
 
-    const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(request.user.id) as UserRow | undefined;
+    const user = await getDbAdapter().get<UserRow>('SELECT * FROM users WHERE id = ?', [request.user.id]);
     if (!user) {
       return reply.status(401).send({ success: false, error: 'User not found' });
     }
@@ -377,8 +375,10 @@ export async function billingRoutes(app: FastifyInstance) {
 
     // Get or create Stripe customer
     let customerId: string;
-    const existingSub = db.prepare('SELECT stripe_customer_id FROM subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1')
-      .get(request.user.id) as { stripe_customer_id: string } | undefined;
+    const existingSub = await getDbAdapter().get<{ stripe_customer_id: string }>(
+      'SELECT stripe_customer_id FROM subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+      [request.user.id]
+    );
 
     if (existingSub?.stripe_customer_id) {
       customerId = existingSub.stripe_customer_id;
@@ -422,7 +422,6 @@ export async function billingRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'Invalid payment signature' });
     }
 
-    const db = getDb();
     const validPlan = plan;
 
     // Calculate period
@@ -431,29 +430,31 @@ export async function billingRoutes(app: FastifyInstance) {
     periodEnd.setMonth(periodEnd.getMonth() + (interval === 'annual' ? 12 : 1));
 
     // Deactivate any existing active subscription
-    db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE user_id = ? AND status IN ('active', 'trialing')")
-      .run(request.user.id);
-
-    // Create new subscription
-    db.prepare(`
-      INSERT INTO subscriptions (id, user_id, razorpay_subscription_id, razorpay_customer_id, gateway, plan, status, current_period_start, current_period_end, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'razorpay', ?, 'active', ?, ?, datetime('now'), datetime('now'))
-    `).run(
-      uuidv4(), request.user.id, razorpay_subscription_id, razorpay_payment_id,
-      validPlan, now.toISOString(), periodEnd.toISOString()
+    await getDbAdapter().run(
+      "UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE user_id = ? AND status IN ('active', 'trialing')",
+      [request.user.id]
     );
 
-    db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(validPlan, request.user.id);
+    // Create new subscription
+    await getDbAdapter().run(`
+      INSERT INTO subscriptions (id, user_id, razorpay_subscription_id, razorpay_customer_id, gateway, plan, status, current_period_start, current_period_end, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'razorpay', ?, 'active', ?, ?, datetime('now'), datetime('now'))
+    `, [
+      uuidv4(), request.user.id, razorpay_subscription_id, razorpay_payment_id,
+      validPlan, now.toISOString(), periodEnd.toISOString()
+    ]);
+
+    await getDbAdapter().run('UPDATE users SET plan = ? WHERE id = ?', [validPlan, request.user.id]);
 
     return { success: true, plan: validPlan, gateway: 'razorpay' };
   });
 
   // POST /billing/cancel — cancel subscription on either gateway
   app.post('/cancel', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const db = getDb();
-    const sub = db.prepare(
-      "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1"
-    ).get(request.user.id) as SubscriptionRow | undefined;
+    const sub = await getDbAdapter().get<SubscriptionRow>(
+      "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1",
+      [request.user.id]
+    );
 
     if (!sub) {
       return reply.status(400).send({ success: false, error: 'No active subscription' });
@@ -483,11 +484,11 @@ export async function billingRoutes(app: FastifyInstance) {
 
     // For trials or razorpay: immediate cancel
     if (sub.status === 'trialing' || gateway === 'razorpay') {
-      db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(sub.id);
-      db.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(request.user.id);
+      await getDbAdapter().run("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [sub.id]);
+      await getDbAdapter().run("UPDATE users SET plan = 'free' WHERE id = ?", [request.user.id]);
     } else {
       // Stripe: cancel at period end
-      db.prepare("UPDATE subscriptions SET cancel_at_period_end = 1, updated_at = datetime('now') WHERE id = ?").run(sub.id);
+      await getDbAdapter().run("UPDATE subscriptions SET cancel_at_period_end = 1, updated_at = datetime('now') WHERE id = ?", [sub.id]);
     }
 
     return { success: true, cancelled: true };
@@ -495,10 +496,10 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // POST /billing/create-portal — Stripe Customer Portal (or razorpay info)
   app.post('/create-portal', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const db = getDb();
-    const sub = db.prepare(
-      "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1"
-    ).get(request.user.id) as SubscriptionRow | undefined;
+    const sub = await getDbAdapter().get<SubscriptionRow>(
+      "SELECT * FROM subscriptions WHERE user_id = ? AND status IN ('active', 'trialing') ORDER BY created_at DESC LIMIT 1",
+      [request.user.id]
+    );
 
     if (!sub) {
       return reply.status(400).send({ success: false, error: 'No active subscription' });
@@ -545,7 +546,6 @@ export async function billingRoutes(app: FastifyInstance) {
     }
 
     const event = request.body as RazorpayWebhookEvent;
-    const db = getDb();
     const eventType = event.event;
     const payload = event.payload?.subscription?.entity;
 
@@ -557,45 +557,51 @@ export async function billingRoutes(app: FastifyInstance) {
 
     switch (eventType) {
       case 'subscription.activated': {
-        const sub = db.prepare('SELECT * FROM subscriptions WHERE razorpay_subscription_id = ?').get(rzpSubId) as SubscriptionRow | undefined;
+        const sub = await getDbAdapter().get<SubscriptionRow>('SELECT * FROM subscriptions WHERE razorpay_subscription_id = ?', [rzpSubId]);
         if (sub) {
-          db.prepare("UPDATE subscriptions SET status = 'active', updated_at = datetime('now') WHERE razorpay_subscription_id = ?")
-            .run(rzpSubId);
-          db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(sub.plan, sub.user_id);
+          await getDbAdapter().run(
+            "UPDATE subscriptions SET status = 'active', updated_at = datetime('now') WHERE razorpay_subscription_id = ?",
+            [rzpSubId]
+          );
+          await getDbAdapter().run('UPDATE users SET plan = ? WHERE id = ?', [sub.plan, sub.user_id]);
         }
         break;
       }
 
       case 'subscription.charged': {
-        const sub = db.prepare('SELECT * FROM subscriptions WHERE razorpay_subscription_id = ?').get(rzpSubId) as SubscriptionRow | undefined;
+        const sub = await getDbAdapter().get<SubscriptionRow>('SELECT * FROM subscriptions WHERE razorpay_subscription_id = ?', [rzpSubId]);
         if (sub) {
           const now = new Date();
           const periodEnd = new Date(now);
           periodEnd.setMonth(periodEnd.getMonth() + 1);
-          db.prepare(`
+          await getDbAdapter().run(`
             UPDATE subscriptions SET
               status = 'active', current_period_start = ?, current_period_end = ?,
               updated_at = datetime('now')
             WHERE razorpay_subscription_id = ?
-          `).run(now.toISOString(), periodEnd.toISOString(), rzpSubId);
+          `, [now.toISOString(), periodEnd.toISOString(), rzpSubId]);
         }
         break;
       }
 
       case 'subscription.cancelled': {
-        const sub = db.prepare('SELECT * FROM subscriptions WHERE razorpay_subscription_id = ?').get(rzpSubId) as SubscriptionRow | undefined;
+        const sub = await getDbAdapter().get<SubscriptionRow>('SELECT * FROM subscriptions WHERE razorpay_subscription_id = ?', [rzpSubId]);
         if (sub) {
-          db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE razorpay_subscription_id = ?")
-            .run(rzpSubId);
-          db.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(sub.user_id);
+          await getDbAdapter().run(
+            "UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE razorpay_subscription_id = ?",
+            [rzpSubId]
+          );
+          await getDbAdapter().run("UPDATE users SET plan = 'free' WHERE id = ?", [sub.user_id]);
         }
         break;
       }
 
       case 'subscription.halted':
       case 'subscription.pending': {
-        db.prepare("UPDATE subscriptions SET status = 'inactive', updated_at = datetime('now') WHERE razorpay_subscription_id = ?")
-          .run(rzpSubId);
+        await getDbAdapter().run(
+          "UPDATE subscriptions SET status = 'inactive', updated_at = datetime('now') WHERE razorpay_subscription_id = ?",
+          [rzpSubId]
+        );
         break;
       }
     }
@@ -629,8 +635,6 @@ export async function billingRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: `Webhook Error: ${message}` });
     }
 
-    const db = getDb();
-
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -642,48 +646,54 @@ export async function billingRoutes(app: FastifyInstance) {
         const stripeSub = await stripe.subscriptions.retrieve(subId) as unknown as StripeSubscriptionWithPeriod;
 
         // Deactivate any existing active subscription
-        db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE user_id = ? AND status IN ('active', 'trialing')")
-          .run(userId);
+        await getDbAdapter().run(
+          "UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE user_id = ? AND status IN ('active', 'trialing')",
+          [userId]
+        );
 
-        db.prepare(`
+        await getDbAdapter().run(`
           INSERT INTO subscriptions (id, user_id, stripe_customer_id, stripe_subscription_id, gateway, plan, status, current_period_start, current_period_end)
           VALUES (?, ?, ?, ?, 'stripe', ?, 'active', ?, ?)
-        `).run(
+        `, [
           uuidv4(), userId, session.customer as string, subId, plan,
           new Date(stripeSub.current_period_start * 1000).toISOString(),
           new Date(stripeSub.current_period_end * 1000).toISOString(),
-        );
+        ]);
 
-        db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(plan, userId);
+        await getDbAdapter().run('UPDATE users SET plan = ? WHERE id = ?', [plan, userId]);
         break;
       }
 
       case 'customer.subscription.updated': {
         const sub = event.data.object as unknown as StripeSubscriptionWithPeriod;
-        db.prepare(`
+        await getDbAdapter().run(`
           UPDATE subscriptions SET
             status = ?, cancel_at_period_end = ?,
             current_period_start = ?, current_period_end = ?,
             updated_at = datetime('now')
           WHERE stripe_subscription_id = ?
-        `).run(
+        `, [
           sub.status, sub.cancel_at_period_end ? 1 : 0,
           new Date(sub.current_period_start * 1000).toISOString(),
           new Date(sub.current_period_end * 1000).toISOString(),
           sub.id,
-        );
+        ]);
         break;
       }
 
       case 'customer.subscription.deleted': {
         const sub = event.data.object as Stripe.Subscription;
-        db.prepare("UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE stripe_subscription_id = ?")
-          .run(sub.id);
+        await getDbAdapter().run(
+          "UPDATE subscriptions SET status = 'cancelled', updated_at = datetime('now') WHERE stripe_subscription_id = ?",
+          [sub.id]
+        );
 
-        const subRow = db.prepare('SELECT user_id FROM subscriptions WHERE stripe_subscription_id = ?')
-          .get(sub.id) as { user_id: string } | undefined;
+        const subRow = await getDbAdapter().get<{ user_id: string }>(
+          'SELECT user_id FROM subscriptions WHERE stripe_subscription_id = ?',
+          [sub.id]
+        );
         if (subRow) {
-          db.prepare("UPDATE users SET plan = 'free' WHERE id = ?").run(subRow.user_id);
+          await getDbAdapter().run("UPDATE users SET plan = 'free' WHERE id = ?", [subRow.user_id]);
         }
         break;
       }

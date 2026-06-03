@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 added-risks list. Superseded by `19_05/new_and_added_risks.md` (and later `23_05/risk_register.md`).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Additional Risks Found — 2026-04-26
 
 Seven risks not in the original three-item audit. Ordered by blast radius.

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import type { SwipeFileRow } from '../types/index.js';
 import { validate, swipeFileSaveSchema, idParamSchema } from '../validation/schemas.js';
 import { safeJsonParse } from '../utils/safe-json.js';
@@ -9,12 +9,12 @@ export async function swipeFileRoutes(app: FastifyInstance) {
 
   /* ---- GET /list — all saved swipe file items for the user ---- */
   app.get('/list', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
     const userId = request.user.id;
 
-    const rows = db.prepare(
-      'SELECT * FROM swipe_file WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(userId) as SwipeFileRow[];
+    const rows = await getDbAdapter().all<SwipeFileRow>(
+      'SELECT * FROM swipe_file WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
 
     return {
       success: true,
@@ -38,7 +38,6 @@ export async function swipeFileRoutes(app: FastifyInstance) {
     const parsed = validate(swipeFileSaveSchema, request.body, reply);
     if (!parsed) return;
 
-    const db = getDb();
     const userId = request.user.id;
 
     const brand = parsed.brand;
@@ -52,10 +51,10 @@ export async function swipeFileRoutes(app: FastifyInstance) {
 
     const id = randomUUID();
 
-    db.prepare(`
+    await getDbAdapter().run(`
       INSERT INTO swipe_file (id, user_id, brand, thumbnail, hook_dna, visual_dna, audio_dna, notes, source_url, source_ad_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, userId, brand, thumbnail, hookDna, visualDna, audioDna, notes, sourceUrl, sourceAdId);
+    `, [id, userId, brand, thumbnail, hookDna, visualDna, audioDna, notes, sourceUrl, sourceAdId]);
 
     return { success: true, id };
   });
@@ -65,13 +64,13 @@ export async function swipeFileRoutes(app: FastifyInstance) {
     const params = validate(idParamSchema, request.params, reply);
     if (!params) return;
 
-    const db = getDb();
     const userId = request.user.id;
     const { id } = params;
 
-    const result = db.prepare(
-      'DELETE FROM swipe_file WHERE id = ? AND user_id = ?'
-    ).run(id, userId);
+    const result = await getDbAdapter().run(
+      'DELETE FROM swipe_file WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
 
     if (result.changes === 0) {
       return reply.status(404).send({ success: false, error: 'Item not found' });

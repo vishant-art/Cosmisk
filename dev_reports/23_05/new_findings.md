@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-23 smoke findings (shop_name 500, unauth /schedules); folded into later plans. Superseded by `24_05/next_steps.md` → `25_05/next_steps.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # New Findings — Surfaced by 2026-05-23 Smoke
 
 **What's new in this report:** two real bugs that the 2026-05-20 smoke test couldn't see (because the server wouldn't boot then). One smaller follow-up.

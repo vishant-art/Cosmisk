@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 academic-break status snapshot. Superseded by `19_05/final_report.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Final Report — 2026-04-26
 
 Single source of truth for the academic-break analysis window (Apr 15 to May 15). Captures the scope decisions made today, summarises what is already delivered, and lists what is left to produce before May 15. Companion docs in `dev_reports/`: `audit.md`, `new_and_added_risks.md`, `suggested.md`, `tasklist.md`, `db_structure.md`, `backend_wiring.md`, `scope_alignment.md`, `guide.md`, `log.md`.

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createMessage } from '../services/llm-gateway.js';
 import { randomUUID } from 'crypto';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import type { SprintRow, JobRow, AssetRow, ContentBankRow, CountRow, FormatCountRow, MetaTokenRow } from '../types/index.js';
 import { validate, contentSaveSchema, contentBankQuerySchema, contentUpdateSchema, idParamSchema, contentGenerateRequestSchema, contentSaveBatchSchema } from '../validation/schemas.js';
 import { extractText } from '../utils/claude-helpers.js';
@@ -66,8 +66,7 @@ interface MetaPerformanceSummary {
 }
 
 async function fetchMetaPerformance(userId: string): Promise<MetaPerformanceSummary | null> {
-  const db = getDb();
-  const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+  const tokenRow = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!tokenRow) return null;
 
   try {
@@ -136,45 +135,48 @@ export async function contentRoutes(app: FastifyInstance) {
 
   /* ---- GET /weekly-stats — Raw data summary for content generation ---- */
   app.get('/weekly-stats', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
+    const db = getDbAdapter();
     const userId = request.user.id;
 
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().replace('T', ' ').split('.')[0];
 
-    const sprintsThisWeek = db.prepare(
-      'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ? AND created_at >= ?'
-    ).get(userId, weekAgo) as CountRow | undefined;
+    const sprintsThisWeek = await db.get<CountRow>(
+      'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ? AND created_at >= ?',
+      [userId, weekAgo]
+    );
 
-    const jobsThisWeek = db.prepare(`
+    const jobsThisWeek = await db.get<JobStatsRow>(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
         SUM(cost_cents) as total_cost_cents
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
-    `).get(userId, weekAgo) as JobStatsRow | undefined;
+    `, [userId, weekAgo]);
 
-    const topFormats = db.prepare(`
+    const topFormats = await db.all<FormatCountRow>(`
       SELECT format, COUNT(*) as count
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
       GROUP BY format ORDER BY count DESC LIMIT 5
-    `).all(userId, weekAgo) as FormatCountRow[];
+    `, [userId, weekAgo]);
 
-    const totalSprints = (db.prepare(
-      'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ?'
-    ).get(userId) as CountRow).c;
+    const totalSprints = (await db.get<CountRow>(
+      'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ?',
+      [userId]
+    ))!.c;
 
-    const totalCreatives = (db.prepare(
-      'SELECT COUNT(*) as c FROM creative_jobs WHERE user_id = ?'
-    ).get(userId) as CountRow).c;
+    const totalCreatives = (await db.get<CountRow>(
+      'SELECT COUNT(*) as c FROM creative_jobs WHERE user_id = ?',
+      [userId]
+    ))!.c;
 
     // Best performing assets this week
-    const topAssets = db.prepare(`
+    const topAssets = await db.all<TopAssetRow>(`
       SELECT format, predicted_score, dna_tags, actual_metrics
       FROM creative_assets
       WHERE user_id = ? AND created_at >= ? AND actual_metrics IS NOT NULL
       ORDER BY json_extract(actual_metrics, '$.roas') DESC
       LIMIT 5
-    `).all(userId, weekAgo) as TopAssetRow[];
+    `, [userId, weekAgo]);
 
     return {
       success: true,
@@ -206,7 +208,7 @@ export async function contentRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { platforms, topic, tone, transcript } = parsed;
 
-    const db = getDb();
+    const db = getDbAdapter();
     const userId = request.user.id;
     const targetPlatforms = platforms || ['twitter', 'linkedin', 'instagram'];
     const contentTone = tone || 'casual';
@@ -214,19 +216,20 @@ export async function contentRoutes(app: FastifyInstance) {
     // Gather Cosmisk data context
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().replace('T', ' ').split('.')[0];
 
-    const recentSprints = db.prepare(
-      'SELECT name, status, total_creatives, completed_creatives, actual_cost_cents, created_at FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 5'
-    ).all(userId) as RecentSprintRow[];
+    const recentSprints = await db.all<RecentSprintRow>(
+      'SELECT name, status, total_creatives, completed_creatives, actual_cost_cents, created_at FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 5',
+      [userId]
+    );
 
-    const weekStats = db.prepare(`
+    const weekStats = await db.get<WeekStatsRow>(`
       SELECT COUNT(*) as jobs, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
-    `).get(userId, weekAgo) as WeekStatsRow | undefined;
+    `, [userId, weekAgo]);
 
-    const topFormats = db.prepare(`
+    const topFormats = await db.all<FormatCountRow>(`
       SELECT format, COUNT(*) as count FROM creative_jobs WHERE user_id = ? AND status = 'completed'
       GROUP BY format ORDER BY count DESC LIMIT 5
-    `).all(userId) as FormatCountRow[];
+    `, [userId]);
 
     // Build data context
     const dataContext = `
@@ -244,9 +247,10 @@ ${transcript ? `\nTRANSCRIPT FROM SCREEN RECORDING:\n${transcript.slice(0, 3000)
     const metaPerfSection = metaPerf ? formatMetaPerformanceSection(metaPerf) : '';
 
     // Fetch user profile for multi-tenant persona
-    const userProfile = db.prepare(
-      'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?'
-    ).get(userId) as { name: string; brand_name?: string; website_url?: string; goals?: string; competitors?: string } | undefined;
+    const userProfile = await db.get<{ name: string; brand_name?: string; website_url?: string; goals?: string; competitors?: string }>(
+      'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?',
+      [userId]
+    );
 
     const userName = userProfile?.name || 'the user';
     const brandName = userProfile?.brand_name || 'their brand';
@@ -361,13 +365,13 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     const { platform, content_type, title, body, hashtags, media_notes, source } = parsed;
     const { scheduled_for } = request.body as { scheduled_for?: string };
 
-    const db = getDb();
+    const db = getDbAdapter();
     const id = randomUUID();
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO content_bank (id, user_id, platform, content_type, title, body, hashtags, media_notes, status, scheduled_for, source)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       id,
       request.user.id,
       platform,
@@ -379,7 +383,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
       scheduled_for ? 'scheduled' : 'draft',
       scheduled_for || null,
       source || 'manual',
-    );
+    ]);
 
     return { success: true, id, status: scheduled_for ? 'scheduled' : 'draft' };
   });
@@ -390,19 +394,18 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     if (!parsed) return;
     const { items } = parsed;
 
-    const db = getDb();
+    const db = getDbAdapter();
     const ids: string[] = [];
 
-    const insertStmt = db.prepare(`
-      INSERT INTO content_bank (id, user_id, platform, content_type, title, body, hashtags, media_notes, status, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'ai')
-    `);
-
-    const insertMany = db.transaction((rows: typeof items) => {
+    const rows = items;
+    await db.transaction(async (tx) => {
       for (const item of rows) {
         const id = randomUUID();
         ids.push(id);
-        insertStmt.run(
+        await tx.run(`
+          INSERT INTO content_bank (id, user_id, platform, content_type, title, body, hashtags, media_notes, status, source)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'ai')
+        `, [
           id,
           request.user.id,
           item.platform,
@@ -411,11 +414,10 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
           item.body,
           item.hashtags ? JSON.stringify(item.hashtags) : null,
           item.media_notes || null,
-        );
+        ]);
       }
     });
 
-    insertMany(items);
     return { success: true, saved: ids.length, ids };
   });
 
@@ -425,7 +427,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     if (!parsed) return;
     const { platform, status, limit: lim, offset: off } = parsed;
 
-    const db = getDb();
+    const db = getDbAdapter();
     const userId = request.user.id;
     const conditions = ['user_id = ?'];
     const params: (string | number)[] = [userId];
@@ -441,12 +443,12 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
     const where = conditions.join(' AND ');
 
-    const total = (db.prepare(`SELECT COUNT(*) as c FROM content_bank WHERE ${where}`).get(...params) as CountRow).c;
+    const total = (await db.get<CountRow>(`SELECT COUNT(*) as c FROM content_bank WHERE ${where}`, [...params]))!.c;
 
-    const items = db.prepare(`
+    const items = await db.all<ContentBankRow>(`
       SELECT * FROM content_bank WHERE ${where}
       ORDER BY created_at DESC LIMIT ? OFFSET ?
-    `).all(...params, lim, off) as ContentBankRow[];
+    `, [...params, lim, off]);
 
     return {
       success: true,
@@ -477,8 +479,8 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     const updates = validate(contentUpdateSchema, request.body, reply);
     if (!updates) return;
 
-    const db = getDb();
-    const existing = db.prepare('SELECT id FROM content_bank WHERE id = ? AND user_id = ?').get(id, request.user.id);
+    const db = getDbAdapter();
+    const existing = await db.get('SELECT id FROM content_bank WHERE id = ? AND user_id = ?', [id, request.user.id]);
     if (!existing) {
       return reply.status(404).send({ success: false, error: 'Content not found' });
     }
@@ -501,7 +503,7 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     fields.push("updated_at = datetime('now')");
     values.push(id, request.user.id);
 
-    db.prepare(`UPDATE content_bank SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`).run(...values);
+    await db.run(`UPDATE content_bank SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`, [...values]);
 
     return { success: true, id };
   });
@@ -511,8 +513,8 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
     const paramsParsed = validate(idParamSchema, request.params, reply);
     if (!paramsParsed) return;
     const { id } = paramsParsed;
-    const db = getDb();
-    const result = db.prepare('DELETE FROM content_bank WHERE id = ? AND user_id = ?').run(id, request.user.id);
+    const db = getDbAdapter();
+    const result = await db.run('DELETE FROM content_bank WHERE id = ? AND user_id = ?', [id, request.user.id]);
 
     if (result.changes === 0) {
       return reply.status(404).send({ success: false, error: 'Content not found' });
@@ -523,24 +525,25 @@ OUTPUT FORMAT — respond with ONLY valid JSON:
 
   /* ---- POST /trigger-weekly — n8n webhook trigger: generate weekly content batch ---- */
   app.post('/trigger-weekly', { preHandler: [app.authenticate], config: { rateLimit: { max: 2, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const db = getDb();
+    const db = getDbAdapter();
     const userId = request.user.id;
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().replace('T', ' ').split('.')[0];
 
     // Gather stats
-    const recentSprints = db.prepare(
-      'SELECT name, status, total_creatives, completed_creatives, created_at FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 5'
-    ).all(userId) as TriggerSprintRow[];
+    const recentSprints = await db.all<TriggerSprintRow>(
+      'SELECT name, status, total_creatives, completed_creatives, created_at FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT 5',
+      [userId]
+    );
 
-    const weekStats = db.prepare(`
+    const weekStats = await db.get<WeekStatsRow>(`
       SELECT COUNT(*) as jobs, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed
       FROM creative_jobs WHERE user_id = ? AND created_at >= ?
-    `).get(userId, weekAgo) as WeekStatsRow | undefined;
+    `, [userId, weekAgo]);
 
-    const topFormats = db.prepare(`
+    const topFormats = await db.all<FormatCountRow>(`
       SELECT format, COUNT(*) as count FROM creative_jobs WHERE user_id = ? AND status = 'completed'
       GROUP BY format ORDER BY count DESC LIMIT 5
-    `).all(userId) as FormatCountRow[];
+    `, [userId]);
 
     const dataContext = `
 COSMISK WEEKLY DATA:
@@ -553,9 +556,10 @@ COSMISK WEEKLY DATA:
     const platforms = ['twitter', 'linkedin', 'instagram'];
 
     // Fetch user profile for multi-tenant persona
-    const userProfile = db.prepare(
-      'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?'
-    ).get(userId) as { name: string; brand_name?: string; website_url?: string; goals?: string; competitors?: string } | undefined;
+    const userProfile = await db.get<{ name: string; brand_name?: string; website_url?: string; goals?: string; competitors?: string }>(
+      'SELECT name, brand_name, website_url, goals, competitors FROM users WHERE id = ?',
+      [userId]
+    );
 
     const userName = userProfile?.name || 'the user';
     const brandName = userProfile?.brand_name || 'their brand';
@@ -638,13 +642,13 @@ OUTPUT — respond with ONLY valid JSON:
       const weeklyContent = parsed.weekly_content || [];
 
       // Auto-save all items to content bank
-      const insertStmt = db.prepare(`
+      const INSERT_CONTENT_BANK = `
         INSERT INTO content_bank (id, user_id, platform, content_type, title, body, hashtags, media_notes, status, source, generation_context)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'ai-weekly', ?)
-      `);
+      `;
 
       const savedIds: string[] = [];
-      const insertAll = db.transaction(() => {
+      await db.transaction(async (tx) => {
         for (const day of weeklyContent) {
           const context = JSON.stringify({ day: day.day, theme: day.theme });
 
@@ -652,30 +656,28 @@ OUTPUT — respond with ONLY valid JSON:
           if (day.twitter?.post) {
             const id = randomUUID();
             savedIds.push(id);
-            insertStmt.run(id, userId, 'twitter', 'post', `Day ${day.day}: ${day.theme}`, day.twitter.post, null, null, context);
+            await tx.run(INSERT_CONTENT_BANK, [id, userId, 'twitter', 'post', `Day ${day.day}: ${day.theme}`, day.twitter.post, null, null, context]);
           }
           // Twitter thread
           if (day.twitter?.thread?.length) {
             const id = randomUUID();
             savedIds.push(id);
-            insertStmt.run(id, userId, 'twitter', 'thread', `Day ${day.day}: ${day.theme} (Thread)`, day.twitter.thread.join('\n---\n'), null, null, context);
+            await tx.run(INSERT_CONTENT_BANK, [id, userId, 'twitter', 'thread', `Day ${day.day}: ${day.theme} (Thread)`, day.twitter.thread.join('\n---\n'), null, null, context]);
           }
           // LinkedIn
           if (day.linkedin?.post) {
             const id = randomUUID();
             savedIds.push(id);
-            insertStmt.run(id, userId, 'linkedin', 'post', `Day ${day.day}: ${day.theme}`, day.linkedin.post, null, null, context);
+            await tx.run(INSERT_CONTENT_BANK, [id, userId, 'linkedin', 'post', `Day ${day.day}: ${day.theme}`, day.linkedin.post, null, null, context]);
           }
           // Instagram
           if (day.instagram?.caption) {
             const id = randomUUID();
             savedIds.push(id);
-            insertStmt.run(id, userId, 'instagram', 'post', `Day ${day.day}: ${day.theme}`, day.instagram.caption, null, day.instagram.reel_idea || null, context);
+            await tx.run(INSERT_CONTENT_BANK, [id, userId, 'instagram', 'post', `Day ${day.day}: ${day.theme}`, day.instagram.caption, null, day.instagram.reel_idea || null, context]);
           }
         }
       });
-
-      insertAll();
 
       return {
         success: true,

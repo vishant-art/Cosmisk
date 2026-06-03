@@ -1,3 +1,6 @@
+> **Status: ✅ IMPLEMENTED (2026-05-31)** — records executed build-unblock + gateway reconciliation work (55 tsc errors → 0; gateway tests 7/15 → 15/15).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Section 2 Implementation — Build Unblock + Gateway Reconciliation
 
 **Date:** 2026-05-20

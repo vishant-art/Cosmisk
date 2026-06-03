@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 migration strategy; numbers/preconditions stale. Superseded by `19_05/Database_migration_strat.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # COSMISK Database Migration Strategy
 
 ## Overview

@@ -3,7 +3,7 @@
  * Grabs pending jobs, dispatches to providers, polls async jobs, updates progress.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { getProvider } from './api-providers.js';
 import { notifyAlert } from './notifications.js';
 import { checkDailyLimit } from './llm-gateway.js';
@@ -46,15 +46,15 @@ export function startSprintGeneration(sprintId: string): void {
 /* ------------------------------------------------------------------ */
 
 async function processSprintJobs(sprintId: string): Promise<void> {
-  const db = getDb();
+  const db = getDbAdapter();
   logger.info(`[JobQueue] Starting generation for sprint ${sprintId}`);
 
   try {
     while (true) {
       // Check sprint is still in generating state
-      const sprint = db.prepare(
+      const sprint = await db.get(
         'SELECT status FROM creative_sprints WHERE id = ?'
-      ).get(sprintId) as { status: string } | undefined;
+      , [sprintId]) as { status: string } | undefined;
 
       if (!sprint || sprint.status !== 'generating') {
         logger.info(`[JobQueue] Sprint ${sprintId} is no longer generating (${sprint?.status}), stopping`);
@@ -62,9 +62,9 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       }
 
       // Count currently active jobs (generating or polling)
-      const activeCount = (db.prepare(
+      const activeCount = (await db.get(
         "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status IN ('generating', 'polling')"
-      ).get(sprintId) as CountRow).c;
+      , [sprintId]) as CountRow).c;
 
       // Poll any async jobs that are waiting
       if (activeCount > 0) {
@@ -72,12 +72,12 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       }
 
       // Grab pending jobs up to concurrency limit
-      const slotsAvailable = MAX_CONCURRENT - getActiveJobCount(sprintId);
+      const slotsAvailable = MAX_CONCURRENT - await getActiveJobCount(sprintId);
 
       if (slotsAvailable > 0) {
-        const pendingJobs = db.prepare(
+        const pendingJobs = await db.all(
           "SELECT * FROM creative_jobs WHERE sprint_id = ? AND status IN ('pending', 'script_ready') ORDER BY priority DESC, created_at ASC LIMIT ?"
-        ).all(sprintId, slotsAvailable) as JobRow[];
+        , [sprintId, slotsAvailable]) as JobRow[];
 
         if (pendingJobs.length > 0) {
           // Dispatch jobs in parallel
@@ -88,22 +88,22 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       }
 
       // Check if all jobs are done
-      const remaining = (db.prepare(
+      const remaining = (await db.get(
         "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')"
-      ).get(sprintId) as CountRow).c;
+      , [sprintId]) as CountRow).c;
 
       if (remaining === 0) {
         // All done — update sprint status
-        updateSprintProgress(sprintId);
-        db.prepare(
+        await updateSprintProgress(sprintId);
+        await db.run(
           "UPDATE creative_sprints SET status = 'reviewing', updated_at = datetime('now') WHERE id = ?"
-        ).run(sprintId);
+        , [sprintId]);
         logger.info(`[JobQueue] Sprint ${sprintId} generation complete, moved to reviewing`);
 
         // Notify user of sprint completion
-        const sprint = db.prepare(
+        const sprint = await db.get(
           'SELECT user_id, name, completed_creatives, failed_creatives FROM creative_sprints WHERE id = ?'
-        ).get(sprintId) as { user_id: string; name: string; completed_creatives: number; failed_creatives: number } | undefined;
+        , [sprintId]) as { user_id: string; name: string; completed_creatives: number; failed_creatives: number } | undefined;
         if (sprint) {
           notifyAlert(sprint.user_id, {
             type: 'sprint_complete',
@@ -116,7 +116,7 @@ async function processSprintJobs(sprintId: string): Promise<void> {
       }
 
       // Update sprint progress
-      updateSprintProgress(sprintId);
+      await updateSprintProgress(sprintId);
 
       // Wait before next loop iteration
       await sleep(POLL_INTERVAL_MS);
@@ -131,24 +131,24 @@ async function processSprintJobs(sprintId: string): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 async function dispatchJob(job: JobRow): Promise<void> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Check daily cost limit before dispatching
-  const limitCheck = checkDailyLimit(job.user_id);
+  const limitCheck = await checkDailyLimit(job.user_id);
   if (!limitCheck.allowed) {
     logger.warn({ userId: job.user_id, spent: limitCheck.spent, limit: limitCheck.limit }, '[JobQueue] Daily cost limit reached');
-    db.prepare(
+    await db.run(
       "UPDATE creative_jobs SET status = 'failed', error_message = ? WHERE id = ?"
-    ).run(`Daily spending limit reached ($${(limitCheck.limit / 100).toFixed(0)}/day). Resets at midnight UTC.`, job.id);
+    , [`Daily spending limit reached ($${(limitCheck.limit / 100).toFixed(0)}/day). Resets at midnight UTC.`, job.id]);
     return;
   }
 
   const provider = getProvider(job.api_provider || 'kling');
 
   // Mark as generating
-  db.prepare(
+  await db.run(
     "UPDATE creative_jobs SET status = 'generating', started_at = datetime('now') WHERE id = ?"
-  ).run(job.id);
+  , [job.id]);
 
   try {
     const script = job.script ? JSON.parse(job.script) : null;
@@ -162,25 +162,25 @@ async function dispatchJob(job: JobRow): Promise<void> {
 
     if (result.status === 'completed') {
       // Job completed synchronously
-      db.prepare(
+      await db.run(
         "UPDATE creative_jobs SET status = 'completed', output_url = ?, output_thumbnail = ?, cost_cents = ?, completed_at = datetime('now') WHERE id = ?"
-      ).run(result.output_url || null, result.thumbnail_url || null, result.cost_cents, job.id);
+      , [result.output_url || null, result.thumbnail_url || null, result.cost_cents, job.id]);
 
       // Record cost
-      writeCostLedger(job, provider.name, result.cost_cents);
+      await writeCostLedger(job, provider.name, result.cost_cents);
 
     } else if (result.status === 'processing' && result.job_id) {
       // Async job — store job_id for polling
-      db.prepare(
+      await db.run(
         "UPDATE creative_jobs SET status = 'polling', api_job_id = ?, cost_cents = ? WHERE id = ?"
-      ).run(result.job_id, result.cost_cents, job.id);
+      , [result.job_id, result.cost_cents, job.id]);
 
     } else {
       // Failed
-      handleJobFailure(job, result.error || 'Unknown generation error');
+      await handleJobFailure(job, result.error || 'Unknown generation error');
     }
   } catch (err: any) {
-    handleJobFailure(job, err.message || 'Provider threw an exception');
+    await handleJobFailure(job, err.message || 'Provider threw an exception');
   }
 }
 
@@ -189,10 +189,10 @@ async function dispatchJob(job: JobRow): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 async function pollAsyncJobs(sprintId: string): Promise<void> {
-  const db = getDb();
-  const pollingJobs = db.prepare(
+  const db = getDbAdapter();
+  const pollingJobs = await db.all(
     "SELECT * FROM creative_jobs WHERE sprint_id = ? AND status = 'polling' AND api_job_id IS NOT NULL"
-  ).all(sprintId) as JobRow[];
+  , [sprintId]) as JobRow[];
 
   await Promise.allSettled(
     pollingJobs.map(async (job) => {
@@ -202,14 +202,14 @@ async function pollAsyncJobs(sprintId: string): Promise<void> {
         const status = await provider.checkStatus(job.api_job_id!);
 
         if (status.status === 'completed') {
-          db.prepare(
+          await db.run(
             "UPDATE creative_jobs SET status = 'completed', output_url = ?, output_thumbnail = ?, completed_at = datetime('now') WHERE id = ?"
-          ).run(status.output_url || null, status.thumbnail_url || null, job.id);
+          , [status.output_url || null, status.thumbnail_url || null, job.id]);
 
-          writeCostLedger(job, provider.name, job.cost_cents);
+          await writeCostLedger(job, provider.name, job.cost_cents);
 
         } else if (status.status === 'failed') {
-          handleJobFailure(job, status.error || 'Provider returned failed status');
+          await handleJobFailure(job, status.error || 'Provider returned failed status');
         }
         // 'processing' → keep polling
       } catch (err: any) {
@@ -224,20 +224,20 @@ async function pollAsyncJobs(sprintId: string): Promise<void> {
 /*  Handle job failure with retry logic                                */
 /* ------------------------------------------------------------------ */
 
-function handleJobFailure(job: JobRow, errorMessage: string): void {
-  const db = getDb();
+async function handleJobFailure(job: JobRow, errorMessage: string): Promise<void> {
+  const db = getDbAdapter();
 
   if (job.retry_count < MAX_RETRIES) {
     // Reset to pending for retry
-    db.prepare(
+    await db.run(
       "UPDATE creative_jobs SET status = 'pending', error_message = ?, retry_count = retry_count + 1 WHERE id = ?"
-    ).run(errorMessage, job.id);
+    , [errorMessage, job.id]);
     logger.info(`[JobQueue] Job ${job.id} failed (attempt ${job.retry_count + 1}/${MAX_RETRIES + 1}), will retry: ${errorMessage}`);
   } else {
     // Max retries exceeded — mark as failed
-    db.prepare(
+    await db.run(
       "UPDATE creative_jobs SET status = 'failed', error_message = ?, completed_at = datetime('now') WHERE id = ?"
-    ).run(errorMessage, job.id);
+    , [errorMessage, job.id]);
     logger.info(`[JobQueue] Job ${job.id} permanently failed after ${MAX_RETRIES + 1} attempts: ${errorMessage}`);
   }
 }
@@ -246,14 +246,14 @@ function handleJobFailure(job: JobRow, errorMessage: string): void {
 /*  Cost ledger                                                        */
 /* ------------------------------------------------------------------ */
 
-function writeCostLedger(job: JobRow, providerName: string, costCents: number): void {
+async function writeCostLedger(job: JobRow, providerName: string, costCents: number): Promise<void> {
   if (costCents <= 0) return;
 
-  const db = getDb();
-  db.prepare(`
+  const db = getDbAdapter();
+  await db.run(`
     INSERT INTO cost_ledger (user_id, sprint_id, job_id, api_provider, operation, cost_cents, metadata)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     job.user_id,
     job.sprint_id,
     job.id,
@@ -261,40 +261,40 @@ function writeCostLedger(job: JobRow, providerName: string, costCents: number): 
     `${job.format}_gen`,
     costCents,
     JSON.stringify({ format: job.format, retry_count: job.retry_count }),
-  );
+  ]);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Sprint progress sync                                               */
 /* ------------------------------------------------------------------ */
 
-function updateSprintProgress(sprintId: string): void {
-  const db = getDb();
+async function updateSprintProgress(sprintId: string): Promise<void> {
+  const db = getDbAdapter();
 
-  const stats = db.prepare(`
+  const stats = await db.get(`
     SELECT
       SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
       SUM(CASE WHEN status = 'completed' THEN cost_cents ELSE 0 END) as actual_cost
     FROM creative_jobs WHERE sprint_id = ?
-  `).get(sprintId) as SprintJobStats;
+  `, [sprintId]) as SprintJobStats;
 
-  db.prepare(`
+  await db.run(`
     UPDATE creative_sprints
     SET completed_creatives = ?, failed_creatives = ?, actual_cost_cents = ?, updated_at = datetime('now')
     WHERE id = ?
-  `).run(stats.completed || 0, stats.failed || 0, stats.actual_cost || 0, sprintId);
+  `, [stats.completed || 0, stats.failed || 0, stats.actual_cost || 0, sprintId]);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function getActiveJobCount(sprintId: string): number {
-  const db = getDb();
-  return (db.prepare(
+async function getActiveJobCount(sprintId: string): Promise<number> {
+  const db = getDbAdapter();
+  return (await db.get(
     "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status IN ('generating', 'polling')"
-  ).get(sprintId) as CountRow).c;
+  , [sprintId]) as CountRow).c;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -307,39 +307,39 @@ function sleep(ms: number): Promise<void> {
  * - Sprints still in 'generating' → restart their processor loop
  * Call this once at server startup after DB is ready.
  */
-export function recoverInterruptedSprints(): void {
-  const db = getDb();
+export async function recoverInterruptedSprints(): Promise<void> {
+  const db = getDbAdapter();
 
   // Reset jobs that were mid-flight when the server died
-  const resetResult = db.prepare(`
+  const resetResult = await db.run(`
     UPDATE creative_jobs SET status = 'pending', retry_count = retry_count + 1
     WHERE status IN ('generating', 'polling')
-  `).run();
+  `, []);
 
   if (resetResult.changes > 0) {
     logger.info(`[JobQueue] Recovery: reset ${resetResult.changes} interrupted jobs to pending`);
   }
 
   // Find sprints that are still in 'generating' state
-  const stuckSprints = db.prepare(
+  const stuckSprints = await db.all(
     "SELECT id FROM creative_sprints WHERE status = 'generating'"
-  ).all() as { id: string }[];
+  , []) as { id: string }[];
 
   for (const sprint of stuckSprints) {
     // Check if there are still jobs to process
-    const remaining = (db.prepare(
+    const remaining = (await db.get(
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status NOT IN ('completed', 'failed', 'cancelled')"
-    ).get(sprint.id) as CountRow).c;
+    , [sprint.id]) as CountRow).c;
 
     if (remaining > 0) {
       logger.info(`[JobQueue] Recovery: resuming sprint ${sprint.id} (${remaining} jobs remaining)`);
       startSprintGeneration(sprint.id);
     } else {
       // All jobs are done but sprint wasn't updated — finalize it
-      updateSprintProgress(sprint.id);
-      db.prepare(
+      await updateSprintProgress(sprint.id);
+      await db.run(
         "UPDATE creative_sprints SET status = 'reviewing', updated_at = datetime('now') WHERE id = ?"
-      ).run(sprint.id);
+      , [sprint.id]);
       logger.info(`[JobQueue] Recovery: sprint ${sprint.id} was already complete, moved to reviewing`);
     }
   }
@@ -359,10 +359,10 @@ export function isSprintActive(sprintId: string): boolean {
 /**
  * Stop processing a sprint (will stop on next loop iteration).
  */
-export function stopSprintGeneration(sprintId: string): void {
-  const db = getDb();
+export async function stopSprintGeneration(sprintId: string): Promise<void> {
+  const db = getDbAdapter();
   // Setting status to something other than 'generating' will cause the loop to exit
-  db.prepare(
+  await db.run(
     "UPDATE creative_sprints SET status = 'approved', updated_at = datetime('now') WHERE id = ?"
-  ).run(sprintId);
+  , [sprintId]);
 }

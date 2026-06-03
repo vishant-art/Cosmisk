@@ -6,7 +6,7 @@
  * and optional Meta ad data to reason about strategy.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics } from './insights-parser.js';
@@ -69,17 +69,17 @@ export async function runCreativeStrategist(
   userId: string,
   brandContext: BrandContext,
 ): Promise<string> {
-  const db = getDb();
+  const db = getDbAdapter();
   const runId = uuidv4();
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
     VALUES (?, 'creative_strategist', ?, 'running', datetime('now'))
-  `).run(runId, userId);
+  `, [runId, userId]);
 
   try {
     // 1. Build memory context
-    const memoryContext = buildContextWindow(userId, 'creative_strategist', {
+    const memoryContext = await buildContextWindow(userId, 'creative_strategist', {
       maxEpisodes: 20,
       entityTypes: ['brand', 'pattern', 'audience', 'campaign'],
     });
@@ -142,17 +142,17 @@ export async function runCreativeStrategist(
     for (let i = 0; i < fullOutput.conceptStrategies.length; i++) {
       const concept = fullOutput.conceptStrategies[i];
       const decisionId = uuidv4();
-      db.prepare(`
+      await db.run(`
         INSERT INTO agent_decisions (id, run_id, user_id, type, target_name,
           reasoning, confidence, urgency, suggested_action, status, created_at)
         VALUES (?, ?, ?, 'concept_strategy', ?, ?, ?, 'low', ?, 'pending', datetime('now'))
-      `).run(
+      `, [
         decisionId, runId, userId,
         `${brandContext.brandName} #${i + 1}: ${concept.format}`,
         concept.whyThisBrand,
         concept.confidence,
         `${concept.format} | Hook: ${concept.hook} | Demo: ${concept.demo} | Tone: ${concept.tone}`,
-      );
+      ]);
 
       // Record as episodic memory for future learning
       recordDecisionEpisode(userId, 'creative_strategist', {
@@ -166,10 +166,10 @@ export async function runCreativeStrategist(
     // 5. Update run as completed
     const summary = `Creative strategy for ${brandContext.brandName}: ${fullOutput.conceptStrategies.length} concepts, ${fullOutput.antiPatterns.length} anti-patterns. Market: ${brandContext.market}`;
 
-    db.prepare(`
+    await db.run(`
       UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
       summary = ?, raw_context = ? WHERE id = ?
-    `).run(summary, JSON.stringify(fullOutput), runId);
+    `, [summary, JSON.stringify(fullOutput), runId]);
 
     // 6. Record overall episode
     await recordEpisode(
@@ -191,10 +191,10 @@ export async function runCreativeStrategist(
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    db.prepare(`
+    await db.run(`
       UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
       summary = ? WHERE id = ?
-    `).run(`Error: ${message}`, runId);
+    `, [`Error: ${message}`, runId]);
     throw err;
   }
 }
@@ -203,43 +203,43 @@ export async function runCreativeStrategist(
 /*  Feedback — how the agent learns from outcomes                      */
 /* ------------------------------------------------------------------ */
 
-export function processConceptFeedback(
+export async function processConceptFeedback(
   userId: string,
   runId: string,
   conceptIndex: number,
   outcome: 'approved' | 'rejected',
   reason?: string,
-): void {
-  const db = getDb();
+): Promise<void> {
+  const db = getDbAdapter();
 
   // Find the decision for this concept
-  const decisions = db.prepare(`
+  const decisions = await db.all(`
     SELECT id, target_name, suggested_action FROM agent_decisions
     WHERE run_id = ? AND user_id = ? AND type = 'concept_strategy'
     ORDER BY created_at ASC
-  `).all(runId, userId) as Array<{ id: string; target_name: string; suggested_action: string }>;
+  `, [runId, userId]) as Array<{ id: string; target_name: string; suggested_action: string }>;
 
   const decision = decisions[conceptIndex];
   if (!decision) return;
 
   // Update decision status
-  db.prepare(`
+  await db.run(`
     UPDATE agent_decisions SET status = ?, outcome = ? WHERE id = ?
-  `).run(outcome, reason || outcome, decision.id);
+  `, [outcome, reason || outcome, decision.id]);
 
   // Find associated episode
-  const episode = db.prepare(`
+  const episode = await db.get(`
     SELECT id FROM agent_episodes
     WHERE user_id = ? AND agent_type = 'creative_strategist'
     AND event LIKE ?
     ORDER BY created_at DESC LIMIT 1
-  `).get(userId, `%${decision.target_name}%`) as { id: string } | undefined;
+  `, [userId, `%${decision.target_name}%`]) as { id: string } | undefined;
 
   if (episode) {
     if (outcome === 'approved') {
-      reinforceEpisode(episode.id, 0.5);
+      await reinforceEpisode(episode.id, 0.5);
     } else {
-      penalizeEpisode(episode.id, 0.4);
+      await penalizeEpisode(episode.id, 0.4);
     }
   }
 
@@ -260,20 +260,20 @@ export function processConceptFeedback(
 /*  Seed initial memory                                                */
 /* ------------------------------------------------------------------ */
 
-export function seedCreativeStrategistMemory(userId: string): void {
-  setCoreMemory(userId, 'creative_strategist', 'production_constraints',
+export async function seedCreativeStrategistMemory(userId: string): Promise<void> {
+  await setCoreMemory(userId, 'creative_strategist', 'production_constraints',
     'UGC only. Creator films on phone. No animations, split-screen, documentary footage, professional cinematography. Creator must be on camera. No location shoots — home/outdoors only.');
 
-  setCoreMemory(userId, 'creative_strategist', 'concept_quality',
+  await setCoreMemory(userId, 'creative_strategist', 'concept_quality',
     'Every concept needs a unique DEMO (physical action on camera). Different hooks on same demo = same concept. Verify all math from live website. Reference videos must match concept format.');
 
-  setCoreMemory(userId, 'creative_strategist', 'format_diversity',
+  await setCoreMemory(userId, 'creative_strategist', 'format_diversity',
     'NEVER make all concepts follow the same structure. Mix formats: GRWM, myth buster, reaction, street interview, comment response, third-person narrative, confession/storytime, challenge, routine. If all concepts feel templated, the deck will be rejected.');
 
-  setCoreMemory(userId, 'creative_strategist', 'cultural_awareness',
+  await setCoreMemory(userId, 'creative_strategist', 'cultural_awareness',
     'Adapt hooks to the target market. Indian audience: hydrafacial, glass skin, salon-at-home resonate. Western hooks like "skin barrier" or "microbiome" may not land. Always ask: would a creator in THIS market actually say this?');
 
-  setCoreMemory(userId, 'creative_strategist', 'tone_rule',
+  await setCoreMemory(userId, 'creative_strategist', 'tone_rule',
     'Tone must be CREATOR voice, not brand voice. Test: would a real person say this to their friend? If it sounds like ad copy or a brand manifesto, rewrite it. Preachy/educational tone kills engagement.');
 
   // Seed initial episodes from past work
@@ -304,9 +304,8 @@ export function seedCreativeStrategistMemory(userId: string): void {
 
 async function gatherAdData(userId: string, accountId: string): Promise<string> {
   try {
-    const db = getDb();
-    const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?')
-      .get(userId) as MetaTokenRow | undefined;
+    const db = getDbAdapter();
+    const tokenRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]) as MetaTokenRow | undefined;
     if (!tokenRow) return 'No Meta token — ad data unavailable.';
 
     const meta = new MetaApiService(decryptToken(tokenRow.encrypted_access_token));

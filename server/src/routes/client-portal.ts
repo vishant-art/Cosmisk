@@ -6,10 +6,18 @@
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { getRecentReports, getRecommendationHistory, getPredictionAccuracy } from '../services/strategic-memory.js';
 import crypto from 'crypto';
+
+// Properties populated by the basicAuth preHandler below.
+declare module 'fastify' {
+  interface FastifyRequest {
+    clientId?: string;
+    brandName?: string;
+  }
+}
 
 // Simple basic auth middleware
 async function basicAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -25,10 +33,9 @@ async function basicAuth(request: FastifyRequest, reply: FastifyReply): Promise<
   const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
   const [clientId, password] = credentials.split(':');
 
-  const db = getDb();
-  const client = db.prepare(`
+  const client = await getDbAdapter().get<{ id: string; brand_name: string; portal_password_hash?: string }>(`
     SELECT id, brand_name, portal_password_hash FROM service_clients WHERE id = ?
-  `).get(clientId) as { id: string; brand_name: string; portal_password_hash?: string } | undefined;
+  `, [clientId]);
 
   if (!client) {
     reply.header('WWW-Authenticate', 'Basic realm="Client Portal"');
@@ -49,8 +56,8 @@ async function basicAuth(request: FastifyRequest, reply: FastifyReply): Promise<
   }
 
   // Store client info for later use
-  (request as any).clientId = client.id;
-  (request as any).brandName = client.brand_name;
+  request.clientId = client.id;
+  request.brandName = client.brand_name;
 }
 
 export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
@@ -59,13 +66,14 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
    * Main portal page - shows client's report history
    */
   app.get('/portal', { preHandler: basicAuth }, async (request, reply) => {
-    const clientId = (request as any).clientId;
-    const brandName = (request as any).brandName;
+    // Set by the basicAuth preHandler; guaranteed present here.
+    const clientId = request.clientId ?? '';
+    const brandName = request.brandName ?? '';
 
     try {
-      const reports = getRecentReports(clientId, 20);
-      const recommendations = getRecommendationHistory(clientId, 10);
-      const accuracy = getPredictionAccuracy(clientId);
+      const reports = await getRecentReports(clientId, 20);
+      const recommendations = await getRecommendationHistory(clientId, 10);
+      const accuracy = await getPredictionAccuracy(clientId);
 
       const html = generatePortalHTML(brandName, reports, recommendations, accuracy);
 
@@ -82,15 +90,15 @@ export async function clientPortalRoutes(app: FastifyInstance): Promise<void> {
    * View a specific report
    */
   app.get<{ Params: { reportId: string } }>('/portal/report/:reportId', { preHandler: basicAuth }, async (request, reply) => {
-    const clientId = (request as any).clientId;
-    const brandName = (request as any).brandName;
+    // Set by the basicAuth preHandler; guaranteed present here.
+    const clientId = request.clientId ?? '';
+    const brandName = request.brandName ?? '';
     const { reportId } = request.params;
 
     try {
-      const db = getDb();
-      const report = db.prepare(`
+      const report = await getDbAdapter().get<{ data_json: string }>(`
         SELECT data_json FROM strategic_reports WHERE id = ? AND client_id = ?
-      `).get(reportId, clientId) as { data_json: string } | undefined;
+      `, [reportId, clientId]);
 
       if (!report) {
         return reply.status(404).send('Report not found');

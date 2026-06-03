@@ -390,7 +390,9 @@ export function extractCreatorDNA(
       credibilityMarker: analysis.experienceStatement || 'Personal experience shared',
       relatabilityMoment: analysis.showsSkepticism ? 'Shows initial skepticism' : 'Shares relatable context',
       specificProof: analysis.usesSpecificNumbers,
-      pacingStyle: analysis.pacingVariation > 0.7 ? 'variable' : analysis.pacingVariation > 0.4 ? 'medium' : 'consistent' as any
+      // Runtime value preserved; 'consistent' is outside the declared union, so
+      // assert to the target union (overlaps on 'variable'/'medium') rather than `any`.
+      pacingStyle: (analysis.pacingVariation > 0.7 ? 'variable' : analysis.pacingVariation > 0.4 ? 'medium' : 'consistent') as 'fast' | 'medium' | 'slow' | 'variable'
     },
     emotionalArc: {
       productRevealTiming: analysis.productRevealTimestamp,
@@ -809,8 +811,8 @@ export async function analyzeOrganicContent(
   // Deep comment analysis
   const commentIntelligence = contentData.comments.slice(0, 20).map(c =>
     analyzeCommentDeep(c.text, {
-      category: c.category as any,
-      sentiment: c.sentiment as any,
+      category: c.category as 'objection' | 'desire' | 'praise' | 'question' | 'frustration' | 'use_case' | 'other',
+      sentiment: c.sentiment as 'positive' | 'negative' | 'mixed' | 'neutral',
       emotionalTriggers: c.emotionalTriggers
     })
   );
@@ -841,7 +843,7 @@ export async function analyzeOrganicContent(
   if (contentData.userId) {
     // High CCP score - recommend creating adaptation
     if (ccpScore.verdict === 'immediate_priority') {
-      agentRecommend(contentData.userId, 'organic_paid_intelligence', {
+      await agentRecommend(contentData.userId, 'organic_paid_intelligence', {
         type: 'test_creative',
         entityType: 'creative',
         entityId: `organic_${Date.now()}`,
@@ -862,7 +864,7 @@ export async function analyzeOrganicContent(
 
     // Trend timing shows optimal entry
     if (trendTiming && trendTiming.action === 'enter_now') {
-      agentRecommend(contentData.userId, 'organic_paid_intelligence', {
+      await agentRecommend(contentData.userId, 'organic_paid_intelligence', {
         type: 'test_creative',
         entityType: 'creative',
         entityId: `trend_${Date.now()}`,
@@ -885,7 +887,7 @@ export async function analyzeOrganicContent(
     const objectionComments = commentIntelligence.filter(c => c.intent === 'objection');
     if (objectionComments.length >= 3) {
       const topObjection = objectionComments[0];
-      agentRecommend(contentData.userId, 'organic_paid_intelligence', {
+      await agentRecommend(contentData.userId, 'organic_paid_intelligence', {
         type: 'refresh_creative',
         entityType: 'creative',
         entityId: `objection_${Date.now()}`,

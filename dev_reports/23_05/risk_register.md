@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable risk register (7 active risks as of May-23).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Risk Register — 2026-05-23
 
 **Supersedes:** `dev_reports/19_05/new_and_added_risks.md` (risks A–N).

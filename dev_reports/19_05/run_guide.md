@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 run-guide refresh tied to the build-broken devcontainer state. Superseded by `05_05/run_guide.md` for durable setup steps.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk — Local Run Guide — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/run_guide.md` (2026-05-03)

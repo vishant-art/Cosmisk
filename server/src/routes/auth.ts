@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { encryptToken, decryptToken } from '../services/token-crypto.js';
 import { exchangeCodeForToken, getMetaUser, MetaApiService } from '../services/meta-api.js';
 import { sendPasswordResetEmail } from '../services/email.js';
@@ -18,24 +18,24 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { email, password } = parsed;
 
-    const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined;
+    const db = getDbAdapter();
+    const user = await db.get<UserRow>('SELECT * FROM users WHERE email = ?', [email]);
 
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
       return reply.status(401).send({ message: 'Invalid email or password' });
     }
 
     // If user has a Meta token, treat onboarding as complete
-    const hasMeta = db.prepare('SELECT 1 FROM meta_tokens WHERE user_id = ?').get(user.id);
+    const hasMeta = await db.get('SELECT 1 FROM meta_tokens WHERE user_id = ?', [user.id]);
     const onboardingComplete = Boolean(user.onboarding_complete) || !!hasMeta;
 
     const token = app.jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role });
 
     // Log login activity
     try {
-      db.prepare('INSERT INTO activity_log (user_id, action, category) VALUES (?, ?, ?)').run(
-        user.id, 'Logged in', 'security'
-      );
+      await db.run('INSERT INTO activity_log (user_id, action, category) VALUES (?, ?, ?)', [
+        user.id, 'Logged in', 'security',
+      ]);
     } catch { /* best-effort */ }
 
     return {
@@ -58,8 +58,8 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { name, email, password } = parsed;
 
-    const db = getDb();
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const db = getDbAdapter();
+    const existing = await db.get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
       return reply.status(409).send({ error: 'Email already registered' });
     }
@@ -67,9 +67,10 @@ export async function authRoutes(app: FastifyInstance) {
     const id = uuidv4();
     const passwordHash = bcrypt.hashSync(password, 10);
 
-    db.prepare(
-      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)'
-    ).run(id, name, email, passwordHash);
+    await db.run(
+      'INSERT INTO users (id, name, email, password_hash) VALUES (?, ?, ?, ?)',
+      [id, name, email, passwordHash],
+    );
 
     const token = app.jwt.sign({ id, email, name, role: 'user' });
 
@@ -89,8 +90,8 @@ export async function authRoutes(app: FastifyInstance) {
 
   // GET /auth/meta-status
   app.get('/meta-status', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(request.user.id) as MetaTokenRow | undefined;
+    const db = getDbAdapter();
+    const row = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [request.user.id]);
 
     if (!row) {
       return { connected: false, status: 'disconnected', accountCount: 0, metaUserName: null, expiresAt: null };
@@ -138,8 +139,8 @@ export async function authRoutes(app: FastifyInstance) {
       const encrypted = encryptToken(accessToken);
       const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-      const db = getDb();
-      db.prepare(`
+      const db = getDbAdapter();
+      await db.run(`
         INSERT INTO meta_tokens (user_id, encrypted_access_token, meta_user_id, meta_user_name, expires_at)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
@@ -148,10 +149,10 @@ export async function authRoutes(app: FastifyInstance) {
           meta_user_name = excluded.meta_user_name,
           expires_at = excluded.expires_at,
           created_at = datetime('now')
-      `).run(request.user.id, encrypted, metaUser.id, metaUser.name, expiresAt);
+      `, [request.user.id, encrypted, metaUser.id, metaUser.name, expiresAt]);
 
       // Mark onboarding complete
-      db.prepare('UPDATE users SET onboarding_complete = 1 WHERE id = ?').run(request.user.id);
+      await db.run('UPDATE users SET onboarding_complete = 1 WHERE id = ?', [request.user.id]);
 
       return { success: true, accountCount: -1 };
     } catch (err: any) {
@@ -165,17 +166,17 @@ export async function authRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { email } = parsed;
 
-    const db = getDb();
-    const user = db.prepare('SELECT id, name, email FROM users WHERE email = ?').get(email) as Pick<UserRow, 'id' | 'name' | 'email'> | undefined;
+    const db = getDbAdapter();
+    const user = await db.get<Pick<UserRow, 'id' | 'name' | 'email'>>('SELECT id, name, email FROM users WHERE email = ?', [email]);
 
     // Always return success to prevent email enumeration
     if (!user) return { success: true };
 
     // Rate limit: max 3 tokens per hour per user
-    const recentCount = (db.prepare(`
+    const recentCount = (await db.get<{ cnt: number }>(`
       SELECT COUNT(*) as cnt FROM password_reset_tokens
       WHERE user_id = ? AND created_at > datetime('now', '-1 hour')
-    `).get(user.id) as { cnt: number }).cnt;
+    `, [user.id]))!.cnt;
 
     if (recentCount >= 3) return { success: true }; // Silent rate limit
 
@@ -184,10 +185,10 @@ export async function authRoutes(app: FastifyInstance) {
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
       VALUES (?, ?, ?, ?)
-    `).run(uuidv4(), user.id, tokenHash, expiresAt);
+    `, [uuidv4(), user.id, tokenHash, expiresAt]);
 
     // Send email (fire-and-forget)
     sendPasswordResetEmail(user.email, user.name, rawToken).catch(err =>
@@ -204,12 +205,12 @@ export async function authRoutes(app: FastifyInstance) {
     const { token, password } = parsed;
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const resetRow = db.prepare(`
+    const resetRow = await db.get<{ id: string; user_id: string; expires_at: string; used: number }>(`
       SELECT id, user_id, expires_at, used FROM password_reset_tokens
       WHERE token_hash = ?
-    `).get(tokenHash) as { id: string; user_id: string; expires_at: string; used: number } | undefined;
+    `, [tokenHash]);
 
     if (!resetRow) return reply.status(400).send({ success: false, error: 'Invalid or expired reset link' });
     if (resetRow.used) return reply.status(400).send({ success: false, error: 'This reset link has already been used' });
@@ -220,20 +221,20 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = bcrypt.hashSync(password, 10);
 
     // Update password and mark token as used (transaction)
-    db.transaction(() => {
-      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, resetRow.user_id);
-      db.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ?').run(resetRow.id);
+    await db.transaction(async (tx) => {
+      await tx.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, resetRow.user_id]);
+      await tx.run('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [resetRow.id]);
       // Invalidate all other tokens for this user
-      db.prepare("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND id != ?").run(resetRow.user_id, resetRow.id);
-    })();
+      await tx.run("UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND id != ?", [resetRow.user_id, resetRow.id]);
+    });
 
     return { success: true };
   });
 
   // POST /auth/meta-disconnect
   app.post('/meta-disconnect', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
-    db.prepare('DELETE FROM meta_tokens WHERE user_id = ?').run(request.user.id);
+    const db = getDbAdapter();
+    await db.run('DELETE FROM meta_tokens WHERE user_id = ?', [request.user.id]);
     return { success: true };
   });
 

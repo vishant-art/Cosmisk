@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — post-ship status of the gateway plus residual wrap work; design reference.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Implementation Plan — `services/llm-gateway.ts` — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/rate_limiting/implementation_plan.md` (2026-05-02)

@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 task list mirror of `suggested.md`. Superseded by `19_05/tasklist.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk Cleanup Task List — 2026-04-26
 
 Source: `suggested.md`. Status reflects in-conversation TaskList; treat this file as the human-readable mirror.

@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-03 structured-logging plan; counts re-baselined. Superseded by `19_05/structured_logging.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Structured Logging Guide (2026-05-03)
 
 How to make every backend service surface useful, structured log entries in the terminal during `npm run dev`, so error diagnosis stops requiring stack-trace archaeology.

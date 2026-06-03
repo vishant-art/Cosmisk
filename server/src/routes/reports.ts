@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown, parseAudienceBreakdown } from '../services/insights-parser.js';
@@ -18,9 +18,8 @@ import cron from 'node-cron';
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
 /* ------------------------------------------------------------------ */
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -311,14 +310,15 @@ export async function reportRoutes(app: FastifyInstance) {
     const limitNum = Math.min(parseInt(limit, 10) || 50, 100); // Max 100 per page
     const offsetNum = parseInt(offset, 10) || 0;
 
-    const db = getDb();
+    const db = getDbAdapter();
 
     // Get total count for pagination
-    const countRow = db.prepare('SELECT COUNT(*) as total FROM reports WHERE user_id = ?').get(request.user.id) as { total: number };
+    const countRow = await db.get<{ total: number }>('SELECT COUNT(*) as total FROM reports WHERE user_id = ?', [request.user.id]) as { total: number };
 
-    const reports = db.prepare(
-      'SELECT * FROM reports WHERE user_id = ? ORDER BY generated_at DESC LIMIT ? OFFSET ?'
-    ).all(request.user.id, limitNum, offsetNum) as ReportRow[];
+    const reports = await db.all<ReportRow>(
+      'SELECT * FROM reports WHERE user_id = ? ORDER BY generated_at DESC LIMIT ? OFFSET ?',
+      [request.user.id, limitNum, offsetNum]
+    );
 
     return {
       success: true,
@@ -351,7 +351,7 @@ export async function reportRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const account_id = parsed.account_id;
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(200).send({ success: false, error: 'Meta account not connected' });
     }
@@ -361,7 +361,7 @@ export async function reportRoutes(app: FastifyInstance) {
       return reply.status(500).send({ success: false, error: 'Failed to generate weekly report' });
     }
 
-    const db = getDb();
+    const db = getDbAdapter();
     const id = uuidv4();
     const title = `Weekly Strategy Report — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
@@ -373,9 +373,10 @@ export async function reportRoutes(app: FastifyInstance) {
       auto_generated: false,
     });
 
-    db.prepare(
-      'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(id, request.user.id, title, 'weekly-strategy', account_id, 'last_7d', 'Ready', reportData);
+    await db.run(
+      'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, request.user.id, title, 'weekly-strategy', account_id, 'last_7d', 'Ready', reportData]
+    );
 
     return { success: true, report_id: id, strategy_report: reportContent };
   });
@@ -397,12 +398,12 @@ export async function reportRoutes(app: FastifyInstance) {
       credential_group,
     } = parsed;
 
-    const db = getDb();
+    const db = getDbAdapter();
     const id = uuidv4();
     const reportName = name || `${type.charAt(0).toUpperCase() + type.slice(1)} Report — ${new Date().toLocaleDateString()}`;
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: false, error: 'Meta account not connected', meta_connected: false });
       }
@@ -473,16 +474,18 @@ export async function reportRoutes(app: FastifyInstance) {
       const dataJson = JSON.stringify(reportData);
       const dataSize = formatBytes(Buffer.byteLength(dataJson, 'utf-8'));
 
-      db.prepare(
-        'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(id, request.user.id, reportName, type, account_id, date_range, 'Ready', dataJson);
+      await db.run(
+        'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, request.user.id, reportName, type, account_id, date_range, 'Ready', dataJson]
+      );
 
       return { success: true, report_id: id, size: dataSize };
     } catch (err: any) {
       // Still save the report but mark as failed
-      db.prepare(
-        'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-      ).run(id, request.user.id, reportName, type, account_id, date_range, 'Failed', JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      await db.run(
+        'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, request.user.id, reportName, type, account_id, date_range, 'Failed', JSON.stringify({ error: err instanceof Error ? err.message : String(err) })]
+      );
 
       return internalError(reply, err, 'reports/generate failed');
     }
@@ -614,13 +617,13 @@ function startWeeklyReportCron() {
     const DELAY_BETWEEN_USERS_MS = 2000;
 
     logger.info('[Weekly Reports] Starting generation...');
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const users = db.prepare(`
+    const users = await db.all<Pick<UserRow, 'id' | 'name' | 'email'>>(`
       SELECT u.id, u.name, u.email FROM users u
       WHERE u.onboarding_complete = 1
       AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-    `).all() as Pick<UserRow, 'id' | 'name' | 'email'>[];
+    `);
 
     const totalEligible = users.length;
     const batch = users.slice(0, MAX_BATCH_SIZE);
@@ -641,7 +644,7 @@ function startWeeklyReportCron() {
         }
         processed++;
 
-        const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+        const tokenRow = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [user.id]);
         if (!tokenRow) continue;
 
         const token = decryptToken(tokenRow.encrypted_access_token);
@@ -668,9 +671,10 @@ function startWeeklyReportCron() {
             auto_generated: true,
           });
 
-          db.prepare(
-            'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-          ).run(id, user.id, title, 'weekly-strategy', account.id, 'last_7d', 'Ready', reportData);
+          await db.run(
+            'INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [id, user.id, title, 'weekly-strategy', account.id, 'last_7d', 'Ready', reportData]
+          );
 
           generated++;
         }

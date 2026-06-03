@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics } from './insights-parser.js';
@@ -169,13 +169,12 @@ async function executeAction(
 
     case 'notify': {
       // Create an autopilot alert and send external notifications
-      const db = getDb();
       const alertTitle = `Automation: ${rule.name}`;
       const alertContent = `Rule triggered on "${trigger.adName}": ${rule.trigger_type} = ${trigger.metricValue} (threshold: ${trigger.thresholdValue})`;
-      db.prepare(`
+      await getDbAdapter().run(`
         INSERT INTO autopilot_alerts (id, user_id, account_id, type, title, content, severity)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
+      `, [
         uuidv4(),
         rule.user_id,
         accountId,
@@ -183,7 +182,7 @@ async function executeAction(
         alertTitle,
         alertContent,
         'warning',
-      );
+      ]);
       // Dispatch to Slack/email (non-blocking)
       notifyAlert(rule.user_id, {
         type: 'automation_trigger',
@@ -205,13 +204,11 @@ async function executeAction(
 /* ------------------------------------------------------------------ */
 
 export async function runAutomations(): Promise<number> {
-  const db = getDb();
-
   // Get all active automation rules with their users
-  const rules = db.prepare(`
+  const rules = await getDbAdapter().all(`
     SELECT a.* FROM automations a
     WHERE a.is_active = 1
-  `).all() as AutomationRow[];
+  `) as AutomationRow[];
 
   if (!rules.length) return 0;
 
@@ -227,7 +224,7 @@ export async function runAutomations(): Promise<number> {
 
   for (const [userId, userRules] of rulesByUser) {
     try {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+      const tokenRow = await getDbAdapter().get('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
         logger.warn(`[automations] Skipping user ${userId}: Meta token expired at ${tokenRow.expires_at}`);
@@ -256,9 +253,10 @@ export async function runAutomations(): Promise<number> {
               if (result.executed) {
                 totalExecuted++;
                 // Update last_triggered
-                db.prepare(
-                  "UPDATE automations SET last_triggered = datetime('now') WHERE id = ?"
-                ).run(rule.id);
+                await getDbAdapter().run(
+                  "UPDATE automations SET last_triggered = datetime('now') WHERE id = ?",
+                  [rule.id],
+                );
               }
 
               logger.info(`[Automations] Rule "${rule.name}" on ${trigger.adName}: ${result.message}`);

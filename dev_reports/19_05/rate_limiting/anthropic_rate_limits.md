@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable reference on Anthropic's rate-limit model (unchanged at the API end).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Anthropic Rate Limits — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/rate_limiting/anthropic_rate_limits.md` (2026-05-02)

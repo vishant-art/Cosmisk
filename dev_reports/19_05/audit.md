@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 audit refresh. Superseded by `23_05/state_of_codebase.md` and the later migration arc.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Cosmisk Codebase Audit — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/audit.md` (2026-04-26 @ `69b4352`)

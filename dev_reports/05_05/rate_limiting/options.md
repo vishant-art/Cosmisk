@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — decision matrix behind the shipped rate limiter; retained for rationale.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Options — Decision Matrix (2026-05-02)
 
 How to add LLM rate limiting in front of Anthropic, given cosmisk's posture (single-replica Fastify+SQLite today, Postgres/BullMQ later).

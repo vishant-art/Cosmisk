@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — post-ship snapshot of residual LLM call sites/bypasses.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Rate-limiting — Findings — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/rate_limiting/findings.md` (2026-05-02)

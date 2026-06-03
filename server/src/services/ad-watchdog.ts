@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.js';
@@ -283,13 +283,12 @@ async function gatherAccountSnapshot(
 /*  Compare to past decisions for learning context                     */
 /* ------------------------------------------------------------------ */
 
-function getPastDecisions(userId: string, accountId: string): AgentDecisionRow[] {
-  const db = getDb();
-  return db.prepare(`
+async function getPastDecisions(userId: string, accountId: string): Promise<AgentDecisionRow[]> {
+  return await getDbAdapter().all<AgentDecisionRow>(`
     SELECT * FROM agent_decisions
     WHERE user_id = ? AND account_id = ?
-    ORDER BY rowid DESC LIMIT 20
-  `).all(userId, accountId) as AgentDecisionRow[];
+    ORDER BY created_at DESC LIMIT 20
+  `, [userId, accountId]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -419,17 +418,17 @@ Return ONLY the JSON array, no other text.`;
 /* ------------------------------------------------------------------ */
 
 export async function executeDecision(decisionId: string, userId?: string): Promise<{ success: boolean; message: string }> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   // User-scoped query when userId provided (#6)
   const decision = userId
-    ? db.prepare('SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?').get(decisionId, userId) as AgentDecisionRow | undefined
-    : db.prepare('SELECT * FROM agent_decisions WHERE id = ?').get(decisionId) as AgentDecisionRow | undefined;
+    ? await db.get<AgentDecisionRow>('SELECT * FROM agent_decisions WHERE id = ? AND user_id = ?', [decisionId, userId])
+    : await db.get<AgentDecisionRow>('SELECT * FROM agent_decisions WHERE id = ?', [decisionId]);
 
   if (!decision) return { success: false, message: 'Decision not found' };
   if (decision.status !== 'approved') return { success: false, message: `Decision status is ${decision.status}, expected approved` };
 
-  const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(decision.user_id) as MetaTokenRow | undefined;
+  const tokenRow = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [decision.user_id]);
   if (!tokenRow) return { success: false, message: 'No Meta token found' };
 
   const token = decryptToken(tokenRow.encrypted_access_token);
@@ -499,10 +498,10 @@ export async function executeDecision(decisionId: string, userId?: string): Prom
         return { success: false, message: `Unknown action: ${decision.suggested_action}` };
     }
 
-    db.prepare(`
+    await db.run(`
       UPDATE agent_decisions SET status = 'executed', executed_at = datetime('now')
       WHERE id = ?
-    `).run(decisionId);
+    `, [decisionId]);
 
     return { success: true, message: `Executed: ${decision.suggested_action} on "${decision.target_name}"` };
   } catch (err: any) {
@@ -515,20 +514,20 @@ export async function executeDecision(decisionId: string, userId?: string): Prom
 /* ------------------------------------------------------------------ */
 
 export async function checkOutcomes(): Promise<number> {
-  const db = getDb();
-  const decisions = db.prepare(`
+  const db = getDbAdapter();
+  const decisions = await db.all<AgentDecisionRow>(`
     SELECT * FROM agent_decisions
     WHERE status = 'executed'
     AND outcome_checked_at IS NULL
     AND executed_at < datetime('now', '-7 days')
     LIMIT 50
-  `).all() as AgentDecisionRow[];
+  `);
 
   let checked = 0;
 
   for (const decision of decisions) {
     try {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(decision.user_id) as MetaTokenRow | undefined;
+      const tokenRow = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [decision.user_id]);
       if (!tokenRow) continue;
 
       const token = decryptToken(tokenRow.encrypted_access_token);
@@ -559,25 +558,25 @@ export async function checkOutcomes(): Promise<number> {
         isPositive = current.roas > 1.0;
       }
 
-      db.prepare(`
+      await db.run(`
         UPDATE agent_decisions
         SET outcome_checked_at = datetime('now'), outcome = ?
         WHERE id = ?
-      `).run(outcome, decision.id);
+      `, [outcome, decision.id]);
 
       // Reinforce or penalize related episodes
-      const episodes = db.prepare(`
+      const episodes = await db.all<{ id: string }>(`
         SELECT id FROM agent_episodes
         WHERE user_id = ? AND agent_type = 'watchdog'
         AND event LIKE ?
         ORDER BY created_at DESC LIMIT 1
-      `).all(decision.user_id, `%${decision.target_name}%`) as Array<{ id: string }>;
+      `, [decision.user_id, `%${decision.target_name}%`]);
 
       for (const ep of episodes) {
         if (isPositive) {
-          reinforceEpisode(ep.id);
+          await reinforceEpisode(ep.id);
         } else {
-          penalizeEpisode(ep.id);
+          await penalizeEpisode(ep.id);
         }
       }
 
@@ -685,13 +684,13 @@ export async function gatherCreativeAnalysis(
   accountId: string,
   clientId: string
 ): Promise<{ analyzed: number; stored: number }> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   logger.info({ accountId, clientId }, '[Watchdog] Gathering creative analysis...');
 
   try {
     // Ensure table exists
-    db.exec(`
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS creative_analysis (
         id TEXT PRIMARY KEY,
         client_id TEXT,
@@ -710,7 +709,7 @@ export async function gatherCreativeAnalysis(
     `);
 
     // Create index for faster lookups
-    db.exec(`
+    await db.exec(`
       CREATE INDEX IF NOT EXISTS idx_creative_analysis_client
       ON creative_analysis(client_id)
     `);
@@ -775,12 +774,12 @@ export async function gatherCreativeAnalysis(
     }
 
     // Clear old data for this client and insert new
-    db.prepare('DELETE FROM creative_analysis WHERE client_id = ?').run(clientId);
+    await db.run('DELETE FROM creative_analysis WHERE client_id = ?', [clientId]);
 
-    const insert = db.prepare(`
+    const insertSql = `
       INSERT INTO creative_analysis (id, client_id, ad_id, ad_name, creative_type, hook_text, hook_pattern, ctr, spend, impressions, image_url, video_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    `;
 
     let stored = 0;
 
@@ -802,7 +801,7 @@ export async function gatherCreativeAnalysis(
       // Categorize hook pattern
       const hookPattern = categorizeHookPattern(hookText);
 
-      insert.run(
+      await db.run(insertSql, [
         crypto.randomUUID(),
         clientId,
         ad.id,
@@ -815,7 +814,7 @@ export async function gatherCreativeAnalysis(
         impressions,
         creative.image_url || creative.thumbnail_url || null,
         creative.video_id || null
-      );
+      ]);
       stored++;
     }
 
@@ -838,19 +837,19 @@ export async function gatherCreativeAnalysis(
 /* ------------------------------------------------------------------ */
 
 export async function runWatchdog(): Promise<{ runs: number; decisions: number }> {
-  const db = getDb();
-  const users = db.prepare(`
+  const db = getDbAdapter();
+  const users = await db.all<Pick<UserRow, 'id' | 'plan' | 'name'>>(`
     SELECT u.id, u.plan, u.name FROM users u
     WHERE u.onboarding_complete = 1
     AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-  `).all() as Pick<UserRow, 'id' | 'plan' | 'name'>[];
+  `);
 
   let totalRuns = 0;
   let totalDecisions = 0;
 
   for (const user of users) {
     try {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+      const tokenRow = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [user.id]);
       if (!tokenRow) continue;
       if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
         logger.warn(`[Watchdog] Skipping user ${user.id}: Meta token expired`);
@@ -871,15 +870,15 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
           batch.map(async (account: any) => {
             const runId = uuidv4();
 
-            db.prepare(`
+            await db.run(`
               INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
               VALUES (?, 'watchdog', ?, 'running', datetime('now'))
-            `).run(runId, user.id);
+            `, [runId, user.id]);
 
             try {
               const snapshot = await gatherAccountSnapshot(meta, account.id);
-              const pastDecisions = getPastDecisions(user.id, account.id);
-              const memoryContext = buildContextWindow(user.id, 'watchdog', {
+              const pastDecisions = await getPastDecisions(user.id, account.id);
+              const memoryContext = await buildContextWindow(user.id, 'watchdog', {
                 maxEpisodes: 10,
                 entityTypes: ['campaign', 'adset', 'metric'],
               });
@@ -888,7 +887,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
               const decisions = await reasonAboutPerformance(user.id, snapshot, pastDecisions, memoryContext, user.id);
 
               // OOS Detection + Discount Leakage Detection (requires Shopify connection)
-              const shopifyRow = db.prepare('SELECT * FROM shopify_tokens WHERE user_id = ?').get(user.id) as ShopifyTokenRow | undefined;
+              const shopifyRow = await db.get<ShopifyTokenRow>('SELECT * FROM shopify_tokens WHERE user_id = ?', [user.id]);
               if (shopifyRow) {
                 const shopifyToken = decryptToken(shopifyRow.encrypted_access_token);
 
@@ -999,16 +998,16 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
 
               for (const decision of passedDecisions) {
                 const decisionId = uuidv4();
-                db.prepare(`
+                await db.run(`
                   INSERT INTO agent_decisions (id, run_id, user_id, account_id, type, target_id, target_name,
                     reasoning, confidence, urgency, suggested_action, estimated_impact, status)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-                `).run(
+                `, [
                   decisionId, runId, user.id, account.id,
                   decision.type, decision.targetId, decision.targetName,
                   decision.reasoning, decision.confidence, decision.urgency,
                   decision.suggestedAction, decision.estimatedImpact,
-                );
+                ]);
 
                 // Persist to intelligence layer for reality testing
                 try {
@@ -1031,7 +1030,7 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                   const recType = mapDecisionTypeToRecommendationType(decision.type);
                   const predictedSavings = parseEstimatedImpact(decision.estimatedImpact);
 
-                  agentRecommend(user.id, 'watchdog', {
+                  await agentRecommend(user.id, 'watchdog', {
                     type: recType,
                     entityType: 'campaign',
                     entityId: decision.targetId,
@@ -1065,11 +1064,11 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
                 ? `Found ${passedDecisions.length} strategic recommendations: ${passedDecisions.map(d => d.suggestedAction).join(', ')}${qualityFiltered.stats.filtered > 0 ? ` (${qualityFiltered.stats.filtered} obvious insights filtered)` : ''}`
                 : 'No action needed — account performing within expectations';
 
-              db.prepare(`
+              await db.run(`
                 UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
                 summary = ?, raw_context = ?
                 WHERE id = ?
-              `).run(summary, JSON.stringify(snapshot), runId);
+              `, [summary, JSON.stringify(snapshot), runId]);
 
               // Store creative-level analysis for other agents (static-ad-generator, etc.)
               try {
@@ -1237,10 +1236,10 @@ export async function runWatchdog(): Promise<{ runs: number; decisions: number }
 
               return { decisions: passedDecisions.length };
             } catch (err: any) {
-              db.prepare(`
+              await db.run(`
                 UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
                 summary = ? WHERE id = ?
-              `).run(`Error: ${err.message}`, runId);
+              `, [`Error: ${err.message}`, runId]);
               logger.error({ err: err.message }, `[Watchdog] Failed for account ${account.id}`);
               return { decisions: 0 };
             }
@@ -1301,14 +1300,14 @@ export async function runWatchdogForClient(
   clientId: string,
   options: { metaToken?: string; shopifyToken?: string } = {},
 ): Promise<ClientWatchdogReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[Watchdog Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const watchdogStore = getWatchdogStore(clientId);
+  const watchdogStore = await getWatchdogStore(clientId);
 
   logger.info({
     clientId,
@@ -1317,13 +1316,13 @@ export async function runWatchdogForClient(
   }, '[Watchdog Client] Starting run');
 
   // Get client's Meta token
-  const db = getDb();
+  const db = getDbAdapter();
   let metaToken = options.metaToken;
   let metaAccountId = client.metaAdAccountId;
 
   if (!metaToken && client.metaAdAccountId) {
     // Try to get token from service_clients.meta_access_token
-    const clientRow = db.prepare('SELECT meta_access_token FROM service_clients WHERE id = ?').get(clientId) as { meta_access_token?: string } | undefined;
+    const clientRow = await db.get<{ meta_access_token?: string }>('SELECT meta_access_token FROM service_clients WHERE id = ?', [clientId]);
     if (clientRow?.meta_access_token) {
       metaToken = decryptToken(clientRow.meta_access_token);
       logger.info({ clientId }, '[Watchdog Client] Using token from service_clients');
@@ -1426,7 +1425,7 @@ export async function runWatchdogForClient(
     }, '[Watchdog Client] Run complete');
 
     // Update watchdog store
-    updateWatchdogStore(clientId, {
+    await updateWatchdogStore(clientId, {
       lastRunAt: new Date().toISOString(),
       totalDecisions: (watchdogStore?.totalDecisions || 0) + decisions.length,
       alertsSent: shouldAlert ? (watchdogStore?.alertsSent || 0) + 1 : watchdogStore?.alertsSent || 0,
@@ -1436,7 +1435,7 @@ export async function runWatchdogForClient(
 
     // Create recommendations for filtered decisions
     for (const decision of filteredDecisions) {
-      createRecommendation(clientId, 'watchdog', decision.type, {
+      await createRecommendation(clientId, 'watchdog', decision.type, {
         targetName: decision.targetName,
         reasoning: decision.reasoning,
         suggestedAction: decision.suggestedAction,
@@ -1450,7 +1449,7 @@ export async function runWatchdogForClient(
         const recType = mapDecisionTypeToRecommendationType(decision.type);
         const predictedSavings = parseEstimatedImpact(decision.estimatedImpact);
 
-        agentRecommend(clientId, 'watchdog', {
+        await agentRecommend(clientId, 'watchdog', {
           type: recType,
           entityType: 'campaign',
           entityId: decision.targetId,

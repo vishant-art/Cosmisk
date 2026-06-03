@@ -6,7 +6,7 @@
  * stores in reports table, and records episodes for future context.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from './token-crypto.js';
 import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.js';
@@ -18,6 +18,7 @@ import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { correlationStore } from '../utils/request-context.js';
 import {
   reportDataToSignals,
   enhanceReportOutput,
@@ -50,18 +51,18 @@ interface ReportData {
 /* ------------------------------------------------------------------ */
 
 export async function runReportAgentAll(): Promise<number> {
-  const db = getDb();
-  const users = db.prepare(`
+  const db = getDbAdapter();
+  const users = await db.all(`
     SELECT u.id FROM users u
     WHERE u.onboarding_complete = 1
     AND EXISTS (SELECT 1 FROM meta_tokens mt WHERE mt.user_id = u.id)
-  `).all() as { id: string }[];
+  `) as { id: string }[];
 
   let completed = 0;
   for (const user of users) {
     try {
       // Get user's ad accounts
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(user.id) as MetaTokenRow | undefined;
+      const tokenRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [user.id]) as MetaTokenRow | undefined;
       if (!tokenRow) continue;
 
       const accessToken = decryptToken(tokenRow.encrypted_access_token);
@@ -94,17 +95,18 @@ export async function runReportAgentAll(): Promise<number> {
 /* ------------------------------------------------------------------ */
 
 export async function runReportAgent(userId: string, accountId: string, metaService?: MetaApiService): Promise<string> {
-  const db = getDb();
+  const db = getDbAdapter();
   const runId = uuidv4();
+  correlationStore.enterWith({ correlationId: runId });
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_runs (id, agent_type, user_id, status, started_at)
     VALUES (?, 'report', ?, 'running', datetime('now'))
-  `).run(runId, userId);
+  `, [runId, userId]);
 
   try {
     // Build memory context for continuity between reports
-    const memoryContext = buildContextWindow(userId, 'report', {
+    const memoryContext = await buildContextWindow(userId, 'report', {
       maxEpisodes: 10,
       entityTypes: ['campaign', 'metric', 'pattern'],
     });
@@ -112,7 +114,7 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
     // Get Meta API service
     let meta = metaService;
     if (!meta) {
-      const tokenRow = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+      const tokenRow = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]) as MetaTokenRow | undefined;
       if (!tokenRow) throw new Error('No Meta token found');
       meta = new MetaApiService(decryptToken(tokenRow.encrypted_access_token));
     }
@@ -139,18 +141,18 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
     const campaigns = parseCampaignBreakdown(campaignData.data || []);
 
     // Fetch top creative DNA from cache
-    const topCreatives = db.prepare(`
+    const topCreatives = await db.all(`
       SELECT ad_name, hook, visual, audio, visual_analysis FROM dna_cache
       WHERE account_id = ? AND visual_analysis IS NOT NULL
-      ORDER BY rowid DESC LIMIT 10
-    `).all(accountId) as Array<{ ad_name: string; hook: string; visual: string; audio: string; visual_analysis: string }>;
+      ORDER BY analyzed_at DESC LIMIT 10
+    `, [accountId]) as Array<{ ad_name: string; hook: string; visual: string; audio: string; visual_analysis: string }>;
 
     // Get last report for comparison
-    const lastReport = db.prepare(`
+    const lastReport = await db.get(`
       SELECT data, generated_at FROM reports
       WHERE user_id = ? AND account_id = ? AND type = 'agent_weekly'
       ORDER BY generated_at DESC LIMIT 1
-    `).get(userId, accountId) as { data: string; generated_at: string } | undefined;
+    `, [userId, accountId]) as { data: string; generated_at: string } | undefined;
 
     // Build Claude prompt
     const prompt = buildReportPrompt(
@@ -256,18 +258,18 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
 
     // Save to reports table
     const reportId = uuidv4();
-    db.prepare(`
+    await db.run(`
       INSERT INTO reports (id, user_id, title, type, account_id, date_preset, status, data, generated_at)
       VALUES (?, ?, ?, 'agent_weekly', ?, 'last_7d', 'completed', ?, datetime('now'))
-    `).run(reportId, userId, `Weekly Report — ${reportData.accountName}`, accountId, JSON.stringify(reportData));
+    `, [reportId, userId, `Weekly Report — ${reportData.accountName}`, accountId, JSON.stringify(reportData)]);
 
     // Update agent run
     const summary = `Weekly report for ${reportData.accountName}: ${reportData.keyInsights.length} insights, ${reportData.recommendations.length} recommendations. Week ROAS: ${weekMetrics.roas.toFixed(2)}x`;
 
-    db.prepare(`
+    await db.run(`
       UPDATE agent_runs SET status = 'completed', completed_at = datetime('now'),
       summary = ?, raw_context = ? WHERE id = ?
-    `).run(summary, JSON.stringify(reportData), runId);
+    `, [summary, JSON.stringify(reportData), runId]);
 
     // Record episode for future reports
     await recordEpisode(
@@ -290,10 +292,10 @@ export async function runReportAgent(userId: string, accountId: string, metaServ
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    db.prepare(`
+    await db.run(`
       UPDATE agent_runs SET status = 'failed', completed_at = datetime('now'),
       summary = ? WHERE id = ?
-    `).run(`Error: ${message}`, runId);
+    `, [`Error: ${message}`, runId]);
     throw err;
   }
 }

@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — SoW milestone source of truth (Apr-15 scope mapping); cited downstream as canonical.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Scope Alignment — 2026-04-26
 
 This document maps my audit findings and proposed phasing against the **Cosmisk Project Documentation (Apr 15, 2026)** scope of work and academic-break milestones, and flags everything that falls outside.

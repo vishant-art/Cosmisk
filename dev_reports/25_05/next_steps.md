@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-25 plan; Tier-1 commits were implemented, but its shopify_tokens deferral/JOIN assumptions were later invalidated. Superseded by `31_05/next_steps.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Next Steps — Updated Plan After `shopify_tokens` Fork Discovery + Railway Data Sacrifice
 
 **Supersedes:** `dev_reports/24_05/next_steps.md` (Commit 4 dropped from Tier 1; Tier 1.5a sub-steps updated for cold-start).

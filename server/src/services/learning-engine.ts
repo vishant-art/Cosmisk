@@ -17,7 +17,7 @@
  * - Predictions → What will happen based on current trajectory
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { getClientPatterns } from './client-references.js';
 
@@ -207,11 +207,11 @@ interface CompetitorData {
  * Aggregate LTV data by creative type
  */
 async function aggregateLTVData(clientId: string): Promise<LTVByCreativeData[]> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   // Try to get from ltv_by_creative table if exists
   try {
-    const data = db.prepare(`
+    const data = await db.all(`
       SELECT
         creative_id as creativeId,
         creative_name as creativeName,
@@ -223,7 +223,7 @@ async function aggregateLTVData(clientId: string): Promise<LTVByCreativeData[]> 
       WHERE client_id = ?
       ORDER BY avg_ltv DESC
       LIMIT 50
-    `).all(clientId) as LTVByCreativeData[];
+    `, [clientId]) as LTVByCreativeData[];
 
     return data;
   } catch {
@@ -236,10 +236,10 @@ async function aggregateLTVData(clientId: string): Promise<LTVByCreativeData[]> 
  * Aggregate return rate data by creative
  */
 async function aggregateReturnData(clientId: string): Promise<CreativeReturnData[]> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   try {
-    const data = db.prepare(`
+    const data = await db.all(`
       SELECT
         creative_id as creativeId,
         creative_name as creativeName,
@@ -250,7 +250,7 @@ async function aggregateReturnData(clientId: string): Promise<CreativeReturnData
       WHERE client_id = ?
       ORDER BY return_rate DESC
       LIMIT 50
-    `).all(clientId) as CreativeReturnData[];
+    `, [clientId]) as CreativeReturnData[];
 
     return data;
   } catch {
@@ -262,11 +262,11 @@ async function aggregateReturnData(clientId: string): Promise<CreativeReturnData
  * Get fatigue patterns from watchdog history
  */
 async function aggregateFatigueData(clientId: string): Promise<FatigueData[]> {
-  const db = getDb();
+  const db = getDbAdapter();
 
   try {
     // Get from agent_decisions with fatigue type
-    const data = db.prepare(`
+    const data = await db.all(`
       SELECT
         target_id as campaignId,
         target_name as campaignName,
@@ -275,7 +275,7 @@ async function aggregateFatigueData(clientId: string): Promise<FatigueData[]> {
       WHERE user_id = ? AND type = 'creative_fatigue'
       ORDER BY created_at DESC
       LIMIT 30
-    `).all(clientId) as { campaignId: string; campaignName: string; reasoning: string }[];
+    `, [clientId]) as { campaignId: string; campaignName: string; reasoning: string }[];
 
     // Parse reasoning for fatigue metrics
     return data.map(d => ({
@@ -567,15 +567,15 @@ export async function buildClientPlaybook(clientId: string): Promise<ClientPlayb
   playbook = prunePlaybook(playbook);
 
   // Store playbook in DB
-  const db = getDb();
+  const db = getDbAdapter();
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO client_playbooks (client_id, playbook_data, updated_at)
       VALUES (?, ?, datetime('now'))
       ON CONFLICT(client_id) DO UPDATE SET
         playbook_data = excluded.playbook_data,
         updated_at = datetime('now')
-    `).run(clientId, JSON.stringify(playbook));
+    `, [clientId, JSON.stringify(playbook)]);
   } catch {
     // Table might not exist
     logger.debug('[LearningEngine] client_playbooks table not found, skipping storage');
@@ -611,13 +611,13 @@ export async function generatePredictions(clientId: string, storeForVerification
     };
 
     // TIER 2: Adjust confidence based on historical accuracy
-    basePrediction.confidence = adjustConfidenceByAccuracy(basePrediction, clientId);
+    basePrediction.confidence = await adjustConfidenceByAccuracy(basePrediction, clientId);
 
     predictions.push(basePrediction);
 
     // TIER 2: Store for later verification
     if (storeForVerification) {
-      storePrediction(basePrediction, clientId, {
+      await storePrediction(basePrediction, clientId, {
         metric: 'ROAS',
         direction: 'decrease',
         minChange: 15,
@@ -633,11 +633,11 @@ export async function generatePredictions(clientId: string, storeForVerification
       suggestedAction: 'Begin creative development now for next refresh cycle',
     };
 
-    basePrediction.confidence = adjustConfidenceByAccuracy(basePrediction, clientId);
+    basePrediction.confidence = await adjustConfidenceByAccuracy(basePrediction, clientId);
     predictions.push(basePrediction);
 
     if (storeForVerification) {
-      storePrediction(basePrediction, clientId, {
+      await storePrediction(basePrediction, clientId, {
         metric: 'CTR',
         direction: 'decrease',
         minChange: 10,
@@ -656,7 +656,7 @@ export async function generatePredictions(clientId: string, storeForVerification
       suggestedAction: `Test ${competitorData.gaps[0]} angle with 3 creative variants`,
     };
 
-    basePrediction.confidence = adjustConfidenceByAccuracy(basePrediction, clientId);
+    basePrediction.confidence = await adjustConfidenceByAccuracy(basePrediction, clientId);
     predictions.push(basePrediction);
 
     // Opportunity predictions are harder to verify automatically
@@ -867,12 +867,12 @@ export function prunePlaybook(playbook: ClientPlaybook): ClientPlaybook {
 /**
  * Store a prediction for later verification
  */
-export function storePrediction(
+export async function storePrediction(
   prediction: Prediction,
   clientId: string,
   expectedOutcome: StoredPrediction['expectedOutcome'],
-): StoredPrediction {
-  const db = getDb();
+): Promise<StoredPrediction> {
+  const db = getDbAdapter();
   const id = `pred_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   // Parse timeframe to calculate expiry
@@ -890,15 +890,15 @@ export function storePrediction(
   };
 
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO predictions (id, client_id, type, prediction_text, confidence, timeframe,
         expected_metric, expected_direction, expected_min_change, expires_at, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
-    `).run(
+    `, [
       id, clientId, prediction.type, prediction.prediction, prediction.confidence,
       prediction.timeframe, expectedOutcome.metric, expectedOutcome.direction,
       expectedOutcome.minChange || null, expiresAt
-    );
+    ]);
   } catch (err) {
     // Table might not exist, log but don't fail
     logger.debug({ err }, '[LearningEngine] predictions table not found');
@@ -941,15 +941,15 @@ export async function verifyPredictions(clientId: string): Promise<{
   correct: number;
   incorrect: number;
 }> {
-  const db = getDb();
+  const db = getDbAdapter();
   let verified = 0, correct = 0, incorrect = 0;
 
   try {
     // Get pending predictions that have expired
-    const pending = db.prepare(`
+    const pending = await db.all(`
       SELECT * FROM predictions
       WHERE client_id = ? AND status = 'pending' AND expires_at < datetime('now')
-    `).all(clientId) as Array<{
+    `, [clientId]) as Array<{
       id: string;
       type: string;
       expected_metric: string;
@@ -964,7 +964,7 @@ export async function verifyPredictions(clientId: string): Promise<{
       const actualOutcome = await fetchActualOutcome(clientId, pred.expected_metric);
 
       if (!actualOutcome) {
-        db.prepare(`UPDATE predictions SET status = 'expired' WHERE id = ?`).run(pred.id);
+        await db.run(`UPDATE predictions SET status = 'expired' WHERE id = ?`, [pred.id]);
         continue;
       }
 
@@ -979,17 +979,17 @@ export async function verifyPredictions(clientId: string): Promise<{
 
       const isCorrect = directionCorrect && magnitudeCorrect;
 
-      db.prepare(`
+      await db.run(`
         UPDATE predictions
         SET status = ?, verified_at = datetime('now'),
             actual_value = ?, actual_change = ?
         WHERE id = ?
-      `).run(
+      `, [
         isCorrect ? 'verified_correct' : 'verified_incorrect',
         actualOutcome.actualValue,
         actualOutcome.changePercent,
         pred.id
-      );
+      ]);
 
       verified++;
       if (isCorrect) correct++;
@@ -1015,15 +1015,15 @@ async function fetchActualOutcome(
 ): Promise<{ actualValue: number; previousValue: number; changePercent: number } | null> {
   // This would fetch from Meta API or cached insights
   // For now, return null to mark predictions as expired
-  const db = getDb();
+  const db = getDbAdapter();
 
   try {
     // Try to get from cached insights
-    const recent = db.prepare(`
+    const recent = await db.all(`
       SELECT * FROM daily_metrics
       WHERE client_id = ? AND metric_name = ?
       ORDER BY date DESC LIMIT 2
-    `).all(clientId, metric) as Array<{ value: number; date: string }>;
+    `, [clientId, metric]) as Array<{ value: number; date: string }>;
 
     if (recent.length >= 2) {
       const actualValue = recent[0].value;
@@ -1044,15 +1044,15 @@ async function fetchActualOutcome(
 /**
  * Get prediction accuracy stats for a client
  */
-export function getPredictionAccuracy(clientId: string): PredictionAccuracy[] {
-  const db = getDb();
+export async function getPredictionAccuracy(clientId: string): Promise<PredictionAccuracy[]> {
+  const db = getDbAdapter();
   const stats: PredictionAccuracy[] = [];
 
   try {
     const types: Prediction['type'][] = ['fatigue', 'roas_decline', 'cpa_spike', 'opportunity'];
 
     for (const type of types) {
-      const rows = db.prepare(`
+      const rows = await db.get(`
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN status = 'verified_correct' THEN 1 ELSE 0 END) as correct,
@@ -1062,7 +1062,7 @@ export function getPredictionAccuracy(clientId: string): PredictionAccuracy[] {
           AVG(CASE WHEN status = 'verified_incorrect' THEN confidence ELSE NULL END) as avg_conf_incorrect
         FROM predictions
         WHERE client_id = ? AND type = ?
-      `).get(clientId, type) as any;
+      `, [clientId, type]) as any;
 
       if (rows && rows.total > 0) {
         const total = rows.correct + rows.incorrect;
@@ -1088,11 +1088,11 @@ export function getPredictionAccuracy(clientId: string): PredictionAccuracy[] {
 /**
  * Adjust prediction confidence based on historical accuracy
  */
-export function adjustConfidenceByAccuracy(
+export async function adjustConfidenceByAccuracy(
   prediction: Prediction,
   clientId: string,
-): number {
-  const accuracyStats = getPredictionAccuracy(clientId);
+): Promise<number> {
+  const accuracyStats = await getPredictionAccuracy(clientId);
   const typeStats = accuracyStats.find(s => s.type === prediction.type);
 
   if (!typeStats || typeStats.totalPredictions < 5) {
@@ -1114,10 +1114,10 @@ export function adjustConfidenceByAccuracy(
 /**
  * Create a human review item
  */
-export function createHumanReviewItem(
+export async function createHumanReviewItem(
   item: Omit<HumanReviewItem, 'id' | 'createdAt' | 'status'>,
-): HumanReviewItem {
-  const db = getDb();
+): Promise<HumanReviewItem> {
+  const db = getDbAdapter();
   const id = `review_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const reviewItem: HumanReviewItem = {
@@ -1128,14 +1128,14 @@ export function createHumanReviewItem(
   };
 
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO human_reviews (id, client_id, type, title, description, severity,
         related_entity_id, related_entity_type, status, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
-    `).run(
+    `, [
       id, item.clientId, item.type, item.title, item.description, item.severity,
       item.relatedEntityId || null, item.relatedEntityType || null
-    );
+    ]);
   } catch (err) {
     logger.debug({ err }, '[LearningEngine] human_reviews table not found');
   }
@@ -1152,11 +1152,11 @@ export function createHumanReviewItem(
 /**
  * Get pending human review items for a client
  */
-export function getPendingReviews(clientId: string): HumanReviewItem[] {
-  const db = getDb();
+export async function getPendingReviews(clientId: string): Promise<HumanReviewItem[]> {
+  const db = getDbAdapter();
 
   try {
-    return db.prepare(`
+    return await db.all(`
       SELECT
         id, client_id as clientId, type, title, description, severity,
         related_entity_id as relatedEntityId, related_entity_type as relatedEntityType,
@@ -1166,7 +1166,7 @@ export function getPendingReviews(clientId: string): HumanReviewItem[] {
       ORDER BY
         CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
         created_at DESC
-    `).all(clientId) as HumanReviewItem[];
+    `, [clientId]) as HumanReviewItem[];
   } catch {
     return [];
   }
@@ -1175,19 +1175,19 @@ export function getPendingReviews(clientId: string): HumanReviewItem[] {
 /**
  * Resolve a human review item
  */
-export function resolveReview(
+export async function resolveReview(
   reviewId: string,
   resolution: string,
   reviewedBy?: string,
-): void {
-  const db = getDb();
+): Promise<void> {
+  const db = getDbAdapter();
 
   try {
-    db.prepare(`
+    await db.run(`
       UPDATE human_reviews
       SET status = 'reviewed', resolution = ?, reviewed_by = ?, reviewed_at = datetime('now')
       WHERE id = ?
-    `).run(resolution, reviewedBy || 'system', reviewId);
+    `, [resolution, reviewedBy || 'system', reviewId]);
 
     logger.info({ reviewId, resolution }, '[LearningEngine] Review resolved');
   } catch {
@@ -1198,8 +1198,8 @@ export function resolveReview(
 /**
  * Get critical reviews that need immediate attention
  */
-export function getCriticalReviews(clientId: string): HumanReviewItem[] {
-  return getPendingReviews(clientId).filter(r =>
+export async function getCriticalReviews(clientId: string): Promise<HumanReviewItem[]> {
+  return (await getPendingReviews(clientId)).filter(r =>
     r.severity === 'critical' || r.severity === 'high'
   );
 }
@@ -1207,14 +1207,14 @@ export function getCriticalReviews(clientId: string): HumanReviewItem[] {
 /**
  * Auto-create review items from quality gate results
  */
-export function createReviewsFromQualityGate(
+export async function createReviewsFromQualityGate(
   clientId: string,
   requiresHumanReview: Array<{ targetName?: string; reasoning?: string; type?: string }>,
-): HumanReviewItem[] {
+): Promise<HumanReviewItem[]> {
   const items: HumanReviewItem[] = [];
 
   for (const item of requiresHumanReview.slice(0, 5)) { // Limit to 5
-    const reviewItem = createHumanReviewItem({
+    const reviewItem = await createHumanReviewItem({
       clientId,
       type: 'low_confidence_decision',
       title: `Review needed: ${item.type || 'Decision'} for "${item.targetName || 'Unknown'}"`,

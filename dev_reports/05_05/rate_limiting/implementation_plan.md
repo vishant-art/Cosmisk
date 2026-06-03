@@ -1,3 +1,6 @@
+> **Status: ✅ IMPLEMENTED (2026-05-31)** — the llm-gateway rate limiter shipped (commit `1521cce`); see `19_05/rate_limiting/implementation_plan.md` for post-ship status.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Implementation Plan — `services/llm-gateway.ts` (2026-05-02)
 
 What Track B does, file by file. **Not yet executed.** Owner approval gates this per `CLAUDE.md` and the open questions in § 9.

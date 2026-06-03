@@ -11,7 +11,7 @@
  * 4. Result tracked for validation
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { v4 as uuidv4 } from 'uuid';
 import { wrapWithMemory, type AgentRunOptions } from './agent-registry.js';
 import type { AgentType } from '../types/index.js';
@@ -144,10 +144,8 @@ export class AgentOrchestrator {
    * Process a recommendation - find matching capability and execute
    */
   async processRecommendation(recommendationId: string): Promise<void> {
-    const db = getDb();
-
     // Get recommendation
-    const rec = db.prepare('SELECT * FROM recommendations WHERE id = ?').get(recommendationId) as any;
+    const rec = await getDbAdapter().get('SELECT * FROM recommendations WHERE id = ?', [recommendationId]) as any;
     if (!rec) {
       console.log(`[Orchestrator] Recommendation ${recommendationId} not found`);
       return;
@@ -177,14 +175,6 @@ export class AgentOrchestrator {
       priority: rec.confidence >= 85 ? 'high' : rec.confidence >= 70 ? 'medium' : 'low',
     };
 
-    // Log execution start
-    const execId = uuidv4();
-    const now = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO agent_execution_log (id, recommendation_id, executing_agent_id, capability, status, started_at, context)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(execId, recommendationId, agent.agentId, capability, 'running', now, JSON.stringify(task.context));
-
     logger.info({ capability, agentId: agent.agentId, recommendationId }, '[Orchestrator] Executing');
 
     try {
@@ -200,38 +190,21 @@ export class AgentOrchestrator {
 
       const { result } = await wrapWithMemory(memoryOptions, () => agent.execute(task));
 
-      // Update execution log
-      db.prepare(`
-        UPDATE agent_execution_log SET status = ?, completed_at = ?, output = ?, error = ?
-        WHERE id = ?
-      `).run(
-        result.success ? 'completed' : 'failed',
-        new Date().toISOString(),
-        JSON.stringify(result.output),
-        result.error || null,
-        execId
-      );
-
       // Update recommendation status
-      db.prepare(`
-        UPDATE recommendations SET status = ?, executed_at = ?
-        WHERE id = ?
-      `).run(
-        result.success ? 'auto_executed' : 'failed',
-        new Date().toISOString(),
-        recommendationId
+      await getDbAdapter().run(
+        `UPDATE recommendations SET status = ?, executed_at = ?
+         WHERE id = ?`,
+        [
+          result.success ? 'auto_executed' : 'failed',
+          new Date().toISOString(),
+          recommendationId,
+        ]
       );
 
       logger.info({ capability, success: result.success, recommendationId }, '[Orchestrator] Execution complete');
 
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       console.error(`[Orchestrator] Execution failed:`, error);
-
-      db.prepare(`
-        UPDATE agent_execution_log SET status = 'failed', completed_at = ?, error = ?
-        WHERE id = ?
-      `).run(new Date().toISOString(), errorMsg, execId);
     }
   }
 
@@ -320,7 +293,7 @@ function registerCampaignAgent(): void {
       try {
         // Get client info and credentials
         const { getClient } = await import('./service-clients.js');
-        const client = getClient(task.clientId);
+        const client = await getClient(task.clientId);
         const metaAccessToken = task.context['metaToken'] as string || process.env['META_ACCESS_TOKEN'];
 
         if (!client) {
@@ -414,7 +387,7 @@ function registerAnalysisAgent(): void {
       try {
         // Get client info
         const { getClient } = await import('./service-clients.js');
-        const client = getClient(task.clientId);
+        const client = await getClient(task.clientId);
 
         if (!client) {
           return { success: false, output: {}, error: 'Client not found' };
@@ -497,46 +470,10 @@ function registerAnalysisAgent(): void {
 }
 
 // ============================================================================
-// SCHEMA SETUP
-// ============================================================================
-
-export function setupOrchestratorSchema(): void {
-  const db = getDb();
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS agent_execution_log (
-      id TEXT PRIMARY KEY,
-      recommendation_id TEXT NOT NULL,
-      executing_agent_id TEXT NOT NULL,
-      capability TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      started_at TEXT,
-      completed_at TEXT,
-      context TEXT DEFAULT '{}',
-      output TEXT DEFAULT '{}',
-      error TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_exec_log_rec ON agent_execution_log(recommendation_id);
-    CREATE INDEX IF NOT EXISTS idx_exec_log_status ON agent_execution_log(status);
-  `);
-
-  // Add metadata column to recommendations if not exists
-  try {
-    db.exec(`ALTER TABLE recommendations ADD COLUMN metadata TEXT DEFAULT '{}'`);
-  } catch {
-    // Column already exists
-  }
-
-  console.log('[Orchestrator] Schema setup complete');
-}
-
-// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
 export function initializeOrchestrator(): AgentOrchestrator {
-  setupOrchestratorSchema();
-
   registerCreativeAgent();
   registerCampaignAgent();
   registerAnalysisAgent();

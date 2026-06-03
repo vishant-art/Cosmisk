@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -101,9 +101,9 @@ interface MetaErrorBody {
   error?: { message?: string };
 }
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const db = getDbAdapter();
+  const row = await db.get('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]) as MetaTokenRow | undefined;
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -254,7 +254,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(400).send({ success: false, error: 'Meta account not connected' });
       }
@@ -311,8 +311,8 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         }
       } else {
         // Auto-fetch if user has competitors configured
-        const db = getDb();
-        const user = db.prepare('SELECT competitors FROM users WHERE id = ?').get(request.user.id) as { competitors?: string } | undefined;
+        const db = getDbAdapter();
+        const user = await db.get('SELECT competitors FROM users WHERE id = ?', [request.user.id]) as { competitors?: string } | undefined;
         const competitors = safeJsonParse(user?.competitors, []);
         if (competitors.length > 0) {
           try {
@@ -341,17 +341,16 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       let industry     = preferences?.industry      as string | undefined;
 
       if (!brandName || !productName || !industry) {
-        const db0 = getDb();
-        const userProfile = db0.prepare('SELECT brand_name FROM users WHERE id = ?')
-          .get(request.user.id) as { brand_name?: string } | undefined;
+        const db0 = getDbAdapter();
+        const userProfile = await db0.get('SELECT brand_name FROM users WHERE id = ?', [request.user.id]) as { brand_name?: string } | undefined;
 
         if (!brandName && userProfile?.brand_name) brandName = userProfile.brand_name;
 
         // Pull product/audience/industry from latest UGC project brief if not supplied
         if (!productName || !targetAudience || !industry) {
-          const latestProject = db0.prepare(
+          const latestProject = await db0.get(
             `SELECT brief FROM ugc_projects WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`
-          ).get(request.user.id) as { brief?: string } | undefined;
+          , [request.user.id]) as { brief?: string } | undefined;
           if (latestProject?.brief) {
             try {
               const brief = JSON.parse(latestProject.brief);
@@ -379,12 +378,12 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
       // --- Plan-stage scoring (zero Claude calls) ---
       // Fetch active ads for diversity check
-      const db = getDb();
-      const activeAssets = db.prepare(
+      const db = getDbAdapter();
+      const activeAssets = await db.all(
         `SELECT format, dna_tags, published_at FROM creative_assets
          WHERE user_id = ? AND status IN ('published', 'tracking')
          ORDER BY published_at DESC LIMIT 50`
-      ).all(request.user.id) as { format: string; dna_tags: string | null; published_at: string | null }[];
+      , [request.user.id]) as { format: string; dna_tags: string | null; published_at: string | null }[];
 
       const activeAds = activeAssets.map(a => ({
         format: a.format,
@@ -430,10 +429,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       // Create sprint in DB
       const sprintId = uuidv4();
 
-      db.prepare(`
+      await db.run(`
         INSERT INTO creative_sprints (id, user_id, account_id, name, status, plan, learn_snapshot, total_creatives, estimated_cost_cents, currency)
         VALUES (?, ?, ?, ?, 'planning', ?, ?, ?, ?, ?)
-      `).run(
+      `, [
         sprintId,
         request.user.id,
         preferences?.account_id || null,
@@ -443,7 +442,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         plan.totalCreatives,
         plan.totalEstimatedCents,
         preferences?.currency || 'INR',
-      );
+      ]);
 
       return {
         success: true,
@@ -470,13 +469,13 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     const limitNum = Math.min(parseInt(limit, 10) || 50, 100);
     const offsetNum = parseInt(offset, 10) || 0;
 
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const countRow = db.prepare('SELECT COUNT(*) as total FROM creative_sprints WHERE user_id = ?').get(request.user.id) as { total: number };
+    const countRow = await db.get('SELECT COUNT(*) as total FROM creative_sprints WHERE user_id = ?', [request.user.id]) as { total: number };
 
-    const sprints = db.prepare(
+    const sprints = await db.all(
       'SELECT * FROM creative_sprints WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
-    ).all(request.user.id, limitNum, offsetNum) as SprintRow[];
+    , [request.user.id, limitNum, offsetNum]) as SprintRow[];
 
     return {
       success: true,
@@ -496,23 +495,23 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- GET /sprint/:id ---- */
   app.get('/sprint/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const jobs = db.prepare(
+    const jobs = await db.all(
       'SELECT * FROM creative_jobs WHERE sprint_id = ? ORDER BY priority DESC, created_at ASC'
-    ).all(id) as JobRow[];
+    , [id]) as JobRow[];
 
-    const assets = db.prepare(
+    const assets = await db.all(
       'SELECT * FROM creative_assets WHERE sprint_id = ?'
-    ).all(id) as AssetRow[];
+    , [id]) as AssetRow[];
 
     return {
       success: true,
@@ -537,11 +536,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /sprint/:id/approve ---- */
   app.post('/sprint/:id/approve', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
@@ -556,10 +555,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Create jobs from plan items
-    const insertJob = db.prepare(`
+    const insertJobSql = `
       INSERT INTO creative_jobs (id, sprint_id, user_id, format, status, priority, script, api_provider)
       VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?)
-    `);
+    `;
 
     // Provider detection based on format characteristics
     function detectProvider(format: string): string {
@@ -580,14 +579,14 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     for (const item of plan.items) {
       const provider = detectProvider(item.format);
       for (let i = 0; i < item.count; i++) {
-        insertJob.run(uuidv4(), id, request.user.id, item.format, item.count - i, provider);
+        await db.run(insertJobSql, [uuidv4(), id, request.user.id, item.format, item.count - i, provider]);
         jobCount++;
       }
     }
 
-    db.prepare(
+    await db.run(
       "UPDATE creative_sprints SET status = 'approved', total_creatives = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(jobCount, id);
+    , [jobCount, id]);
 
     return { success: true, jobs_created: jobCount };
   });
@@ -595,17 +594,17 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- GET /sprint/:id/progress ---- */
   app.get('/sprint/:id/progress', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const stats = db.prepare(`
+    const stats = await db.get(`
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
@@ -613,7 +612,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         SUM(CASE WHEN status IN ('generating', 'polling') THEN 1 ELSE 0 END) as in_progress,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
       FROM creative_jobs WHERE sprint_id = ?
-    `).get(id) as SprintProgressRow;
+    `, [id]) as SprintProgressRow;
 
     return {
       success: true,
@@ -632,19 +631,19 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- GET /sprint/:id/review ---- */
   app.get('/sprint/:id/review', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const completedJobs = db.prepare(
+    const completedJobs = await db.all(
       "SELECT * FROM creative_jobs WHERE sprint_id = ? AND status = 'completed' ORDER BY predicted_score DESC"
-    ).all(id) as JobRow[];
+    , [id]) as JobRow[];
 
     return {
       success: true,
@@ -664,29 +663,29 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /asset/:id/approve ---- */
   app.post('/asset/:id/approve', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
     // id here is the job_id — create an asset from the completed job
-    const job = db.prepare(
+    const job = await db.get(
       "SELECT * FROM creative_jobs WHERE id = ? AND user_id = ? AND status = 'completed'"
-    ).get(id, request.user.id) as JobRow | undefined;
+    , [id, request.user.id]) as JobRow | undefined;
 
     if (!job) {
       return reply.status(404).send({ success: false, error: 'Completed job not found' });
     }
 
     const assetId = uuidv4();
-    db.prepare(`
+    await db.run(`
       INSERT INTO creative_assets (id, job_id, sprint_id, user_id, format, name, asset_url, thumbnail_url, dna_tags, predicted_score, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved')
-    `).run(
+    `, [
       assetId, job.id, job.sprint_id, request.user.id, job.format,
       `${job.format}_${job.id.slice(0, 8)}`,
       job.output_url || '',
       job.output_thumbnail || '',
       job.dna_tags || null,
       job.predicted_score || null,
-    );
+    ]);
 
     return { success: true, asset_id: assetId };
   });
@@ -694,15 +693,15 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /asset/:id/reject ---- */
   app.post('/asset/:id/reject', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
     // Check if asset already exists
-    const asset = db.prepare(
+    const asset = await db.get(
       'SELECT * FROM creative_assets WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as AssetRow | undefined;
+    , [id, request.user.id]) as AssetRow | undefined;
 
     if (asset) {
-      db.prepare("UPDATE creative_assets SET status = 'rejected' WHERE id = ?").run(id);
+      await db.run("UPDATE creative_assets SET status = 'rejected' WHERE id = ?", [id]);
       return { success: true, status: 'rejected' };
     }
 
@@ -715,11 +714,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     const { product_name, target_audience, brand_name } = request.body as {
       product_name?: string; target_audience?: string; brand_name?: string;
     };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
@@ -728,9 +727,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     const snapshot = safeJsonParse(sprint.learn_snapshot, {"topAds":[],"benchmarks":{"avgRoas":0,"avgCtr":0,"avgCpa":0,"avgSpend":0,"totalSpend":0},"formatBreakdown":{},"fatigueSignals":[]});
 
     // Get pending jobs that need scripts
-    const pendingJobs = db.prepare(
+    const pendingJobs = await db.all(
       "SELECT id, format FROM creative_jobs WHERE sprint_id = ? AND status = 'pending'"
-    ).all(id) as { id: string; format: string }[];
+    , [id]) as { id: string; format: string }[];
 
     if (pendingJobs.length === 0) {
       return { success: true, scripts_generated: 0, message: 'No pending jobs to generate scripts for' };
@@ -745,18 +744,17 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     });
 
     // Update jobs with scripts
-    const updateStmt = db.prepare(
-      "UPDATE creative_jobs SET script = ?, dna_tags = ?, predicted_score = ?, status = 'script_ready' WHERE id = ?"
-    );
+    const updateStmtSql =
+      "UPDATE creative_jobs SET script = ?, dna_tags = ?, predicted_score = ?, status = 'script_ready' WHERE id = ?";
 
     let count = 0;
     for (const [jobId, result] of results) {
-      updateStmt.run(
+      await db.run(updateStmtSql, [
         JSON.stringify(result.script),
         JSON.stringify(result.dna_tags),
         result.predicted_score,
         jobId,
-      );
+      ]);
       count++;
     }
 
@@ -766,11 +764,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /sprint/:id/generate — Start batch generation ---- */
   app.post('/sprint/:id/generate', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
@@ -780,11 +778,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Check usage limits
-    const jobCount = (db.prepare(
+    const jobCount = (await db.get(
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ?"
-    ).get(id) as CountRow).c;
+    , [id]) as CountRow).c;
 
-    const { allowed, current, limit } = checkLimit(request.user.id, 'creative_count');
+    const { allowed, current, limit } = await checkLimit(request.user.id, 'creative_count');
     if (!allowed) {
       return reply.status(429).send({
         success: false,
@@ -795,9 +793,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Check scripts are generated
-    const unscripted = (db.prepare(
+    const unscripted = (await db.get(
       "SELECT COUNT(*) as c FROM creative_jobs WHERE sprint_id = ? AND status = 'pending' AND script IS NULL"
-    ).get(id) as CountRow).c;
+    , [id]) as CountRow).c;
 
     if (unscripted > 0) {
       return reply.status(400).send({
@@ -807,11 +805,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Track usage upfront
-    incrementUsage(request.user.id, 'creative_count', jobCount);
+    await incrementUsage(request.user.id, 'creative_count', jobCount);
 
-    db.prepare(
+    await db.run(
       "UPDATE creative_sprints SET status = 'generating', updated_at = datetime('now') WHERE id = ?"
-    ).run(id);
+    , [id]);
 
     // Start the job queue (runs in background, non-blocking)
     startSprintGeneration(id);
@@ -834,23 +832,23 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'account_id and page_id required' });
     }
 
-    const db = getDb();
-    const sprint = db.prepare(
+    const db = getDbAdapter();
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }
 
-    const approvedAssets = db.prepare(
+    const approvedAssets = await db.all(
       "SELECT * FROM creative_assets WHERE sprint_id = ? AND status = 'approved'"
-    ).all(id) as AssetRow[];
+    , [id]) as AssetRow[];
 
     if (approvedAssets.length === 0) {
       return reply.status(400).send({ success: false, error: 'No approved assets to publish' });
@@ -969,9 +967,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
           if (adResp.ok) {
             const ad = await safeJson(adResp);
-            db.prepare(
+            await db.run(
               "UPDATE creative_assets SET meta_ad_id = ?, meta_campaign_id = ?, status = 'published', published_at = datetime('now') WHERE id = ?"
-            ).run(ad?.id || null, targetCampaignId, asset.id);
+            , [ad?.id || null, targetCampaignId, asset.id]);
             published++;
           } else {
             failed++;
@@ -982,9 +980,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       }
 
       if (published > 0) {
-        db.prepare(
+        await db.run(
           "UPDATE creative_sprints SET status = 'published', updated_at = datetime('now') WHERE id = ?"
-        ).run(id);
+        , [id]);
       }
 
       return {
@@ -1003,24 +1001,24 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /sprint/:id/track — Fetch performance metrics for published assets ---- */
   app.post('/sprint/:id/track', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'Meta account not connected' });
     }
 
-    const publishedAssets = db.prepare(
+    const publishedAssets = await db.all(
       "SELECT * FROM creative_assets WHERE sprint_id = ? AND status IN ('published', 'tracking') AND meta_ad_id IS NOT NULL"
-    ).all(id) as AssetRow[];
+    , [id]) as AssetRow[];
 
     if (publishedAssets.length === 0) {
       return { success: true, tracked: 0, message: 'No published assets to track' };
@@ -1049,9 +1047,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
             conversions: m.conversions,
           };
 
-          db.prepare(
+          await db.run(
             "UPDATE creative_assets SET actual_metrics = ?, metrics_fetched_at = datetime('now'), status = 'analyzed' WHERE id = ?"
-          ).run(JSON.stringify(metrics), asset.id);
+          , [JSON.stringify(metrics), asset.id]);
           tracked++;
         }
       } catch (err: any) {
@@ -1065,25 +1063,25 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /job/:id/retry ---- */
   app.post('/job/:id/retry', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const job = db.prepare(
+    const job = await db.get(
       "SELECT * FROM creative_jobs WHERE id = ? AND user_id = ? AND status = 'failed'"
-    ).get(id, request.user.id) as JobRow | undefined;
+    , [id, request.user.id]) as JobRow | undefined;
 
     if (!job) {
       return reply.status(404).send({ success: false, error: 'Failed job not found' });
     }
 
-    db.prepare(
+    await db.run(
       "UPDATE creative_jobs SET status = 'pending', error_message = NULL, retry_count = retry_count + 1 WHERE id = ?"
-    ).run(id);
+    , [id]);
 
     // If the sprint is in generating state, ensure the queue is running
-    const sprint = db.prepare('SELECT id, status FROM creative_sprints WHERE id = ?').get(job.sprint_id) as SprintRow | undefined;
+    const sprint = await db.get('SELECT id, status FROM creative_sprints WHERE id = ?', [job.sprint_id]) as SprintRow | undefined;
     if (sprint?.status === 'generating' || sprint?.status === 'reviewing') {
       // Re-enter generating state and restart queue
-      db.prepare("UPDATE creative_sprints SET status = 'generating', updated_at = datetime('now') WHERE id = ?").run(sprint.id);
+      await db.run("UPDATE creative_sprints SET status = 'generating', updated_at = datetime('now') WHERE id = ?", [sprint.id]);
       startSprintGeneration(sprint.id);
     }
 
@@ -1092,23 +1090,23 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
   /* ---- GET /costs ---- */
   app.get('/costs', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const byProvider = db.prepare(`
+    const byProvider = await db.all(`
       SELECT api_provider, SUM(cost_cents) as total_cents, COUNT(*) as operations
       FROM cost_ledger WHERE user_id = ?
       GROUP BY api_provider
-    `).all(request.user.id) as CostByProviderRow[];
+    `, [request.user.id]) as CostByProviderRow[];
 
-    const bySprint = db.prepare(`
+    const bySprint = await db.all(`
       SELECT sprint_id, SUM(cost_cents) as total_cents, COUNT(*) as operations
       FROM cost_ledger WHERE user_id = ? AND sprint_id IS NOT NULL
       GROUP BY sprint_id
-    `).all(request.user.id) as CostBySprintRow[];
+    `, [request.user.id]) as CostBySprintRow[];
 
-    const total = db.prepare(
+    const total = await db.get(
       'SELECT SUM(cost_cents) as total_cents FROM cost_ledger WHERE user_id = ?'
-    ).get(request.user.id) as CostTotalRow | undefined;
+    , [request.user.id]) as CostTotalRow | undefined;
 
     return {
       success: true,
@@ -1122,7 +1120,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
   /* ---- GET /usage ---- */
   app.get('/usage', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
+    const db = getDbAdapter();
 
     // This month's usage
     const monthStart = new Date();
@@ -1130,27 +1128,27 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     monthStart.setHours(0, 0, 0, 0);
     const monthStr = monthStart.toISOString().replace('T', ' ').split('.')[0];
 
-    const monthUsage = db.prepare(`
+    const monthUsage = await db.get(`
       SELECT
         COUNT(*) as generations,
         COALESCE(SUM(cost_cents), 0) as cost_cents
       FROM cost_ledger WHERE user_id = ? AND created_at >= ?
-    `).get(request.user.id, monthStr) as UsageAggRow | undefined;
+    `, [request.user.id, monthStr]) as UsageAggRow | undefined;
 
-    const totalUsage = db.prepare(`
+    const totalUsage = await db.get(`
       SELECT
         COUNT(*) as generations,
         COALESCE(SUM(cost_cents), 0) as cost_cents
       FROM cost_ledger WHERE user_id = ?
-    `).get(request.user.id) as UsageAggRow | undefined;
+    `, [request.user.id]) as UsageAggRow | undefined;
 
-    const sprintCount = (db.prepare(
+    const sprintCount = (await db.get(
       'SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ?'
-    ).get(request.user.id) as CountRow).c;
+    , [request.user.id]) as CountRow).c;
 
-    const activeSprints = (db.prepare(
+    const activeSprints = (await db.get(
       "SELECT COUNT(*) as c FROM creative_sprints WHERE user_id = ? AND status IN ('generating', 'approved')"
-    ).get(request.user.id) as CountRow).c;
+    , [request.user.id]) as CountRow).c;
 
     // Provider config status (which providers are ready)
     const providers: Record<string, boolean> = {
@@ -1164,7 +1162,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     };
 
     // Plan limits
-    const { current, limit } = checkLimit(request.user.id, 'creative_count');
+    const { current, limit } = await checkLimit(request.user.id, 'creative_count');
 
     return {
       success: true,
@@ -1189,22 +1187,22 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- POST /sprint/:id/cancel — Stop a generating sprint ---- */
   app.post('/sprint/:id/cancel', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
     }
 
     if (sprint.status === 'generating') {
-      stopSprintGeneration(id);
+      await stopSprintGeneration(id);
       // Cancel pending/generating jobs
-      db.prepare(
+      await db.run(
         "UPDATE creative_jobs SET status = 'cancelled' WHERE sprint_id = ? AND status IN ('pending', 'script_ready', 'generating', 'polling')"
-      ).run(id);
+      , [id]);
     }
 
     return { success: true, message: 'Sprint generation cancelled' };
@@ -1286,11 +1284,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   app.post('/sprint/:id/duplicate', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { name } = request.body as { name?: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const original = db.prepare(
+    const original = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!original) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
@@ -1299,10 +1297,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     const newId = uuidv4();
     const newName = name || `${original.name} (copy)`;
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO creative_sprints (id, user_id, account_id, name, status, plan, learn_snapshot, total_creatives, estimated_cost_cents, currency)
       VALUES (?, ?, ?, ?, 'planning', ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       newId,
       request.user.id,
       original.account_id,
@@ -1312,7 +1310,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       original.total_creatives,
       original.estimated_cost_cents,
       original.currency,
-    );
+    ]);
 
     return {
       success: true,
@@ -1323,11 +1321,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
   /* ---- GET /analytics — Cross-sprint analytics ---- */
   app.get('/analytics', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
+    const db = getDbAdapter();
     const userId = request.user.id;
 
     // Format win rates (which formats produce the best actual performance)
-    const formatPerformance = db.prepare(`
+    const formatPerformance = await db.all(`
       SELECT
         ca.format,
         COUNT(*) as total_assets,
@@ -1337,7 +1335,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       WHERE ca.user_id = ?
       GROUP BY ca.format
       ORDER BY total_assets DESC
-    `).all(userId) as FormatPerformanceRow[];
+    `, [userId]) as FormatPerformanceRow[];
 
     // Enrich with actual metrics from the assets that have been tracked
     const formatWinRates: {
@@ -1350,10 +1348,10 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       total_spend: number;
     }[] = [];
     for (const fp of formatPerformance) {
-      const assetsWithMetrics = db.prepare(`
+      const assetsWithMetrics = await db.all(`
         SELECT actual_metrics FROM creative_assets
         WHERE user_id = ? AND format = ? AND actual_metrics IS NOT NULL
-      `).all(userId, fp.format) as ActualMetricsRow[];
+      `, [userId, fp.format]) as ActualMetricsRow[];
 
       let avgRoas = 0;
       let avgCtr = 0;
@@ -1381,7 +1379,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Cost efficiency trends per sprint
-    const sprintTrends = db.prepare(`
+    const sprintTrends = await db.all(`
       SELECT
         cs.id,
         cs.name,
@@ -1394,7 +1392,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       FROM creative_sprints cs
       WHERE cs.user_id = ?
       ORDER BY cs.created_at ASC
-    `).all(userId) as SprintTrendRow[];
+    `, [userId]) as SprintTrendRow[];
 
     const costTrends = sprintTrends.map((s: SprintTrendRow) => ({
       sprint_id: s.id,
@@ -1414,13 +1412,13 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }));
 
     // Prediction accuracy (predicted score vs actual performance)
-    const predictionData = db.prepare(`
+    const predictionData = await db.all(`
       SELECT
         ca.predicted_score,
         ca.actual_metrics
       FROM creative_assets ca
       WHERE ca.user_id = ? AND ca.predicted_score IS NOT NULL AND ca.actual_metrics IS NOT NULL
-    `).all(userId) as PredictionRow[];
+    `, [userId]) as PredictionRow[];
 
     let predictionAccuracy = null;
     if (predictionData.length >= 3) {
@@ -1455,13 +1453,13 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     }
 
     // Top DNA combinations from best performers
-    const topDna = db.prepare(`
+    const topDna = await db.all(`
       SELECT ca.dna_tags, ca.actual_metrics, ca.predicted_score
       FROM creative_assets ca
       WHERE ca.user_id = ? AND ca.dna_tags IS NOT NULL AND ca.actual_metrics IS NOT NULL
       ORDER BY json_extract(ca.actual_metrics, '$.roas') DESC
       LIMIT 20
-    `).all(userId) as TopDnaRow[];
+    `, [userId]) as TopDnaRow[];
 
     const dnaPatterns: Record<string, { count: number; avgRoas: number }> = {};
     for (const row of topDna) {
@@ -1500,11 +1498,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     const { headline, cta_text, hook_text, notes } = request.body as {
       headline?: string; cta_text?: string; hook_text?: string; notes?: string;
     };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const asset = db.prepare(
+    const asset = await db.get(
       'SELECT * FROM creative_assets WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as AssetRow | undefined;
+    , [id, request.user.id]) as AssetRow | undefined;
 
     if (!asset) {
       return reply.status(404).send({ success: false, error: 'Asset not found' });
@@ -1524,9 +1522,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
       },
     };
 
-    db.prepare(
+    await db.run(
       'UPDATE creative_assets SET dna_tags = ?, name = COALESCE(?, name) WHERE id = ?'
-    ).run(JSON.stringify(edits), headline || null, id);
+    , [JSON.stringify(edits), headline || null, id]);
 
     return { success: true, asset_id: id };
   });
@@ -1534,11 +1532,11 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
   /* ---- DELETE /sprint/:id ---- */
   app.delete('/sprint/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const db = getDb();
+    const db = getDbAdapter();
 
-    const sprint = db.prepare(
+    const sprint = await db.get(
       'SELECT * FROM creative_sprints WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as SprintRow | undefined;
+    , [id, request.user.id]) as SprintRow | undefined;
 
     if (!sprint) {
       return reply.status(404).send({ success: false, error: 'Sprint not found' });
@@ -1546,23 +1544,23 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
 
     // If generating, stop the queue first
     if (sprint.status === 'generating') {
-      stopSprintGeneration(id);
+      await stopSprintGeneration(id);
     }
 
-    db.prepare('DELETE FROM cost_ledger WHERE sprint_id = ?').run(id);
-    db.prepare('DELETE FROM creative_assets WHERE sprint_id = ?').run(id);
-    db.prepare('DELETE FROM creative_jobs WHERE sprint_id = ?').run(id);
-    db.prepare('DELETE FROM creative_sprints WHERE id = ?').run(id);
+    await db.run('DELETE FROM cost_ledger WHERE sprint_id = ?', [id]);
+    await db.run('DELETE FROM creative_assets WHERE sprint_id = ?', [id]);
+    await db.run('DELETE FROM creative_jobs WHERE sprint_id = ?', [id]);
+    await db.run('DELETE FROM creative_sprints WHERE id = ?', [id]);
 
     return { success: true };
   });
 
   /* ---- POST /auto-track — Auto-fetch performance for all trackable assets (cron/n8n trigger) ---- */
   app.post('/auto-track', { preHandler: [app.authenticate] }, async (request) => {
-    const db = getDb();
+    const db = getDbAdapter();
     const userId = request.user.id;
 
-    const token = getUserMetaToken(userId);
+    const token = await getUserMetaToken(userId);
     if (!token) {
       return { success: false, error: 'Meta account not connected', tracked: 0 };
     }
@@ -1571,7 +1569,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
     const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().replace('T', ' ').split('.')[0];
     const oneDayAgo = new Date(Date.now() - 86400000).toISOString().replace('T', ' ').split('.')[0];
 
-    const trackableAssets = db.prepare(`
+    const trackableAssets = await db.all(`
       SELECT * FROM creative_assets
       WHERE user_id = ?
         AND meta_ad_id IS NOT NULL
@@ -1581,7 +1579,7 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
         AND (metrics_fetched_at IS NULL OR metrics_fetched_at <= ?)
       ORDER BY published_at ASC
       LIMIT 50
-    `).all(userId, threeDaysAgo, oneDayAgo) as AssetRow[];
+    `, [userId, threeDaysAgo, oneDayAgo]) as AssetRow[];
 
     if (trackableAssets.length === 0) {
       return { success: true, tracked: 0, message: 'No assets need tracking' };
@@ -1619,9 +1617,9 @@ export async function creativeEngineRoutes(app: FastifyInstance) {
           // Determine new status based on performance
           const newStatus = m.spend > 0 ? 'analyzed' : 'tracking';
 
-          db.prepare(
+          await db.run(
             "UPDATE creative_assets SET actual_metrics = ?, metrics_fetched_at = datetime('now'), status = ? WHERE id = ?"
-          ).run(JSON.stringify(metrics), newStatus, asset.id);
+          , [JSON.stringify(metrics), newStatus, asset.id]);
           tracked++;
         }
       } catch (err: any) {

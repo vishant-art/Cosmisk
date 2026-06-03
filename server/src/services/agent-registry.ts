@@ -136,7 +136,7 @@ export async function wrapWithMemory<T>(
   let episodeId: string | null = null;
 
   // Load strategic context
-  const context = getStrategicContextForAgent(clientId);
+  const context = await getStrategicContextForAgent(clientId);
   if (context) {
     logger.info({ agentName, clientId, contextLength: context.length }, '[AgentRegistry] Loaded strategic context');
   }
@@ -231,7 +231,11 @@ function recordAgentReport(
       deliveredVia: [],
     };
 
-    recordReport(reportRecord);
+    // Fire-and-forget telemetry: recordReport is now async (DB adapter); this
+    // helper stays sync void, so surface write failures via .catch rather than await.
+    void recordReport(reportRecord).catch((err) => {
+      logger.warn({ err, agentName }, '[AgentRegistry] Report recording failed');
+    });
   } catch (err) {
     logger.warn({ err, agentName }, '[AgentRegistry] Report recording failed');
   }
@@ -265,7 +269,7 @@ export async function runWithMemoryAndActions<T>(
   fn: (adjustedParams: Record<string, any>) => Promise<T>
 ): Promise<T> {
   // Load context and apply actions
-  const context = getStrategicContextForAgent(clientId);
+  const context = await getStrategicContextForAgent(clientId);
   const appliedActions = applyMemoryActions(context, params);
 
   const { result } = await wrapWithMemory(

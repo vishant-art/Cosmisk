@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable reference on Anthropic's rate-limit model and SDK behaviour.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Anthropic API Rate Limits — Reference (2026-05-02)
 
 What the upstream actually enforces, what headers it returns, and what `@anthropic-ai/sdk` gives us out of the box. Sourced from the official rate-limits page (`platform.claude.com/docs/en/api/rate-limits`) and the SDK README. Cosmisk-specific notes inline.

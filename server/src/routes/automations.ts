@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import cron from 'node-cron';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseInsightMetrics } from '../services/insights-parser.js';
@@ -17,9 +17,8 @@ import { safeJsonParse } from '../utils/safe-json.js';
 /* ------------------------------------------------------------------ */
 /*  Helper: get user's decrypted Meta token                           */
 /* ------------------------------------------------------------------ */
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -82,10 +81,10 @@ export async function automationRoutes(app: FastifyInstance) {
     const limitNum = Math.min(parseInt(limit, 10) || 50, 100);
     const offsetNum = parseInt(offset, 10) || 0;
 
-    const db = getDb();
-    const rows = db.prepare(
-      'SELECT * FROM automations WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
-    ).all(request.user.id, limitNum, offsetNum) as AutomationRow[];
+    const rows = await getDbAdapter().all<AutomationRow>(
+      'SELECT * FROM automations WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [request.user.id, limitNum, offsetNum],
+    );
 
     const automations = rows.map(row => ({
       id: row.id,
@@ -112,24 +111,24 @@ export async function automationRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { name, trigger_type, trigger_value, action_type, action_value, account_id } = parsed;
 
-    const db = getDb();
     const id = uuidv4();
 
-    db.prepare(
+    await getDbAdapter().run(
       `INSERT INTO automations (id, user_id, account_id, name, trigger_type, trigger_value, action_type, action_value)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      id,
-      request.user.id,
-      account_id || null,
-      name,
-      trigger_type,
-      trigger_value ? JSON.stringify(trigger_value) : null,
-      action_type,
-      action_value ? JSON.stringify(action_value) : null,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        request.user.id,
+        account_id || null,
+        name,
+        trigger_type,
+        trigger_value ? JSON.stringify(trigger_value) : null,
+        action_type,
+        action_value ? JSON.stringify(action_value) : null,
+      ],
     );
 
-    const created = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as AutomationRow;
+    const created = await getDbAdapter().get<AutomationRow>('SELECT * FROM automations WHERE id = ?', [id]) as AutomationRow;
 
     return {
       success: true,
@@ -162,10 +161,10 @@ export async function automationRoutes(app: FastifyInstance) {
     if (!parsed) return;
     const { name, trigger_type, trigger_value, action_type, action_value, is_active } = parsed;
 
-    const db = getDb();
-    const existing = db.prepare(
-      'SELECT * FROM automations WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as AutomationRow | undefined;
+    const existing = await getDbAdapter().get<AutomationRow>(
+      'SELECT * FROM automations WHERE id = ? AND user_id = ?',
+      [id, request.user.id],
+    );
 
     if (!existing) {
       return reply.status(404).send({ success: false, error: 'Automation not found' });
@@ -187,11 +186,12 @@ export async function automationRoutes(app: FastifyInstance) {
     }
 
     values.push(id, request.user.id);
-    db.prepare(
-      `UPDATE automations SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`
-    ).run(...values);
+    await getDbAdapter().run(
+      `UPDATE automations SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+      values,
+    );
 
-    const updated = db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as AutomationRow;
+    const updated = await getDbAdapter().get<AutomationRow>('SELECT * FROM automations WHERE id = ?', [id]) as AutomationRow;
 
     return {
       success: true,
@@ -221,16 +221,16 @@ export async function automationRoutes(app: FastifyInstance) {
       return reply.status(400).send({ success: false, error: 'id query param is required' });
     }
 
-    const db = getDb();
-    const existing = db.prepare(
-      'SELECT * FROM automations WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id) as AutomationRow | undefined;
+    const existing = await getDbAdapter().get<AutomationRow>(
+      'SELECT * FROM automations WHERE id = ? AND user_id = ?',
+      [id, request.user.id],
+    );
 
     if (!existing) {
       return reply.status(404).send({ success: false, error: 'Automation not found' });
     }
 
-    db.prepare('DELETE FROM automations WHERE id = ? AND user_id = ?').run(id, request.user.id);
+    await getDbAdapter().run('DELETE FROM automations WHERE id = ? AND user_id = ?', [id, request.user.id]);
 
     return { success: true };
   });
@@ -244,7 +244,7 @@ export async function automationRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, activity: [], meta_connected: false });
       }
@@ -436,13 +436,20 @@ export async function automationRoutes(app: FastifyInstance) {
 
   // POST /automations/execute-action — Execute a one-off action from dashboard insights
   app.post('/execute-action', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { account_id, action_type, campaign_id, adset_id, ad_id, budget_change_pct } = request.body as any;
+    const { account_id, action_type, campaign_id, adset_id, ad_id, budget_change_pct } = request.body as {
+      account_id?: string;
+      action_type?: string;
+      campaign_id?: string;
+      adset_id?: string;
+      ad_id?: string;
+      budget_change_pct?: number;
+    };
 
     if (!account_id || !action_type) {
       return reply.status(400).send({ success: false, error: 'account_id and action_type required' });
     }
 
-    const token = getUserMetaToken(request.user.id);
+    const token = await getUserMetaToken(request.user.id);
     if (!token) {
       return reply.status(400).send({ success: false, error: 'No Meta token found. Please reconnect your account.' });
     }
@@ -468,7 +475,7 @@ export async function automationRoutes(app: FastifyInstance) {
           if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to scale.' });
           const pct = budget_change_pct || 15;
           const infoResp = await fetch(`${GRAPH_BASE}/${targetId}?access_token=${token}&fields=daily_budget,lifetime_budget`);
-          const info = await infoResp.json().catch(() => ({})) as any;
+          const info = await infoResp.json().catch(() => ({})) as { daily_budget?: string; lifetime_budget?: string };
           const dailyBudget = parseInt(info.daily_budget || '0');
           if (dailyBudget > 0) {
             const newBudget = Math.max(100, Math.round(dailyBudget * (1 + pct / 100)));
@@ -485,7 +492,7 @@ export async function automationRoutes(app: FastifyInstance) {
           if (!targetId) return reply.status(400).send({ success: false, error: 'No target specified to reduce.' });
           const pct = budget_change_pct || 20;
           const infoResp = await fetch(`${GRAPH_BASE}/${targetId}?access_token=${token}&fields=daily_budget`);
-          const info = await infoResp.json().catch(() => ({})) as any;
+          const info = await infoResp.json().catch(() => ({})) as { daily_budget?: string };
           const dailyBudget = parseInt(info.daily_budget || '0');
           if (dailyBudget > 0) {
             const newBudget = Math.max(100, Math.round(dailyBudget * (1 - pct / 100)));

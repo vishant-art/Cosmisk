@@ -5,7 +5,7 @@
  * Clients don't log in - we manage them internally.
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { randomUUID } from 'crypto';
 
 // ============================================================================
@@ -117,12 +117,12 @@ export interface AgentRecommendation {
 // Client CRUD
 // ============================================================================
 
-export function createClient(input: CreateClientInput): ServiceClient {
-  const db = getDb();
+export async function createClient(input: CreateClientInput): Promise<ServiceClient> {
+  const db = getDbAdapter();
   const id = randomUUID();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO service_clients (
       id, brand_name, category, revenue_level,
       price_point_min, price_point_max,
@@ -130,7 +130,7 @@ export function createClient(input: CreateClientInput): ServiceClient {
       alert_threshold, service_tier, contract_start, contract_end,
       monthly_fee, status, notes, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     id,
     input.brandName,
     input.category || null,
@@ -150,33 +150,33 @@ export function createClient(input: CreateClientInput): ServiceClient {
     input.notes || null,
     now,
     now
-  );
+  ]);
 
   // Initialize agent stores
-  db.prepare('INSERT INTO competitor_intel_store (client_id) VALUES (?)').run(id);
-  db.prepare('INSERT INTO oos_agent_store (client_id) VALUES (?)').run(id);
-  db.prepare('INSERT INTO discount_agent_store (client_id) VALUES (?)').run(id);
-  db.prepare('INSERT INTO creative_agent_store (client_id) VALUES (?)').run(id);
+  await db.run('INSERT INTO competitor_intel_store (client_id) VALUES (?)', [id]);
+  await db.run('INSERT INTO oos_agent_store (client_id) VALUES (?)', [id]);
+  await db.run('INSERT INTO discount_agent_store (client_id) VALUES (?)', [id]);
+  await db.run('INSERT INTO creative_agent_store (client_id) VALUES (?)', [id]);
 
-  return getClient(id)!;
+  return (await getClient(id))!;
 }
 
-export function getClient(id: string): ServiceClient | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM service_clients WHERE id = ?').get(id) as any;
+export async function getClient(id: string): Promise<ServiceClient | null> {
+  const db = getDbAdapter();
+  const row = await db.get('SELECT * FROM service_clients WHERE id = ?', [id]) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToClient(row);
 }
 
-export function getClientByBrand(brandName: string): ServiceClient | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM service_clients WHERE brand_name = ?').get(brandName) as any;
+export async function getClientByBrand(brandName: string): Promise<ServiceClient | null> {
+  const db = getDbAdapter();
+  const row = await db.get('SELECT * FROM service_clients WHERE brand_name = ?', [brandName]) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
   return mapRowToClient(row);
 }
 
-export function listClients(status?: ClientStatus): ServiceClient[] {
-  const db = getDb();
+export async function listClients(status?: ClientStatus): Promise<ServiceClient[]> {
+  const db = getDbAdapter();
   let query = 'SELECT * FROM service_clients';
   const params: any[] = [];
 
@@ -187,13 +187,13 @@ export function listClients(status?: ClientStatus): ServiceClient[] {
 
   query += ' ORDER BY updated_at DESC';
 
-  const rows = db.prepare(query).all(...params) as any[];
+  const rows = await db.all(query, [...params]) as any[];  // DB-2: typed when row becomes a Drizzle result
   return rows.map(mapRowToClient);
 }
 
-export function updateClient(id: string, updates: Partial<CreateClientInput>): ServiceClient | null {
-  const db = getDb();
-  const existing = getClient(id);
+export async function updateClient(id: string, updates: Partial<CreateClientInput>): Promise<ServiceClient | null> {
+  const db = getDbAdapter();
+  const existing = await getClient(id);
   if (!existing) return null;
 
   const fields: string[] = [];
@@ -222,18 +222,18 @@ export function updateClient(id: string, updates: Partial<CreateClientInput>): S
   values.push(new Date().toISOString());
   values.push(id);
 
-  db.prepare(`UPDATE service_clients SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  await db.run(`UPDATE service_clients SET ${fields.join(', ')} WHERE id = ?`, [...values]);
 
-  return getClient(id);
+  return await getClient(id);
 }
 
 // ============================================================================
 // Agent Store Access
 // ============================================================================
 
-export function getCompetitorIntelStore(clientId: string): CompetitorIntelStore | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM competitor_intel_store WHERE client_id = ?').get(clientId) as any;
+export async function getCompetitorIntelStore(clientId: string): Promise<CompetitorIntelStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get('SELECT * FROM competitor_intel_store WHERE client_id = ?', [clientId]) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
 
   return {
@@ -249,8 +249,8 @@ export function getCompetitorIntelStore(clientId: string): CompetitorIntelStore 
   };
 }
 
-export function updateCompetitorIntelStore(clientId: string, updates: Partial<CompetitorIntelStore>): void {
-  const db = getDb();
+export async function updateCompetitorIntelStore(clientId: string, updates: Partial<CompetitorIntelStore>): Promise<void> {
+  const db = getDbAdapter();
   const fields: string[] = [];
   const values: any[] = [];
 
@@ -289,25 +289,25 @@ export function updateCompetitorIntelStore(clientId: string, updates: Partial<Co
 
   if (fields.length > 0) {
     values.push(clientId);
-    db.prepare(`UPDATE competitor_intel_store SET ${fields.join(', ')} WHERE client_id = ?`).run(...values);
+    await db.run(`UPDATE competitor_intel_store SET ${fields.join(', ')} WHERE client_id = ?`, [...values]);
   }
 }
 
-export function addReferenceShown(clientId: string, adId: string): void {
-  const store = getCompetitorIntelStore(clientId);
+export async function addReferenceShown(clientId: string, adId: string): Promise<void> {
+  const store = await getCompetitorIntelStore(clientId);
   if (!store) return;
 
   if (!store.referencesShown.includes(adId)) {
     store.referencesShown.push(adId);
-    updateCompetitorIntelStore(clientId, {
+    await updateCompetitorIntelStore(clientId, {
       referencesShown: store.referencesShown,
       totalReferencesGiven: store.totalReferencesGiven + 1,
     });
   }
 }
 
-export function hasReferenceBeenShown(clientId: string, adId: string): boolean {
-  const store = getCompetitorIntelStore(clientId);
+export async function hasReferenceBeenShown(clientId: string, adId: string): Promise<boolean> {
+  const store = await getCompetitorIntelStore(clientId);
   return store?.referencesShown.includes(adId) || false;
 }
 
@@ -315,9 +315,9 @@ export function hasReferenceBeenShown(clientId: string, adId: string): boolean {
 // OOS Agent Store
 // ============================================================================
 
-export function getOOSAgentStore(clientId: string): OOSAgentStore | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM oos_agent_store WHERE client_id = ?').get(clientId) as any;
+export async function getOOSAgentStore(clientId: string): Promise<OOSAgentStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get('SELECT * FROM oos_agent_store WHERE client_id = ?', [clientId]) as any;  // DB-2: typed when row becomes a Drizzle result
   if (!row) return null;
 
   return {
@@ -331,8 +331,8 @@ export function getOOSAgentStore(clientId: string): OOSAgentStore | null {
   };
 }
 
-export function updateOOSAgentStore(clientId: string, updates: Partial<OOSAgentStore>): void {
-  const db = getDb();
+export async function updateOOSAgentStore(clientId: string, updates: Partial<OOSAgentStore>): Promise<void> {
+  const db = getDbAdapter();
   const fields: string[] = [];
   const values: any[] = [];
 
@@ -363,7 +363,7 @@ export function updateOOSAgentStore(clientId: string, updates: Partial<OOSAgentS
 
   if (fields.length > 0) {
     values.push(clientId);
-    db.prepare(`UPDATE oos_agent_store SET ${fields.join(', ')} WHERE client_id = ?`).run(...values);
+    await db.run(`UPDATE oos_agent_store SET ${fields.join(', ')} WHERE client_id = ?`, [...values]);
   }
 }
 
@@ -404,11 +404,11 @@ export interface DiscountLeakageAgentStore {
   lastAlertAt?: string;
 }
 
-export function getDiscountLeakageStore(clientId: string): DiscountLeakageAgentStore | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getDiscountLeakageStore(clientId: string): Promise<DiscountLeakageAgentStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get(`
     SELECT discount_leakage_store FROM service_clients WHERE id = ?
-  `).get(clientId) as { discount_leakage_store?: string } | undefined;
+  `, [clientId]) as { discount_leakage_store?: string } | undefined;
 
   if (!row?.discount_leakage_store) return null;
 
@@ -419,9 +419,9 @@ export function getDiscountLeakageStore(clientId: string): DiscountLeakageAgentS
   }
 }
 
-export function updateDiscountLeakageStore(clientId: string, updates: Partial<DiscountLeakageAgentStore>): void {
-  const db = getDb();
-  const existing = getDiscountLeakageStore(clientId) || {
+export async function updateDiscountLeakageStore(clientId: string, updates: Partial<DiscountLeakageAgentStore>): Promise<void> {
+  const db = getDbAdapter();
+  const existing = await getDiscountLeakageStore(clientId) || {
     knownLeakedCodes: [],
     cumulativeLeakage: 0,
     alertsSent: 0,
@@ -429,11 +429,11 @@ export function updateDiscountLeakageStore(clientId: string, updates: Partial<Di
 
   const merged = { ...existing, ...updates };
 
-  db.prepare(`
+  await db.run(`
     UPDATE service_clients
     SET discount_leakage_store = ?
     WHERE id = ?
-  `).run(JSON.stringify(merged), clientId);
+  `, [JSON.stringify(merged), clientId]);
 }
 
 export function getDiscountLeakageAlertThreshold(client: ServiceClient): number {
@@ -470,11 +470,11 @@ export interface WatchdogAgentStore {
   recentDecisionTypes: string[];
 }
 
-export function getWatchdogStore(clientId: string): WatchdogAgentStore | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getWatchdogStore(clientId: string): Promise<WatchdogAgentStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get(`
     SELECT watchdog_store FROM service_clients WHERE id = ?
-  `).get(clientId) as { watchdog_store?: string } | undefined;
+  `, [clientId]) as { watchdog_store?: string } | undefined;
 
   if (!row?.watchdog_store) return null;
 
@@ -485,9 +485,9 @@ export function getWatchdogStore(clientId: string): WatchdogAgentStore | null {
   }
 }
 
-export function updateWatchdogStore(clientId: string, updates: Partial<WatchdogAgentStore>): void {
-  const db = getDb();
-  const existing = getWatchdogStore(clientId) || {
+export async function updateWatchdogStore(clientId: string, updates: Partial<WatchdogAgentStore>): Promise<void> {
+  const db = getDbAdapter();
+  const existing = await getWatchdogStore(clientId) || {
     totalDecisions: 0,
     decisionsActedOn: 0,
     alertsSent: 0,
@@ -496,11 +496,11 @@ export function updateWatchdogStore(clientId: string, updates: Partial<WatchdogA
 
   const merged = { ...existing, ...updates };
 
-  db.prepare(`
+  await db.run(`
     UPDATE service_clients
     SET watchdog_store = ?
     WHERE id = ?
-  `).run(JSON.stringify(merged), clientId);
+  `, [JSON.stringify(merged), clientId]);
 }
 
 export function getWatchdogUrgencyThreshold(client: ServiceClient): 'low' | 'medium' | 'high' {
@@ -529,11 +529,11 @@ export interface CreativeScorerStore {
   lastAlertAt?: string;
 }
 
-export function getCreativeScorerStore(clientId: string): CreativeScorerStore | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getCreativeScorerStore(clientId: string): Promise<CreativeScorerStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get(`
     SELECT creative_scorer_store FROM service_clients WHERE id = ?
-  `).get(clientId) as { creative_scorer_store?: string } | undefined;
+  `, [clientId]) as { creative_scorer_store?: string } | undefined;
 
   if (!row?.creative_scorer_store) return null;
 
@@ -544,9 +544,9 @@ export function getCreativeScorerStore(clientId: string): CreativeScorerStore | 
   }
 }
 
-export function updateCreativeScorerStore(clientId: string, updates: Partial<CreativeScorerStore>): void {
-  const db = getDb();
-  const existing = getCreativeScorerStore(clientId) || {
+export async function updateCreativeScorerStore(clientId: string, updates: Partial<CreativeScorerStore>): Promise<void> {
+  const db = getDbAdapter();
+  const existing = await getCreativeScorerStore(clientId) || {
     totalCreativesScored: 0,
     avgScore: 0,
     topPerformingFormats: [],
@@ -556,11 +556,11 @@ export function updateCreativeScorerStore(clientId: string, updates: Partial<Cre
 
   const merged = { ...existing, ...updates };
 
-  db.prepare(`
+  await db.run(`
     UPDATE service_clients
     SET creative_scorer_store = ?
     WHERE id = ?
-  `).run(JSON.stringify(merged), clientId);
+  `, [JSON.stringify(merged), clientId]);
 }
 
 export function getCreativeScoreThreshold(client: ServiceClient): number {
@@ -592,11 +592,11 @@ export interface CohortLTVStore {
   lastAlertAt?: string;
 }
 
-export function getCohortLTVStore(clientId: string): CohortLTVStore | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getCohortLTVStore(clientId: string): Promise<CohortLTVStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get(`
     SELECT cohort_ltv_store FROM service_clients WHERE id = ?
-  `).get(clientId) as { cohort_ltv_store?: string } | undefined;
+  `, [clientId]) as { cohort_ltv_store?: string } | undefined;
 
   if (!row?.cohort_ltv_store) return null;
 
@@ -607,9 +607,9 @@ export function getCohortLTVStore(clientId: string): CohortLTVStore | null {
   }
 }
 
-export function updateCohortLTVStore(clientId: string, updates: Partial<CohortLTVStore>): void {
-  const db = getDb();
-  const existing = getCohortLTVStore(clientId) || {
+export async function updateCohortLTVStore(clientId: string, updates: Partial<CohortLTVStore>): Promise<void> {
+  const db = getDbAdapter();
+  const existing = await getCohortLTVStore(clientId) || {
     ltvGap: 0,
     avgLTV: 0,
     alertsSent: 0,
@@ -617,11 +617,11 @@ export function updateCohortLTVStore(clientId: string, updates: Partial<CohortLT
 
   const merged = { ...existing, ...updates };
 
-  db.prepare(`
+  await db.run(`
     UPDATE service_clients
     SET cohort_ltv_store = ?
     WHERE id = ?
-  `).run(JSON.stringify(merged), clientId);
+  `, [JSON.stringify(merged), clientId]);
 }
 
 export function getCohortLTVGapThreshold(client: ServiceClient): number {
@@ -650,11 +650,11 @@ export interface FatigueDetectorStore {
   lastAlertAt?: string;
 }
 
-export function getFatigueDetectorStore(clientId: string): FatigueDetectorStore | null {
-  const db = getDb();
-  const row = db.prepare(`
+export async function getFatigueDetectorStore(clientId: string): Promise<FatigueDetectorStore | null> {
+  const db = getDbAdapter();
+  const row = await db.get(`
     SELECT fatigue_detector_store FROM service_clients WHERE id = ?
-  `).get(clientId) as { fatigue_detector_store?: string } | undefined;
+  `, [clientId]) as { fatigue_detector_store?: string } | undefined;
 
   if (!row?.fatigue_detector_store) return null;
 
@@ -665,9 +665,9 @@ export function getFatigueDetectorStore(clientId: string): FatigueDetectorStore 
   }
 }
 
-export function updateFatigueDetectorStore(clientId: string, updates: Partial<FatigueDetectorStore>): void {
-  const db = getDb();
-  const existing = getFatigueDetectorStore(clientId) || {
+export async function updateFatigueDetectorStore(clientId: string, updates: Partial<FatigueDetectorStore>): Promise<void> {
+  const db = getDbAdapter();
+  const existing = await getFatigueDetectorStore(clientId) || {
     knownFatiguedCreatives: [],
     totalFatiguedCount: 0,
     alertsSent: 0,
@@ -675,11 +675,11 @@ export function updateFatigueDetectorStore(clientId: string, updates: Partial<Fa
 
   const merged = { ...existing, ...updates };
 
-  db.prepare(`
+  await db.run(`
     UPDATE service_clients
     SET fatigue_detector_store = ?
     WHERE id = ?
-  `).run(JSON.stringify(merged), clientId);
+  `, [JSON.stringify(merged), clientId]);
 }
 
 export function getFatigueFrequencyThreshold(client: ServiceClient): number {
@@ -700,21 +700,21 @@ export function getFatigueFrequencyThreshold(client: ServiceClient): number {
 // Recommendations
 // ============================================================================
 
-export function createRecommendation(
+export async function createRecommendation(
   clientId: string,
   agentType: string,
   recommendationType: string,
   recommendationData: any,
-): AgentRecommendation {
-  const db = getDb();
+): Promise<AgentRecommendation> {
+  const db = getDbAdapter();
   const id = randomUUID();
   const now = new Date().toISOString();
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_recommendations (
       id, client_id, agent_type, recommendation_type, recommendation_data, created_at
     ) VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, clientId, agentType, recommendationType, JSON.stringify(recommendationData), now);
+  `, [id, clientId, agentType, recommendationType, JSON.stringify(recommendationData), now]);
 
   return {
     id,
@@ -731,35 +731,35 @@ export function createRecommendation(
   };
 }
 
-export function markRecommendationDelivered(id: string, via: string): void {
-  const db = getDb();
-  db.prepare(`
+export async function markRecommendationDelivered(id: string, via: string): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(`
     UPDATE agent_recommendations
     SET delivered_via = ?, delivered_at = ?
     WHERE id = ?
-  `).run(via, new Date().toISOString(), id);
+  `, [via, new Date().toISOString(), id]);
 }
 
-export function recordRecommendationOutcome(
+export async function recordRecommendationOutcome(
   id: string,
   status: 'adopted' | 'ignored' | 'failed',
   outcomeData?: any,
-): void {
-  const db = getDb();
-  db.prepare(`
+): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(`
     UPDATE agent_recommendations
     SET outcome_status = ?, outcome_data = ?, outcome_recorded_at = ?
     WHERE id = ?
-  `).run(status, outcomeData ? JSON.stringify(outcomeData) : null, new Date().toISOString(), id);
+  `, [status, outcomeData ? JSON.stringify(outcomeData) : null, new Date().toISOString(), id]);
 }
 
-export function getPendingRecommendations(clientId: string): AgentRecommendation[] {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getPendingRecommendations(clientId: string): Promise<AgentRecommendation[]> {
+  const db = getDbAdapter();
+  const rows = await db.all(`
     SELECT * FROM agent_recommendations
     WHERE client_id = ? AND outcome_status = 'pending' AND delivered_at IS NOT NULL
     ORDER BY created_at DESC
-  `).all(clientId) as any[];
+  `, [clientId]) as any[];  // DB-2: typed when row becomes a Drizzle result
 
   return rows.map(row => ({
     id: row.id,
@@ -814,13 +814,13 @@ export interface ClientContext {
   // Add other agent stores as needed
 }
 
-export function getClientContext(clientId: string): ClientContext | null {
-  const client = getClient(clientId);
+export async function getClientContext(clientId: string): Promise<ClientContext | null> {
+  const client = await getClient(clientId);
   if (!client) return null;
 
   return {
     client,
-    competitorIntel: getCompetitorIntelStore(clientId),
+    competitorIntel: await getCompetitorIntelStore(clientId),
   };
 }
 

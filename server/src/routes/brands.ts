@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import type { MetaTokenRow } from '../types/index.js';
@@ -22,15 +22,15 @@ export async function brandRoutes(app: FastifyInstance) {
         return cached.data;
       }
 
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+      const db = getDbAdapter();
+      const row = await db.get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
 
       if (!row) {
         return { brands: [] };
       }
 
       // Get user's display name for fallback
-      const userRow = db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as { name: string } | undefined;
+      const userRow = await db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', [userId]);
       const fallbackName = userRow?.name || 'Personal';
 
       const token = decryptToken(row.encrypted_access_token);

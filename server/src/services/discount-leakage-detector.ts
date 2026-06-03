@@ -622,17 +622,17 @@ export async function runDiscountLeakageForClient(
   clientId: string,
   options: { shopifyToken: string; days?: number },
 ): Promise<ClientLeakageReport | null> {
-  const ctx = getClientContext(clientId);
+  const ctx = await getClientContext(clientId);
   if (!ctx) {
     logger.error({ clientId }, '[Leakage Client] Client not found');
     return null;
   }
 
   const { client } = ctx;
-  const leakageStore = getDiscountLeakageStore(clientId);
+  const leakageStore = await getDiscountLeakageStore(clientId);
 
   // === STRATEGIC MEMORY: Load context from previous runs ===
-  const strategicContext = getStrategicContextForAgent(clientId);
+  const strategicContext = await getStrategicContextForAgent(clientId);
   if (strategicContext) {
     logger.info({ contextLength: strategicContext.length }, '[Leakage] Loaded strategic context');
   }
@@ -704,7 +704,7 @@ export async function runDiscountLeakageForClient(
   // Update leakage store
   if (leakageStore) {
     const allKnownCodes = [...new Set([...knownCodes, ...currentLeakedCodes])];
-    updateDiscountLeakageStore(clientId, {
+    await updateDiscountLeakageStore(clientId, {
       lastCheckAt: new Date().toISOString(),
       knownLeakedCodes: allKnownCodes,
       cumulativeLeakage: (leakageStore.cumulativeLeakage || 0) + report.totalRevenueLeakage,
@@ -715,7 +715,7 @@ export async function runDiscountLeakageForClient(
 
   // Create recommendation record if alerting
   if (shouldAlert) {
-    createRecommendation(clientId, 'discount_leakage', 'rotate_leaked_codes', {
+    await createRecommendation(clientId, 'discount_leakage', 'rotate_leaked_codes', {
       totalLeakage: report.totalRevenueLeakage,
       codesCount: newLeakedCodes.length,
       topCodes: report.leakedCodes.slice(0, 5),
@@ -726,7 +726,7 @@ export async function runDiscountLeakageForClient(
     const topCode = report.leakedCodes[0];
     if (topCode) {
       try {
-        agentRecommend(clientId, 'discount_leakage', {
+        await agentRecommend(clientId, 'discount_leakage', {
           type: 'fix_discount_leak',
           entityType: 'product',
           entityId: topCode.code,
@@ -785,7 +785,7 @@ export async function runDiscountLeakageForClient(
       shipDecision: shouldAlert ? 'SHIP' : 'HOLD',
       deliveredVia: [],
     };
-    recordReport(reportRecord);
+    await recordReport(reportRecord);
   } catch (repErr) {
     logger.warn({ err: repErr }, '[Leakage] Report recording failed');
   }

@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — DB-migration audit against the Apr-26 strategy. Superseded by `26_05/database_state.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # New Database Issues — Audit of `Database_migration_strat.md`
 
 **Date:** 2026-05-19 (post-merge audit)

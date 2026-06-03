@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-19 migration-strategy refresh. Superseded by the migration arc `26_05/database_state.md` → `29_05/async_migration_call_site_audit.md` → `31_05/next_steps.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # COSMISK Database Migration Strategy — Refresh (2026-05-19/20)
 
 **Supersedes:** `dev_reports/Database_migration_strat.md` (2026-04-26)

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { MetaApiService } from '../services/meta-api.js';
 import { parseCampaignBreakdown, parseAudienceBreakdown, parseInsightMetrics } from '../services/insights-parser.js';
@@ -8,9 +8,8 @@ import type { MetaTokenRow } from '../types/index.js';
 import { validate, accountQuerySchema } from '../validation/schemas.js';
 import { internalError } from '../utils/error-response.js';
 
-function getUserMetaToken(userId: string): string | null {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM meta_tokens WHERE user_id = ?').get(userId) as MetaTokenRow | undefined;
+async function getUserMetaToken(userId: string): Promise<string | null> {
+  const row = await getDbAdapter().get<MetaTokenRow>('SELECT * FROM meta_tokens WHERE user_id = ?', [userId]);
   if (!row) return null;
   return decryptToken(row.encrypted_access_token);
 }
@@ -28,7 +27,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     }
 
     try {
-      const token = getUserMetaToken(request.user.id);
+      const token = await getUserMetaToken(request.user.id);
       if (!token) {
         return reply.status(200).send({ success: true, campaignBreakdown: [], audienceBreakdown: [], meta_connected: false });
       }

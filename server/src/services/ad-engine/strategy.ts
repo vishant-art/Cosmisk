@@ -30,7 +30,7 @@ export async function generateStrategy(input: StrategyInput): Promise<StrategyOu
   const { clientId, count = 12 } = input;
 
   // Get client data
-  const client = getClient(clientId);
+  const client = await getClient(clientId);
   if (!client) {
     throw new Error(`Client not found: ${clientId}`);
   }
@@ -38,8 +38,8 @@ export async function generateStrategy(input: StrategyInput): Promise<StrategyOu
   logger.info({ clientId, brandName: client.brandName }, '[Strategy] Starting');
 
   // Get intelligence stores
-  const creativeStore = getCreativeScorerStore(clientId);
-  const competitorStore = getCompetitorIntelStore(clientId);
+  const creativeStore = await getCreativeScorerStore(clientId);
+  const competitorStore = await getCompetitorIntelStore(clientId);
 
   const winningPatterns = creativeStore?.winningPatterns || [];
   const competitorGaps = competitorStore?.clientCreativeStyle?.gaps || [];

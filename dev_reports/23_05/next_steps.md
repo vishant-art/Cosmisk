@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — May-23 ranked action list. Superseded by `24_05/next_steps.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Next Steps — Ranked Action List
 
 **Supersedes:** `dev_reports/19_05/suggested.md` (S0–S7) and `dev_reports/19_05/tasklist.md`.

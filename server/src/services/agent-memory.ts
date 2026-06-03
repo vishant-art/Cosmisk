@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { createMessage } from './llm-gateway.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -12,11 +12,11 @@ import type {
 /*  Core Memory — always included in agent prompts                     */
 /* ------------------------------------------------------------------ */
 
-export function getCoreMemory(userId: string, agentType: AgentType): Record<string, string> {
-  const db = getDb();
-  const rows = db.prepare(
+export async function getCoreMemory(userId: string, agentType: AgentType): Promise<Record<string, string>> {
+  const db = getDbAdapter();
+  const rows = await db.all(
     'SELECT key, value FROM agent_core_memory WHERE user_id = ? AND agent_type = ?'
-  ).all(userId, agentType) as Pick<AgentCoreMemoryRow, 'key' | 'value'>[];
+  , [userId, agentType]) as Pick<AgentCoreMemoryRow, 'key' | 'value'>[];
 
   const memory: Record<string, string> = {};
   for (const row of rows) {
@@ -25,27 +25,27 @@ export function getCoreMemory(userId: string, agentType: AgentType): Record<stri
   return memory;
 }
 
-export function setCoreMemory(
+export async function setCoreMemory(
   userId: string,
   agentType: AgentType,
   key: string,
   value: string,
-): void {
-  const db = getDb();
-  db.prepare(`
+): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(`
     INSERT INTO agent_core_memory (id, user_id, agent_type, key, value, updated_at)
     VALUES (?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(user_id, agent_type, key) DO UPDATE SET
       value = excluded.value,
       updated_at = datetime('now')
-  `).run(uuidv4(), userId, agentType, key, value);
+  `, [uuidv4(), userId, agentType, key, value]);
 }
 
-export function deleteCoreMemory(userId: string, agentType: AgentType, key: string): void {
-  const db = getDb();
-  db.prepare(
+export async function deleteCoreMemory(userId: string, agentType: AgentType, key: string): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(
     'DELETE FROM agent_core_memory WHERE user_id = ? AND agent_type = ? AND key = ?'
-  ).run(userId, agentType, key);
+  , [userId, agentType, key]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -59,22 +59,21 @@ export async function recordEpisode(
   context?: string,
   outcome?: string,
 ): Promise<string> {
-  const db = getDb();
+  const db = getDbAdapter();
   const episodeId = uuidv4();
 
   // Insert episode immediately without blocking on entity extraction (#10)
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_episodes (id, user_id, agent_type, event, context, outcome, entities, relevance_score)
     VALUES (?, ?, ?, ?, ?, ?, '[]', 1.0)
-  `).run(episodeId, userId, agentType, event, context || null, outcome || null);
+  `, [episodeId, userId, agentType, event, context || null, outcome || null]);
 
   // Extract entities in background (fire-and-forget, no blocking Haiku call)
-  extractEntities(userId, event + (context ? ` ${context}` : '')).then(entities => {
+  extractEntities(userId, event + (context ? ` ${context}` : '')).then(async (entities) => {
     if (entities.length > 0) {
-      db.prepare('UPDATE agent_episodes SET entities = ? WHERE id = ?')
-        .run(JSON.stringify(entities), episodeId);
+      await db.run('UPDATE agent_episodes SET entities = ? WHERE id = ?', [JSON.stringify(entities), episodeId]);
       for (const entity of entities) {
-        upsertEntity(userId, entity);
+        await upsertEntity(userId, entity);
       }
     }
   }).catch((err) => logger.warn({ err: err instanceof Error ? err.message : err }, 'extractEntities failed in agent-memory'));
@@ -82,32 +81,32 @@ export async function recordEpisode(
   return episodeId;
 }
 
-export function updateEpisodeOutcome(episodeId: string, outcome: string): void {
-  const db = getDb();
-  db.prepare(
+export async function updateEpisodeOutcome(episodeId: string, outcome: string): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(
     "UPDATE agent_episodes SET outcome = ? WHERE id = ?"
-  ).run(outcome, episodeId);
+  , [outcome, episodeId]);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Entity tracking                                                    */
 /* ------------------------------------------------------------------ */
 
-function upsertEntity(userId: string, entityStr: string): void {
-  const db = getDb();
+async function upsertEntity(userId: string, entityStr: string): Promise<void> {
+  const db = getDbAdapter();
 
   // Parse "type:name" format, default to "general" type
   const colonIdx = entityStr.indexOf(':');
   const entityType = colonIdx > 0 ? entityStr.substring(0, colonIdx) : 'general';
   const entityName = colonIdx > 0 ? entityStr.substring(colonIdx + 1) : entityStr;
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO agent_entities (id, user_id, entity_type, entity_name, mention_count, first_seen, last_seen)
     VALUES (?, ?, ?, ?, 1, datetime('now'), datetime('now'))
     ON CONFLICT(user_id, entity_type, entity_name) DO UPDATE SET
       mention_count = mention_count + 1,
       last_seen = datetime('now')
-  `).run(uuidv4(), userId, entityType, entityName);
+  `, [uuidv4(), userId, entityType, entityName]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,52 +146,52 @@ Return ONLY the JSON array.`,
 /*  Reinforcement — bump score when a decision had positive outcome    */
 /* ------------------------------------------------------------------ */
 
-export function reinforceEpisode(episodeId: string, boost: number = 0.3): void {
-  const db = getDb();
-  db.prepare(`
+export async function reinforceEpisode(episodeId: string, boost: number = 0.3): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(`
     UPDATE agent_episodes
     SET relevance_score = MIN(relevance_score + ?, 3.0),
         reinforcement_count = reinforcement_count + 1
     WHERE id = ?
-  `).run(boost, episodeId);
+  `, [boost, episodeId]);
 }
 
-export function penalizeEpisode(episodeId: string, penalty: number = 0.3): void {
-  const db = getDb();
-  db.prepare(`
+export async function penalizeEpisode(episodeId: string, penalty: number = 0.3): Promise<void> {
+  const db = getDbAdapter();
+  await db.run(`
     UPDATE agent_episodes
     SET relevance_score = MAX(relevance_score - ?, 0.1)
     WHERE id = ?
-  `).run(penalty, episodeId);
+  `, [penalty, episodeId]);
 }
 
 /* ------------------------------------------------------------------ */
 /*  Decay — reduce relevance of old un-reinforced memories             */
 /* ------------------------------------------------------------------ */
 
-export function runDecay(agentType?: AgentType): number {
-  const db = getDb();
+export async function runDecay(agentType?: AgentType): Promise<number> {
+  const db = getDbAdapter();
 
   // Decay episodes older than 14 days that haven't been reinforced
   const agentFilter = agentType ? "AND agent_type = ?" : "";
   const params: any[] = agentType ? [agentType] : [];
 
-  const result = db.prepare(`
+  const result = await db.run(`
     UPDATE agent_episodes
     SET relevance_score = MAX(relevance_score * 0.9, 0.1)
     WHERE created_at < datetime('now', '-14 days')
     AND reinforcement_count = 0
     AND relevance_score > 0.2
     ${agentFilter}
-  `).run(...params);
+  `, [...params]);
 
   // Delete episodes with very low relevance that are older than 90 days
-  const deleted = db.prepare(`
+  const deleted = await db.run(`
     DELETE FROM agent_episodes
     WHERE created_at < datetime('now', '-90 days')
     AND relevance_score < 0.2
     ${agentFilter}
-  `).run(...params);
+  `, [...params]);
 
   return result.changes + deleted.changes;
 }
@@ -201,7 +200,7 @@ export function runDecay(agentType?: AgentType): number {
 /*  Build context window — assemble relevant memory for agent prompts  */
 /* ------------------------------------------------------------------ */
 
-export function buildContextWindow(
+export async function buildContextWindow(
   userId: string,
   agentType: AgentType,
   opts?: {
@@ -210,7 +209,7 @@ export function buildContextWindow(
     relevanceThreshold?: number;
     entityTypes?: string[];
   },
-): string {
+): Promise<string> {
   const {
     maxEpisodes = 15,
     maxEntities = 10,
@@ -221,7 +220,7 @@ export function buildContextWindow(
   const sections: string[] = [];
 
   // 1. Core memory (always included)
-  const coreMemory = getCoreMemory(userId, agentType);
+  const coreMemory = await getCoreMemory(userId, agentType);
   if (Object.keys(coreMemory).length > 0) {
     sections.push('CORE MEMORY:');
     for (const [key, value] of Object.entries(coreMemory)) {
@@ -230,15 +229,15 @@ export function buildContextWindow(
   }
 
   // 2. Recent relevant episodes
-  const db = getDb();
-  const episodes = db.prepare(`
+  const db = getDbAdapter();
+  const episodes = await db.all(`
     SELECT event, context, outcome, relevance_score, created_at
     FROM agent_episodes
     WHERE user_id = ? AND agent_type = ?
     AND relevance_score >= ?
     ORDER BY relevance_score DESC, created_at DESC
     LIMIT ?
-  `).all(userId, agentType, relevanceThreshold, maxEpisodes) as AgentEpisodeRow[];
+  `, [userId, agentType, relevanceThreshold, maxEpisodes]) as AgentEpisodeRow[];
 
   if (episodes.length > 0) {
     sections.push('\nPAST EPISODES:');
@@ -267,7 +266,7 @@ export function buildContextWindow(
   entityQuery += ' ORDER BY mention_count DESC, last_seen DESC LIMIT ?';
   entityParams.push(maxEntities);
 
-  const entities = db.prepare(entityQuery).all(...entityParams) as AgentEntityRow[];
+  const entities = await db.all(entityQuery, [...entityParams]) as AgentEntityRow[];
 
   if (entities.length > 0) {
     sections.push('\nKNOWN ENTITIES:');

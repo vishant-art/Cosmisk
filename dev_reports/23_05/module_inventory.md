@@ -1,3 +1,6 @@
+> **Status: 📖 REFERENCE (2026-05-31)** — durable module inventory (running/partial/stub/planned).
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Module Inventory — Running / Partial / Stubbed / Planned
 
 **As of:** 2026-05-23

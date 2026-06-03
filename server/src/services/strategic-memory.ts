@@ -11,7 +11,7 @@
  * - Client interactions and feedback
  */
 
-import Database from 'better-sqlite3';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 
 // ============================================================================
@@ -140,21 +140,14 @@ export interface PredictionRecord {
 // DATABASE SETUP
 // ============================================================================
 
-let db: Database.Database;
+let tablesInitialized = false;
 
-function getDb(): Database.Database {
-  if (!db) {
-    db = new Database('./data/cosmisk.db');
-    initStrategicMemoryTables();
-  }
-  return db;
-}
-
-function initStrategicMemoryTables(): void {
-  const database = db;
+async function ensureTables(): Promise<void> {
+  if (tablesInitialized) return;
+  const database = getDbAdapter();
 
   // Reports table
-  database.exec(`
+  await database.exec(`
     CREATE TABLE IF NOT EXISTS strategic_reports (
       id TEXT PRIMARY KEY,
       client_id TEXT NOT NULL,
@@ -168,7 +161,7 @@ function initStrategicMemoryTables(): void {
   `);
 
   // Recommendations table
-  database.exec(`
+  await database.exec(`
     CREATE TABLE IF NOT EXISTS strategic_recommendations (
       id TEXT PRIMARY KEY,
       client_id TEXT NOT NULL,
@@ -184,7 +177,7 @@ function initStrategicMemoryTables(): void {
   `);
 
   // Running context table
-  database.exec(`
+  await database.exec(`
     CREATE TABLE IF NOT EXISTS strategic_running_context (
       client_id TEXT PRIMARY KEY,
       context_json TEXT NOT NULL,
@@ -193,7 +186,7 @@ function initStrategicMemoryTables(): void {
   `);
 
   // Predictions table
-  database.exec(`
+  await database.exec(`
     CREATE TABLE IF NOT EXISTS strategic_predictions (
       id TEXT PRIMARY KEY,
       client_id TEXT NOT NULL,
@@ -206,6 +199,7 @@ function initStrategicMemoryTables(): void {
     )
   `);
 
+  tablesInitialized = true;
   logger.info('[StrategicMemory] Tables initialized');
 }
 
@@ -213,13 +207,14 @@ function initStrategicMemoryTables(): void {
 // REPORT MEMORY
 // ============================================================================
 
-export function recordReport(report: ReportRecord): void {
-  const database = getDb();
+export async function recordReport(report: ReportRecord): Promise<void> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  database.prepare(`
+  await database.run(`
     INSERT INTO strategic_reports (id, client_id, report_type, generated_at, week_number, year, data_json)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     report.id,
     report.clientId,
     report.reportType,
@@ -227,36 +222,38 @@ export function recordReport(report: ReportRecord): void {
     report.weekNumber,
     report.year,
     JSON.stringify(report)
-  );
+  ]);
 
   logger.info(`[StrategicMemory] Recorded report ${report.id} for ${report.clientId}`);
 }
 
-export function getRecentReports(clientId: string, limit: number = 4): ReportRecord[] {
-  const database = getDb();
+export async function getRecentReports(clientId: string, limit: number = 4): Promise<ReportRecord[]> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const rows = database.prepare(`
+  const rows = await database.all<{ data_json: string }>(`
     SELECT data_json FROM strategic_reports
     WHERE client_id = ?
     ORDER BY generated_at DESC
     LIMIT ?
-  `).all(clientId, limit) as { data_json: string }[];
+  `, [clientId, limit]);
 
   return rows.map(row => JSON.parse(row.data_json) as ReportRecord);
 }
 
-export function getLastWeekReport(clientId: string): ReportRecord | null {
-  const reports = getRecentReports(clientId, 1);
+export async function getLastWeekReport(clientId: string): Promise<ReportRecord | null> {
+  const reports = await getRecentReports(clientId, 1);
   return reports[0] || null;
 }
 
-export function getReportsByWeek(clientId: string, year: number, weekNumber: number): ReportRecord[] {
-  const database = getDb();
+export async function getReportsByWeek(clientId: string, year: number, weekNumber: number): Promise<ReportRecord[]> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const rows = database.prepare(`
+  const rows = await database.all<{ data_json: string }>(`
     SELECT data_json FROM strategic_reports
     WHERE client_id = ? AND year = ? AND week_number = ?
-  `).all(clientId, year, weekNumber) as { data_json: string }[];
+  `, [clientId, year, weekNumber]);
 
   return rows.map(row => JSON.parse(row.data_json) as ReportRecord);
 }
@@ -265,13 +262,14 @@ export function getReportsByWeek(clientId: string, year: number, weekNumber: num
 // RECOMMENDATION TRACKING
 // ============================================================================
 
-export function recordRecommendation(rec: RecommendationRecord): void {
-  const database = getDb();
+export async function recordRecommendation(rec: RecommendationRecord): Promise<void> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  database.prepare(`
+  await database.run(`
     INSERT INTO strategic_recommendations (id, client_id, report_id, recommendation, category, priority, status, data_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     rec.id,
     rec.clientId,
     rec.reportId,
@@ -280,21 +278,22 @@ export function recordRecommendation(rec: RecommendationRecord): void {
     rec.priority,
     rec.status,
     JSON.stringify(rec)
-  );
+  ]);
 
   logger.info(`[StrategicMemory] Recorded recommendation ${rec.id}`);
 }
 
-export function updateRecommendationStatus(
+export async function updateRecommendationStatus(
   recId: string,
   status: RecommendationRecord['status'],
   outcome?: { actualOutcome: string; wasSuccessful: boolean }
-): void {
-  const database = getDb();
+): Promise<void> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const existing = database.prepare(`
+  const existing = await database.get<{ data_json: string }>(`
     SELECT data_json FROM strategic_recommendations WHERE id = ?
-  `).get(recId) as { data_json: string } | undefined;
+  `, [recId]);
 
   if (!existing) {
     logger.warn(`[StrategicMemory] Recommendation ${recId} not found`);
@@ -315,36 +314,38 @@ export function updateRecommendationStatus(
     rec.outcomeVerifiedAt = new Date().toISOString();
   }
 
-  database.prepare(`
+  await database.run(`
     UPDATE strategic_recommendations
     SET status = ?, data_json = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(status, JSON.stringify(rec), recId);
+  `, [status, JSON.stringify(rec), recId]);
 
   logger.info(`[StrategicMemory] Updated recommendation ${recId} to ${status}`);
 }
 
-export function getPendingRecommendations(clientId: string): RecommendationRecord[] {
-  const database = getDb();
+export async function getPendingRecommendations(clientId: string): Promise<RecommendationRecord[]> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const rows = database.prepare(`
+  const rows = await database.all<{ data_json: string }>(`
     SELECT data_json FROM strategic_recommendations
     WHERE client_id = ? AND status IN ('pending', 'in_progress')
     ORDER BY created_at DESC
-  `).all(clientId) as { data_json: string }[];
+  `, [clientId]);
 
   return rows.map(row => JSON.parse(row.data_json) as RecommendationRecord);
 }
 
-export function getRecommendationHistory(clientId: string, limit: number = 20): RecommendationRecord[] {
-  const database = getDb();
+export async function getRecommendationHistory(clientId: string, limit: number = 20): Promise<RecommendationRecord[]> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const rows = database.prepare(`
+  const rows = await database.all<{ data_json: string }>(`
     SELECT data_json FROM strategic_recommendations
     WHERE client_id = ?
     ORDER BY created_at DESC
     LIMIT ?
-  `).all(clientId, limit) as { data_json: string }[];
+  `, [clientId, limit]);
 
   return rows.map(row => JSON.parse(row.data_json) as RecommendationRecord);
 }
@@ -353,12 +354,13 @@ export function getRecommendationHistory(clientId: string, limit: number = 20): 
 // RUNNING CONTEXT
 // ============================================================================
 
-export function getRunningContext(clientId: string): RunningContext | null {
-  const database = getDb();
+export async function getRunningContext(clientId: string): Promise<RunningContext | null> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const row = database.prepare(`
+  const row = await database.get<{ context_json: string }>(`
     SELECT context_json FROM strategic_running_context WHERE client_id = ?
-  `).get(clientId) as { context_json: string } | undefined;
+  `, [clientId]);
 
   if (!row) {
     return null;
@@ -367,10 +369,11 @@ export function getRunningContext(clientId: string): RunningContext | null {
   return JSON.parse(row.context_json) as RunningContext;
 }
 
-export function updateRunningContext(clientId: string, updates: Partial<RunningContext>): RunningContext {
-  const database = getDb();
+export async function updateRunningContext(clientId: string, updates: Partial<RunningContext>): Promise<RunningContext> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  let existing = getRunningContext(clientId);
+  let existing = await getRunningContext(clientId);
 
   if (!existing) {
     existing = {
@@ -392,17 +395,18 @@ export function updateRunningContext(clientId: string, updates: Partial<RunningC
     updatedAt: new Date().toISOString()
   };
 
-  database.prepare(`
-    INSERT OR REPLACE INTO strategic_running_context (client_id, context_json, updated_at)
+  await database.run(`
+    INSERT INTO strategic_running_context (client_id, context_json, updated_at)
     VALUES (?, ?, ?)
-  `).run(clientId, JSON.stringify(updated), updated.updatedAt);
+    ON CONFLICT(client_id) DO UPDATE SET context_json = excluded.context_json, updated_at = excluded.updated_at
+  `, [clientId, JSON.stringify(updated), updated.updatedAt]);
 
   logger.info(`[StrategicMemory] Updated running context for ${clientId}`);
   return updated;
 }
 
-export function addKnownIssue(clientId: string, issue: string, severity: 'critical' | 'high' | 'medium' | 'low'): void {
-  const context = getRunningContext(clientId) || {
+export async function addKnownIssue(clientId: string, issue: string, severity: 'critical' | 'high' | 'medium' | 'low'): Promise<void> {
+  const context = (await getRunningContext(clientId)) || {
     clientId,
     updatedAt: '',
     currentFocus: [],
@@ -420,22 +424,22 @@ export function addKnownIssue(clientId: string, issue: string, severity: 'critic
     status: 'open'
   });
 
-  updateRunningContext(clientId, context);
+  await updateRunningContext(clientId, context);
 }
 
-export function resolveKnownIssue(clientId: string, issueText: string): void {
-  const context = getRunningContext(clientId);
+export async function resolveKnownIssue(clientId: string, issueText: string): Promise<void> {
+  const context = await getRunningContext(clientId);
   if (!context) return;
 
   const issue = context.knownIssues.find(i => i.issue === issueText);
   if (issue) {
     issue.status = 'resolved';
-    updateRunningContext(clientId, context);
+    await updateRunningContext(clientId, context);
   }
 }
 
-export function addOpenQuestion(clientId: string, question: string, hypothesis?: string): void {
-  const context = getRunningContext(clientId) || {
+export async function addOpenQuestion(clientId: string, question: string, hypothesis?: string): Promise<void> {
+  const context = (await getRunningContext(clientId)) || {
     clientId,
     updatedAt: '',
     currentFocus: [],
@@ -453,23 +457,23 @@ export function addOpenQuestion(clientId: string, question: string, hypothesis?:
     status: 'open'
   });
 
-  updateRunningContext(clientId, context);
+  await updateRunningContext(clientId, context);
 }
 
-export function answerOpenQuestion(clientId: string, questionText: string, answer: string): void {
-  const context = getRunningContext(clientId);
+export async function answerOpenQuestion(clientId: string, questionText: string, answer: string): Promise<void> {
+  const context = await getRunningContext(clientId);
   if (!context) return;
 
   const question = context.openQuestions.find(q => q.question === questionText);
   if (question) {
     question.status = 'answered';
     question.answer = answer;
-    updateRunningContext(clientId, context);
+    await updateRunningContext(clientId, context);
   }
 }
 
-export function addLearnedPattern(clientId: string, pattern: string, confidence: number, evidence: string): void {
-  const context = getRunningContext(clientId) || {
+export async function addLearnedPattern(clientId: string, pattern: string, confidence: number, evidence: string): Promise<void> {
+  const context = (await getRunningContext(clientId)) || {
     clientId,
     updatedAt: '',
     currentFocus: [],
@@ -487,20 +491,21 @@ export function addLearnedPattern(clientId: string, pattern: string, confidence:
     evidence
   });
 
-  updateRunningContext(clientId, context);
+  await updateRunningContext(clientId, context);
 }
 
 // ============================================================================
 // PREDICTION TRACKING
 // ============================================================================
 
-export function recordPrediction(pred: PredictionRecord): void {
-  const database = getDb();
+export async function recordPrediction(pred: PredictionRecord): Promise<void> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  database.prepare(`
+  await database.run(`
     INSERT INTO strategic_predictions (id, client_id, report_id, prediction, status, data_json, verify_after)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `, [
     pred.id,
     pred.clientId,
     pred.reportId,
@@ -508,22 +513,23 @@ export function recordPrediction(pred: PredictionRecord): void {
     pred.status,
     JSON.stringify(pred),
     pred.verifyAfter
-  );
+  ]);
 
   logger.info(`[StrategicMemory] Recorded prediction ${pred.id}`);
 }
 
-export function verifyPrediction(
+export async function verifyPrediction(
   predId: string,
   actualValue: number,
   wasCorrect: boolean,
   lessonLearned?: string
-): void {
-  const database = getDb();
+): Promise<void> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const existing = database.prepare(`
+  const existing = await database.get<{ data_json: string }>(`
     SELECT data_json FROM strategic_predictions WHERE id = ?
-  `).get(predId) as { data_json: string } | undefined;
+  `, [predId]);
 
   if (!existing) {
     logger.warn(`[StrategicMemory] Prediction ${predId} not found`);
@@ -540,39 +546,41 @@ export function verifyPrediction(
     pred.lessonLearned = lessonLearned;
   }
 
-  database.prepare(`
+  await database.run(`
     UPDATE strategic_predictions
     SET status = 'verified', data_json = ?
     WHERE id = ?
-  `).run(JSON.stringify(pred), predId);
+  `, [JSON.stringify(pred), predId]);
 
   logger.info(`[StrategicMemory] Verified prediction ${predId}: ${wasCorrect ? 'CORRECT' : 'INCORRECT'}`);
 }
 
-export function getPendingPredictions(clientId: string): PredictionRecord[] {
-  const database = getDb();
+export async function getPendingPredictions(clientId: string): Promise<PredictionRecord[]> {
+  await ensureTables();
+  const database = getDbAdapter();
   const now = new Date().toISOString();
 
-  const rows = database.prepare(`
+  const rows = await database.all<{ data_json: string }>(`
     SELECT data_json FROM strategic_predictions
     WHERE client_id = ? AND status = 'pending' AND verify_after <= ?
-  `).all(clientId, now) as { data_json: string }[];
+  `, [clientId, now]);
 
   return rows.map(row => JSON.parse(row.data_json) as PredictionRecord);
 }
 
-export function getPredictionAccuracy(clientId: string): { total: number; correct: number; accuracy: number } {
-  const database = getDb();
+export async function getPredictionAccuracy(clientId: string): Promise<{ total: number; correct: number; accuracy: number }> {
+  await ensureTables();
+  const database = getDbAdapter();
 
-  const total = database.prepare(`
+  const total = (await database.get<{ count: number }>(`
     SELECT COUNT(*) as count FROM strategic_predictions
     WHERE client_id = ? AND status = 'verified'
-  `).get(clientId) as { count: number };
+  `, [clientId]))!;
 
-  const correct = database.prepare(`
+  const correct = (await database.get<{ count: number }>(`
     SELECT COUNT(*) as count FROM strategic_predictions
     WHERE client_id = ? AND status = 'verified' AND data_json LIKE '%"wasCorrect":true%'
-  `).get(clientId) as { count: number };
+  `, [clientId]))!;
 
   return {
     total: total.count,
@@ -589,11 +597,11 @@ export function getPredictionAccuracy(clientId: string): { total: number; correc
  * Get full strategic context for agent injection
  * This is what agents read to understand history and continuity
  */
-export function getStrategicContextForAgent(clientId: string): string {
-  const recentReports = getRecentReports(clientId, 4);
-  const pendingRecs = getPendingRecommendations(clientId);
-  const runningContext = getRunningContext(clientId);
-  const predictionAccuracy = getPredictionAccuracy(clientId);
+export async function getStrategicContextForAgent(clientId: string): Promise<string> {
+  const recentReports = await getRecentReports(clientId, 4);
+  const pendingRecs = await getPendingRecommendations(clientId);
+  const runningContext = await getRunningContext(clientId);
+  const predictionAccuracy = await getPredictionAccuracy(clientId);
 
   let context = `
 ═══════════════════════════════════════════════════════════════════════
@@ -677,11 +685,11 @@ Last updated: ${runningContext?.updatedAt || 'Never'}
  * Check if we should ship a report based on previous context
  * This helps avoid shipping duplicate/redundant reports
  */
-export function shouldShipReport(clientId: string, headline: string, insights: string[]): {
+export async function shouldShipReport(clientId: string, headline: string, insights: string[]): Promise<{
   shouldShip: boolean;
   reason: string;
-} {
-  const lastReport = getLastWeekReport(clientId);
+}> {
+  const lastReport = await getLastWeekReport(clientId);
 
   if (!lastReport) {
     return { shouldShip: true, reason: 'First report for this client' };

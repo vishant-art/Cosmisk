@@ -1,3 +1,6 @@
+> **Status: ♻️ SUPERSEDED (2026-05-31)** — Apr-26 phased plan (P0–P5). Superseded by `19_05/suggested.md`.
+> _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+
 # Suggested Phasing — 2026-04-26
 
 Phased by **risk × effort × blast-radius**, not by audit category. Each phase ships independently. Estimates assume one engineer full-time.

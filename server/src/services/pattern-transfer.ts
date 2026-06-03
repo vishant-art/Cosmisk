@@ -10,7 +10,7 @@
  * - Used to bootstrap new client intelligence faster
  */
 
-import { getDb } from '../db/index.js';
+import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { getRunningContext } from './strategic-memory.js';
 
@@ -37,46 +37,6 @@ interface PatternCandidate {
 }
 
 // ============================================================================
-// DATABASE SETUP
-// ============================================================================
-
-/**
- * Initialize global patterns table
- * Call this during app startup or first use
- */
-export function setupGlobalPatternsSchema(): void {
-  const db = getDb();
-
-  // Global patterns table
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS global_patterns (
-      id TEXT PRIMARY KEY,
-      pattern TEXT NOT NULL,
-      category TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      source_client_count INTEGER NOT NULL DEFAULT 1,
-      source_clients TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Index for fast category lookups
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_global_patterns_category
-    ON global_patterns(category)
-  `);
-
-  // Index for confidence-based queries
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_global_patterns_confidence
-    ON global_patterns(confidence DESC)
-  `);
-
-  logger.info('[PatternTransfer] Global patterns schema initialized');
-}
-
-// ============================================================================
 // PATTERN PROMOTION
 // ============================================================================
 
@@ -90,12 +50,12 @@ export function setupGlobalPatternsSchema(): void {
  *
  * This is typically called after addLearnedPattern() in strategic-memory.ts
  */
-export function promotePatternToGlobal(
+export async function promotePatternToGlobal(
   pattern: string,
   category: GlobalPattern['category'],
   confidence: number
-): boolean {
-  const db = getDb();
+): Promise<boolean> {
+  const db = getDbAdapter();
 
   // Don't promote low-confidence patterns
   if (confidence < 90) {
@@ -104,9 +64,9 @@ export function promotePatternToGlobal(
   }
 
   // Check if pattern already exists globally
-  const existing = db
-    .prepare('SELECT id, source_client_count FROM global_patterns WHERE pattern = ? AND category = ?')
-    .get(pattern, category) as { id: string; source_client_count: number } | undefined;
+  const existing = await db
+    .get('SELECT id, source_client_count FROM global_patterns WHERE pattern = ? AND category = ?',
+      [pattern, category]) as { id: string; source_client_count: number } | undefined;
 
   if (existing) {
     logger.debug(`[PatternTransfer] Pattern already global (${existing.source_client_count} clients)`);
@@ -114,7 +74,7 @@ export function promotePatternToGlobal(
   }
 
   // Scan all clients to see how many have learned this pattern
-  const candidates = extractPatternCandidates(pattern, category);
+  const candidates = await extractPatternCandidates(pattern, category);
 
   if (candidates.length < 3) {
     logger.debug(
@@ -128,10 +88,10 @@ export function promotePatternToGlobal(
   const sourceClients = candidates.map(c => c.clientId).join(',');
   const avgConfidence = candidates.reduce((sum, c) => sum + c.confidence, 0) / candidates.length;
 
-  db.prepare(`
+  await db.run(`
     INSERT INTO global_patterns (id, pattern, category, confidence, source_client_count, source_clients, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, pattern, category, avgConfidence, candidates.length, sourceClients, new Date().toISOString());
+  `, [id, pattern, category, avgConfidence, candidates.length, sourceClients, new Date().toISOString()]);
 
   logger.info(
     `[PatternTransfer] ✓ Promoted pattern to global: "${pattern}" (${category}, ${candidates.length} clients, ${avgConfidence.toFixed(0)}% confidence)`
@@ -144,16 +104,15 @@ export function promotePatternToGlobal(
  * Extract all instances of a pattern across all clients
  * Used to check if pattern qualifies for promotion
  */
-function extractPatternCandidates(
+async function extractPatternCandidates(
   pattern: string,
   category: GlobalPattern['category']
-): PatternCandidate[] {
-  const db = getDb();
+): Promise<PatternCandidate[]> {
+  const db = getDbAdapter();
 
   // Get all running contexts
-  const contexts = db
-    .prepare('SELECT client_id, context_json FROM strategic_running_context')
-    .all() as { client_id: string; context_json: string }[];
+  const contexts = await db
+    .all('SELECT client_id, context_json FROM strategic_running_context') as { client_id: string; context_json: string }[];
 
   const candidates: PatternCandidate[] = [];
 
@@ -200,8 +159,8 @@ function extractPatternCandidates(
  *
  * Returns patterns sorted by confidence (highest first)
  */
-export function getGlobalPatterns(category?: GlobalPattern['category']): GlobalPattern[] {
-  const db = getDb();
+export async function getGlobalPatterns(category?: GlobalPattern['category']): Promise<GlobalPattern[]> {
+  const db = getDbAdapter();
 
   let query = `
     SELECT id, pattern, category, confidence, source_client_count, created_at
@@ -216,7 +175,7 @@ export function getGlobalPatterns(category?: GlobalPattern['category']): GlobalP
 
   query += ' ORDER BY confidence DESC, source_client_count DESC';
 
-  const rows = db.prepare(query).all(...params) as Array<{
+  const rows = await db.all(query, params) as Array<{
     id: string;
     pattern: string;
     category: string;
@@ -240,14 +199,12 @@ export function getGlobalPatterns(category?: GlobalPattern['category']): GlobalP
  *
  * This is what gets injected into new client contexts to bootstrap their intelligence
  */
-export function getContextWithGlobalPatterns(clientId: string): string {
-  const db = getDb();
-
+export async function getContextWithGlobalPatterns(clientId: string): Promise<string> {
   // Get client's own context first
-  const clientContext = getRunningContext(clientId);
+  const clientContext = await getRunningContext(clientId);
 
   // Get all global patterns
-  const globalPatterns = getGlobalPatterns();
+  const globalPatterns = await getGlobalPatterns();
 
   if (globalPatterns.length === 0) {
     return ''; // No global patterns yet
@@ -298,25 +255,22 @@ NOTE: These are starting points. Validate against ${clientId}'s specific data.
 /**
  * Get pattern statistics for monitoring
  */
-export function getGlobalPatternStats(): {
+export async function getGlobalPatternStats(): Promise<{
   totalPatterns: number;
   byCategory: Record<string, number>;
   avgConfidence: number;
   avgClientCount: number;
-} {
-  const db = getDb();
+}> {
+  const db = getDbAdapter();
 
-  const total = db
-    .prepare('SELECT COUNT(*) as count FROM global_patterns')
-    .get() as { count: number };
+  const total = await db
+    .get('SELECT COUNT(*) as count FROM global_patterns') as { count: number };
 
-  const byCategory = db
-    .prepare('SELECT category, COUNT(*) as count FROM global_patterns GROUP BY category')
-    .all() as Array<{ category: string; count: number }>;
+  const byCategory = await db
+    .all('SELECT category, COUNT(*) as count FROM global_patterns GROUP BY category') as Array<{ category: string; count: number }>;
 
-  const stats = db
-    .prepare('SELECT AVG(confidence) as avg_conf, AVG(source_client_count) as avg_clients FROM global_patterns')
-    .get() as { avg_conf: number; avg_clients: number } | undefined;
+  const stats = await db
+    .get('SELECT AVG(confidence) as avg_conf, AVG(source_client_count) as avg_clients FROM global_patterns') as { avg_conf: number; avg_clients: number } | undefined;
 
   return {
     totalPatterns: total.count,
@@ -332,10 +286,10 @@ export function getGlobalPatternStats(): {
 /**
  * Delete a global pattern (admin function)
  */
-export function deleteGlobalPattern(patternId: string): boolean {
-  const db = getDb();
+export async function deleteGlobalPattern(patternId: string): Promise<boolean> {
+  const db = getDbAdapter();
 
-  const result = db.prepare('DELETE FROM global_patterns WHERE id = ?').run(patternId);
+  const result = await db.run('DELETE FROM global_patterns WHERE id = ?', [patternId]);
 
   if (result.changes > 0) {
     logger.info(`[PatternTransfer] Deleted global pattern ${patternId}`);
@@ -349,17 +303,16 @@ export function deleteGlobalPattern(patternId: string): boolean {
  * Batch scan all clients and promote qualifying patterns
  * Run this periodically (e.g., weekly) to discover new global patterns
  */
-export function scanAndPromotePatterns(): {
+export async function scanAndPromotePatterns(): Promise<{
   scanned: number;
   promoted: number;
   patterns: string[];
-} {
-  const db = getDb();
+}> {
+  const db = getDbAdapter();
 
   // Get all unique patterns across all clients
-  const contexts = db
-    .prepare('SELECT client_id, context_json FROM strategic_running_context')
-    .all() as { client_id: string; context_json: string }[];
+  const contexts = await db
+    .all('SELECT client_id, context_json FROM strategic_running_context') as { client_id: string; context_json: string }[];
 
   const patternMap = new Map<string, { category: string; count: number }>();
 
@@ -387,15 +340,15 @@ export function scanAndPromotePatterns(): {
 
   // Promote patterns that appear in 3+ clients
   const promoted: string[] = [];
-  patternMap.forEach((data, key) => {
+  for (const [key, data] of patternMap) {
     const [pattern] = key.split('||');
     if (data.count >= 3) {
-      const success = promotePatternToGlobal(pattern, data.category as GlobalPattern['category'], 90);
+      const success = await promotePatternToGlobal(pattern, data.category as GlobalPattern['category'], 90);
       if (success) {
         promoted.push(pattern);
       }
     }
-  });
+  }
 
   logger.info(
     `[PatternTransfer] Batch scan complete: ${patternMap.size} unique patterns, ${promoted.length} promoted`
