@@ -3,6 +3,7 @@
  */
 
 import type { WebsiteSnapshot } from './types.js';
+import { logger } from '../utils/logger.js';
 
 interface WebsiteAnalysisOptions {
   domain: string;
@@ -47,7 +48,7 @@ export async function analyzeWebsite(options: WebsiteAnalysisOptions): Promise<W
       hasEasyReturns: homepage.hasEasyReturns,
     };
   } catch (error) {
-    console.error(`Website analysis failed for ${domain}:`, error);
+    logger.error({ err: error, domain }, 'Website analysis failed');
     return getDefaultSnapshot(domain);
   }
 }

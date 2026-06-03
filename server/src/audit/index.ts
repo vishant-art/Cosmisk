@@ -12,6 +12,7 @@ import { runCreativeAudit } from './audit-agent.js';
 import { validateAuditQuality, formatQAResult } from './qa-validator.js';
 import { generateMarkdown, generateJSON, generateSummary } from './output.js';
 import type { Brand, BrandContext, AuditInput, AuditOutput, AuditConfig, ShopifySnapshot, WebsiteSnapshot, GoogleAdsSnapshot, AuditComparison } from './types.js';
+import { logger } from '../utils/logger.js';
 
 const ALGORITHM = 'aes-256-gcm';
 
@@ -42,44 +43,44 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
     outputPath = './data/audits',
   } = options;
 
-  console.log(`\n🔍 Starting audit for brand: ${brandId}`);
-  console.log(`   Date range: ${datePreset}`);
+  logger.info({ brandId }, '\n🔍 Starting audit for brand');
+  logger.info({ datePreset }, '   Date range');
 
   // 1. Load brand from database
-  console.log('\n📦 Loading brand data...');
+  logger.info('\n📦 Loading brand data...');
   const brand = await getBrand(brandId);
   if (!brand) {
     throw new Error(`Brand not found: ${brandId}`);
   }
-  console.log(`   Brand: ${brand.name} (${brand.category})`);
+  logger.info({ name: brand.name, category: brand.category }, '   Brand');
 
   // 2. Load brand context
   const context = await getBrandContext(brandId);
   if (context) {
-    console.log(`   Context loaded: ${context.winningCreativePatterns.length} winning patterns`);
+    logger.info({ winningPatterns: context.winningCreativePatterns.length }, '   Context loaded');
   }
 
   // 3. Get Meta access token
-  console.log('\n🔑 Getting Meta access token...');
+  logger.info('\n🔑 Getting Meta access token...');
   const accessToken = await getMetaAccessToken();
   if (!accessToken) {
     throw new Error('No Meta access token found');
   }
 
   // 4. Fetch Meta data
-  console.log('\n📊 Fetching Meta Ads data...');
+  logger.info('\n📊 Fetching Meta Ads data...');
   const metaData = await fetchMetaSnapshot({
     adAccountId: brand.metaAdAccountId!,
     accessToken,
     datePreset,
   });
-  console.log(`   Total spend: ₹${metaData.totalSpend.toFixed(0)}`);
-  console.log(`   Creatives analyzed: ${metaData.creatives.length}`);
+  logger.info({ totalSpend: metaData.totalSpend.toFixed(0) }, '   Total spend (₹)');
+  logger.info({ creatives: metaData.creatives.length }, '   Creatives analyzed');
 
   // 5. Fetch Google Ads data (if available)
   let googleAdsData: GoogleAdsSnapshot | null = null;
   if (brand.googleAdsCustomerId) {
-    console.log('\n📈 Fetching Google Ads data...');
+    logger.info('\n📈 Fetching Google Ads data...');
     try {
       // Get user ID from brand's associated user (for token lookup)
       const userId = await getBrandUserId(brandId);
@@ -89,14 +90,14 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
           userId,
           datePreset,
         });
-        console.log(`   Total spend: ₹${googleAdsData.totalSpend.toFixed(0)}`);
-        console.log(`   Campaigns: ${googleAdsData.campaigns.length}`);
-        console.log(`   ROAS: ${googleAdsData.overallRoas.toFixed(2)}x`);
+        logger.info({ totalSpend: googleAdsData.totalSpend.toFixed(0) }, '   Total spend (₹)');
+        logger.info({ campaigns: googleAdsData.campaigns.length }, '   Campaigns');
+        logger.info({ roas: googleAdsData.overallRoas.toFixed(2) }, '   ROAS (x)');
       } else {
-        console.log('   ⚠️ No user associated with brand for Google Ads token');
+        logger.info('   ⚠️ No user associated with brand for Google Ads token');
       }
     } catch (error) {
-      console.log(`   ⚠️ Google Ads fetch failed: ${error}`);
+      logger.info({ err: error }, '   ⚠️ Google Ads fetch failed');
     }
   }
 
@@ -105,35 +106,35 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
   if (brand.shopifyDomain) {
     const shopifyToken = await getShopifyAccessToken(brandId);
     if (shopifyToken) {
-      console.log('\n🛒 Fetching Shopify data...');
+      logger.info('\n🛒 Fetching Shopify data...');
       try {
         shopifyData = await fetchShopifySnapshot({
           shopDomain: brand.shopifyDomain,
           accessToken: shopifyToken,
           datePreset,
         });
-        console.log(`   Total revenue: ₹${shopifyData.totalRevenue.toFixed(0)}`);
-        console.log(`   Orders: ${shopifyData.totalOrders}`);
-        console.log(`   AOV: ₹${shopifyData.averageOrderValue.toFixed(0)}`);
+        logger.info({ totalRevenue: shopifyData.totalRevenue.toFixed(0) }, '   Total revenue (₹)');
+        logger.info({ orders: shopifyData.totalOrders }, '   Orders');
+        logger.info({ aov: shopifyData.averageOrderValue.toFixed(0) }, '   AOV (₹)');
       } catch (error) {
-        console.log(`   ⚠️ Shopify fetch failed: ${error}`);
+        logger.info({ err: error }, '   ⚠️ Shopify fetch failed');
       }
     } else {
-      console.log('\n🛒 Shopify: No token configured (skipping)');
+      logger.info('\n🛒 Shopify: No token configured (skipping)');
     }
   }
 
   // 8. Analyze website
   let websiteData: WebsiteSnapshot | null = null;
   if (brand.domain && brand.domain !== 'unknown') {
-    console.log('\n🌐 Analyzing website...');
+    logger.info('\n🌐 Analyzing website...');
     try {
       websiteData = await analyzeWebsite({ domain: brand.domain });
-      console.log(`   Price point: ${websiteData.pricePoint}`);
-      console.log(`   Products: ${websiteData.productCount}`);
-      console.log(`   Trust signals: ${websiteData.trustSignals.length}`);
+      logger.info({ pricePoint: websiteData.pricePoint }, '   Price point');
+      logger.info({ products: websiteData.productCount }, '   Products');
+      logger.info({ trustSignals: websiteData.trustSignals.length }, '   Trust signals');
     } catch (error) {
-      console.log(`   ⚠️ Website analysis failed: ${error}`);
+      logger.info({ err: error }, '   ⚠️ Website analysis failed');
     }
   }
 
@@ -155,57 +156,57 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
   };
 
   // 10. Run audit
-  console.log('\n🤖 Running AI analysis...');
+  logger.info('\n🤖 Running AI analysis...');
   const audit = await runCreativeAudit(auditInput);
-  console.log(`   Health score: ${audit.summary.healthScore}/100`);
-  console.log(`   Wasted spend: ₹${audit.summary.wastedSpend.toFixed(0)}`);
+  logger.info({ healthScore: audit.summary.healthScore }, '   Health score (/100)');
+  logger.info({ wastedSpend: audit.summary.wastedSpend.toFixed(0) }, '   Wasted spend (₹)');
 
   // 10b. Compare with previous audit (if exists)
-  console.log('\n📊 Checking for previous audits...');
+  logger.info('\n📊 Checking for previous audits...');
   const previousAudit = await getPreviousAudit(brandId);
   if (previousAudit) {
-    console.log(`   Found previous audit: ${previousAudit.auditId}`);
+    logger.info({ auditId: previousAudit.auditId }, '   Found previous audit');
     const comparison = calculateAuditComparison(audit, previousAudit);
     audit.comparison = comparison;
-    console.log(`   Trend: ${comparison.overallTrend.toUpperCase()}`);
+    logger.info({ trend: comparison.overallTrend.toUpperCase() }, '   Trend');
     if (comparison.improvements.length > 0) {
-      console.log(`   ✅ ${comparison.improvements.length} improvements`);
+      logger.info({ improvements: comparison.improvements.length }, '   ✅ improvements');
     }
     if (comparison.regressions.length > 0) {
-      console.log(`   ⚠️ ${comparison.regressions.length} regressions`);
+      logger.info({ regressions: comparison.regressions.length }, '   ⚠️ regressions');
     }
   } else {
-    console.log('   No previous audit found (first audit for this brand)');
+    logger.info('   No previous audit found (first audit for this brand)');
   }
 
   // 11. QA validation with data integrity checks
-  console.log('\n🔍 Running QA validation...');
+  logger.info('\n🔍 Running QA validation...');
   const qaResult = validateAuditQuality(audit);
-  console.log(formatQAResult(qaResult));
+  logger.info(formatQAResult(qaResult));
 
   // Log data integrity status prominently
   if (!qaResult.dataIntegrity.passed) {
-    console.log('\n   ❌ DATA INTEGRITY ISSUES DETECTED:');
+    logger.info('\n   ❌ DATA INTEGRITY ISSUES DETECTED:');
     for (const error of qaResult.dataIntegrity.calculationErrors) {
-      console.log(`      • ${error.message}`);
+      logger.info({ message: error.message }, '      •');
     }
     for (const violation of qaResult.dataIntegrity.sanityViolations.filter(v => v.value < 0)) {
-      console.log(`      • ${violation.field} is negative: ${violation.value}`);
+      logger.info({ field: violation.field, value: violation.value }, '      • field is negative');
     }
   } else {
-    console.log('\n   ✅ Data integrity verified - all calculations match');
+    logger.info('\n   ✅ Data integrity verified - all calculations match');
   }
 
   // Log human review flags
   if (qaResult.humanReviewRequired) {
-    console.log('\n   ⚠️ MANUAL REVIEW RECOMMENDED:');
+    logger.info('\n   ⚠️ MANUAL REVIEW RECOMMENDED:');
     for (const reason of qaResult.humanReviewReasons) {
-      console.log(`      • ${reason}`);
+      logger.info({ reason }, '      •');
     }
   }
 
   if (!qaResult.passed) {
-    console.log('\n   ⚠️ QA failed but proceeding with output');
+    logger.info('\n   ⚠️ QA failed but proceeding with output');
   }
 
   // Add QA result to audit for tracking
@@ -252,34 +253,34 @@ export async function runAudit(options: AuditOptions): Promise<AuditResult> {
     if (result.markdown) {
       const mdPath = path.join(outputPath, `${baseName}.md`);
       fs.writeFileSync(mdPath, result.markdown);
-      console.log(`\n📄 Saved: ${mdPath}`);
+      logger.info({ mdPath }, '\n📄 Saved');
     }
 
     if (result.json) {
       const jsonPath = path.join(outputPath, `${baseName}.json`);
       fs.writeFileSync(jsonPath, result.json);
-      console.log(`📄 Saved: ${jsonPath}`);
+      logger.info({ jsonPath }, '📄 Saved');
     }
 
     // Save summary
     const summaryPath = path.join(outputPath, `${baseName}-summary.md`);
     fs.writeFileSync(summaryPath, result.summary);
-    console.log(`📋 Saved: ${summaryPath}`);
+    logger.info({ summaryPath }, '📋 Saved');
   }
 
   // 14. Save audit to database
-  console.log('\n💾 Saving audit to database...');
+  logger.info('\n💾 Saving audit to database...');
   await saveAudit(audit);
 
   // 15. Extract and save learnings (optional - may fail for ad-hoc audits)
-  console.log('🧠 Extracting learnings...');
+  logger.info('🧠 Extracting learnings...');
   try {
     await extractAndSaveLearnings(audit, brand.id);
   } catch (error) {
-    console.log('   ⚠️ Could not save learnings (brand may not be in database)');
+    logger.info('   ⚠️ Could not save learnings (brand may not be in database)');
   }
 
-  console.log('\n✅ Audit complete!');
+  logger.info('\n✅ Audit complete!');
 
   return result;
 }
@@ -417,7 +418,7 @@ async function saveAudit(audit: AuditOutput): Promise<void> {
     audit.createdAt,
   ]);
 
-  console.log(`   Saved audit: ${audit.auditId}`);
+  logger.info({ auditId: audit.auditId }, '   Saved audit');
 }
 
 async function extractAndSaveLearnings(audit: AuditOutput, brandId: string): Promise<void> {
@@ -451,7 +452,7 @@ async function extractAndSaveLearnings(audit: AuditOutput, brandId: string): Pro
       WHERE brand_id = ?
     `, [JSON.stringify(allWinning), JSON.stringify(allFailed), brandId]);
 
-    console.log(`   Updated context: ${allWinning.length} winning, ${allFailed.length} failed patterns`);
+    logger.info({ winning: allWinning.length, failed: allFailed.length }, '   Updated context');
   } else if (winningPatterns.length > 0 || failedApproaches.length > 0) {
     // Create new context
     await getDbAdapter().run(`
@@ -459,9 +460,9 @@ async function extractAndSaveLearnings(audit: AuditOutput, brandId: string): Pro
       VALUES (?, ?, ?, datetime('now'))
     `, [brandId, JSON.stringify(winningPatterns), JSON.stringify(failedApproaches)]);
 
-    console.log(`   Created context: ${winningPatterns.length} winning, ${failedApproaches.length} failed patterns`);
+    logger.info({ winning: winningPatterns.length, failed: failedApproaches.length }, '   Created context');
   } else {
-    console.log(`   No learnings extracted (using default analysis)`);
+    logger.info('   No learnings extracted (using default analysis)');
   }
 }
 

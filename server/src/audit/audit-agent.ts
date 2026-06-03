@@ -4,6 +4,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createMessage } from '../services/llm-gateway.js';
+import { logger } from '../utils/logger.js';
 import {
   DEFAULT_AUDIT_CONFIG,
   CATEGORY_BENCHMARKS,
@@ -78,7 +79,7 @@ export async function runCreativeAudit(
     winnerReasons = parsed.winnerReasons;
     loserReasons = parsed.loserReasons;
   } catch (error) {
-    console.log('   ⚠️ AI unavailable, using rule-based analysis');
+    logger.info('   ⚠️ AI unavailable, using rule-based analysis');
     const fallback = generateFallbackAnalysis(input, winners, losers, wastedSpend);
     insights = fallback.insights;
     recommendations = fallback.recommendations;
@@ -518,20 +519,20 @@ async function analyzeWithAI(prompt: string, userId: string): Promise<string> {
   // Try Gemini first (free tier)
   if (process.env['GOOGLE_AI_API_KEY']) {
     try {
-      console.log('   Using Gemini (free tier)...');
+      logger.info('   Using Gemini (free tier)...');
       return await analyzeWithGemini(prompt);
     } catch (error) {
-      console.log('   Gemini failed, trying Claude...');
+      logger.info('   Gemini failed, trying Claude...');
     }
   }
 
   // Try Claude as fallback
   if (process.env['ANTHROPIC_API_KEY']) {
     try {
-      console.log('   Using Claude...');
+      logger.info('   Using Claude...');
       return await analyzeWithClaude(prompt, userId);
     } catch (error) {
-      console.log('   Claude failed, using rule-based analysis...');
+      logger.info('   Claude failed, using rule-based analysis...');
     }
   }
 
@@ -568,7 +569,7 @@ function parseClaudeResponse(
     };
   } catch (error) {
     // Fallback with basic analysis
-    console.error('Failed to parse Claude response:', error);
+    logger.error({ err: error }, 'Failed to parse Claude response');
 
     return {
       insights: [

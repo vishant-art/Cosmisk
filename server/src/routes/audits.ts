@@ -7,6 +7,7 @@ import { runAudit, getAuditHistory, generateMarkdown } from '../audit/index.js';
 import { generatePDF } from '../audit/pdf-export.js';
 import { getDbAdapter } from '../db/adapter.js';
 import type { AuditConfig } from '../audit/types.js';
+import { logger } from '../utils/logger.js';
 
 interface TriggerAuditBody {
   brandId: string;
@@ -58,11 +59,11 @@ export async function auditRoutes(app: FastifyInstance) {
 
         // Let audit complete in background
         auditPromise.catch(error => {
-          console.error(`Audit failed for ${brandId}:`, error);
+          logger.error({ err: error, brandId }, 'Audit failed');
         });
 
       } catch (error: any) {
-        console.error('Failed to start audit:', error);
+        logger.error({ err: error }, 'Failed to start audit');
         return reply.status(500).send({ error: error.message });
       }
     }
@@ -99,7 +100,7 @@ export async function auditRoutes(app: FastifyInstance) {
         };
 
       } catch (error: any) {
-        console.error('Audit failed:', error);
+        logger.error({ err: error }, 'Audit failed');
         return reply.status(500).send({ error: error.message });
       }
     }
@@ -279,7 +280,7 @@ export async function auditRoutes(app: FastifyInstance) {
 
         return reply.send(pdf);
       } catch (error: any) {
-        console.error('PDF generation failed:', error);
+        logger.error({ err: error }, 'PDF generation failed');
         return reply.status(500).send({ error: 'Failed to generate PDF' });
       }
     }

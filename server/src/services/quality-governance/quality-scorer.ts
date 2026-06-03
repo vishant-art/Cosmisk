@@ -10,6 +10,8 @@
  * "Is this worth showing to a founder spending ₹50L/month?"
  */
 
+import { logger } from '../../utils/logger.js';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -882,9 +884,9 @@ export async function withQualityGates<T extends IntelligenceOutput>(
   const evaluation = evaluateQuality(output);
 
   if (evaluation.verdict === 'REJECT') {
-    console.log(`[QUALITY GATE] REJECTED: ${context}`);
-    console.log(`  Composite Score: ${evaluation.compositeScore}`);
-    console.log(`  Reasons: ${evaluation.reasons.join(', ')}`);
+    logger.info({ context }, '[QUALITY GATE] REJECTED');
+    logger.info({ compositeScore: evaluation.compositeScore }, '  Composite Score');
+    logger.info({ reasons: evaluation.reasons.join(', ') }, '  Reasons');
 
     return {
       rejected: true,
@@ -893,12 +895,12 @@ export async function withQualityGates<T extends IntelligenceOutput>(
   }
 
   if (evaluation.verdict === 'HOLD') {
-    console.log(`[QUALITY GATE] HOLD for review: ${context}`);
-    console.log(`  Composite Score: ${evaluation.compositeScore}`);
+    logger.info({ context }, '[QUALITY GATE] HOLD for review');
+    logger.info({ compositeScore: evaluation.compositeScore }, '  Composite Score');
     // For now, still return but log warning
   }
 
-  console.log(`[QUALITY GATE] SHIP: ${context} (Score: ${evaluation.compositeScore})`);
+  logger.info({ context, score: evaluation.compositeScore }, '[QUALITY GATE] SHIP');
   return output;
 }
 
