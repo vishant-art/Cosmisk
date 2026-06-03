@@ -22,11 +22,11 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # Install server dependencies
-COPY server/package.json server/package-lock.json* ./
+COPY apps/api/package.json apps/api/package-lock.json* ./
 RUN npm ci
 
 # Copy server source and build
-COPY server/ ./
+COPY apps/api/ ./
 RUN npm run build
 
 # ---- Production Stage ----

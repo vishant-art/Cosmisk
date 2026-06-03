@@ -57,14 +57,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: server
+        working-directory: apps/api
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: server/package-lock.json
+          cache-dependency-path: apps/api/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
@@ -85,7 +85,7 @@ jobs:
         run: npm audit --audit-level=high
         continue-on-error: true
       - name: Audit backend dependencies
-        run: cd server && npm audit --audit-level=high
+        run: cd apps/api && npm audit --audit-level=high
         continue-on-error: true
 
   docker:
