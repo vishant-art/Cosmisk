@@ -137,7 +137,7 @@ export class AgentOrchestrator {
     } else {
       AGENT_REGISTRY.push(agent);
     }
-    console.log(`[Orchestrator] Registered agent: ${agent.agentId} with capabilities: ${agent.capabilities.join(', ')}`);
+    logger.info({ agentId: agent.agentId, capabilities: agent.capabilities.join(', ') }, '[Orchestrator] Registered agent');
   }
 
   /**
@@ -147,21 +147,21 @@ export class AgentOrchestrator {
     // Get recommendation
     const rec = await getDbAdapter().get('SELECT * FROM recommendations WHERE id = ?', [recommendationId]) as any;
     if (!rec) {
-      console.log(`[Orchestrator] Recommendation ${recommendationId} not found`);
+      logger.info({ recommendationId }, '[Orchestrator] Recommendation not found');
       return;
     }
 
     // Find matching capability
     const capability = this.findCapability(rec.action);
     if (!capability) {
-      console.log(`[Orchestrator] No capability match for: ${rec.action}`);
+      logger.info({ action: rec.action }, '[Orchestrator] No capability match for');
       return;
     }
 
     // Find executing agent
     const agent = this.findAgent(capability);
     if (!agent) {
-      console.log(`[Orchestrator] No agent registered for capability: ${capability}`);
+      logger.info({ capability }, '[Orchestrator] No agent registered for capability');
       return;
     }
 
@@ -204,7 +204,7 @@ export class AgentOrchestrator {
       logger.info({ capability, success: result.success, recommendationId }, '[Orchestrator] Execution complete');
 
     } catch (error) {
-      console.error(`[Orchestrator] Execution failed:`, error);
+      logger.error({ err: error }, '[Orchestrator] Execution failed');
     }
   }
 
@@ -242,7 +242,7 @@ function registerCreativeAgent(): void {
       'refresh_creative',
     ],
     execute: async (task) => {
-      console.log(`[CreativeGenerator] Generating ${task.capability} creative`);
+      logger.info({ capability: task.capability }, '[CreativeGenerator] Generating creative');
 
       try {
         const { generateStaticAds } = await import('./static-ad-generator.js');
@@ -288,7 +288,7 @@ function registerCampaignAgent(): void {
     agentId: 'campaign-manager',
     capabilities: ['pause_campaign', 'pause_adset', 'pause_ad', 'increase_budget', 'decrease_budget'],
     execute: async (task) => {
-      console.log(`[CampaignManager] Executing ${task.capability}`);
+      logger.info({ capability: task.capability }, '[CampaignManager] Executing');
 
       try {
         // Get client info and credentials
@@ -338,7 +338,7 @@ function registerCampaignAgent(): void {
           case 'pause_adset':
           case 'pause_ad':
             await updateStatus(entityId, 'PAUSED');
-            console.log(`[CampaignManager] Paused ${entityId}: ${reason}`);
+            logger.info({ entityId, reason }, '[CampaignManager] Paused');
             return {
               success: true,
               output: { action: 'paused', entityId, reason },
@@ -349,7 +349,7 @@ function registerCampaignAgent(): void {
             const multiplier = task.capability === 'increase_budget' ? 1.2 : 0.8;
             const currentBudget = task.context['currentBudget'] as number || 0;
             const newBudget = Math.round(currentBudget * multiplier);
-            console.log(`[CampaignManager] Budget ${task.capability}: ${currentBudget} -> ${newBudget} for ${entityId}`);
+            logger.info({ capability: task.capability, currentBudget, newBudget, entityId }, '[CampaignManager] Budget update');
             return {
               success: true,
               output: { action: task.capability, entityId, oldBudget: currentBudget, newBudget, note: 'Budget update queued' },
@@ -382,7 +382,7 @@ function registerAnalysisAgent(): void {
     agentId: 'analysis-agent',
     capabilities: ['detect_oos', 'detect_discount_leak', 'analyze_competitors'],
     execute: async (task) => {
-      console.log(`[AnalysisAgent] Running ${task.capability}`);
+      logger.info({ capability: task.capability }, '[AnalysisAgent] Running');
 
       try {
         // Get client info
@@ -402,7 +402,7 @@ function registerAnalysisAgent(): void {
         switch (task.capability) {
           case 'detect_oos': {
             if (!shopDomain || !shopifyToken || !metaAccountId || !metaToken) {
-              console.log(`[AnalysisAgent] OOS check queued - missing credentials`);
+              logger.info('[AnalysisAgent] OOS check queued - missing credentials');
               return { success: true, output: { queued: true, reason: 'Credentials not available, scheduled for next watchdog run' } };
             }
             const { runOOSCheck } = await import('./oos-detector.js');
@@ -424,7 +424,7 @@ function registerAnalysisAgent(): void {
 
           case 'detect_discount_leak': {
             if (!shopDomain || !shopifyToken) {
-              console.log(`[AnalysisAgent] Discount leak check queued - missing credentials`);
+              logger.info('[AnalysisAgent] Discount leak check queued - missing credentials');
               return { success: true, output: { queued: true, reason: 'Credentials not available, scheduled for next watchdog run' } };
             }
             const { runDiscountLeakageCheck } = await import('./discount-leakage-detector.js');
@@ -478,7 +478,7 @@ export function initializeOrchestrator(): AgentOrchestrator {
   registerCampaignAgent();
   registerAnalysisAgent();
 
-  console.log('[Orchestrator] Initialized with all executing agents');
+  logger.info('[Orchestrator] Initialized with all executing agents');
 
   return AgentOrchestrator.getInstance();
 }

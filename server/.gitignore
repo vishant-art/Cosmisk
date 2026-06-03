@@ -2,6 +2,9 @@ node_modules/
 dist/
 data/
 .env
+.env.*
+!.env.example
+!.env.test.example
 
 # Incremental tsc cache (v2 harness)
 *.tsbuildinfo

@@ -15,6 +15,7 @@
 
 import { getDbAdapter } from '../db/adapter.js';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../utils/logger.js';
 
 // ============================================================
 // TYPES
@@ -111,7 +112,7 @@ export async function createRecommendation(input: RecommendationInput): Promise<
   );
 
   if (existingDuplicate) {
-    console.log(`[LOOP] Duplicate recommendation found for ${input.entityId}, returning existing`);
+    logger.info({ entityId: input.entityId }, '[LOOP] Duplicate recommendation found, returning existing');
     return existingDuplicate;
   }
 
@@ -142,7 +143,7 @@ export async function createRecommendation(input: RecommendationInput): Promise<
     now
   ]);
 
-  console.log(`[LOOP] Created recommendation ${id}: ${input.action}`);
+  logger.info({ id, action: input.action }, '[LOOP] Created recommendation');
 
   return {
     id,
@@ -197,7 +198,7 @@ export async function markExecuted(recommendationId: string, _executionNotes?: s
     WHERE id = ?
   `, [now, recommendationId]);
 
-  console.log(`[LOOP] Marked ${recommendationId} as executed`);
+  logger.info({ recommendationId }, '[LOOP] Marked as executed');
 }
 
 /**
@@ -210,7 +211,7 @@ export async function markIgnored(recommendationId: string, ignoreReason?: strin
     UPDATE recommendations SET status = 'ignored' WHERE id = ?
   `, [recommendationId]);
 
-  console.log(`[LOOP] Marked ${recommendationId} as ignored: ${ignoreReason || 'no reason'}`);
+  logger.info({ recommendationId, ignoreReason: ignoreReason || 'no reason' }, '[LOOP] Marked as ignored');
 }
 
 /**
@@ -304,7 +305,7 @@ export async function validateOutcome(
   // Record in prediction accuracy table
   await recordPredictionAccuracy(rec, actualMetricValue, score);
 
-  console.log(`[LOOP] Validated ${recommendationId}: ${accurate ? 'ACCURATE' : 'INACCURATE'} (${score}%)`);
+  logger.info({ recommendationId, result: accurate ? 'ACCURATE' : 'INACCURATE', score }, '[LOOP] Validated');
 
   return {
     predictionAccurate: accurate,

@@ -13,7 +13,7 @@
  * 7. GET /shopify/orders — Get recent orders
  * 8. GET /shopify/summary — Get full shop summary
  *
- * BLOCKED: OAuth flow requires auth security fix (see ROADMAP_COMING_SOON.md)
+ * BLOCKED: OAuth flow requires auth security fix (see docs/ROADMAP_COMING_SOON.md)
  * Once fixed, add SHOPIFY_API_KEY and SHOPIFY_API_SECRET to config
  */
 

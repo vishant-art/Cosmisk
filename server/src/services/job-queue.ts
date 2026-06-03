@@ -1,5 +1,5 @@
 /**
- * SQLite-based concurrent job processor for creative generation.
+ * Concurrent job processor for creative generation.
  * Grabs pending jobs, dispatches to providers, polls async jobs, updates progress.
  */
 

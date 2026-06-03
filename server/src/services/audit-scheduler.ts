@@ -5,6 +5,7 @@
 import { CronJob } from 'cron';
 import { getDbAdapter } from '../db/adapter.js';
 import { runAudit } from '../audit/index.js';
+import { logger } from '../utils/logger.js';
 
 interface ScheduledAudit {
   id: string;
@@ -59,9 +60,9 @@ function getNextRunTime(cronExpression: string): Date {
  * Run a scheduled audit
  */
 async function runScheduledAudit(schedule: ScheduledAudit): Promise<void> {
-  console.log(`\n⏰ Running scheduled audit for ${schedule.brandName}`);
-  console.log(`   Schedule ID: ${schedule.id}`);
-  console.log(`   Frequency: ${schedule.frequency}`);
+  logger.info({ brandName: schedule.brandName }, '\n⏰ Running scheduled audit for');
+  logger.info({ scheduleId: schedule.id }, '   Schedule ID');
+  logger.info({ frequency: schedule.frequency }, '   Frequency');
 
   try {
     // Run the audit
@@ -84,8 +85,8 @@ async function runScheduledAudit(schedule: ScheduledAudit): Promise<void> {
       WHERE id = ?
     `, [nextRunAt, schedule.id]);
 
-    console.log(`   ✅ Scheduled audit completed successfully`);
-    console.log(`   Next run: ${nextRunAt}`);
+    logger.info('   ✅ Scheduled audit completed successfully');
+    logger.info({ nextRunAt }, '   Next run');
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -98,7 +99,7 @@ async function runScheduledAudit(schedule: ScheduledAudit): Promise<void> {
       WHERE id = ?
     `, [errorMessage, schedule.id]);
 
-    console.error(`   ❌ Scheduled audit failed: ${errorMessage}`);
+    logger.error({ errorMessage }, '   ❌ Scheduled audit failed');
   }
 }
 
@@ -120,7 +121,7 @@ function createJob(schedule: ScheduledAudit): CronJob {
  */
 export async function initializeScheduler(): Promise<void> {
   if (state.isRunning) {
-    console.log('Scheduler already running');
+    logger.info('Scheduler already running');
     return;
   }
 
@@ -151,8 +152,8 @@ export async function initializeScheduler(): Promise<void> {
     SELECT * FROM scheduled_audits WHERE enabled = 1
   `);
 
-  console.log(`\n📅 Initializing audit scheduler...`);
-  console.log(`   Found ${schedules.length} active schedules`);
+  logger.info('\n📅 Initializing audit scheduler...');
+  logger.info({ count: schedules.length }, '   Found active schedules');
 
   for (const row of schedules) {
     const schedule: ScheduledAudit = {
@@ -172,27 +173,27 @@ export async function initializeScheduler(): Promise<void> {
     job.start();
     state.jobs.set(schedule.id, job);
 
-    console.log(`   ✓ ${schedule.brandName}: ${schedule.frequency} (next: ${schedule.nextRunAt || 'calculating...'})`);
+    logger.info({ brandName: schedule.brandName, frequency: schedule.frequency, next: schedule.nextRunAt || 'calculating...' }, '   ✓ schedule registered');
   }
 
   state.isRunning = true;
-  console.log(`   Scheduler initialized`);
+  logger.info('   Scheduler initialized');
 }
 
 /**
  * Stop the scheduler
  */
 export function stopScheduler(): void {
-  console.log('Stopping audit scheduler...');
+  logger.info('Stopping audit scheduler...');
 
   for (const [id, job] of state.jobs) {
     job.stop();
-    console.log(`   Stopped job: ${id}`);
+    logger.info({ id }, '   Stopped job');
   }
 
   state.jobs.clear();
   state.isRunning = false;
-  console.log('Scheduler stopped');
+  logger.info('Scheduler stopped');
 }
 
 /**
@@ -234,7 +235,7 @@ export async function createScheduledAudit(options: {
     state.jobs.set(id, job);
   }
 
-  console.log(`📅 Created scheduled audit: ${options.brandName} (${options.frequency})`);
+  logger.info({ brandName: options.brandName, frequency: options.frequency }, '📅 Created scheduled audit');
   return schedule;
 }
 

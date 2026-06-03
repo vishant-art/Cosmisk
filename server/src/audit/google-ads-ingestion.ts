@@ -4,6 +4,7 @@
 
 import { GoogleAdsApiService, getGoogleToken, refreshGoogleToken } from '../services/google-ads-api.js';
 import type { GoogleAdsSnapshot, CampaignPerformance, AdPerformance, AuditConfig } from './types.js';
+import { logger } from '../utils/logger.js';
 
 interface GoogleAdsIngestionOptions {
   customerId: string;
@@ -122,7 +123,7 @@ async function fetchTopAds(service: GoogleAdsApiService, dateRange: string): Pro
       };
     });
   } catch (error) {
-    console.error('Failed to fetch top ads:', error);
+    logger.error({ err: error }, 'Failed to fetch top ads');
     return [];
   }
 }
