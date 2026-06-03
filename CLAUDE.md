@@ -101,6 +101,18 @@ debugging        → current/blockers.md
 
 ---
 
+## TOOLING — RAILWAY
+
+**NEVER invoke `railway agent "<prompt>"`** — it's Railway's billed AI (LLM token passthrough, beyond the $5 Hobby / $20 Pro included credit).
+
+OK to use freely (free / covered by existing Railway plan):
+- `railway logs`, `railway variables`, `railway status`, `railway link`, `railway up`, etc.
+- Railway MCP server tools (installed via `railway setup agent` — config only, not the billed agent).
+
+If a flow seems to need the billed agent, stop and ask first.
+
+---
+
 ## POSITIONING
 
 We watch THE GAP between platforms where money disappears.
