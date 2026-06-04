@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDbAdapter } from '../db/adapter.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { VERSION } from '../version.js';
 
 // Health check — production monitoring
 const SERVER_START = new Date().toISOString();
@@ -17,7 +18,7 @@ export function registerPublicRoutes(app: FastifyInstance): void {
       db: dbOk ? 'connected' : 'error',
       node: process.version,
       env: config.nodeEnv,
-      version: '2026-03-29.2',
+      version: VERSION,
     };
   });
 
