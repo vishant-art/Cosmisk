@@ -18,7 +18,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-}
       - DATABASE_PATH=${DATABASE_PATH:-./data/cosmisk.db}
     volumes:
-      - db-data:/app/server/data
+      - db-data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]

@@ -6,6 +6,12 @@
 /out-tsc
 /bazel-out
 
+# Monorepo (Bucket H) app build artifacts + caches
+apps/*/dist/
+apps/*/.angular/
+apps/*/node_modules/
+apps/*/out-tsc/
+
 # Node
 /node_modules
 npm-debug.log

@@ -17,7 +17,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --no-audit --no-fund
-      - run: npx ng build --configuration production
+      - run: npm run build -w @cosmisk/web -- --configuration production
 
   frontend-unit-tests:
     name: Frontend Unit Tests
@@ -29,7 +29,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --no-audit --no-fund
-      - run: npx ng test --watch=false --browsers=ChromeHeadless
+      - run: npm run test -w @cosmisk/web -- --watch=false --browsers=ChromeHeadless
 
   smoke-test:
     name: Smoke Test (Playwright)
@@ -42,7 +42,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install --no-audit --no-fund
-      - run: npx ng build --configuration production
+      - run: npm run build -w @cosmisk/web -- --configuration production
       - run: npx playwright install chromium --with-deps
       - run: npx playwright test --config=playwright.ci.config.ts
       - uses: actions/upload-artifact@v4
