@@ -1,0 +1,100 @@
+name: API CI
+
+# Per-app lane for apps/api (Fastify). Always triggers so the `api-ci` gate
+# reports on every PR; heavy jobs are gated by path detection below so a
+# frontend-only PR finishes in seconds. Branch protection should require `api-ci`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect api changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+              - 'Dockerfile'
+              - 'railway.toml'
+              - 'infra/**'
+              - '.github/workflows/api.yml'
+
+  backend:
+    name: Backend (Fastify)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - name: Generate coverage report
+        run: npx vitest run --coverage --coverage.reporter=text --coverage.reporter=json-summary
+        continue-on-error: true
+
+  audit:
+    name: Audit (backend deps)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - run: npm audit --audit-level=high
+        continue-on-error: true
+
+  docker:
+    name: Docker Build
+    needs: [changes, backend]
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t cosmisk-server .
+
+  api-ci:
+    name: api-ci
+    needs: [backend, docker]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        run: |
+          results="${{ needs.backend.result }} ${{ needs.docker.result }}"
+          echo "job results: $results"
+          for r in $results; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::an api job failed ($r)"; exit 1
+            fi
+          done
+          echo "api-ci OK (passed or skipped)"
