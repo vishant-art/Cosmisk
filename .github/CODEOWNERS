@@ -1,0 +1,51 @@
+# CODEOWNERS — review-ownership lanes for the two-engineer split (1 developer + 1 intelligence).
+#
+# Last matching pattern wins, so the intelligence block sits AFTER the general
+# /apps/api/ block to override it for the intelligence files.
+#
+# >>> HOW TO ACTIVATE TRUE LANE SEPARATION <<<
+# Right now both maintainers own every path (safe default — nothing is unowned).
+# To make the lanes real, narrow each lane below to its single owner:
+#   - Frontend / developer lane  -> the app developer's handle
+#   - Intelligence lane          -> the intelligence engineer's handle
+#   - Keep BOTH on the "shared contracts" block and on intelligence-integration.ts
+#     (that file is the contract seam between the two lanes — co-owned on purpose).
+# Owners must have write access or GitHub ignores them.
+
+# ============ Default — every change needs a maintainer ============
+*                                                      @vishant-art @Procurio-AG
+
+# ============ Frontend / developer lane ============
+/apps/web/                                             @vishant-art @Procurio-AG
+/vercel.json                                           @vishant-art @Procurio-AG
+/playwright.config.ts                                  @vishant-art @Procurio-AG
+/playwright.ci.config.ts                               @vishant-art @Procurio-AG
+/.github/workflows/web.yml                             @vishant-art @Procurio-AG
+
+# ============ Backend / app lane ============
+/apps/api/                                             @vishant-art @Procurio-AG
+/railway.toml                                          @vishant-art @Procurio-AG
+/Dockerfile                                            @vishant-art @Procurio-AG
+/.github/workflows/api.yml                             @vishant-art @Procurio-AG
+
+# ============ Intelligence lane (overrides /apps/api/ — must stay below it) ============
+/apps/api/src/routes/intelligence.ts                   @vishant-art @Procurio-AG
+/apps/api/src/services/intelligence-integration.ts     @vishant-art @Procurio-AG  # THE SEAM — keep co-owned
+/apps/api/src/services/intelligence-infrastructure.ts  @vishant-art @Procurio-AG
+/apps/api/src/services/intelligence-persistence.ts     @vishant-art @Procurio-AG
+/apps/api/src/services/organic-paid-intelligence.ts    @vishant-art @Procurio-AG
+/apps/api/src/services/creative-intelligence.ts        @vishant-art @Procurio-AG
+/apps/api/src/services/elite-intelligence/             @vishant-art @Procurio-AG
+/apps/api/src/services/strategic-cognition/            @vishant-art @Procurio-AG
+/apps/api/src/services/strategic-intelligence-engine/  @vishant-art @Procurio-AG
+/apps/api/src/services/intelligence-layer/             @vishant-art @Procurio-AG
+/apps/api/src/services/creative-intelligence/          @vishant-art @Procurio-AG
+
+# ============ Shared contracts (both lanes review — prevents drift) ============
+/packages/types/                                       @vishant-art @Procurio-AG
+/tsconfig.base.json                                    @vishant-art @Procurio-AG
+/turbo.json                                            @vishant-art @Procurio-AG
+/package.json                                          @vishant-art @Procurio-AG
+/infra/                                                @vishant-art @Procurio-AG
+/e2e/                                                  @vishant-art @Procurio-AG
+/.github/                                              @vishant-art @Procurio-AG
