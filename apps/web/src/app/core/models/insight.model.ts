@@ -1,15 +1,4 @@
-export type InsightPriority = 'alert' | 'positive' | 'pattern' | 'info';
-export type InsightActionType = 'navigate' | 'scale' | 'pause' | 'reduce' | 'increase';
-
-export interface AiInsight {
-  id: string;
-  priority: InsightPriority;
-  title: string;
-  description: string;
-  actionLabel: string;
-  actionRoute: string;
-  actionType?: InsightActionType;
-  actionPayload?: Record<string, any>;
-  creativeId?: string;
-  createdAt: string;
-}
+// Intelligence "client card" contract now lives in @cosmisk/types (the shared
+// web↔api package) and is re-exported here so existing `./insight.model`
+// imports keep resolving unchanged.
+export type { InsightPriority, InsightActionType, AiInsight } from '@cosmisk/types';
