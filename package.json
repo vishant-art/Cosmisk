@@ -2,19 +2,23 @@
   "name": "cosmisk",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "npm@11.15.0",
   "workspaces": [
     "apps/web",
     "packages/*"
   ],
   "scripts": {
-    "build:web": "npm run build -w @cosmisk/web",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
     "start:web": "npm run start -w @cosmisk/web",
-    "test:web": "npm run test -w @cosmisk/web",
     "e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "puppeteer": "^24.38.0",
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "turbo": "^2.9.16"
   }
 }

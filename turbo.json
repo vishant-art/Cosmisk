@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "//": "Bucket H: pipeline definitions. Inert until `turbo` is installed + the workspace is wired (Phase 2+). TS apps/packages only; the Python apps/ai-service builds/tests via uv outside this graph.",
+  "//": "Bucket H: task pipelines for the TS workspace (apps/web + packages/*). apps/api is excluded from npm workspaces and builds via its own scripts. Run via root scripts (npm run build|test|typecheck|lint -> turbo run).",
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

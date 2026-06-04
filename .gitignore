@@ -12,6 +12,11 @@ apps/*/.angular/
 apps/*/node_modules/
 apps/*/out-tsc/
 
+# Turborepo cache
+.turbo/
+apps/*/.turbo/
+packages/*/.turbo/
+
 # Node
 /node_modules
 npm-debug.log
