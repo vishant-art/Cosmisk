@@ -125,6 +125,9 @@ vi.mock('../config.js', () => ({
   config: {
     anthropicApiKey: 'test-api-key',
     graphApiBase: 'https://graph.facebook.com/v21.0',
+    // High override so the llm-gateway's daily-cap check passes without a
+    // users-table lookup (getUserDailyLimit short-circuits on a non-null override).
+    llmDailyUsdCapOverride: 100000,
   },
 }));
 
@@ -163,6 +166,18 @@ vi.mock('../services/oos-detector.js', () => ({
 // Mock discount leakage detector
 vi.mock('../services/discount-leakage-detector.js', () => ({
   runDiscountLeakageCheck: (...args: any[]) => mockRunDiscountLeakageCheck(...args),
+}));
+
+// Mock quality gate — the watchdog's decision *scoring* policy is a separate concern
+// (quality-gate has its own logic/heuristics). These tests assert the watchdog's own
+// pipeline (reason → validate → record → notify), so pass decisions through unfiltered.
+vi.mock('../services/quality-gate.js', () => ({
+  filterDecisions: (decisions: any[]) => ({
+    passed: decisions,
+    filtered: [],
+    stats: { total: decisions.length, passed: decisions.length, filtered: 0, contradictions: 0 },
+    requiresHumanReview: [],
+  }),
 }));
 
 // Import after mocks
@@ -650,9 +665,7 @@ describe('Ad Watchdog', () => {
       expect(mockDbRun).toHaveBeenCalled();
     });
 
-    // SKIP: mock returns `{}` from Anthropic — gateway throws on missing `response.usage`.
-    // Latent since the llm-gateway cost-ledger write was added; uncovered when intelligence-integration stub unblocked file load.
-    it.skip('creates decisions from Claude reasoning', async () => {
+    it('creates decisions from Claude reasoning', async () => {
       const claudeDecisions = JSON.stringify([
         {
           type: 'wasted_spend',
@@ -672,6 +685,7 @@ describe('Ad Watchdog', () => {
         .mockReturnValueOnce([]); // outcome decisions
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(undefined); // no shopify
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123', name: 'Test Account' }] })
@@ -682,7 +696,7 @@ describe('Ad Watchdog', () => {
         .mockResolvedValueOnce({ data: [] })
         .mockResolvedValueOnce({ name: 'Test Account' });
       mockExtractText.mockReturnValue(claudeDecisions);
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
 
       const result = await runWatchdog();
 
@@ -695,14 +709,14 @@ describe('Ad Watchdog', () => {
       );
     });
 
-    // SKIP: same root cause as above — gateway requires `response.usage` shape on the SDK mock.
-    it.skip('integrates OOS detection when Shopify connected', async () => {
+    it('integrates OOS detection when Shopify connected', async () => {
       mockDbAll
         .mockReturnValueOnce(mockUsers)
         .mockReturnValueOnce([])
         .mockReturnValueOnce([]);
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(mockShopifyToken); // has Shopify
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123', name: 'Test Brand' }] })
@@ -713,7 +727,7 @@ describe('Ad Watchdog', () => {
         .mockResolvedValueOnce({ data: [] })
         .mockResolvedValueOnce({ name: 'Test Brand' });
       mockExtractText.mockReturnValue('[]');
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
       mockRunOOSCheck.mockResolvedValueOnce({
         hasIssues: true,
         wastedSpend: 500,
@@ -731,14 +745,14 @@ describe('Ad Watchdog', () => {
       }));
     });
 
-    // SKIP: same root cause as above — gateway requires `response.usage` shape on the SDK mock.
-    it.skip('integrates discount leakage detection when Shopify connected', async () => {
+    it('integrates discount leakage detection when Shopify connected', async () => {
       mockDbAll
         .mockReturnValueOnce(mockUsers)
         .mockReturnValueOnce([])
         .mockReturnValueOnce([]);
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(mockShopifyToken);
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123', name: 'Fashion Brand' }] })
@@ -749,7 +763,7 @@ describe('Ad Watchdog', () => {
         .mockResolvedValueOnce({ data: [] })
         .mockResolvedValueOnce({ name: 'Fashion Brand' });
       mockExtractText.mockReturnValue('[]');
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
       mockRunOOSCheck.mockResolvedValueOnce({ hasIssues: false, wastedSpend: 0 });
       mockRunDiscountLeakageCheck.mockResolvedValueOnce({
         success: true,
@@ -829,8 +843,7 @@ describe('Ad Watchdog', () => {
       expect(result.runs).toBe(3);
     });
 
-    // SKIP: same root cause as above — gateway requires `response.usage` shape on the SDK mock.
-    it.skip('validates Claude decisions and filters invalid ones', async () => {
+    it('validates Claude decisions and filters invalid ones', async () => {
       const mixedDecisions = JSON.stringify([
         {
           type: 'valid_decision',
@@ -861,12 +874,13 @@ describe('Ad Watchdog', () => {
         .mockReturnValueOnce([]);
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(undefined);
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123' }] })
         .mockResolvedValue({ data: [{}], name: 'Test' });
       mockExtractText.mockReturnValue(mixedDecisions);
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
 
       const result = await runWatchdog();
 
@@ -893,8 +907,7 @@ describe('Ad Watchdog', () => {
       expect(result.decisions).toBe(0);
     });
 
-    // SKIP: same root cause as above — gateway requires `response.usage` shape on the SDK mock.
-    it.skip('extracts JSON from Claude response with extra text', async () => {
+    it('extracts JSON from Claude response with extra text', async () => {
       const claudeResponse = `Let me analyze this...
 
       [{"type":"roas_decline","targetId":"c1","targetName":"Test","reasoning":"ROAS dropped","confidence":"high","urgency":"high","suggestedAction":"pause","estimatedImpact":"Save money"}]
@@ -907,12 +920,13 @@ describe('Ad Watchdog', () => {
         .mockReturnValueOnce([]);
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(undefined);
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123' }] })
         .mockResolvedValue({ data: [{}], name: 'Test' });
       mockExtractText.mockReturnValue(claudeResponse);
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
 
       const result = await runWatchdog();
 
@@ -920,8 +934,7 @@ describe('Ad Watchdog', () => {
       expect(result.decisions).toBe(1);
     });
 
-    // SKIP: same root cause as above — gateway requires `response.usage` shape on the SDK mock.
-    it.skip('sends critical severity notification when decision is critical', async () => {
+    it('sends critical severity notification when decision is critical', async () => {
       const criticalDecision = JSON.stringify([
         {
           type: 'wasted_spend',
@@ -941,12 +954,13 @@ describe('Ad Watchdog', () => {
         .mockReturnValueOnce([]);
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(undefined);
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123' }] })
         .mockResolvedValue({ data: [{}], name: 'Test' });
       mockExtractText.mockReturnValue(criticalDecision);
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
 
       await runWatchdog();
 
@@ -958,8 +972,7 @@ describe('Ad Watchdog', () => {
       );
     });
 
-    // SKIP: same root cause as above — gateway requires `response.usage` shape on the SDK mock.
-    it.skip('records decision episodes for learning', async () => {
+    it('records decision episodes for learning', async () => {
       const decision = JSON.stringify([
         {
           type: 'scale_opportunity',
@@ -979,12 +992,13 @@ describe('Ad Watchdog', () => {
         .mockReturnValueOnce([]);
       mockDbGet
         .mockReturnValueOnce(mockMetaToken)
+        .mockReturnValueOnce({ total_cents: 0 }) // gateway daily-spend cap check
         .mockReturnValueOnce(undefined);
       mockMetaGet
         .mockResolvedValueOnce({ data: [{ id: 'act_123' }] })
         .mockResolvedValue({ data: [{}], name: 'Test' });
       mockExtractText.mockReturnValue(decision);
-      mockAnthropicCreate.mockResolvedValueOnce({});
+      mockAnthropicCreate.mockResolvedValueOnce({ usage: { input_tokens: 100, output_tokens: 50 } });
 
       await runWatchdog();
 
