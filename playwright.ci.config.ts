@@ -18,7 +18,7 @@ export default defineConfig({
     { name: 'chromium', use: { browserName: 'chromium' } },
   ],
   webServer: {
-    command: 'npx serve dist/cosmisk/browser -l 4173 -s',
+    command: 'npx serve apps/web/dist/cosmisk/browser -l 4173 -s',
     port: 4173,
     reuseExistingServer: !process.env['CI'],
     timeout: 30_000,

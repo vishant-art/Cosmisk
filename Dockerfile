@@ -3,15 +3,16 @@ FROM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Install frontend dependencies
+# Install frontend workspace dependencies
 COPY package.json package-lock.json* ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/types/package.json ./packages/types/
 RUN npm install --no-audit --no-fund
 
 # Copy frontend source and build
-COPY src/ ./src/
-COPY angular.json tsconfig.json tsconfig.app.json ./
-COPY tailwind.config.js ./
-RUN npx ng build --configuration production
+COPY apps/web/ ./apps/web/
+COPY packages/types/ ./packages/types/
+RUN npm run build -w @cosmisk/web -- --configuration production
 
 # ---- Backend Build Stage ----
 FROM node:22-alpine AS builder
@@ -22,11 +23,11 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # Install server dependencies
-COPY server/package.json server/package-lock.json* ./
+COPY apps/api/package.json apps/api/package-lock.json* ./
 RUN npm ci
 
 # Copy server source and build
-COPY server/ ./
+COPY apps/api/ ./
 RUN npm run build
 
 # ---- Production Stage ----
@@ -44,7 +45,7 @@ RUN npm ci --omit=dev && apk del python3 make g++ && apk add --no-cache libstdc+
 COPY --from=builder /app/dist/ ./dist/
 
 # Frontend (served by Fastify in production)
-COPY --from=frontend-builder /app/dist/cosmisk/browser/ ./public/
+COPY --from=frontend-builder /app/apps/web/dist/cosmisk/browser/ ./public/
 
 # Data directory for SQLite
 RUN mkdir -p ./data

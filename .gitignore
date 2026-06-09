@@ -6,6 +6,17 @@
 /out-tsc
 /bazel-out
 
+# Monorepo (Bucket H) app build artifacts + caches
+apps/*/dist/
+apps/*/.angular/
+apps/*/node_modules/
+apps/*/out-tsc/
+
+# Turborepo cache
+.turbo/
+apps/*/.turbo/
+packages/*/.turbo/
+
 # Node
 /node_modules
 npm-debug.log
@@ -42,16 +53,16 @@ testem.log
 Thumbs.db
 .vercel
 
-# Server data
-server/cosmisk.db
-server/cosmisk.db-wal
-server/cosmisk.db-shm
-server/test-results/
-server/pratap-sons-audit/
-server/data/
+# API data (apps/api — moved from server/ in H2)
+apps/api/cosmisk.db
+apps/api/cosmisk.db-wal
+apps/api/cosmisk.db-shm
+apps/api/data/
+apps/api/test-results/
+apps/api/pratap-sons-audit/
 
-# Build artifacts copied into server/public by the lean devcontainer
-server/public/
+# Build artifacts copied into apps/api/public by the lean devcontainer
+apps/api/public/
 
 # SSL certs
 ssl/

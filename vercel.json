@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "ng build --configuration production",
-  "outputDirectory": "dist/cosmisk/browser",
+  "buildCommand": "npm run build -w @cosmisk/web -- --configuration production",
+  "outputDirectory": "apps/web/dist/cosmisk/browser",
   "framework": "angular",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
