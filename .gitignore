@@ -99,3 +99,8 @@ dev_reports/agent_report.md
 
 # Portable scratch — copied out of project, never committed
 temp_reports/
+
+#venv
+cos/
+#servers??
+server/
