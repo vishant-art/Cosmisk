@@ -1,0 +1,5297 @@
+{
+  "meta": {
+    "account_id": "act_1738503939658460",
+    "account_name": "Pratapsons (mock)",
+    "currency": "INR",
+    "level": "campaign",
+    "time_increment": 1,
+    "date_range": {
+      "since": "2026-05-01",
+      "until": "2026-05-30"
+    },
+    "api_version": "v23.0",
+    "note": "MOCK data shaped like GET /act_<id>/insights?level=campaign&time_increment=1. Numeric fields are strings; conversions/revenue are nested in actions/action_values/purchase_roas."
+  },
+  "data": [
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-01",
+      "date_stop": "2026-05-01",
+      "spend": "22736.17",
+      "impressions": "256357",
+      "reach": "163911",
+      "frequency": "1.56",
+      "clicks": "2953",
+      "ctr": "1.152",
+      "cpc": "7.70",
+      "cpm": "88.69",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2717"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "203"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "91"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "44"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "88234.71"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.88"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-02",
+      "date_stop": "2026-05-02",
+      "spend": "19716.52",
+      "impressions": "222571",
+      "reach": "137663",
+      "frequency": "1.62",
+      "clicks": "2450",
+      "ctr": "1.101",
+      "cpc": "8.04",
+      "cpm": "88.58",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2254"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "131"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "72"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "40"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "80297.86"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.07"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-03",
+      "date_stop": "2026-05-03",
+      "spend": "22555.62",
+      "impressions": "232447",
+      "reach": "133362",
+      "frequency": "1.74",
+      "clicks": "2715",
+      "ctr": "1.168",
+      "cpc": "8.31",
+      "cpm": "97.04",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2497"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "181"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "83"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "46"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "91967.95"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.08"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-04",
+      "date_stop": "2026-05-04",
+      "spend": "22688.56",
+      "impressions": "215211",
+      "reach": "117953",
+      "frequency": "1.82",
+      "clicks": "2289",
+      "ctr": "1.064",
+      "cpc": "9.91",
+      "cpm": "105.42",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2106"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "142"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "81"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "44"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "87824.69"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.87"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-05",
+      "date_stop": "2026-05-05",
+      "spend": "23341.64",
+      "impressions": "232862",
+      "reach": "113746",
+      "frequency": "2.05",
+      "clicks": "2580",
+      "ctr": "1.108",
+      "cpc": "9.05",
+      "cpm": "100.24",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2373"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "195"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "101"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "46"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "92461.35"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.96"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-06",
+      "date_stop": "2026-05-06",
+      "spend": "21698.70",
+      "impressions": "210163",
+      "reach": "99724",
+      "frequency": "2.11",
+      "clicks": "2347",
+      "ctr": "1.117",
+      "cpc": "9.24",
+      "cpm": "103.25",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2159"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "159"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "92"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "44"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "87273.44"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.02"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-07",
+      "date_stop": "2026-05-07",
+      "spend": "19925.13",
+      "impressions": "224110",
+      "reach": "107346",
+      "frequency": "2.09",
+      "clicks": "2268",
+      "ctr": "1.012",
+      "cpc": "8.78",
+      "cpm": "88.91",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2087"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "144"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "69"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "72101.77"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.62"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-08",
+      "date_stop": "2026-05-08",
+      "spend": "20515.60",
+      "impressions": "228746",
+      "reach": "103516",
+      "frequency": "2.21",
+      "clicks": "2735",
+      "ctr": "1.196",
+      "cpc": "7.50",
+      "cpm": "89.69",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2517"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "157"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "76"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "37"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "73707.58"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.59"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-09",
+      "date_stop": "2026-05-09",
+      "spend": "19425.12",
+      "impressions": "210566",
+      "reach": "91847",
+      "frequency": "2.29",
+      "clicks": "2543",
+      "ctr": "1.208",
+      "cpc": "7.64",
+      "cpm": "92.25",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2339"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "151"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "74"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "72355.22"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.72"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-10",
+      "date_stop": "2026-05-10",
+      "spend": "21905.25",
+      "impressions": "246618",
+      "reach": "97204",
+      "frequency": "2.54",
+      "clicks": "2458",
+      "ctr": "0.997",
+      "cpc": "8.91",
+      "cpm": "88.82",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2262"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "147"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "79"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "41"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "81272.51"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.71"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-11",
+      "date_stop": "2026-05-11",
+      "spend": "19414.99",
+      "impressions": "213881",
+      "reach": "80343",
+      "frequency": "2.66",
+      "clicks": "2425",
+      "ctr": "1.134",
+      "cpc": "8.00",
+      "cpm": "90.77",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2231"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "157"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "70"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "71549.18"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.69"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-12",
+      "date_stop": "2026-05-12",
+      "spend": "20543.38",
+      "impressions": "213107",
+      "reach": "82134",
+      "frequency": "2.59",
+      "clicks": "2232",
+      "ctr": "1.048",
+      "cpc": "9.20",
+      "cpm": "96.40",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2054"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "150"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "67"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "66538.13"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.24"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-13",
+      "date_stop": "2026-05-13",
+      "spend": "20136.29",
+      "impressions": "211477",
+      "reach": "73027",
+      "frequency": "2.90",
+      "clicks": "2135",
+      "ctr": "1.010",
+      "cpc": "9.43",
+      "cpm": "95.22",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1965"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "102"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "58"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "32"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "63266.62"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.14"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-14",
+      "date_stop": "2026-05-14",
+      "spend": "21148.36",
+      "impressions": "248662",
+      "reach": "87775",
+      "frequency": "2.83",
+      "clicks": "2670",
+      "ctr": "1.074",
+      "cpc": "7.92",
+      "cpm": "85.05",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2456"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "159"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "79"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "71142.70"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.36"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-15",
+      "date_stop": "2026-05-15",
+      "spend": "22714.08",
+      "impressions": "227067",
+      "reach": "80877",
+      "frequency": "2.81",
+      "clicks": "2588",
+      "ctr": "1.140",
+      "cpc": "8.77",
+      "cpm": "100.03",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2381"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "143"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "77"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "38"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "75389.55"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.32"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-16",
+      "date_stop": "2026-05-16",
+      "spend": "20979.64",
+      "impressions": "223318",
+      "reach": "73741",
+      "frequency": "3.03",
+      "clicks": "2679",
+      "ctr": "1.200",
+      "cpc": "7.83",
+      "cpm": "93.94",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2465"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "121"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "65"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "60248.40"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.87"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-17",
+      "date_stop": "2026-05-17",
+      "spend": "20182.15",
+      "impressions": "195094",
+      "reach": "59578",
+      "frequency": "3.27",
+      "clicks": "2059",
+      "ctr": "1.056",
+      "cpc": "9.80",
+      "cpm": "103.45",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1894"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "124"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "60"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "57169.35"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.83"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-18",
+      "date_stop": "2026-05-18",
+      "spend": "18393.69",
+      "impressions": "181481",
+      "reach": "55769",
+      "frequency": "3.25",
+      "clicks": "2008",
+      "ctr": "1.107",
+      "cpc": "9.16",
+      "cpm": "101.35",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1847"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "95"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "50"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "55780.41"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.03"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-19",
+      "date_stop": "2026-05-19",
+      "spend": "17650.78",
+      "impressions": "172098",
+      "reach": "49677",
+      "frequency": "3.46",
+      "clicks": "1820",
+      "ctr": "1.058",
+      "cpc": "9.70",
+      "cpm": "102.56",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1674"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "109"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "49"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "27"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "53465.74"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.03"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-20",
+      "date_stop": "2026-05-20",
+      "spend": "21965.90",
+      "impressions": "257882",
+      "reach": "75191",
+      "frequency": "3.43",
+      "clicks": "2984",
+      "ctr": "1.157",
+      "cpc": "7.36",
+      "cpm": "85.18",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2745"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "105"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "59"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "56578.38"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.58"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-21",
+      "date_stop": "2026-05-21",
+      "spend": "19607.13",
+      "impressions": "189456",
+      "reach": "54945",
+      "frequency": "3.45",
+      "clicks": "2051",
+      "ctr": "1.083",
+      "cpc": "9.56",
+      "cpm": "103.49",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1887"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "103"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "51"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "27"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "53020.35"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.70"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-22",
+      "date_stop": "2026-05-22",
+      "spend": "20692.51",
+      "impressions": "194680",
+      "reach": "54696",
+      "frequency": "3.56",
+      "clicks": "2205",
+      "ctr": "1.133",
+      "cpc": "9.38",
+      "cpm": "106.29",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2029"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "103"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "51"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "51363.90"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.48"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-23",
+      "date_stop": "2026-05-23",
+      "spend": "17723.17",
+      "impressions": "182687",
+      "reach": "49862",
+      "frequency": "3.66",
+      "clicks": "1901",
+      "ctr": "1.041",
+      "cpc": "9.32",
+      "cpm": "97.01",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1749"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "70"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "40"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "42882.02"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.42"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-24",
+      "date_stop": "2026-05-24",
+      "spend": "19992.63",
+      "impressions": "193727",
+      "reach": "48729",
+      "frequency": "3.98",
+      "clicks": "1948",
+      "ctr": "1.006",
+      "cpc": "10.26",
+      "cpm": "103.20",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1792"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "92"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "44"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "46956.56"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.35"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-25",
+      "date_stop": "2026-05-25",
+      "spend": "17947.44",
+      "impressions": "185753",
+      "reach": "45440",
+      "frequency": "4.09",
+      "clicks": "2032",
+      "ctr": "1.094",
+      "cpc": "8.83",
+      "cpm": "96.62",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1869"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "92"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "42"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "40190.33"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.24"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-26",
+      "date_stop": "2026-05-26",
+      "spend": "17731.91",
+      "impressions": "190139",
+      "reach": "47700",
+      "frequency": "3.99",
+      "clicks": "2077",
+      "ctr": "1.093",
+      "cpc": "8.53",
+      "cpm": "93.26",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1911"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "84"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "40"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "19"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "38210.43"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.15"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-27",
+      "date_stop": "2026-05-27",
+      "spend": "21253.98",
+      "impressions": "232700",
+      "reach": "57170",
+      "frequency": "4.07",
+      "clicks": "2744",
+      "ctr": "1.180",
+      "cpc": "7.74",
+      "cpm": "91.34",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2525"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "76"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "42"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "44303.01"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.08"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-28",
+      "date_stop": "2026-05-28",
+      "spend": "18694.16",
+      "impressions": "209351",
+      "reach": "50890",
+      "frequency": "4.11",
+      "clicks": "2497",
+      "ctr": "1.193",
+      "cpc": "7.48",
+      "cpm": "89.30",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2297"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "89"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "40"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "39721.90"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.12"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-29",
+      "date_stop": "2026-05-29",
+      "spend": "19041.03",
+      "impressions": "185474",
+      "reach": "41049",
+      "frequency": "4.52",
+      "clicks": "2231",
+      "ctr": "1.203",
+      "cpc": "8.53",
+      "cpm": "102.66",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2053"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "86"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "39"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "18"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36684.36"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.93"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590000001",
+      "campaign_name": "Prospecting -- Summer Sale",
+      "date_start": "2026-05-30",
+      "date_stop": "2026-05-30",
+      "spend": "17202.40",
+      "impressions": "185483",
+      "reach": "43397",
+      "frequency": "4.27",
+      "clicks": "1860",
+      "ctr": "1.003",
+      "cpc": "9.25",
+      "cpm": "92.74",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1711"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "76"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "33"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "17"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "34325.77"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.00"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-01",
+      "date_stop": "2026-05-01",
+      "spend": "8492.84",
+      "impressions": "123610",
+      "reach": "103474",
+      "frequency": "1.19",
+      "clicks": "2563",
+      "ctr": "2.074",
+      "cpc": "3.31",
+      "cpm": "68.71",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2358"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "67"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "33"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "15"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26636.55"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.14"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-02",
+      "date_stop": "2026-05-02",
+      "spend": "9667.73",
+      "impressions": "124145",
+      "reach": "103518",
+      "frequency": "1.20",
+      "clicks": "2396",
+      "ctr": "1.930",
+      "cpc": "4.03",
+      "cpm": "77.87",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2204"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "69"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "32"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "16"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28094.17"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.91"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-03",
+      "date_stop": "2026-05-03",
+      "spend": "8376.31",
+      "impressions": "110322",
+      "reach": "88354",
+      "frequency": "1.25",
+      "clicks": "1952",
+      "ctr": "1.770",
+      "cpc": "4.29",
+      "cpm": "75.93",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1796"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "58"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "33"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "15"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26755.38"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.19"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-04",
+      "date_stop": "2026-05-04",
+      "spend": "8837.88",
+      "impressions": "134823",
+      "reach": "104134",
+      "frequency": "1.29",
+      "clicks": "2366",
+      "ctr": "1.756",
+      "cpc": "3.73",
+      "cpm": "65.55",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2177"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "63"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "34"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "16"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28958.76"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.28"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-05",
+      "date_stop": "2026-05-05",
+      "spend": "9965.89",
+      "impressions": "139567",
+      "reach": "108521",
+      "frequency": "1.29",
+      "clicks": "2663",
+      "ctr": "1.909",
+      "cpc": "3.74",
+      "cpm": "71.41",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2450"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "75"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "41"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "19"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33550.63"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.37"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-06",
+      "date_stop": "2026-05-06",
+      "spend": "10446.32",
+      "impressions": "143327",
+      "reach": "109667",
+      "frequency": "1.31",
+      "clicks": "2614",
+      "ctr": "1.824",
+      "cpc": "4.00",
+      "cpm": "72.88",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2405"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "80"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "37"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "19"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33825.39"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.24"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-07",
+      "date_stop": "2026-05-07",
+      "spend": "9079.32",
+      "impressions": "115904",
+      "reach": "82093",
+      "frequency": "1.41",
+      "clicks": "2014",
+      "ctr": "1.738",
+      "cpc": "4.51",
+      "cpm": "78.33",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1853"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "59"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "32"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "17"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31161.23"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.43"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-08",
+      "date_stop": "2026-05-08",
+      "spend": "11374.82",
+      "impressions": "167750",
+      "reach": "118060",
+      "frequency": "1.42",
+      "clicks": "2969",
+      "ctr": "1.770",
+      "cpc": "3.83",
+      "cpm": "67.81",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2731"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "108"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "51"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "42612.48"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.75"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-09",
+      "date_stop": "2026-05-09",
+      "spend": "10770.81",
+      "impressions": "174478",
+      "reach": "123345",
+      "frequency": "1.41",
+      "clicks": "3525",
+      "ctr": "2.020",
+      "cpc": "3.06",
+      "cpm": "61.73",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3243"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "92"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "44"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "41877.76"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.89"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-10",
+      "date_stop": "2026-05-10",
+      "spend": "11800.49",
+      "impressions": "186132",
+      "reach": "136587",
+      "frequency": "1.36",
+      "clicks": "3574",
+      "ctr": "1.920",
+      "cpc": "3.30",
+      "cpm": "63.40",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3288"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "91"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "44"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "40915.46"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.47"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-11",
+      "date_stop": "2026-05-11",
+      "spend": "11429.36",
+      "impressions": "173080",
+      "reach": "118489",
+      "frequency": "1.46",
+      "clicks": "3280",
+      "ctr": "1.896",
+      "cpc": "3.48",
+      "cpm": "66.03",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3018"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "110"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "50"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "40921.35"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.58"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-12",
+      "date_stop": "2026-05-12",
+      "spend": "9967.22",
+      "impressions": "161649",
+      "reach": "112821",
+      "frequency": "1.43",
+      "clicks": "3237",
+      "ctr": "2.003",
+      "cpc": "3.08",
+      "cpm": "61.66",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2978"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "80"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "43"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "37751.79"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.79"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-13",
+      "date_stop": "2026-05-13",
+      "spend": "11884.91",
+      "impressions": "192429",
+      "reach": "130118",
+      "frequency": "1.48",
+      "clicks": "3345",
+      "ctr": "1.739",
+      "cpc": "3.55",
+      "cpm": "61.76",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3077"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "126"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "56"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "46858.38"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "3.94"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-14",
+      "date_stop": "2026-05-14",
+      "spend": "11545.65",
+      "impressions": "180153",
+      "reach": "118033",
+      "frequency": "1.53",
+      "clicks": "3167",
+      "ctr": "1.758",
+      "cpc": "3.64",
+      "cpm": "64.09",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2914"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "116"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "52"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "27"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "48487.22"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.20"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-15",
+      "date_stop": "2026-05-15",
+      "spend": "12431.79",
+      "impressions": "190878",
+      "reach": "119352",
+      "frequency": "1.60",
+      "clicks": "3445",
+      "ctr": "1.805",
+      "cpc": "3.61",
+      "cpm": "65.13",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3169"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "119"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "55"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "53413.20"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.30"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-16",
+      "date_stop": "2026-05-16",
+      "spend": "12880.34",
+      "impressions": "200639",
+      "reach": "126913",
+      "frequency": "1.58",
+      "clicks": "4139",
+      "ctr": "2.063",
+      "cpc": "3.11",
+      "cpm": "64.20",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3808"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "142"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "62"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "52499.56"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.08"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-17",
+      "date_stop": "2026-05-17",
+      "spend": "12872.79",
+      "impressions": "174017",
+      "reach": "115179",
+      "frequency": "1.51",
+      "clicks": "3195",
+      "ctr": "1.836",
+      "cpc": "4.03",
+      "cpm": "73.97",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2939"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "153"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "70"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "32"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "57553.55"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.47"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-18",
+      "date_stop": "2026-05-18",
+      "spend": "13228.48",
+      "impressions": "176785",
+      "reach": "112402",
+      "frequency": "1.57",
+      "clicks": "3095",
+      "ctr": "1.751",
+      "cpc": "4.27",
+      "cpm": "74.83",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2847"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "157"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "71"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "59567.02"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.50"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-19",
+      "date_stop": "2026-05-19",
+      "spend": "11528.90",
+      "impressions": "172776",
+      "reach": "106128",
+      "frequency": "1.63",
+      "clicks": "3476",
+      "ctr": "2.012",
+      "cpc": "3.32",
+      "cpm": "66.73",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3198"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "94"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "55"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "52879.01"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.59"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-20",
+      "date_stop": "2026-05-20",
+      "spend": "11614.53",
+      "impressions": "149203",
+      "reach": "86793",
+      "frequency": "1.72",
+      "clicks": "2709",
+      "ctr": "1.816",
+      "cpc": "4.29",
+      "cpm": "77.84",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2492"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "113"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "58"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "50167.08"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.32"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-21",
+      "date_stop": "2026-05-21",
+      "spend": "14193.47",
+      "impressions": "223386",
+      "reach": "127164",
+      "frequency": "1.76",
+      "clicks": "4643",
+      "ctr": "2.079",
+      "cpc": "3.06",
+      "cpm": "63.54",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "4272"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "153"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "67"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "64486.85"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.54"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-22",
+      "date_stop": "2026-05-22",
+      "spend": "12183.65",
+      "impressions": "165001",
+      "reach": "97304",
+      "frequency": "1.70",
+      "clicks": "3018",
+      "ctr": "1.829",
+      "cpc": "4.04",
+      "cpm": "73.84",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2776"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "118"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "59"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "52454.49"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.31"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-23",
+      "date_stop": "2026-05-23",
+      "spend": "12735.70",
+      "impressions": "173256",
+      "reach": "102605",
+      "frequency": "1.69",
+      "clicks": "2963",
+      "ctr": "1.711",
+      "cpc": "4.30",
+      "cpm": "73.51",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2726"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "146"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "72"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "60191.21"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.73"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-24",
+      "date_stop": "2026-05-24",
+      "spend": "13982.27",
+      "impressions": "206475",
+      "reach": "115664",
+      "frequency": "1.79",
+      "clicks": "3585",
+      "ctr": "1.737",
+      "cpc": "3.90",
+      "cpm": "67.72",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3298"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "148"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "78"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "38"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "68911.76"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.93"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-25",
+      "date_stop": "2026-05-25",
+      "spend": "12867.44",
+      "impressions": "193073",
+      "reach": "106176",
+      "frequency": "1.82",
+      "clicks": "3528",
+      "ctr": "1.828",
+      "cpc": "3.65",
+      "cpm": "66.65",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3246"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "138"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "71"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "65483.90"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "5.09"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-26",
+      "date_stop": "2026-05-26",
+      "spend": "12985.49",
+      "impressions": "167775",
+      "reach": "93776",
+      "frequency": "1.79",
+      "clicks": "3300",
+      "ctr": "1.967",
+      "cpc": "3.93",
+      "cpm": "77.40",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3036"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "147"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "71"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "59792.33"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.60"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-27",
+      "date_stop": "2026-05-27",
+      "spend": "13180.15",
+      "impressions": "198435",
+      "reach": "114287",
+      "frequency": "1.74",
+      "clicks": "3717",
+      "ctr": "1.873",
+      "cpc": "3.55",
+      "cpm": "66.42",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3420"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "157"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "75"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "37"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "66039.82"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "5.01"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-28",
+      "date_stop": "2026-05-28",
+      "spend": "13909.71",
+      "impressions": "199997",
+      "reach": "111189",
+      "frequency": "1.80",
+      "clicks": "4104",
+      "ctr": "2.052",
+      "cpc": "3.39",
+      "cpm": "69.55",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3776"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "150"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "83"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "39"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "69570.23"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "5.00"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-29",
+      "date_stop": "2026-05-29",
+      "spend": "12797.40",
+      "impressions": "190349",
+      "reach": "100141",
+      "frequency": "1.90",
+      "clicks": "3846",
+      "ctr": "2.021",
+      "cpc": "3.33",
+      "cpm": "67.23",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3539"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "164"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "78"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "37"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "65737.78"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "5.14"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590001001",
+      "campaign_name": "UGC -- Reels Push",
+      "date_start": "2026-05-30",
+      "date_stop": "2026-05-30",
+      "spend": "13448.36",
+      "impressions": "204651",
+      "reach": "113089",
+      "frequency": "1.81",
+      "clicks": "3869",
+      "ctr": "1.891",
+      "cpc": "3.48",
+      "cpm": "65.71",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "3559"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "138"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "79"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "37"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "66565.02"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "4.95"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-01",
+      "date_stop": "2026-05-01",
+      "spend": "3917.86",
+      "impressions": "34014",
+      "reach": "16707",
+      "frequency": "2.04",
+      "clicks": "815",
+      "ctr": "2.397",
+      "cpc": "4.80",
+      "cpm": "115.18",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "750"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "48"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "25994.85"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.63"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-02",
+      "date_stop": "2026-05-02",
+      "spend": "3525.32",
+      "impressions": "35389",
+      "reach": "16275",
+      "frequency": "2.17",
+      "clicks": "836",
+      "ctr": "2.364",
+      "cpc": "4.21",
+      "cpm": "99.61",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "769"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "48"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "21"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23897.94"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.78"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-03",
+      "date_stop": "2026-05-03",
+      "spend": "4017.24",
+      "impressions": "33702",
+      "reach": "16195",
+      "frequency": "2.08",
+      "clicks": "801",
+      "ctr": "2.379",
+      "cpc": "5.01",
+      "cpm": "119.20",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "737"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "48"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24361.46"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.06"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-04",
+      "date_stop": "2026-05-04",
+      "spend": "4468.38",
+      "impressions": "37133",
+      "reach": "16514",
+      "frequency": "2.25",
+      "clicks": "911",
+      "ctr": "2.454",
+      "cpc": "4.90",
+      "cpm": "120.33",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "838"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "58"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "29"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29722.68"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.65"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-05",
+      "date_stop": "2026-05-05",
+      "spend": "4317.35",
+      "impressions": "37080",
+      "reach": "16442",
+      "frequency": "2.26",
+      "clicks": "885",
+      "ctr": "2.388",
+      "cpc": "4.88",
+      "cpm": "116.43",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "814"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "46"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "25"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "13"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28577.73"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.62"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-06",
+      "date_stop": "2026-05-06",
+      "spend": "4132.15",
+      "impressions": "36456",
+      "reach": "16640",
+      "frequency": "2.19",
+      "clicks": "835",
+      "ctr": "2.292",
+      "cpc": "4.95",
+      "cpm": "113.35",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "768"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "45"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "24"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "13"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28372.70"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.87"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-07",
+      "date_stop": "2026-05-07",
+      "spend": "3780.85",
+      "impressions": "37637",
+      "reach": "17013",
+      "frequency": "2.21",
+      "clicks": "854",
+      "ctr": "2.271",
+      "cpc": "4.42",
+      "cpm": "100.45",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "786"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "49"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24246.43"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.41"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-08",
+      "date_stop": "2026-05-08",
+      "spend": "3581.66",
+      "impressions": "33232",
+      "reach": "14901",
+      "frequency": "2.23",
+      "clicks": "750",
+      "ctr": "2.259",
+      "cpc": "4.77",
+      "cpm": "107.78",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "690"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "49"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "22"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23362.48"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.52"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-09",
+      "date_stop": "2026-05-09",
+      "spend": "4080.72",
+      "impressions": "34874",
+      "reach": "15046",
+      "frequency": "2.32",
+      "clicks": "816",
+      "ctr": "2.343",
+      "cpc": "4.99",
+      "cpm": "117.01",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "751"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "44"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "13"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "27934.91"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.85"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-10",
+      "date_stop": "2026-05-10",
+      "spend": "4243.34",
+      "impressions": "39340",
+      "reach": "16687",
+      "frequency": "2.36",
+      "clicks": "990",
+      "ctr": "2.519",
+      "cpc": "4.28",
+      "cpm": "107.86",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "911"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "58"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "28"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29837.16"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.03"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-11",
+      "date_stop": "2026-05-11",
+      "spend": "3731.72",
+      "impressions": "38248",
+      "reach": "16940",
+      "frequency": "2.26",
+      "clicks": "887",
+      "ctr": "2.321",
+      "cpc": "4.20",
+      "cpm": "97.57",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "816"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "45"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23781.76"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.37"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-12",
+      "date_stop": "2026-05-12",
+      "spend": "3678.44",
+      "impressions": "32487",
+      "reach": "14737",
+      "frequency": "2.20",
+      "clicks": "705",
+      "ctr": "2.173",
+      "cpc": "5.21",
+      "cpm": "113.23",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "649"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "45"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "22"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24479.12"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.65"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-13",
+      "date_stop": "2026-05-13",
+      "spend": "3546.02",
+      "impressions": "32535",
+      "reach": "14636",
+      "frequency": "2.22",
+      "clicks": "710",
+      "ctr": "2.184",
+      "cpc": "4.99",
+      "cpm": "108.99",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "653"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "38"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "21"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24325.97"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.86"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-14",
+      "date_stop": "2026-05-14",
+      "spend": "3833.77",
+      "impressions": "32864",
+      "reach": "14313",
+      "frequency": "2.30",
+      "clicks": "841",
+      "ctr": "2.559",
+      "cpc": "4.56",
+      "cpm": "116.65",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "773"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "40"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26856.28"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.01"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-15",
+      "date_stop": "2026-05-15",
+      "spend": "3538.61",
+      "impressions": "33370",
+      "reach": "13574",
+      "frequency": "2.46",
+      "clicks": "824",
+      "ctr": "2.472",
+      "cpc": "4.29",
+      "cpm": "106.04",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "758"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "48"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24005.55"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.78"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-16",
+      "date_stop": "2026-05-16",
+      "spend": "4244.06",
+      "impressions": "43601",
+      "reach": "19058",
+      "frequency": "2.29",
+      "clicks": "973",
+      "ctr": "2.233",
+      "cpc": "4.36",
+      "cpm": "97.34",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "895"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "55"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "26"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30747.49"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.24"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-17",
+      "date_stop": "2026-05-17",
+      "spend": "4061.41",
+      "impressions": "34699",
+      "reach": "14319",
+      "frequency": "2.42",
+      "clicks": "777",
+      "ctr": "2.241",
+      "cpc": "5.22",
+      "cpm": "117.05",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "715"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "54"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "25"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26277.72"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.47"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-18",
+      "date_stop": "2026-05-18",
+      "spend": "3629.95",
+      "impressions": "36425",
+      "reach": "14545",
+      "frequency": "2.50",
+      "clicks": "791",
+      "ctr": "2.172",
+      "cpc": "4.59",
+      "cpm": "99.65",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "727"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "48"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "25918.40"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.14"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-19",
+      "date_stop": "2026-05-19",
+      "spend": "4439.85",
+      "impressions": "44934",
+      "reach": "18250",
+      "frequency": "2.46",
+      "clicks": "1119",
+      "ctr": "2.491",
+      "cpc": "3.97",
+      "cpm": "98.81",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1029"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "51"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "29"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29736.91"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.70"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-20",
+      "date_stop": "2026-05-20",
+      "spend": "4261.58",
+      "impressions": "42617",
+      "reach": "17381",
+      "frequency": "2.45",
+      "clicks": "1121",
+      "ctr": "2.632",
+      "cpc": "3.80",
+      "cpm": "100.00",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1032"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "57"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "30"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30727.07"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.21"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-21",
+      "date_stop": "2026-05-21",
+      "spend": "3931.24",
+      "impressions": "37154",
+      "reach": "15188",
+      "frequency": "2.45",
+      "clicks": "954",
+      "ctr": "2.568",
+      "cpc": "4.12",
+      "cpm": "105.81",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "877"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "46"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "26"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26351.44"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.70"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-22",
+      "date_stop": "2026-05-22",
+      "spend": "4442.36",
+      "impressions": "38470",
+      "reach": "15128",
+      "frequency": "2.54",
+      "clicks": "911",
+      "ctr": "2.369",
+      "cpc": "4.87",
+      "cpm": "115.47",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "838"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "66"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "29"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31145.06"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.01"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-23",
+      "date_stop": "2026-05-23",
+      "spend": "3779.28",
+      "impressions": "34493",
+      "reach": "13859",
+      "frequency": "2.49",
+      "clicks": "817",
+      "ctr": "2.369",
+      "cpc": "4.62",
+      "cpm": "109.56",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "751"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "47"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "25"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "27280.89"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.22"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-24",
+      "date_stop": "2026-05-24",
+      "spend": "4337.64",
+      "impressions": "36124",
+      "reach": "15093",
+      "frequency": "2.39",
+      "clicks": "822",
+      "ctr": "2.277",
+      "cpc": "5.27",
+      "cpm": "120.08",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "756"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "58"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "28"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31497.79"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.26"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-25",
+      "date_stop": "2026-05-25",
+      "spend": "3883.83",
+      "impressions": "38226",
+      "reach": "14691",
+      "frequency": "2.60",
+      "clicks": "864",
+      "ctr": "2.262",
+      "cpc": "4.49",
+      "cpm": "101.60",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "795"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "44"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "23"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "11"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24827.14"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.39"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-26",
+      "date_stop": "2026-05-26",
+      "spend": "4365.11",
+      "impressions": "44969",
+      "reach": "18173",
+      "frequency": "2.47",
+      "clicks": "1175",
+      "ctr": "2.615",
+      "cpc": "3.71",
+      "cpm": "97.07",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1081"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "55"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "26"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "14"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31228.59"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.15"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-27",
+      "date_stop": "2026-05-27",
+      "spend": "3989.03",
+      "impressions": "35037",
+      "reach": "13492",
+      "frequency": "2.60",
+      "clicks": "839",
+      "ctr": "2.396",
+      "cpc": "4.75",
+      "cpm": "113.85",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "772"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "49"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "28"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "13"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28861.80"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.24"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-28",
+      "date_stop": "2026-05-28",
+      "spend": "3732.73",
+      "impressions": "33282",
+      "reach": "13229",
+      "frequency": "2.52",
+      "clicks": "794",
+      "ctr": "2.387",
+      "cpc": "4.70",
+      "cpm": "112.15",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "730"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "47"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "24"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26798.26"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.18"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-29",
+      "date_stop": "2026-05-29",
+      "spend": "4236.10",
+      "impressions": "40750",
+      "reach": "15464",
+      "frequency": "2.64",
+      "clicks": "929",
+      "ctr": "2.281",
+      "cpc": "4.56",
+      "cpm": "103.95",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "855"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "44"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "24"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "13"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28778.83"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "6.79"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590002001",
+      "campaign_name": "Retargeting -- Evergreen",
+      "date_start": "2026-05-30",
+      "date_stop": "2026-05-30",
+      "spend": "3634.77",
+      "impressions": "35744",
+      "reach": "13396",
+      "frequency": "2.67",
+      "clicks": "809",
+      "ctr": "2.264",
+      "cpc": "4.49",
+      "cpm": "101.69",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "744"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "51"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "24"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "12"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "25589.41"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "7.04"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-01",
+      "date_stop": "2026-05-01",
+      "spend": "20058.94",
+      "impressions": "369766",
+      "reach": "125989",
+      "frequency": "2.93",
+      "clicks": "2777",
+      "ctr": "0.751",
+      "cpc": "7.22",
+      "cpm": "54.25",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2554"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "89"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "49"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "26"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "38262.22"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.91"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-02",
+      "date_stop": "2026-05-02",
+      "spend": "15901.12",
+      "impressions": "237934",
+      "reach": "80771",
+      "frequency": "2.95",
+      "clicks": "1923",
+      "ctr": "0.809",
+      "cpc": "8.27",
+      "cpm": "66.83",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1769"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "75"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "42"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30266.87"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.90"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-03",
+      "date_stop": "2026-05-03",
+      "spend": "19591.75",
+      "impressions": "320826",
+      "reach": "102160",
+      "frequency": "3.14",
+      "clicks": "2550",
+      "ctr": "0.795",
+      "cpc": "7.68",
+      "cpm": "61.07",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2346"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "89"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "49"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "25"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36900.17"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.88"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-04",
+      "date_stop": "2026-05-04",
+      "spend": "16061.95",
+      "impressions": "248488",
+      "reach": "81885",
+      "frequency": "3.03",
+      "clicks": "1948",
+      "ctr": "0.784",
+      "cpc": "8.24",
+      "cpm": "64.64",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1792"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "83"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "40"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "32315.57"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "2.01"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-05",
+      "date_stop": "2026-05-05",
+      "spend": "16071.59",
+      "impressions": "281093",
+      "reach": "91431",
+      "frequency": "3.07",
+      "clicks": "2470",
+      "ctr": "0.879",
+      "cpc": "6.50",
+      "cpm": "57.18",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2273"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "76"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "35"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "19"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28403.62"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.77"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-06",
+      "date_stop": "2026-05-06",
+      "spend": "18459.29",
+      "impressions": "305997",
+      "reach": "102519",
+      "frequency": "2.98",
+      "clicks": "2423",
+      "ctr": "0.792",
+      "cpc": "7.62",
+      "cpm": "60.33",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2229"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "104"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "47"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36038.05"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.95"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-07",
+      "date_stop": "2026-05-07",
+      "spend": "20116.94",
+      "impressions": "326686",
+      "reach": "104704",
+      "frequency": "3.12",
+      "clicks": "2738",
+      "ctr": "0.838",
+      "cpc": "7.34",
+      "cpm": "61.58",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2519"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "95"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "52"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36225.47"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.80"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-08",
+      "date_stop": "2026-05-08",
+      "spend": "16751.63",
+      "impressions": "302906",
+      "reach": "101294",
+      "frequency": "2.99",
+      "clicks": "2217",
+      "ctr": "0.732",
+      "cpc": "7.55",
+      "cpm": "55.30",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2039"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "75"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "38"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31815.62"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.90"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-09",
+      "date_stop": "2026-05-09",
+      "spend": "18405.26",
+      "impressions": "292239",
+      "reach": "96549",
+      "frequency": "3.03",
+      "clicks": "2432",
+      "ctr": "0.832",
+      "cpc": "7.57",
+      "cpm": "62.98",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2238"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "93"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "44"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "32820.51"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.78"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-10",
+      "date_stop": "2026-05-10",
+      "spend": "19831.30",
+      "impressions": "318211",
+      "reach": "100597",
+      "frequency": "3.16",
+      "clicks": "2766",
+      "ctr": "0.869",
+      "cpc": "7.17",
+      "cpm": "62.32",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2545"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "99"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "49"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "25"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "38127.10"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.92"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-11",
+      "date_stop": "2026-05-11",
+      "spend": "18637.78",
+      "impressions": "346245",
+      "reach": "106851",
+      "frequency": "3.24",
+      "clicks": "2584",
+      "ctr": "0.747",
+      "cpc": "7.21",
+      "cpm": "53.83",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2378"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "99"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "46"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "24"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "36356.44"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.95"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-12",
+      "date_stop": "2026-05-12",
+      "spend": "18298.97",
+      "impressions": "291770",
+      "reach": "96188",
+      "frequency": "3.03",
+      "clicks": "2427",
+      "ctr": "0.832",
+      "cpc": "7.54",
+      "cpm": "62.72",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2233"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "96"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "48"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "32250.87"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.76"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-13",
+      "date_stop": "2026-05-13",
+      "spend": "17973.20",
+      "impressions": "304520",
+      "reach": "100839",
+      "frequency": "3.02",
+      "clicks": "2349",
+      "ctr": "0.772",
+      "cpc": "7.65",
+      "cpm": "59.02",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2161"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "67"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "38"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30469.08"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.70"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-14",
+      "date_stop": "2026-05-14",
+      "spend": "19995.46",
+      "impressions": "300722",
+      "reach": "93881",
+      "frequency": "3.20",
+      "clicks": "2646",
+      "ctr": "0.880",
+      "cpc": "7.56",
+      "cpm": "66.49",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2434"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "97"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "52"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "25"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "38144.47"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.91"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-15",
+      "date_stop": "2026-05-15",
+      "spend": "16013.80",
+      "impressions": "257532",
+      "reach": "80891",
+      "frequency": "3.18",
+      "clicks": "2231",
+      "ctr": "0.867",
+      "cpc": "7.18",
+      "cpm": "62.18",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2053"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "76"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "37"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "30064.23"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.88"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-16",
+      "date_stop": "2026-05-16",
+      "spend": "18582.27",
+      "impressions": "321433",
+      "reach": "104503",
+      "frequency": "3.08",
+      "clicks": "2485",
+      "ctr": "0.773",
+      "cpc": "7.48",
+      "cpm": "57.81",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2286"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "100"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "45"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33339.81"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.79"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-17",
+      "date_stop": "2026-05-17",
+      "spend": "17264.75",
+      "impressions": "259969",
+      "reach": "82464",
+      "frequency": "3.15",
+      "clicks": "2210",
+      "ctr": "0.850",
+      "cpc": "7.81",
+      "cpm": "66.41",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2033"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "83"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "42"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31855.41"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.85"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-18",
+      "date_stop": "2026-05-18",
+      "spend": "17198.71",
+      "impressions": "293392",
+      "reach": "86634",
+      "frequency": "3.39",
+      "clicks": "2353",
+      "ctr": "0.802",
+      "cpc": "7.31",
+      "cpm": "58.62",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2165"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "92"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "44"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29794.18"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.73"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-19",
+      "date_stop": "2026-05-19",
+      "spend": "18184.00",
+      "impressions": "313465",
+      "reach": "99614",
+      "frequency": "3.15",
+      "clicks": "2636",
+      "ctr": "0.841",
+      "cpc": "6.90",
+      "cpm": "58.01",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2425"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "93"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "43"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31844.05"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.75"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-20",
+      "date_stop": "2026-05-20",
+      "spend": "16719.37",
+      "impressions": "282857",
+      "reach": "83154",
+      "frequency": "3.40",
+      "clicks": "2352",
+      "ctr": "0.832",
+      "cpc": "7.11",
+      "cpm": "59.11",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2164"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "85"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "37"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29808.91"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.78"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-21",
+      "date_stop": "2026-05-21",
+      "spend": "18470.33",
+      "impressions": "304127",
+      "reach": "96122",
+      "frequency": "3.16",
+      "clicks": "2458",
+      "ctr": "0.808",
+      "cpc": "7.51",
+      "cpm": "60.73",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2261"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "90"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "39"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31188.42"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.69"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-22",
+      "date_stop": "2026-05-22",
+      "spend": "19783.86",
+      "impressions": "305387",
+      "reach": "96524",
+      "frequency": "3.16",
+      "clicks": "2442",
+      "ctr": "0.800",
+      "cpc": "8.10",
+      "cpm": "64.78",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2246"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "96"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "48"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "34509.89"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.74"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-23",
+      "date_stop": "2026-05-23",
+      "spend": "17021.20",
+      "impressions": "302278",
+      "reach": "87310",
+      "frequency": "3.46",
+      "clicks": "2443",
+      "ctr": "0.808",
+      "cpc": "6.97",
+      "cpm": "56.31",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2247"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "92"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "41"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31351.45"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.84"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-24",
+      "date_stop": "2026-05-24",
+      "spend": "18035.60",
+      "impressions": "317651",
+      "reach": "92394",
+      "frequency": "3.44",
+      "clicks": "2688",
+      "ctr": "0.846",
+      "cpc": "6.71",
+      "cpm": "56.78",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2473"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "97"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "43"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33312.97"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.85"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-25",
+      "date_stop": "2026-05-25",
+      "spend": "18033.43",
+      "impressions": "315826",
+      "reach": "96917",
+      "frequency": "3.26",
+      "clicks": "2570",
+      "ctr": "0.814",
+      "cpc": "7.02",
+      "cpm": "57.10",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2364"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "96"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "48"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "22"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "32882.89"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.82"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-26",
+      "date_stop": "2026-05-26",
+      "spend": "16481.93",
+      "impressions": "271318",
+      "reach": "82391",
+      "frequency": "3.29",
+      "clicks": "2189",
+      "ctr": "0.807",
+      "cpc": "7.53",
+      "cpm": "60.75",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2014"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "72"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "38"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "19"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "28649.73"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.74"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-27",
+      "date_stop": "2026-05-27",
+      "spend": "16654.98",
+      "impressions": "296545",
+      "reach": "87664",
+      "frequency": "3.38",
+      "clicks": "2503",
+      "ctr": "0.844",
+      "cpc": "6.65",
+      "cpm": "56.16",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2302"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "77"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "36"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "20"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "29563.64"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.78"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-28",
+      "date_stop": "2026-05-28",
+      "spend": "18886.58",
+      "impressions": "302877",
+      "reach": "90845",
+      "frequency": "3.33",
+      "clicks": "2578",
+      "ctr": "0.851",
+      "cpc": "7.32",
+      "cpm": "62.36",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "2372"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "100"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "50"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "23"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "33980.43"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.80"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-29",
+      "date_stop": "2026-05-29",
+      "spend": "15999.92",
+      "impressions": "244932",
+      "reach": "71686",
+      "frequency": "3.42",
+      "clicks": "2106",
+      "ctr": "0.860",
+      "cpc": "7.60",
+      "cpm": "65.32",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1937"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "73"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "36"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "18"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "27320.23"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.71"
+        }
+      ]
+    },
+    {
+      "campaign_id": "238590003001",
+      "campaign_name": "Catalog -- DPA Broad",
+      "date_start": "2026-05-30",
+      "date_stop": "2026-05-30",
+      "spend": "17813.93",
+      "impressions": "286264",
+      "reach": "84960",
+      "frequency": "3.37",
+      "clicks": "2131",
+      "ctr": "0.745",
+      "cpc": "8.36",
+      "cpm": "62.23",
+      "actions": [
+        {
+          "action_type": "link_click",
+          "value": "1961"
+        },
+        {
+          "action_type": "add_to_cart",
+          "value": "96"
+        },
+        {
+          "action_type": "initiate_checkout",
+          "value": "42"
+        },
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "21"
+        }
+      ],
+      "action_values": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "31361.51"
+        }
+      ],
+      "purchase_roas": [
+        {
+          "action_type": "offsite_conversion.fb_pixel_purchase",
+          "value": "1.76"
+        }
+      ]
+    }
+  ]
+}
