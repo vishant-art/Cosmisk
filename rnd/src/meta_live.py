@@ -57,11 +57,13 @@ ATTRIBUTION_WINDOWS = ["1d_view", "7d_click"]
 
 
 def _fail(status, body):
+    """Raise a RuntimeError so library callers (chat.py / brain_real.py) can handle
+    it cleanly. The standalone CLI catches it at __main__ and prints + exits."""
     e = body.get("error", {}) if isinstance(body, dict) else {}
-    print(f"\n[x] Meta API error ({status}): {e.get('message')}")
-    print(f"    type={e.get('type')} code={e.get('code')} "
-          f"subcode={e.get('error_subcode')} fbtrace_id={e.get('fbtrace_id')}")
-    sys.exit(1)
+    raise RuntimeError(
+        f"Meta API error ({status}): {e.get('message')} "
+        f"[type={e.get('type')} code={e.get('code')} "
+        f"subcode={e.get('error_subcode')} fbtrace_id={e.get('fbtrace_id')}]")
 
 
 def get(path, params):
@@ -69,8 +71,7 @@ def get(path, params):
     try:
         body = r.json()
     except ValueError:
-        print(f"\n[x] Non-JSON response ({r.status_code}): {r.text[:300]}")
-        sys.exit(1)
+        raise RuntimeError(f"Non-JSON response ({r.status_code}): {r.text[:300]}")
     if isinstance(body, dict) and "error" in body:
         _fail(r.status_code, body)
     return body
@@ -115,6 +116,59 @@ def save_envelope(path, account, acct_meta, rows):
     }
     Path(path).write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     print(f"\nSaved {len(rows)} rows -> {path}")
+
+
+def list_accounts(token):
+    """All ad accounts the token can see (id, name, currency, status)."""
+    return get("me/adaccounts", {
+        "access_token": token,
+        "fields": "account_id,name,currency,account_status",
+        "limit": 100,
+    }).get("data", [])
+
+
+def fetch_envelope(token, account=None, preset="last_30d", level="campaign", max_rows=5000):
+    """Pull a live paginated Insights export as a {meta, data} envelope.
+
+    Reusable by chat.py / brain_real.py. Picks the first account if `account` is
+    None. Raises RuntimeError if the token sees no ad accounts.
+    """
+    accts = list_accounts(token)
+    if not accts:
+        raise RuntimeError("No ad accounts visible to this token.")
+    acct = account or f"act_{accts[0]['account_id']}"
+    acct_meta = next((a for a in accts if f"act_{a['account_id']}" == acct), {})
+    rows, pages = get_insights_paged(acct, {
+        "access_token": token,
+        "level": level,
+        "fields": ",".join(FIELDS),
+        "action_attribution_windows": json.dumps(ATTRIBUTION_WINDOWS),
+        "date_preset": preset,
+        "time_increment": 1,
+        "limit": 500,
+    }, max_rows=max_rows)
+    dates = [r.get("date_start") for r in rows if r.get("date_start")]
+    return {
+        "meta": {
+            "account_id": acct,
+            "account_name": acct_meta.get("name", "?"),
+            "currency": acct_meta.get("currency", "INR"),
+            "level": level,
+            "time_increment": 1,
+            "date_range": {"since": min(dates) if dates else None,
+                           "until": max(dates) if dates else None},
+            "api_version": GRAPH_API_VERSION,
+            "source": "live",
+            "pages": pages,
+        },
+        "data": rows,
+    }
+
+
+def fetch_dataset(token, account=None, preset="last_30d", level="campaign", max_rows=5000):
+    """Live pull -> typed meta_transform.Dataset (one call for consumers)."""
+    return mt.normalize(fetch_envelope(token, account=account, preset=preset,
+                                       level=level, max_rows=max_rows))
 
 
 def main():
@@ -195,4 +249,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as e:
+        print(f"\n[x] {e}")
+        sys.exit(1)

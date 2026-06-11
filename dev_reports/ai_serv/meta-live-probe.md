@@ -64,8 +64,25 @@ expect a Meta error (printed with type/code/fbtrace_id) rather than a crash.
   A 30-day Pratap-sons pull returned **1,176 rows across 3 pages, 84 campaigns** —
   a single-page fetch (`limit`) would have silently truncated at 500.
 - **`--save PATH`**: writes the pull to a `{meta, data}` envelope JSON identical in
-  shape to `mock_meta_ads.json`, so `brain.py --data` and `chat.py --data` run on
-  real data unchanged. (Output is real client data -> gitignored as `_real_*.json`.)
+  shape to `data/mock_meta_ads.json`, so `brain.py --data` and `chat.py --data` run
+  on real data unchanged. (Real client data -> gitignored as `_real_*.json`.)
+
+## Reusable live-fetch helpers (the library surface)
+
+`meta_live` is both a CLI probe and the shared ingestion library. `chat.py` and
+`brain_real.py` import these instead of duplicating fetch logic:
+
+- `list_accounts(token)` -> the ad accounts a token can see.
+- `fetch_envelope(token, account=None, preset="last_30d", level="campaign", max_rows=5000)`
+  -> raw `{meta, data}` envelope (account discovery + paginated insights + correct
+  `FIELDS` + `action_attribution_windows`). `brain_real.py` uses this (it needs the
+  raw rows for `--save`).
+- `fetch_dataset(token, ...)` -> `mt.normalize(fetch_envelope(...))`, a typed
+  `Dataset` in one call. `chat.py` uses this on session start.
+
+**Error handling:** `_fail`/`get` now **raise `RuntimeError`** (not `sys.exit`) so
+library callers handle Meta API errors cleanly; the standalone CLI catches it at
+`__main__` and prints + exits.
 
 ## Live run findings (2026-06-11)
 

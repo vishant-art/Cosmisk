@@ -122,8 +122,9 @@ def _ask(question, ds):
         {"role": "system", "content": chat.SYSTEM.format(context=chat.build_context(ds))},
         {"role": "user", "content": question},
     ]
-    r = client.chat.completions.create(model=chat.MODEL, temperature=0, messages=msgs)
-    return r.choices[0].message.content
+    # go through chat.complete so the live tests exercise the real config
+    # (MODEL + REASONING_EFFORT), proving grounding holds under minimal reasoning.
+    return chat.complete(client, msgs)
 
 
 @live

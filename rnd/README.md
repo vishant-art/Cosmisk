@@ -13,7 +13,7 @@ rnd/
   src/        source modules
     meta_transform.py   L1 transform + typed contract (CampaignDayFact, Dataset)
     brain.py            deterministic NL statements + EDA charts (no LLM)
-    chat.py             context-injection RAG chatbot (OpenRouter, gpt-5-nano)
+    chat.py             context-injection RAG chatbot (OpenRouter, gemini-2.5-flash; full data)
     meta_live.py        live Graph API probe (paginated); --save exports an envelope
     make_mock.py        generates data/mock_meta_ads.json (seeded, messy actions)
   tests/      pytest: test_transform.py (L1 contract), test_chat.py (snapshot + live)
@@ -52,12 +52,13 @@ python src\brain.py --plots
 python src\meta_live.py
 python src\meta_live.py --account act_123 --preset last_30d --save data\_real_sample.json
 
-# brain / chat on the captured real data
+# brain on captured real data
 python src\brain.py --data data\_real_sample.json --plots
-python src\chat.py  --data data\_real_sample.json
 
-# RAG chatbot on mock (costs OpenRouter tokens)
+# RAG chatbot -- pulls LIVE Meta data on start (costs OpenRouter tokens)
 python src\chat.py
+python src\chat.py --account act_123 --preset last_14d
+python src\chat.py --data data\_real_sample.json   # offline override
 
 # tests
 python -m pytest tests                          # offline suite (free)

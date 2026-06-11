@@ -22,48 +22,67 @@ to fit (many accounts, long history, documents). Revisit then.
 
 ## The snapshot (what gets injected)
 
-Built by `build_context()`:
+Built by `build_context()`. **Always** (the pre-computed aggregates, so totals are
+exact, not LLM-summed):
 - account / currency / window header
 - account totals (spend, revenue, blended ROAS, purchases)
-- per-campaign totals (spend, revenue, ROAS, purchases, CPA, avg frequency, CTR)
+- per-campaign totals (all campaigns; `MAX_CAMPAIGNS` can cap the list)
 - daily account totals (date | spend | revenue | ROAS)
 
-All derived deterministically from the L1 transform (`meta_transform`), so the
-model reasons over **pre-computed, correct** numbers and mostly just does
-arithmetic + phrasing. `build_context(ds)` takes a typed `Dataset`, not raw JSON.
+**Plus, when `FULL_DATA = True` (default): the COMPLETE per-(campaign × date) table**
+— every row with all 18 contract fields (spend, impressions, reach, frequency,
+clicks, link_clicks, link_ctr, cpc, cost_per_link_click, cpm, add_to_cart, checkout,
+purchases, revenue, roas, cpa). So **nothing is truncated or summarized away**; the
+model can drill into per-campaign daily detail. `--no-full` reverts to summary-only.
 
-**Snapshot is lossy by design (important limitation):** it carries per-campaign
-*totals* + account-level *daily* series, but NOT per-campaign *daily* series. So
-the LLM cannot truly answer campaign-level TREND questions (fatigue, "which
-campaign is declining") — it approximates with totals (e.g. lowest-ROAS). True
-fatigue is a temporal pattern and stays the deterministic brain's job. Fix later:
-either enrich the snapshot with per-campaign daily series, or route trend
-questions to the brain.
+All derived from the L1 transform (`meta_transform`), so aggregates are correct.
+`build_context(ds, full=...)` takes a typed `Dataset`, not raw JSON.
+
+### Tradeoff of full data (measured)
+
+For an 84-campaign month: summary ≈ 3.2K tokens; **full ≈ 46K tokens, sent every
+turn**. That raises cost (input billed per turn) and latency (~30s/reply on
+gpt-5-nano with reasoning, vs ~2.5s summary-only), and a small model is **less
+reliable at pinpoint extraction** from a 1,176-row dump (it may hedge). So full
+data removes the loss but isn't free. Better long-term answers for "use the full
+data reliably":
+- a **stronger large-context model** (e.g. gemini-2.5-flash) for extraction, or
+- **tool/function-calling** so the model *queries* the data (pandas/SQL) instead of
+  reading all rows, keeping input small and extraction exact, or
+- a **router** that sends trend/extraction questions to the deterministic brain.
+
+Default is now full (per "I need full data"); flip `FULL_DATA`/`--no-full` for the
+fast, cheap summary path.
 
 ## Model config
 
-- `MODEL = "openai/gpt-5-nano"` — constant at top of file, **not** in env (per
-  instruction). Swap freely; any OpenRouter slug works.
+- `MODEL = "google/gemini-2.5-flash"` — constant at top of file, **not** in env.
+  Chosen for the **full-data default** (see A/B below). Swap freely.
 - `TEMPERATURE = 0.2` (factual).
+- `REASONING_EFFORT = None` — only applies to the gpt-5 family (minimal cuts their
+  latency ~8x). Gemini flash needs none. Set `"minimal"` if you switch back to nano.
+- `FULL_DATA = True` — inject the complete per-(campaign × date) table (no loss).
+- `MAX_CAMPAIGNS = None` — per-campaign SUMMARY list cap (None = all).
+- `STREAM = True` — stream tokens for instant-feeling replies.
+- `complete(client, messages, stream)` is the single call helper (REPL + tests
+  share it). Full benchmarks + A/B: **chat-latency-and-fixes.md**.
 - API: OpenRouter, OpenAI-compatible. Reads `OPENROUTER_API_KEY` /
   `OPENROUTER_BASE_URL` from repo-root `.env`.
 
-### Model cost research (OpenRouter, 2026)
+### Model A/B (full data, OpenRouter, 2026-06-11)
 
-Workload = tiny injected context (few KB) at high volume, short outputs, so
-**input price dominates**. $/M in / out:
+On the full 1,176-row context, pinpoint extraction question (ground truth known):
 
-| Model | slug | in | out | note |
-|---|---|---|---|---|
-| **GPT-5 Nano (current)** | `openai/gpt-5-nano` | 0.05 | 0.40 | **cheapest reliable** for grounded numeric Q&A |
-| Gemini 2.5 Flash-Lite | `google/gemini-2.5-flash-lite` | 0.10 | 0.40 | cheap GA alternative |
-| Gemini 3.1 Flash-Lite | `google/gemini-3.1-flash-lite` | 0.25 | 1.50 | prior pick; ~5x Nano on input |
-| Claude Haiku 4.5 | `anthropic/claude-haiku-4.5` | 1.00 | 5.00 | best "never invent a number", pricey |
+| Model | latency | full-data extraction | use for |
+|---|---|---|---|
+| **`google/gemini-2.5-flash` (current)** | ~6s | **values exact**, reliable | the full-data default |
+| `google/gemini-2.5-flash-lite` | ~3s | **wrong rows** (read wrong section) | not on big dumps |
+| `openai/gpt-5-nano` | 18-25s | inconsistent (wrong value / false "no spend") | SUMMARY path only (cheap, `reasoning=minimal`) |
 
-**Chosen: `gpt-5-nano`** — cheapest input (the dominant cost here) and it passed
-every grounding/anti-hallucination test plus the qualitative eval (below). Free
-tiers (`llama-3.3-70b:free`) avoided: rate-limited + possible prompt logging of
-client data. Prices are approximate / version-sensitive.
+For the small SUMMARY-only path, gpt-5-nano + `reasoning=minimal` is the cheapest/
+fastest and grounds fine. Full benchmark, token-cost reality (full data ≈ 110-144K
+tokens, not the `chars/4` estimate), and the **query-tool scaling path** are recorded
+in chat-latency-and-fixes.md. Prices are approximate / version-sensitive.
 
 ## Guardrails
 
@@ -71,26 +90,43 @@ client data. Prices are approximate / version-sensitive.
   figures with currency; no invented numbers.
 - REPL keeps conversation history; survives API errors (prints + continues).
 
+## Data source
+
+Pulls **live Meta Ads data on session start** by default (via
+`meta_live.fetch_dataset` -> typed `Dataset` -> snapshot). `--data <file>` is the
+offline override (a saved pull or the mock) for repeatable/testing runs. The live
+pull is a one-time per-session cost (~1,176 rows / 3 pages for Pratap sons); the
+snapshot is then fixed for the whole chat. `meta_live.fetch_envelope` /
+`fetch_dataset` are the shared live-fetch helpers (also used by `brain_real.py`).
+
+A **`Spinner`** animates during the fetch so the ~5-10s startup doesn't look dead.
+It's a no-op when stdout is not a TTY (piped runs / tests), printing a single
+static line instead, so logs stay clean. Meta API errors now surface as a clean
+message (the fetch helpers raise `RuntimeError`; `chat.py` catches it after the
+spinner clears) instead of a mid-spinner `sys.exit`.
+
 ## Run
 
 ```
-python chat.py                 # mock_meta_ads.json
-python chat.py --data x.json
+python chat.py                                   # LIVE, first account, last_30d
+python chat.py --account act_123 --preset last_14d
+python chat.py --data ../data/_real_sample.json  # offline from a saved pull
 ```
 
+Needs `META_ACCESS_TOKEN` (live) + `OPENROUTER_API_KEY` in repo-root `.env`.
 Costs OpenRouter tokens per turn (snapshot + history resent each call).
 
 ## Open questions / next
 
-- Add a **router** that short-circuits pure-lookup questions ("what's my spend?")
-  to a deterministic answer with no LLM call — cheaper, zero hallucination. This
-  was a planning idea and is the natural next iteration.
-- Prompt caching for the static snapshot to cut token cost once on a caching-
-  capable model.
-- Web-search / "live LLM" was discussed (Gemini-live). Out of scope for this
-  experiment; would route through the gateway if adopted (Architecture Rule #1).
-- When data outgrows the context window (multi-account), switch to real vector
-  RAG; the `meta_transform` facts are already a clean chunk unit.
+- **Query tool (function calling) — the recommended scaling path.** Stop stuffing
+  the full table; give the model `query_campaigns` / `campaign_daily` / `aggregate`
+  tools that run real pandas and return small exact results. Keeps input tiny + exact
+  regardless of data size. Full design recorded in **chat-latency-and-fixes.md**.
+- **Router** for pure-lookup turns ("what's my spend?") -> deterministic answer with
+  no LLM call (cheaper, zero hallucination).
+- Prompt caching for the static prefix to cut input cost on a caching-capable model.
+- Web-search / "live LLM" (Gemini-live) — out of scope; would route through the
+  gateway if adopted (Architecture Rule #1).
 
 ## Tests (`test_chat.py` + `test_transform.py`)
 
@@ -107,12 +143,15 @@ Two layers, run with the `cos` venv from `rnd/`:
   an unknown metric** ("TikTok spend"); names the worst-ROAS campaign; **does not
   invent** a campaign name.
 
-Result (2026-06-11): **23 passed, 4 skipped** offline; **4 passed** live on
-`gpt-5-nano`. Anti-hallucination holds.
+Result (2026-06-11): **27 passed, 4 skipped** offline; **4 passed** live (on both
+`gpt-5-nano` during the summary-path work and the current `gemini-2.5-flash`).
+Anti-hallucination holds.
 
-## gpt-5-nano evaluation (2026-06-11)
+## gpt-5-nano evaluation (2026-06-11) — historical (summary path)
 
-Qualitative eval beyond pass/fail:
+This eval was run on `gpt-5-nano` over the SUMMARY snapshot, before full-data mode
+and the model switch. Kept as a logged experiment; the current default is
+`gemini-2.5-flash` (see the A/B above). Findings then:
 
 - **Real data (84 campaigns):** "blended ROAS + total spend" -> 3.69 / INR
   4,978,697 (matches the brain exactly). "Top 3 money-wasting campaigns" -> correct
@@ -125,8 +164,9 @@ Qualitative eval beyond pass/fail:
   has no per-campaign daily series (see the snapshot note above). Not a model fault;
   a snapshot-design limit. Campaign-level fatigue stays the brain's job.
 
-Verdict: gpt-5-nano is accurate, grounded, refuses to invent, and is the cheapest
-option. Adopted as the default.
+Verdict (at the time): gpt-5-nano was accurate + cheapest on the SUMMARY snapshot.
+Superseded for the full-data default by gemini-2.5-flash (the A/B above); nano stays
+the cheap option for the summary-only path.
 
 ## Integration / TS retirement
 
