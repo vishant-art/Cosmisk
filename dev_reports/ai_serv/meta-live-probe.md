@@ -1,4 +1,4 @@
-# AI Layer — File 2: Live Meta Probe
+# AI Layer — Live Meta Probe (`rnd/meta_live.py`)
 
 > Design doc for `rnd/meta_live.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer` ingestion.
 > Kept in sync with the code. Last updated: 2026-06-11.
@@ -20,7 +20,8 @@ will consume.
 4. `GET /act_<id>/insights` — level=campaign, daily (`time_increment=1`), a
    representative field set, `date_preset=last_7d` by default.
 5. Prints: raw first row, fields present, `action_types` seen in
-   `actions`/`action_values`, then the flattened frame from `meta_common.py`.
+   `actions`/`action_values`, then the flattened frame via the L1 transform
+   (`meta_transform.normalize`). `--save` writes a `{meta,data}` envelope.
 
 ## Established facts about Meta data (from research, baked into the design)
 
@@ -32,7 +33,7 @@ will consume.
 - **Shape gotcha:** revenue/conversions are **not flat fields** — they are nested
   arrays (`actions`, `action_values`, `purchase_roas`) keyed by `action_type`
   (e.g. `offsite_conversion.fb_pixel_purchase`). Must be exploded before use.
-  This is exactly what `meta_common.explode_row` does.
+  This is exactly what `meta_transform.row_to_fact` does.
 - **Freshness:** data is **not final** on day 0; metrics restate for hours-to-days
   as attribution windows close. Real ingestion must re-pull a **trailing 7-28 day
   window** and UPSERT, never append-once.
@@ -57,34 +58,43 @@ python meta_live.py --preset last_30d --level ad
 Read-only GET requests; safe to run. If the token is app-only / lacks `ads_read`,
 expect a Meta error (printed with type/code/fbtrace_id) rather than a crash.
 
+## New capabilities (2026-06-11)
+
+- **Cursor pagination** (`get_insights_paged`): real daily pulls exceed one page.
+  A 30-day Pratap-sons pull returned **1,176 rows across 3 pages, 84 campaigns** —
+  a single-page fetch (`limit`) would have silently truncated at 500.
+- **`--save PATH`**: writes the pull to a `{meta, data}` envelope JSON identical in
+  shape to `mock_meta_ads.json`, so `brain.py --data` and `chat.py --data` run on
+  real data unchanged. (Output is real client data -> gitignored as `_real_*.json`.)
+
 ## Live run findings (2026-06-11)
 
-First real run against the token in `.env` (read-only):
+Real run against the token in `.env` (read-only):
 
-- **Token:** belongs to "Vishant Jain"; it is an **agency token with 47 ad
-  accounts** visible (Smashed Agency book: Pratap sons, Adore By Priyanka, SkinQ,
-  BNW, Salt Attire, etc., across INR/USD/AED/NZD). So account selection is real:
-  the layer must let the operator pick which `act_<id>` to analyse.
-- **Real `actions` arrays are far messier than the mock.** A single Pratap-sons
-  campaign row returned **~50 action_types** in `actions` (and ~23 in
-  `action_values`): `purchase`, `omni_purchase`, `offsite_conversion.fb_pixel_purchase`,
-  `onsite_web_purchase`, `web_in_store_purchase`, plus add_to_cart / view_content /
-  initiate_checkout each in pixel + omni + onsite_web variants, messaging events,
-  post engagement, etc. The same logical event appears under 3-4 keys.
-- **The parser held up.** `meta_common`'s first-match-wins priority
-  (`fb_pixel_purchase` -> `omni_purchase` -> `purchase`) correctly picked one
-  purchase/revenue value per row without double-counting (e.g. a campaign flattened
-  to spend ₹20,755 -> 18 purchases, ₹76,649 revenue, 3.69x ROAS). This validates
-  the explode-arrays design against real data.
+- **Token:** "Vishant Jain"; an **agency token with 47 ad accounts** (Smashed
+  Agency book: Pratap sons, Adore By Priyanka, SkinQ, Salt Attire, ... across
+  INR/USD/AED/NZD). Account selection is real: the layer must let the operator
+  pick which `act_<id>` to analyse.
+- **Real `actions` are far messier than first thought: 67 action_types** in
+  `actions` and **23 in `action_values`** on Pratap sons. Beyond the obvious
+  purchase keys (`offsite_conversion.fb_pixel_purchase`, `omni_purchase`,
+  `onsite_web_purchase`, `onsite_conversion.purchase`, `web_in_store_purchase`,
+  `web_app_in_store_purchase`, `offsite_purchase_add_20_s_calls`) there are lead,
+  messaging (`onsite_conversion.messaging_*`), post-engagement, and custom-pixel
+  (`offsite_conversion.fb_pixel_custom`) events. The same logical sale appears
+  under 5+ keys with different values.
+- **The parser held up.** `meta_transform`'s first-match-wins priority correctly
+  picked one canonical purchase/revenue per row, no double counting. Verified by
+  unit test `test_disambiguation_prefers_pixel_purchase` and by the brain producing
+  identical totals on the clean vs messy-enriched mock.
 - **Field availability:** at `level=campaign`, `adset_name`/`ad_name` come back
-  empty (expected); `ctr`/`cpc`/`cpm`/`purchase_roas` are present. Several
-  campaigns had `spend=0` (no delivery in window) -> ROAS 0, handled gracefully.
+  empty (expected); `ctr`/`cpc`/`cpm`/`purchase_roas` present. Many campaigns had
+  `spend=0` / `purchases=0` (paused or engagement-objective) -> handled gracefully
+  and gated out of the brain's campaign analysis by materiality thresholds.
 
-Implication: the mock is intentionally simplified (4 clean action_types). It's
-fine for brain/chat experiments, but the production normalizer must expect the
-full messy action_type zoo and pick a single canonical purchase/revenue per the
-priority list. Consider enriching the mock with a few extra noise action_types if
-we want to test the disambiguation explicitly.
+The **mock now mirrors this messiness** (22 action_types/row, same purchase under
+pixel/omni/onsite/bare keys with offset values) so the disambiguation is exercised
+without needing live access.
 
 ## Open questions / next
 

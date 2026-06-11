@@ -4,7 +4,8 @@ A single account's metrics are compact, so instead of embedding + retrieving we
 inject a compressed, factual snapshot of the whole dataset into the model's
 system context every turn. The model answers ONLY from that snapshot, which
 removes retrieval-miss risk and keeps it from inventing numbers. Uses OpenRouter
-(OpenAI-compatible API).
+(OpenAI-compatible API). Data comes through the L1 transform contract
+(meta_transform.Dataset), never raw Meta JSON.
 
     python chat.py                  # mock_meta_ads.json
     python chat.py --data path.json
@@ -20,7 +21,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import meta_common as mc  # noqa: E402
+import meta_transform as mt  # noqa: E402
 
 # Windows consoles default to cp1252 and choke on ₹/€; force UTF-8 output.
 try:
@@ -29,7 +30,13 @@ except (AttributeError, ValueError):
     pass
 
 # ---- model config (change here, not in env) ----
-MODEL = "google/gemini-3.1-flash-lite"
+# Cost research (OpenRouter, 2026, $/M in / out) for this tiny-context grounded
+# numeric task, where INPUT price dominates:
+#   openai/gpt-5-nano            0.05 / 0.40   <- current (cheapest reliable)
+#   google/gemini-2.5-flash-lite 0.10 / 0.40   <- cheap GA alternative
+#   google/gemini-3.1-flash-lite 0.25 / 1.50
+#   anthropic/claude-haiku-4.5   1.00 / 5.00   <- best "never invent", pricey
+MODEL = "openai/gpt-5-nano"
 TEMPERATURE = 0.2
 
 SYSTEM = (
@@ -42,16 +49,16 @@ SYSTEM = (
 )
 
 
-def build_context(meta, df):
+def build_context(ds: mt.Dataset) -> str:
     """Compress the dataset into a factual text block the model reasons over."""
-    currency = meta.get("currency", "INR")
-    daily = mc.daily_totals(df)
-    cs = mc.campaign_summary(df)
-    dr = meta.get("date_range", {})
+    df = ds.to_dataframe()
+    currency = ds.currency
+    daily = mt.daily_totals(df)
+    cs = mt.campaign_summary(df)
 
     lines = [
-        f"ACCOUNT: {meta.get('account_name', '?')}   CURRENCY: {currency}   "
-        f"WINDOW: {dr.get('since', '?')} to {dr.get('until', '?')}",
+        f"ACCOUNT: {ds.account_name}   CURRENCY: {currency}   "
+        f"WINDOW: {ds.since or '?'} to {ds.until or '?'}",
         f"TOTALS: spend={df.spend.sum():.0f}  revenue={df.revenue.sum():.0f}  "
         f"blended_roas={(df.revenue.sum() / df.spend.sum() if df.spend.sum() else 0):.2f}  "
         f"purchases={int(df.purchases.sum())}",
@@ -82,17 +89,16 @@ def main():
         print("OPENROUTER_API_KEY not set in ../.env")
         sys.exit(1)
 
-    meta, rows = mc.load_insights(args.data)
-    df = mc.to_dataframe(rows)
-    if df.empty:
+    ds = mt.load(args.data)
+    if len(ds) == 0:
         print("No data rows.")
         sys.exit(1)
-    context = build_context(meta, df)
+    context = build_context(ds)
 
     client = OpenAI(api_key=key, base_url=base)
     messages = [{"role": "system", "content": SYSTEM.format(context=context)}]
 
-    print(f"RAG chat over '{meta.get('account_name', 'data')}' via {MODEL}.")
+    print(f"RAG chat over '{ds.account_name}' via {MODEL}.")
     print("Ask about spend, ROAS, campaigns, trends, fatigue. 'exit' to quit.")
     print("Try: 'which campaign should I cut?'  'how did ROAS trend?'  'what's my blended ROAS?'\n")
 

@@ -4,9 +4,18 @@ campaign level with daily breakdown (level=campaign, time_increment=1).
 Realism that matters for the experiments:
   - numeric fields are STRINGS (the real API returns strings)
   - conversions/revenue live in nested actions / action_values / purchase_roas
+  - the `actions` array is intentionally MESSY, mirroring real responses: the same
+    logical event (a purchase) shows up under several keys
+    (offsite_conversion.fb_pixel_purchase, omni_purchase, onsite_web_purchase,
+    purchase, web_in_store_purchase), with slightly DIFFERENT values, plus a long
+    tail of view_content / landing_page_view / engagement / messaging events.
+    This is what a real pull from a live account looks like (~50 action types).
   - each campaign carries a deliberate narrative the brain should detect
-    (a fatiguing prospecting campaign, a scaling UGC winner, a steady star,
-     and a high-spend low-ROAS "money pit").
+    (fatiguing prospecting, scaling UGC winner, steady star, money-pit catalog).
+
+The canonical purchase/revenue for analysis is the fb_pixel_purchase value; the
+omni/onsite variants are deliberately offset so tests can prove the parser's
+first-match-wins disambiguation picks the right one (no double counting).
 
 Deterministic (seeded) so the file is reproducible. Run:  python make_mock.py
 """
@@ -44,6 +53,54 @@ def noise(p=0.12):
     return 1 + random.uniform(-p, p)
 
 
+def build_actions(purchases, atc, checkout, link_clicks, vc, lpv, page_eng):
+    """Mirror a real, messy `actions` array: the same purchase under multiple
+    keys (pixel/omni/onsite/bare/in-store), plus the engagement long tail."""
+    onsite_purch = max(0, round(purchases * 0.9))  # onsite variant under-reports a bit
+    instore = max(0, round(purchases * 0.12))
+    return [
+        # --- the long tail Meta always returns first ---
+        {"action_type": "post_engagement", "value": str(page_eng)},
+        {"action_type": "page_engagement", "value": str(page_eng)},
+        {"action_type": "link_click", "value": str(link_clicks)},
+        {"action_type": "landing_page_view", "value": str(lpv)},
+        {"action_type": "view_content", "value": str(vc)},
+        {"action_type": "omni_view_content", "value": str(vc)},
+        {"action_type": "offsite_conversion.fb_pixel_view_content", "value": str(vc)},
+        {"action_type": "onsite_web_view_content", "value": str(vc)},
+        {"action_type": "add_to_wishlist", "value": str(max(0, round(atc * 0.3)))},
+        # --- add to cart, under several keys ---
+        {"action_type": "add_to_cart", "value": str(atc)},
+        {"action_type": "omni_add_to_cart", "value": str(atc)},
+        {"action_type": "offsite_conversion.fb_pixel_add_to_cart", "value": str(atc)},
+        {"action_type": "onsite_web_add_to_cart", "value": str(max(0, round(atc * 0.95)))},
+        # --- checkout, under several keys ---
+        {"action_type": "initiate_checkout", "value": str(checkout)},
+        {"action_type": "omni_initiated_checkout", "value": str(checkout)},
+        {"action_type": "offsite_conversion.fb_pixel_initiate_checkout", "value": str(checkout)},
+        {"action_type": "add_payment_info", "value": str(max(0, round(purchases * 1.2)))},
+        # --- purchase, under several keys with different values (the messy bit) ---
+        {"action_type": "offsite_conversion.fb_pixel_purchase", "value": str(purchases)},
+        {"action_type": "omni_purchase", "value": str(purchases)},
+        {"action_type": "onsite_web_purchase", "value": str(onsite_purch)},
+        {"action_type": "purchase", "value": str(purchases)},
+        {"action_type": "web_in_store_purchase", "value": str(instore)},
+    ]
+
+
+def build_action_values(revenue):
+    """Revenue under multiple keys with deliberate offsets (omni > pixel > onsite),
+    exactly the 2-3x-disagreement problem real accounts have."""
+    return [
+        {"action_type": "offsite_conversion.fb_pixel_purchase", "value": f"{revenue:.2f}"},  # canonical
+        {"action_type": "omni_purchase", "value": f"{revenue * 1.06:.2f}"},                  # over-reports
+        {"action_type": "onsite_web_purchase", "value": f"{revenue * 0.92:.2f}"},            # under-reports
+        {"action_type": "purchase", "value": f"{revenue:.2f}"},
+        {"action_type": "offsite_conversion.fb_pixel_view_content", "value": f"{revenue * 6:.2f}"},
+        {"action_type": "add_to_cart", "value": f"{revenue * 1.8:.2f}"},
+    ]
+
+
 def build_rows():
     rows = []
     for ci, (name, base_spend, roas0, roas1, ctr, cpm, aov, f0, f1) in enumerate(CAMPAIGNS):
@@ -61,11 +118,14 @@ def build_rows():
             reach = impressions / freq
             day_ctr = ctr * noise(0.1)
             clicks = impressions * day_ctr / 100
-            link_clicks = clicks * 0.92
+            link_clicks = int(clicks * 0.92)
             revenue = spend * roas
             purchases = max(0, round(revenue / aov))
             checkout = round(purchases * lerp(1.8, 2.2, random.random()))
             atc = round(checkout * lerp(1.7, 2.3, random.random()))
+            vc = int(link_clicks * 1.5)
+            lpv = int(link_clicks * 0.95)
+            page_eng = int(impressions * 0.02)
 
             rows.append({
                 "campaign_id": cid,
@@ -80,17 +140,11 @@ def build_rows():
                 "ctr": f"{day_ctr:.3f}",
                 "cpc": f"{(spend / clicks if clicks else 0):.2f}",
                 "cpm": f"{day_cpm:.2f}",
-                "actions": [
-                    {"action_type": "link_click", "value": str(int(link_clicks))},
-                    {"action_type": "add_to_cart", "value": str(atc)},
-                    {"action_type": "initiate_checkout", "value": str(checkout)},
-                    {"action_type": "offsite_conversion.fb_pixel_purchase", "value": str(purchases)},
-                ],
-                "action_values": [
-                    {"action_type": "offsite_conversion.fb_pixel_purchase", "value": f"{revenue:.2f}"},
-                ],
+                "actions": build_actions(purchases, atc, checkout, link_clicks, vc, lpv, page_eng),
+                "action_values": build_action_values(revenue),
                 "purchase_roas": [
                     {"action_type": "offsite_conversion.fb_pixel_purchase", "value": f"{roas:.2f}"},
+                    {"action_type": "omni_purchase", "value": f"{roas * 1.06:.2f}"},
                 ],
             })
     return rows
@@ -110,15 +164,18 @@ def main():
             "api_version": "v23.0",
             "note": (
                 "MOCK data shaped like GET /act_<id>/insights?level=campaign&time_increment=1. "
-                "Numeric fields are strings; conversions/revenue are nested in "
-                "actions/action_values/purchase_roas."
+                "Numeric fields are strings; the actions array is intentionally messy (same "
+                "purchase under fb_pixel/omni/onsite/bare keys with offset values) to mirror "
+                "real responses and exercise the parser's first-match-wins disambiguation."
             ),
         },
         "data": rows,
     }
     out = Path(__file__).with_name("mock_meta_ads.json")
     out.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    print(f"Wrote {out} -- {len(rows)} rows ({len(CAMPAIGNS)} campaigns x {DAYS} days)")
+    n_actions = len(rows[0]["actions"]) if rows else 0
+    print(f"Wrote {out} -- {len(rows)} rows ({len(CAMPAIGNS)} campaigns x {DAYS} days), "
+          f"{n_actions} action_types/row")
 
 
 if __name__ == "__main__":

@@ -15,8 +15,10 @@ import argparse
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import meta_common as mc  # noqa: E402
+import meta_transform as mt  # noqa: E402
 
 # Windows consoles default to cp1252 and choke on ₹/€; force UTF-8 output.
 try:
@@ -48,6 +50,46 @@ def direction(x, up="rose", down="fell", flat="held steady"):
     return flat
 
 
+# --- Materiality / reliability thresholds ---------------------------------
+# Real accounts have a long tail of tiny/paused/engagement campaigns. ROAS on a
+# campaign with 1-2 purchases is statistical noise (a single sale on ₹100 spend
+# reads as 50x). These gates keep the brain from "discovering" that noise.
+MATERIAL_SPEND_PCT = 0.01       # a campaign must be >=1% of total spend to count
+MIN_PURCHASES_FOR_ROAS = 10     # ROAS untrustworthy below this many purchases
+MIN_WINDOW_PURCHASES = 5        # per-window floor for trend (fatigue/scaling)
+FATIGUE_DROP = 0.25             # ROAS must fall >=25% to call it fatigue
+SCALING_RISE = 0.25             # ROAS must rise >=25% to call it scaling
+FREQ_RISE = 1.10                # and frequency must climb >=10% for fatigue
+MAX_FLAGS = 3                   # cap fatigue / scaling lines so output stays scannable
+
+
+def campaign_windows(df):
+    """Per-campaign totals + first-third vs last-third window stats, computed once."""
+    rows = []
+    for name, sub in df.groupby("campaign_name"):
+        sub = sub.sort_values("date")
+        k = max(1, len(sub) // 3)
+        w0, w1 = sub.head(k), sub.tail(k)
+
+        def _roas(x):
+            s = x.spend.sum()
+            return x.revenue.sum() / s if s else 0.0
+
+        rows.append({
+            "campaign_name": name,
+            "spend": sub.spend.sum(),
+            "revenue": sub.revenue.sum(),
+            "purchases": sub.purchases.sum(),
+            "roas": sub.revenue.sum() / sub.spend.sum() if sub.spend.sum() else 0.0,
+            "active_days": int((sub.spend > 0).sum()),
+            "w0_spend": w0.spend.sum(), "w1_spend": w1.spend.sum(),
+            "w0_purch": w0.purchases.sum(), "w1_purch": w1.purchases.sum(),
+            "r0": _roas(w0), "r1": _roas(w1),
+            "f0": w0.frequency.mean(), "f1": w1.frequency.mean(),
+        })
+    return pd.DataFrame(rows)
+
+
 def statements(df, currency):
     """Return a list of (tag, sentence) tuples, all deterministic."""
     out = []
@@ -63,7 +105,7 @@ def statements(df, currency):
         f"{int(df.purchases.sum()):,} purchases."))
 
     # account-level trend: first third vs last third
-    daily = mc.daily_totals(df)
+    daily = mt.daily_totals(df)
     third = max(1, len(daily) // 3)
     first, last = daily.head(third), daily.tail(third)
     rev0, rev1 = first.revenue.sum(), last.revenue.sum()
@@ -75,38 +117,65 @@ def statements(df, currency):
         f"({fmt_money(rev0, currency)}) to the last {third} days ({fmt_money(rev1, currency)}). "
         f"Blended ROAS moved {roas0:.2f}x -> {roas1:.2f}x."))
 
-    cs = mc.campaign_summary(df)
-    best = cs.loc[cs.roas.idxmax()]
-    worst = cs.loc[cs.roas.idxmin()]
-    out.append(("Best campaign",
-        f"'{best.campaign_name}' is the efficiency leader at {best.roas:.2f}x ROAS "
-        f"({fmt_money(best.revenue, currency)} on {fmt_money(best.spend, currency)})."))
-    out.append(("Worst campaign",
-        f"'{worst.campaign_name}' is the laggard at {worst.roas:.2f}x ROAS -- "
-        f"{fmt_money(worst.spend, currency)} spent for {fmt_money(worst.revenue, currency)} back."))
+    # materiality-gated campaign analysis
+    cw = campaign_windows(df)
+    floor = total_spend * MATERIAL_SPEND_PCT
+    material = cw[cw.spend >= floor]
+    reliable = material[material.purchases >= MIN_PURCHASES_FOR_ROAS]
 
-    top = cs.iloc[0]
+    # best / worst among campaigns that actually convert at volume
+    if not reliable.empty:
+        best = reliable.loc[reliable.roas.idxmax()]
+        worst = reliable.loc[reliable.roas.idxmin()]
+        out.append(("Best campaign",
+            f"'{best.campaign_name}' is the efficiency leader at {best.roas:.2f}x ROAS "
+            f"({fmt_money(best.revenue, currency)} on {fmt_money(best.spend, currency)}, "
+            f"{int(best.purchases)} purchases)."))
+        out.append(("Worst campaign",
+            f"'{worst.campaign_name}' is the weakest converter that still has scale at "
+            f"{worst.roas:.2f}x ROAS -- {fmt_money(worst.spend, currency)} spent for "
+            f"{fmt_money(worst.revenue, currency)} back."))
+
+    # wasted spend: material campaigns with zero attributed purchases
+    zero = material[material.purchases == 0].sort_values("spend", ascending=False)
+    if not zero.empty:
+        names = ", ".join(f"'{r.campaign_name}' ({fmt_money(r.spend, currency)})"
+                          for _, r in zero.head(3).iterrows())
+        out.append(("Wasted spend",
+            f"{len(zero)} material campaign(s) spent with ZERO attributed purchases: {names}."))
+
+    # budget concentration (by spend, always meaningful)
+    top = cw.loc[cw.spend.idxmax()]
     share = top.spend / total_spend * 100 if total_spend else 0
     out.append(("Budget concentration",
         f"'{top.campaign_name}' absorbs {share:.0f}% of spend "
         f"({fmt_money(top.spend, currency)}) at {top.roas:.2f}x ROAS."))
 
-    # per-campaign fatigue / scaling detection
-    for name, sub in df.groupby("campaign_name"):
-        sub = sub.sort_values("date")
-        k = max(1, len(sub) // 3)
-        s0, s1 = sub.head(k), sub.tail(k)
-        r0 = s0.revenue.sum() / s0.spend.sum() if s0.spend.sum() else 0
-        r1 = s1.revenue.sum() / s1.spend.sum() if s1.spend.sum() else 0
-        f0, f1 = s0.frequency.mean(), s1.frequency.mean()
-        if r0 and (r1 - r0) / r0 < -0.2 and f1 > f0:
-            out.append(("WARN fatigue",
-                f"'{name}' shows fatigue: ROAS fell {pct((r1 - r0) / r0 * 100)} "
-                f"({r0:.2f}x -> {r1:.2f}x) while frequency climbed {f0:.1f} -> {f1:.1f}."))
-        elif r0 and (r1 - r0) / r0 > 0.2:
-            out.append(("UP scaling",
-                f"'{name}' is heating up: ROAS improved {pct((r1 - r0) / r0 * 100)} "
-                f"({r0:.2f}x -> {r1:.2f}x) -- a candidate for more budget."))
+    # fatigue: material spend both windows, real first-window volume, ROAS drop + freq rise
+    fat = material[
+        (material.w0_spend >= floor * 0.3) & (material.w1_spend >= floor * 0.3)
+        & (material.w0_purch >= MIN_WINDOW_PURCHASES) & (material.r0 > 0)
+        & ((material.r1 - material.r0) / material.r0 <= -FATIGUE_DROP)
+        & (material.f1 > material.f0 * FREQ_RISE)
+    ].sort_values("w1_spend", ascending=False).head(MAX_FLAGS)
+    for _, c in fat.iterrows():
+        out.append(("WARN fatigue",
+            f"'{c.campaign_name}' shows fatigue: ROAS fell "
+            f"{pct((c.r1 - c.r0) / c.r0 * 100)} ({c.r0:.2f}x -> {c.r1:.2f}x) while frequency "
+            f"climbed {c.f0:.1f} -> {c.f1:.1f}."))
+
+    # scaling: material spend AND real volume in BOTH windows (kills 1-sale noise)
+    scal = material[
+        (material.w0_spend >= floor * 0.3) & (material.w1_spend >= floor * 0.3)
+        & (material.w0_purch >= MIN_WINDOW_PURCHASES) & (material.w1_purch >= MIN_WINDOW_PURCHASES)
+        & (material.r0 > 0)
+        & ((material.r1 - material.r0) / material.r0 >= SCALING_RISE)
+    ].sort_values("w1_spend", ascending=False).head(MAX_FLAGS)
+    for _, c in scal.iterrows():
+        out.append(("UP scaling",
+            f"'{c.campaign_name}' is heating up: ROAS improved "
+            f"{pct((c.r1 - c.r0) / c.r0 * 100)} ({c.r0:.2f}x -> {c.r1:.2f}x) -- "
+            f"a candidate for more budget."))
 
     # "bad day": largest negative deviation from the trailing 7-day ROAS trend
     daily = daily.copy()
@@ -128,8 +197,8 @@ def make_plots(df, outdir, currency):
 
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    daily = mc.daily_totals(df)
-    cs = mc.campaign_summary(df)
+    daily = mt.daily_totals(df)
+    cs = mt.campaign_summary(df)
     saved = []
 
     def save(fig, name):
@@ -205,16 +274,15 @@ def main():
     ap.add_argument("--outdir", default=str(Path(__file__).with_name("plots")))
     args = ap.parse_args()
 
-    meta, rows = mc.load_insights(args.data)
-    currency = meta.get("currency", "INR")
-    df = mc.to_dataframe(rows)
+    ds = mt.load(args.data)
+    currency = ds.currency
+    df = ds.to_dataframe()
     if df.empty:
         print("No rows in data.")
         return
 
-    dr = meta.get("date_range", {})
-    print(f"\n=== BRAIN: {meta.get('account_name', '(unknown account)')} "
-          f"[{dr.get('since', '?')} -> {dr.get('until', '?')}] ===\n")
+    print(f"\n=== BRAIN: {ds.account_name} "
+          f"[{ds.since or '?'} -> {ds.until or '?'}] ===\n")
     for tag, line in statements(df, currency):
         print(f"- [{tag}] {line}\n")
 
