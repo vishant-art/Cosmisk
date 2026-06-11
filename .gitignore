@@ -106,11 +106,8 @@ cos/
 server/
 
 #pycache
-rnd\__pycache__\
+rnd/__pycache__ 
+*/*/__pycache__
 
-# rnd/ experiment artifacts — real client data + generated, never commit.
-# (rnd/data/mock_meta_ads.json IS synthetic and safe to commit.)
-rnd/**/_real_*.json
-rnd/plots/
-rnd/.pytest_cache/
-rnd/**/__pycache__/
+#real data
+rnd/data/_real_sample.json
