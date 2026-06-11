@@ -1,6 +1,6 @@
-# AI Layer — Live Meta Probe (`rnd/meta_live.py`)
+# AI Layer — Live Meta Probe (`rnd/src/meta_live.py`)
 
-> Design doc for `rnd/meta_live.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer` ingestion.
+> Design doc for `rnd/src/meta_live.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer` ingestion.
 > Kept in sync with the code. Last updated: 2026-06-11.
 
 ## Purpose

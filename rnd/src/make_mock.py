@@ -136,9 +136,12 @@ def build_rows():
                 "impressions": str(int(impressions)),
                 "reach": str(int(reach)),
                 "frequency": f"{freq:.2f}",
-                "clicks": str(int(clicks)),
-                "ctr": f"{day_ctr:.3f}",
+                "clicks": str(int(clicks)),                       # ALL clicks
+                "ctr": f"{day_ctr:.3f}",                          # ALL-clicks CTR
                 "cpc": f"{(spend / clicks if clicks else 0):.2f}",
+                "inline_link_clicks": str(link_clicks),           # link clicks (headline)
+                "inline_link_click_ctr": f"{(link_clicks / impressions * 100 if impressions else 0):.3f}",
+                "cost_per_inline_link_click": f"{(spend / link_clicks if link_clicks else 0):.2f}",
                 "cpm": f"{day_cpm:.2f}",
                 "actions": build_actions(purchases, atc, checkout, link_clicks, vc, lpv, page_eng),
                 "action_values": build_action_values(revenue),
@@ -171,7 +174,8 @@ def main():
         },
         "data": rows,
     }
-    out = Path(__file__).with_name("mock_meta_ads.json")
+    out = Path(__file__).resolve().parents[1] / "data" / "mock_meta_ads.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     n_actions = len(rows[0]["actions"]) if rows else 0
     print(f"Wrote {out} -- {len(rows)} rows ({len(CAMPAIGNS)} campaigns x {DAYS} days), "

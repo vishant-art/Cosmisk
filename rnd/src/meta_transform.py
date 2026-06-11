@@ -2,15 +2,25 @@
 
 The single source of truth that turns raw Meta insight rows into a typed contract
 (`CampaignDayFact` inside a `Dataset`). No consumer (brain, chat, EDA, the future
-apps/ai-layer) should ever touch raw Meta JSON; they consume the contract here.
+apps/ai-layer) touches raw Meta JSON; they consume the contract here.
 
-L1 responsibilities (single-source cleaning / normalization):
-  - explode the nested actions / action_values / purchase_roas arrays
-  - pick ONE canonical purchase / revenue / ROAS via a documented priority
-    (first match wins -> the same sale under fb_pixel/omni/onsite/bare keys is
-    never double counted)
-  - coerce string / missing / null numerics safely to float
-  - conform to one tidy grain: (account x campaign x date)
+FIELD CHOICES (researched against Meta docs + Fivetran/Supermetrics/Funnel/Windsor
+consensus; see dev_reports/ai_serv/meta-field-choices.md):
+
+  - LINK CLICKS, not all-clicks. `clicks`/`ctr`/`cpc` count ALL clicks (likes,
+    comments, shares) and overstate traffic. The meaningful traffic metrics are
+    `inline_link_clicks` / `inline_link_click_ctr` / `cost_per_inline_link_click`.
+    We keep both, but `link_*` are the headline; `clicks`/`ctr`/`cpc` are the
+    labeled "all-clicks" secondary stats.
+  - PURCHASE / REVENUE = the WEBSITE pixel purchase
+    (`offsite_conversion.fb_pixel_purchase`), which audit-matches the Ads Manager
+    "Website purchases" column. We deliberately do NOT use `omni_purchase`/`purchase`
+    (the all-channels rollup: wrong scope for a website brand). Fallback to
+    `onsite_conversion.purchase` (on-Meta direct) only.
+  - ROAS is DERIVED (`revenue / spend`), not read from the reported `purchase_roas`
+    (now keys on omni) or the deprecating `website_purchase_roas`. Deriving keeps
+    count, value, and ROAS on one consistent basis.
+  - Funnel (ATC, checkout) stays on the pixel tier to match the purchase basis.
 
 Cross-source unification + blended ROAS (Meta + Google + Shopify) is L2 and lives
 elsewhere; see dev_reports/ai_serv/transformation-layer-discussion.md.
@@ -23,35 +33,30 @@ from pathlib import Path
 
 import pandas as pd
 
-# --- Canonical action_type policy --------------------------------------------
-# On real accounts the same logical event appears under many keys (67 action
-# types seen on one live account). We select ONE per metric, first match wins.
-# The PURCHASE policy is the load-bearing BUSINESS choice (pixel vs omni vs
-# onsite disagree by 2-3x); it is deliberately explicit and centralised here so
-# it is decided once, not re-derived per consumer.
+# --- Canonical action_type policy (first match wins; omni rollups excluded) ---
+# WEBSITE purchase basis. `omni_purchase`/`purchase` are intentionally absent:
+# they aggregate web+app+onsite+offline and are the wrong scope for a web D2C
+# brand (equal to pixel for web-only, but not auditable). See the module docstring.
 PURCHASE_ACTION_TYPES = (
-    "offsite_conversion.fb_pixel_purchase",
-    "omni_purchase",
-    "onsite_web_purchase",
-    "purchase",
+    "offsite_conversion.fb_pixel_purchase",   # Ads Manager "Website purchases"
+    "onsite_conversion.purchase",             # on-Meta direct (disjoint from web)
 )
 ATC_ACTION_TYPES = (
     "offsite_conversion.fb_pixel_add_to_cart",
-    "omni_add_to_cart",
     "add_to_cart",
 )
 CHECKOUT_ACTION_TYPES = (
     "offsite_conversion.fb_pixel_initiate_checkout",
-    "omni_initiated_checkout",
     "initiate_checkout",
 )
-LINK_CLICK_ACTION_TYPES = ("link_click",)
+LINK_CLICK_ACTION_TYPES = ("link_click",)     # fallback only; prefer inline_link_clicks field
 
-# Columns of the contract, in order — handy for tests and schema assertions.
 FACT_FIELDS = (
     "campaign_id", "campaign_name", "date",
     "spend", "impressions", "reach", "frequency",
-    "clicks", "link_clicks", "ctr", "cpc", "cpm",
+    "clicks", "ctr", "cpc",                            # ALL-clicks (secondary)
+    "link_clicks", "link_ctr", "cost_per_link_click",  # link clicks (headline)
+    "cpm",
     "add_to_cart", "checkout", "purchases", "revenue", "roas", "cpa",
 )
 
@@ -66,16 +71,18 @@ class CampaignDayFact:
     impressions: float
     reach: float
     frequency: float
-    clicks: float
-    link_clicks: float
-    ctr: float
-    cpc: float
+    clicks: float             # ALL clicks (incl. social) -- secondary
+    ctr: float                # ALL-clicks CTR -- secondary
+    cpc: float                # cost per ALL click -- secondary
+    link_clicks: float        # inline_link_clicks -- the real traffic number
+    link_ctr: float           # inline_link_click_ctr -- the headline CTR
+    cost_per_link_click: float
     cpm: float
     add_to_cart: float
     checkout: float
-    purchases: float
-    revenue: float
-    roas: float
+    purchases: float          # website pixel purchases
+    revenue: float            # website pixel purchase value
+    roas: float               # DERIVED revenue/spend
     cpa: float
 
 
@@ -126,9 +133,14 @@ def row_to_fact(raw: dict) -> CampaignDayFact:
     impressions = _to_float(raw.get("impressions"))
     clicks = _to_float(raw.get("clicks"))
     reach = _to_float(raw.get("reach"))
+
+    # link clicks: prefer the dedicated inline field, else the link_click action
+    link_clicks = _to_float(raw.get("inline_link_clicks")) \
+        or _action_value(raw.get("actions"), LINK_CLICK_ACTION_TYPES)
+
     purchases = _action_value(raw.get("actions"), PURCHASE_ACTION_TYPES)
     revenue = _action_value(raw.get("action_values"), PURCHASE_ACTION_TYPES)
-    roas_field = _action_value(raw.get("purchase_roas"), PURCHASE_ACTION_TYPES)
+
     return CampaignDayFact(
         campaign_id=str(raw.get("campaign_id", "")),
         campaign_name=raw.get("campaign_name", raw.get("campaign_id", "unknown")),
@@ -138,15 +150,19 @@ def row_to_fact(raw: dict) -> CampaignDayFact:
         reach=reach,
         frequency=_to_float(raw.get("frequency")) or (impressions / reach if reach else 0.0),
         clicks=clicks,
-        link_clicks=_action_value(raw.get("actions"), LINK_CLICK_ACTION_TYPES),
         ctr=_to_float(raw.get("ctr")) or (clicks / impressions * 100 if impressions else 0.0),
         cpc=_to_float(raw.get("cpc")) or (spend / clicks if clicks else 0.0),
+        link_clicks=link_clicks,
+        link_ctr=_to_float(raw.get("inline_link_click_ctr"))
+        or (link_clicks / impressions * 100 if impressions else 0.0),
+        cost_per_link_click=_to_float(raw.get("cost_per_inline_link_click"))
+        or (spend / link_clicks if link_clicks else 0.0),
         cpm=_to_float(raw.get("cpm")) or (spend / impressions * 1000 if impressions else 0.0),
         add_to_cart=_action_value(raw.get("actions"), ATC_ACTION_TYPES),
         checkout=_action_value(raw.get("actions"), CHECKOUT_ACTION_TYPES),
         purchases=purchases,
         revenue=revenue,
-        roas=roas_field or (revenue / spend if spend else 0.0),
+        roas=revenue / spend if spend else 0.0,     # DERIVED, never the reported field
         cpa=spend / purchases if purchases else 0.0,
     )
 
@@ -178,17 +194,18 @@ def load(path: str) -> Dataset:
 # --- aggregation helpers (operate on Dataset.to_dataframe()) -----------------
 
 def daily_totals(df: pd.DataFrame) -> pd.DataFrame:
-    """Account-level daily aggregate. Spend/revenue summed; ROAS/CTR recomputed
+    """Account-level daily aggregate. Spend/revenue summed; ratios recomputed
     from the sums (never averaged, which would be wrong)."""
     g = df.groupby("date", as_index=False).agg(
         spend=("spend", "sum"),
         revenue=("revenue", "sum"),
         impressions=("impressions", "sum"),
-        clicks=("clicks", "sum"),
+        link_clicks=("link_clicks", "sum"),
         purchases=("purchases", "sum"),
     )
     g["roas"] = g.apply(lambda r: r.revenue / r.spend if r.spend else 0.0, axis=1)
-    g["ctr"] = g.apply(lambda r: r.clicks / r.impressions * 100 if r.impressions else 0.0, axis=1)
+    g["link_ctr"] = g.apply(
+        lambda r: r.link_clicks / r.impressions * 100 if r.impressions else 0.0, axis=1)
     return g.sort_values("date").reset_index(drop=True)
 
 
@@ -197,12 +214,13 @@ def campaign_summary(df: pd.DataFrame) -> pd.DataFrame:
         spend=("spend", "sum"),
         revenue=("revenue", "sum"),
         impressions=("impressions", "sum"),
-        clicks=("clicks", "sum"),
+        link_clicks=("link_clicks", "sum"),
         purchases=("purchases", "sum"),
         avg_frequency=("frequency", "mean"),
         days=("date", "nunique"),
     )
     g["roas"] = g.apply(lambda r: r.revenue / r.spend if r.spend else 0.0, axis=1)
-    g["ctr"] = g.apply(lambda r: r.clicks / r.impressions * 100 if r.impressions else 0.0, axis=1)
+    g["link_ctr"] = g.apply(
+        lambda r: r.link_clicks / r.impressions * 100 if r.impressions else 0.0, axis=1)
     g["cpa"] = g.apply(lambda r: r.spend / r.purchases if r.purchases else 0.0, axis=1)
     return g.sort_values("spend", ascending=False).reset_index(drop=True)

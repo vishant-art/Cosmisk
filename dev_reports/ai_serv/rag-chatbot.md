@@ -1,6 +1,6 @@
-# AI Layer — RAG Chatbot (`rnd/chat.py`)
+# AI Layer — RAG Chatbot (`rnd/src/chat.py`)
 
-> Design doc for `rnd/chat.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer` chat.
+> Design doc for `rnd/src/chat.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer` chat.
 > Kept in sync with the code. Last updated: 2026-06-11.
 
 ## Purpose

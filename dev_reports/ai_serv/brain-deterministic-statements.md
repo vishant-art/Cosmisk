@@ -1,6 +1,6 @@
-# AI Layer — Deterministic Brain (`rnd/brain.py`)
+# AI Layer — Deterministic Brain (`rnd/src/brain.py`)
 
-> Design doc for `rnd/brain.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer`.
+> Design doc for `rnd/src/brain.py`. Status: **experiment (rnd)**. Future home: `apps/ai-layer`.
 > Kept in sync with the code. Last updated: 2026-06-11.
 
 ## Purpose
@@ -93,7 +93,7 @@ campaigns. Without gates the brain "discovers" pure noise. Constants (top of
 
 **Mock:** all statement types correct; flagged fatigue on "Prospecting" (3.86x ->
 2.25x, freq 2.0 -> 4.0) and scaling on "UGC" (3.38x -> 4.83x); 6 charts rendered.
-**Real data** (`_real_sample.json`, 84 campaigns, 1,176 rows): before gates it
+**Real data** (`data/_real_sample.json`, 84 campaigns, 1,176 rows): before gates it
 emitted garbage (best "16.71x" on ₹23K; scaling "+5233.9% -> 199.44x" from a
 1-sale campaign; "-100%" fatigue on flat frequency). After gates: best = 5.06x on
 220 purchases, one legitimate scaling flag, no noise; account-level Overview/Trend

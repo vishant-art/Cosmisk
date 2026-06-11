@@ -63,13 +63,13 @@ def build_context(ds: mt.Dataset) -> str:
         f"blended_roas={(df.revenue.sum() / df.spend.sum() if df.spend.sum() else 0):.2f}  "
         f"purchases={int(df.purchases.sum())}",
         "",
-        "PER-CAMPAIGN TOTALS (spend | revenue | roas | purchases | cpa | avg_freq | ctr%):",
+        "PER-CAMPAIGN TOTALS (spend | revenue | roas | purchases | cpa | avg_freq | link_ctr%):",
     ]
     for _, r in cs.iterrows():
         lines.append(
             f"  - {r.campaign_name}: spend={r.spend:.0f} | revenue={r.revenue:.0f} | "
             f"roas={r.roas:.2f} | purchases={int(r.purchases)} | cpa={r.cpa:.0f} | "
-            f"avg_freq={r.avg_frequency:.2f} | ctr={r.ctr:.2f}"
+            f"avg_freq={r.avg_frequency:.2f} | link_ctr={r.link_ctr:.2f}"
         )
     lines += ["", "DAILY ACCOUNT TOTALS (date | spend | revenue | roas):"]
     for _, r in daily.iterrows():
@@ -78,11 +78,12 @@ def build_context(ds: mt.Dataset) -> str:
 
 
 def main():
+    rnd_root = Path(__file__).resolve().parents[1]
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default=str(Path(__file__).with_name("mock_meta_ads.json")))
+    ap.add_argument("--data", default=str(rnd_root / "data" / "mock_meta_ads.json"))
     args = ap.parse_args()
 
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    load_dotenv(rnd_root.parent / ".env")
     key = os.getenv("OPENROUTER_API_KEY")
     base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     if not key:

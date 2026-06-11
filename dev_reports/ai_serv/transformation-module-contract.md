@@ -1,4 +1,4 @@
-# AI Layer — L1 Transformation Module & Typed Contract (`rnd/meta_transform.py`)
+# AI Layer — L1 Transformation Module & Typed Contract (`rnd/src/meta_transform.py`)
 
 > Design doc for the formalized L1 layer. Status: **experiment (rnd)**. Future
 > home: `apps/ai-layer`. Last updated: 2026-06-11.
@@ -18,7 +18,8 @@ unification + blended ROAS (L2) is still future.
 class CampaignDayFact:      # one normalized (campaign x date) row
     campaign_id: str; campaign_name: str; date: str
     spend; impressions; reach; frequency
-    clicks; link_clicks; ctr; cpc; cpm
+    clicks; ctr; cpc                              # ALL-clicks (secondary)
+    link_clicks; link_ctr; cost_per_link_click    # LINK clicks (headline); cpm
     add_to_cart; checkout; purchases; revenue; roas; cpa   # all float
 
 @dataclass(frozen=True)
@@ -40,19 +41,23 @@ are **frozen** (immutable) so a consumer can't silently mutate the cleaned data.
 
 ## What L1 does (and the rules it encodes)
 
-1. **Explode nested arrays.** `actions` / `action_values` / `purchase_roas` are
-   arrays keyed by `action_type`; L1 pulls the metrics out into flat columns.
-2. **Canonical selection (the load-bearing rule).** The same sale appears under
-   5+ keys (67 action_types on the real account). Priority, first match wins:
-   `offsite_conversion.fb_pixel_purchase -> omni_purchase -> onsite_web_purchase
-   -> purchase`. ATC and checkout have parallel priorities. This prevents the
-   2-3x double counting the raw data would cause. **The choice is a business
-   decision the team must ratify; L1 just encodes it in one place.**
-3. **Safe coercion.** Every numeric is a string (or missing/null) in raw Meta;
+1. **Explode nested arrays.** `actions` / `action_values` are arrays keyed by
+   `action_type`; L1 pulls the metrics out into flat columns.
+2. **Canonical selection (the load-bearing rule).** Same sale appears under 5+ keys
+   (67 action_types on the real account). Purchase/revenue use the WEBSITE pixel
+   basis, first match wins: `offsite_conversion.fb_pixel_purchase ->
+   onsite_conversion.purchase`. `omni_purchase`/`purchase` are **excluded** (wrong
+   scope for a web brand). ATC/checkout stay on the pixel tier. Full rationale +
+   the click-field choices: **meta-field-choices.md**. The purchase policy is a
+   **business decision the team must ratify**; L1 encodes it in one place.
+3. **Link clicks, not all-clicks.** Headline traffic = `inline_link_clicks` /
+   `inline_link_click_ctr` / `cost_per_inline_link_click`; `clicks`/`ctr`/`cpc`
+   (all-clicks) kept as secondary.
+4. **Safe coercion.** Every numeric is a string (or missing/null) in raw Meta;
    `_to_float` defaults to 0.0, never throws.
-4. **Derivations with guards.** ROAS prefers Meta's reported `purchase_roas`, else
-   `revenue/spend`; CPA = `spend/purchases` (0 if none). No div-by-zero.
-5. **Tidy grain.** One row per (campaign × date); account fields live on `Dataset`.
+5. **ROAS is DERIVED** (`revenue/spend`), not the reported field (`purchase_roas`
+   keys on omni; `website_purchase_roas` deprecating). CPA = `spend/purchases`.
+6. **Tidy grain.** One row per (campaign × date); account fields live on `Dataset`.
 
 ## Tests
 

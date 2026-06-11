@@ -38,12 +38,22 @@ except (AttributeError, ValueError):
 GRAPH_API_VERSION = "v23.0"
 BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 
-# Representative field set -- what we'd actually request in production.
+# Production field set. Note link-click fields (inline_link_clicks / _ctr /
+# cost_per_inline_link_click) requested ALONGSIDE the all-clicks ones, plus
+# account_currency. purchase_roas/website_purchase_roas pulled for cross-check
+# only; the transform DERIVES ROAS.
 FIELDS = [
-    "campaign_id", "campaign_name", "adset_name", "ad_name",
-    "spend", "impressions", "reach", "frequency", "clicks", "ctr", "cpc", "cpm",
-    "actions", "action_values", "purchase_roas", "date_start", "date_stop",
+    "campaign_id", "campaign_name", "adset_name", "ad_name", "account_currency",
+    "spend", "impressions", "reach", "frequency",
+    "clicks", "ctr", "cpc",
+    "inline_link_clicks", "inline_link_click_ctr", "cost_per_inline_link_click",
+    "cpm", "actions", "action_values", "purchase_roas", "website_purchase_roas",
+    "date_start", "date_stop",
 ]
+
+# Default attribution window. Do NOT request 7d_view / 28d_view: removed Jan 2026,
+# they return empty (not an error) and silently drop view-through conversions.
+ATTRIBUTION_WINDOWS = ["1d_view", "7d_click"]
 
 
 def _fail(status, body):
@@ -108,7 +118,7 @@ def save_envelope(path, account, acct_meta, rows):
 
 
 def main():
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     token = os.getenv("META_ACCESS_TOKEN")
     if not token:
         print("META_ACCESS_TOKEN not set in ../.env")
@@ -149,6 +159,7 @@ def main():
         "access_token": token,
         "level": args.level,
         "fields": ",".join(FIELDS),
+        "action_attribution_windows": json.dumps(ATTRIBUTION_WINDOWS),
         "date_preset": args.preset,
         "time_increment": 1,
         "limit": 500,

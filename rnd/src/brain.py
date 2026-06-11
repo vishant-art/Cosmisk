@@ -268,10 +268,11 @@ def make_plots(df, outdir, currency):
 
 
 def main():
+    rnd_root = Path(__file__).resolve().parents[1]
     ap = argparse.ArgumentParser(description="Deterministic NL brain over Meta Ads data")
-    ap.add_argument("--data", default=str(Path(__file__).with_name("mock_meta_ads.json")))
+    ap.add_argument("--data", default=str(rnd_root / "data" / "mock_meta_ads.json"))
     ap.add_argument("--plots", action="store_true", help="also render EDA charts")
-    ap.add_argument("--outdir", default=str(Path(__file__).with_name("plots")))
+    ap.add_argument("--outdir", default=str(rnd_root / "plots"))
     args = ap.parse_args()
 
     ds = mt.load(args.data)

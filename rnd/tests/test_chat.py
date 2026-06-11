@@ -21,9 +21,9 @@ from dotenv import load_dotenv
 
 # Load repo-root .env at collection time so the live-test skipif can see
 # OPENROUTER_API_KEY (the marker is evaluated before any test body runs).
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import chat  # noqa: E402
 import meta_transform as mt  # noqa: E402
 
@@ -98,7 +98,7 @@ def test_system_prompt_embeds_snapshot():
 
 
 def test_real_sample_builds_context_if_present():
-    p = Path(__file__).with_name("_real_sample.json")
+    p = Path(__file__).resolve().parents[1] / "data" / "_real_sample.json"
     if not p.exists():
         pytest.skip("no _real_sample.json captured")
     ctx = chat.build_context(mt.load(str(p)))
