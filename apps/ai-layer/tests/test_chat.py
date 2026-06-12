@@ -13,19 +13,14 @@ Run all:       set RUN_LIVE_LLM=1   (PowerShell: $env:RUN_LIVE_LLM=1)  then pyte
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 
-# Load repo-root .env at collection time so the live-test skipif can see
-# OPENROUTER_API_KEY (the marker is evaluated before any test body runs).
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-import chat  # noqa: E402
-import meta_transform as mt  # noqa: E402
+# Importing the package loads .env (via ai_layer.config), so the live-test skipif
+# can see OPENROUTER_API_KEY at collection time.
+from ai_layer import chat
+from ai_layer import meta_transform as mt
 
 META = {"account_name": "Test", "currency": "INR",
         "date_range": {"since": "2026-05-01", "until": "2026-05-02"}}

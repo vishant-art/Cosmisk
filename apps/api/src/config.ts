@@ -65,6 +65,9 @@ export const config = {
   slackSigningSecret: env['SLACK_SIGNING_SECRET'] || '',
   n8nBriefingWebhook: env['N8N_BRIEFING_WEBHOOK'] || '',
   alertEmailFrom: env['ALERT_EMAIL_FROM'] || 'alerts@cosmisk.ai',
+  // ai-layer service (apps/ai-layer). Empty AI_LAYER_URL = feature OFF (routes skip).
+  aiLayerUrl: env['AI_LAYER_URL'] || '',
+  aiLayerApiKey: env['AI_LAYER_API_KEY'] || '',
   corsOrigins: [
     'http://localhost:4200',
     'https://cosmisk.ai',

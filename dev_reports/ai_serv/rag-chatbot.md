@@ -84,10 +84,24 @@ fastest and grounds fine. Full benchmark, token-cost reality (full data ≈ 110-
 tokens, not the `chars/4` estimate), and the **query-tool scaling path** are recorded
 in chat-latency-and-fixes.md. Prices are approximate / version-sensitive.
 
-## Guardrails
+## Persona & guardrails (analyst, not a lookup table)
 
-- System prompt: answer ONLY from the snapshot; if not derivable, say so; cite
-  figures with currency; no invented numbers.
+The system prompt makes it a **senior Meta Ads strategist that discusses the data**,
+not a strict extractor. Two-tier rule (this replaced an earlier strict-extraction
+prompt that rejected anything needing judgment):
+
+- **NUMBERS stay grounded** — a specific figure must come from the snapshot; it never
+  invents one, and says so if a number isn't present. (Grounding tests still pass:
+  refuses a fabricated TikTok number, won't invent campaigns.)
+- **ANALYSIS is encouraged** — trends, account health, likely causes, risks, and
+  concrete recommendations. It takes a position and does NOT refuse judgment/inference
+  questions. Claims beyond the literal data are made but **flagged** (`(inference)`,
+  "likely, though the data can't prove causation"); it surfaces key caveats
+  (Meta over-counts vs Shopify; recent ~7 days under-reported) without letting them
+  block a useful answer. `TEMPERATURE = 0.3` gives it room to discuss.
+- Locked by a live test (`test_live_gives_inference_not_refusal`): an "is this account
+  healthy / what should I focus on" question must return a substantive analytical
+  answer, not a "cannot be determined" refusal.
 - REPL keeps conversation history; survives API errors (prints + continues).
 
 ## Data source
@@ -99,6 +113,19 @@ pull is a one-time per-session cost (~1,176 rows / 3 pages for Pratap sons); the
 snapshot is then fixed for the whole chat. `meta_live.fetch_envelope` /
 `fetch_dataset` are the shared live-fetch helpers (also used by `brain_real.py`).
 
+**Account picker.** With no `--account`, `choose_account()` lists every ad account on
+the token (numbered: name, currency, a flag for closed/inactive) and prompts you to
+pick one before fetching. `--account act_<id>` skips the picker; non-interactive stdin
+(piped/tests) falls back to the first account so nothing hangs on a prompt.
+
+**Window vs account gotcha.** The default preset is `last_30d` (a rolling 30-day
+window, not cumulative), but Meta only returns rows for days a campaign actually
+delivered. A near-dormant account (e.g. Harshad Trading) may show only the few days it
+ran ads, even though 30 days were requested — that's the account, not the preset. The
+chatbot is **stateless** (re-pulls a rolling window each session, no persistence); a
+cumulative store with trailing-window UPSERT is the production ingestion layer (not
+built here — see `meta-live-probe.md`).
+
 A **`Spinner`** animates during the fetch so the ~5-10s startup doesn't look dead.
 It's a no-op when stdout is not a TTY (piped runs / tests), printing a single
 static line instead, so logs stay clean. Meta API errors now surface as a clean
@@ -108,8 +135,8 @@ spinner clears) instead of a mid-spinner `sys.exit`.
 ## Run
 
 ```
-python chat.py                                   # LIVE, first account, last_30d
-python chat.py --account act_123 --preset last_14d
+python chat.py                                   # LIVE; prompts you to pick an account
+python chat.py --account act_123 --preset last_14d   # skip the picker
 python chat.py --data ../data/_real_sample.json  # offline from a saved pull
 ```
 

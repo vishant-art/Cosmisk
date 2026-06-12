@@ -56,6 +56,7 @@ import { correlationStore } from './utils/request-context.js';
 import { registerPublicRoutes } from './boot/public-routes.js';
 import { registerMetaCreativeRoutes } from './boot/meta-creative-routes.js';
 import { registerAccountRoutes } from './boot/account-routes.js';
+import { registerAiLayerRoutes } from './boot/ai-layer-routes.js';
 
 if (process.env['SENTRY_DSN']) {
   Sentry.init({
@@ -253,6 +254,7 @@ if (config.nodeEnv === 'production' && existsSync(frontendDir)) {
 
 registerMetaCreativeRoutes(app);
 registerAccountRoutes(app);
+registerAiLayerRoutes(app); // Phase 5: no-op unless AI_LAYER_URL is set
 
 // Request timing hook
 app.addHook('onResponse', (request, reply, done) => {

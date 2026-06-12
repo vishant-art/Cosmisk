@@ -19,18 +19,15 @@ from __future__ import annotations
 
 import argparse
 import itertools
-import os
 import sys
 import threading
 import time
-from pathlib import Path
 
-from dotenv import load_dotenv
 from openai import OpenAI
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import meta_live as ml       # noqa: E402  (live fetch -> Dataset)
-import meta_transform as mt  # noqa: E402
+from ai_layer import config, cost_ledger
+from ai_layer import meta_live as ml
+from ai_layer import meta_transform as mt
 
 # Windows consoles default to cp1252 and choke on ₹/€; force UTF-8 output.
 try:
@@ -200,29 +197,40 @@ def build_context(ds: mt.Dataset, max_campaigns: int | None = MAX_CAMPAIGNS,
     return "\n".join(lines)
 
 
-def complete(client: OpenAI, messages, stream: bool = False) -> str:
+def complete(client: OpenAI, messages, stream: bool = False, account: str | None = None) -> str:
     """One model call with the shared config (model, temperature, reasoning effort).
-    Single source of truth so the REPL and tests exercise identical settings.
-    When stream=True, prints tokens as they arrive and returns the full text."""
+    Single source of truth so the REPL, API, and tests exercise identical settings.
+    When stream=True, prints tokens as they arrive and returns the full text.
+    `account` attributes the cost in the ledger (Phase 4)."""
     extra = {"reasoning": {"effort": REASONING_EFFORT}} if REASONING_EFFORT else {}
     if not stream:
         resp = client.chat.completions.create(
             model=MODEL, temperature=TEMPERATURE, messages=messages, extra_body=extra)
+        _record_cost(getattr(resp, "usage", None), account)
         return resp.choices[0].message.content
-    out = []
+    out, usage = [], None
     s = client.chat.completions.create(
-        model=MODEL, temperature=TEMPERATURE, messages=messages, stream=True, extra_body=extra)
+        model=MODEL, temperature=TEMPERATURE, messages=messages, stream=True,
+        stream_options={"include_usage": True}, extra_body=extra)
     for chunk in s:
-        delta = chunk.choices[0].delta.content if chunk.choices else None
-        if delta:
-            print(delta, end="", flush=True)
-            out.append(delta)
+        if chunk.choices and chunk.choices[0].delta.content:
+            print(chunk.choices[0].delta.content, end="", flush=True)
+            out.append(chunk.choices[0].delta.content)
+        if getattr(chunk, "usage", None):
+            usage = chunk.usage
     print()
+    _record_cost(usage, account)
     return "".join(out)
 
 
+def _record_cost(usage, account=None):
+    """Log this call's token usage + cost to the Python-side ledger."""
+    if usage:
+        cost_ledger.record(MODEL, getattr(usage, "prompt_tokens", 0),
+                           getattr(usage, "completion_tokens", 0), account=account)
+
+
 def main():
-    rnd_root = Path(__file__).resolve().parents[1]
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", help="load from a JSON file instead of pulling live")
     ap.add_argument("--account", help="act_<id>; if omitted, pick from a list interactively")
@@ -232,20 +240,19 @@ def main():
                     help="inject the complete per-(campaign x date) rows (default: on)")
     args = ap.parse_args()
 
-    load_dotenv(rnd_root.parent / ".env")
-    key = os.getenv("OPENROUTER_API_KEY")
-    base = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    key = config.OPENROUTER_API_KEY
+    base = config.OPENROUTER_BASE_URL
     if not key:
-        print("OPENROUTER_API_KEY not set in repo-root .env")
+        print("OPENROUTER_API_KEY not set (.env or environment)")
         sys.exit(1)
 
     # Pull live by default; --data is the offline override.
     if args.data:
         ds = mt.load(args.data)
     else:
-        token = os.getenv("META_ACCESS_TOKEN")
+        token = config.META_ACCESS_TOKEN
         if not token:
-            print("META_ACCESS_TOKEN not set in repo-root .env (or pass --data <file>)")
+            print("META_ACCESS_TOKEN not set (.env or environment); or pass --data <file>")
             sys.exit(1)
         account = args.account or choose_account(token)   # interactive picker if not given
         try:
@@ -293,6 +300,8 @@ def main():
             continue
         messages.append({"role": "assistant", "content": ans})
         print()
+
+    print(f"\nLLM cost ledger total (all sessions): ${cost_ledger.total_usd():.4f}")
 
 
 if __name__ == "__main__":

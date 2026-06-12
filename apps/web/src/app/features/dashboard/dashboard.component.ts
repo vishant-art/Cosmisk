@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { KpiCardComponent } from '../../shared/components/kpi-card/kpi-card.component';
 import { InsightCardComponent } from '../../shared/components/insight-card/insight-card.component';
+import { AiLayerInsightsComponent } from './ai-layer-insights.component';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
 import { AreaChartComponent } from '../../shared/components/area-chart/area-chart.component';
@@ -25,7 +26,7 @@ import { environment } from '../../../environments/environment';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, KpiCardComponent, InsightCardComponent, AiLayerInsightsComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
   template: `
     <!-- Hero: Generate Creative Assets -->
     <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4338ca] p-8 mb-8">
@@ -455,6 +456,9 @@ import { environment } from '../../../environments/environment';
           Ask Cosmisk AI <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
+
+      <!-- ai-layer cards (Phase 5; hidden unless the ai-layer service is configured) -->
+      <app-ai-layer-insights />
     </div>
 
     <!-- Top Performing Creatives -->
