@@ -33,13 +33,27 @@ def cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
 
 
 def record(model: str, prompt_tokens: int, completion_tokens: int,
-           op: str = "chat", account: str | None = None) -> float:
+           op: str = "chat", account: str | None = None,
+           cost_usd_actual: float | None = None,
+           cache_discount_usd: float | None = None) -> float:
     """Append one usage entry to the ledger and return its cost. `account` enables
-    per-account cost attribution (Phase 4 multi-tenancy)."""
+    per-account cost attribution (Phase 4 multi-tenancy).
+
+    When `cost_usd_actual` is given (OpenRouter's authoritative `usage.cost`, which
+    already reflects prompt-cache discounts), it is recorded verbatim and the entry is
+    tagged `priced="openrouter"`. Otherwise we fall back to the static PRICING estimate
+    (`priced="estimated"`), so cost is never lost even if the provider omits it."""
     pt, ct = int(prompt_tokens or 0), int(completion_tokens or 0)
-    c = cost_usd(model, pt, ct)
+    if cost_usd_actual is not None:
+        c = float(cost_usd_actual)
+        priced = "openrouter"
+    else:
+        c = cost_usd(model, pt, ct)
+        priced = "estimated"
     entry = {"model": model, "op": op, "account": account, "prompt_tokens": pt,
-             "completion_tokens": ct, "cost_usd": round(c, 6)}
+             "completion_tokens": ct, "cost_usd": round(c, 6), "priced": priced}
+    if cache_discount_usd is not None:
+        entry["cache_discount_usd"] = round(float(cache_discount_usd), 6)
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _LOCK, open(LEDGER_PATH, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")

@@ -20,6 +20,8 @@ export const environment = {
   DASHBOARD_CHART: 'dashboard/chart',
   DASHBOARD_INSIGHTS: 'dashboard/insights',
   AI_LAYER_INSIGHTS: 'ai-layer/insights',
+  AI_LAYER_CHAT: 'ai-layer/chat',
+  AI_LAYER_REFRESH: 'ai-layer/refresh',
   DASHBOARD_TOP_CREATIVES: 'dashboard/top-creatives',
 
   CREATIVES_LIST: 'creatives/list',

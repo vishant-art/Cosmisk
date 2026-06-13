@@ -223,11 +223,39 @@ def complete(client: OpenAI, messages, stream: bool = False, account: str | None
     return "".join(out)
 
 
+def _usage_extra(usage, key):
+    """Read an OpenRouter-only field off the usage object. The OpenAI SDK keeps
+    unknown fields (extra='allow'), exposed as an attribute or in model_extra."""
+    v = getattr(usage, key, None)
+    if v is None:
+        extra = getattr(usage, "model_extra", None)
+        if isinstance(extra, dict):
+            v = extra.get(key)
+    return v
+
+
 def _record_cost(usage, account=None):
-    """Log this call's token usage + cost to the Python-side ledger."""
-    if usage:
-        cost_ledger.record(MODEL, getattr(usage, "prompt_tokens", 0),
-                           getattr(usage, "completion_tokens", 0), account=account)
+    """Log this call's token usage + cost to the Python-side ledger.
+
+    Prefer OpenRouter's authoritative `usage.cost` (reflects prompt-cache discounts);
+    fall back to the static estimate if the provider omits it."""
+    if not usage:
+        return
+    real = _usage_extra(usage, "cost")
+    details = _usage_extra(usage, "cost_details")
+    discount = None
+    if isinstance(details, dict):
+        discount = details.get("cache_discount")
+    elif details is not None:
+        discount = getattr(details, "cache_discount", None)
+    cost_ledger.record(
+        MODEL,
+        getattr(usage, "prompt_tokens", 0),
+        getattr(usage, "completion_tokens", 0),
+        account=account,
+        cost_usd_actual=float(real) if real is not None else None,
+        cache_discount_usd=float(discount) if discount is not None else None,
+    )
 
 
 def main():

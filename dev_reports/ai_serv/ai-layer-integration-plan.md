@@ -117,6 +117,136 @@ shape needs more fields, so `apps/web` renders them unchanged.
   estimate was WRONG (learning-engine is live-reachable); only the verified island was
   removed. Orphaned design doc `services/ELITE_INTELLIGENCE_DESIGN.md` left in place.
 
+## "Continue without Meta login" (demo creds) + full smoke [DONE 2026-06-13]
+
+A user who hasn't connected Meta can still see real insights via the shared dev/testing
+token. **Additive, dev-gated, contained to the ai-layer insights path.**
+
+- **apps/api `config.ts`**: `metaAccessToken` (= `META_ACCESS_TOKEN`, the dev/testing
+  agency token) and `demoAccountId` (= `DEMO_ACCOUNT_ID`, default `act_1738503939658460`).
+  **Empty `metaAccessToken` in prod ⇒ demo mode is OFF** (the gate). Note: `apps/api/.env`
+  does not carry `META_ACCESS_TOKEN`; it must be set in the service env to enable demo.
+- **`boot/ai-layer-routes.ts`**: `GET /ai-layer/insights?demo=1` — when the user has no
+  Meta token AND `demo=1` AND `config.metaAccessToken` is set, fall back to the dev token
+  + `demoAccountId` (account_id optional in demo; explicit `account_id` still honoured).
+  Response carries `demo: true`. Without the opt-in, behaviour is unchanged
+  (`meta_connected: false`). account_id is now required only once a token is present.
+- **`services/ai-layer-client.ts`**: default `source` flipped **live → store** (the warm
+  store is the fast request path per gap #2; live falls back automatically when empty).
+  Timeout 30s → 45s. A cold live pull (~30s+) was the cause of the first smoke's timeout;
+  pre-`/ingest` warms the store so reads are ~2s.
+- **apps/web `ai-layer-insights.component.ts`**: when no account is connected, shows a
+  "Continue without Meta login" button → loads `?demo=1`; cards badged **"Demo data"**.
+- **Tests**: `__tests__/ai-layer-routes.test.ts` now 7 (was 5): +demo fallback, +account
+  override; the 400 case updated (account_id only required with a token). `config.js`
+  mocked per-file so the demo path is deterministic.
+
+**Full cross-service smoke (PASS, 2026-06-13):** tokenless user (JWT) →
+`GET /ai-layer/insights?demo=1` → dev creds → ai-layer store (1,193 rows, last 30d) →
+deterministic brain → **6 real AiInsight cards** (Overview ₹51.99L spend / ₹1.87Cr rev /
+ROAS ~3.6, -32% revenue Trend, best/worst campaign, budget concentration, bad-day alert),
+`demo: true`, **~2.0s** latency. Verified: apps/api `tsc` 0 errors, **401 default tests
+pass** (+2, 0 fail), `madge` 0 cycles.
+
+> **Scope note / follow-up:** this is contained to the ai-layer insights card. An
+> app-wide "demo mode" (dashboard KPIs, analytics, etc. on dev creds) would mean teaching
+> the shared token helpers (`getMetaTokenForUser` / `getUserMetaToken`) the same fallback,
+> which touches many frozen routes — deferred pending a decision. Background `/ingest`
+> (cron) to keep the store warm is the remaining production task for snappy reads.
+
+## Chat wiring + tab surfaces [DONE 2026-06-13]
+
+Before this, only the dashboard insight card reached the Python ai-layer; the brain/
+analytics tabs and chat were all old TS, and the Python `/chat` RAG was unreachable from
+the web app (apps/api only proxied `/ai-layer/insights`). Now wired, additively:
+
+- **apps/api**: `services/ai-layer-client.ts` adds `fetchAiLayerChat()` (POST the Python
+  `/chat`, 60s timeout, store source, full-data). `boot/ai-layer-routes.ts` extracts a
+  shared `resolveMetaToken(userId, demoMode)` (per-user token → dev-creds demo fallback →
+  null) used by both routes, and adds **`POST /ai-layer/chat`** (auth, demo-aware,
+  history capped at 20 turns, graceful degrade with a friendly message). Tests:
+  `__tests__/ai-layer-routes.test.ts` **5 → 13** (added the full chat suite).
+- **apps/web**: new **AI Chat** tab — `features/ai-chat/ai-chat.component.ts` (chat UI:
+  bubbles, suggestions, typing indicator, model+session-cost footer; auto-demo with a
+  "Demo data" badge when no account is connected), route `/app/ai-chat`, sidebar item
+  under Intelligence (LIVE badge). The Python deterministic-brain cards
+  (`AiLayerInsightsComponent`, already demo-aware) are now also mounted on the **Brain**
+  and **Analytics** tabs (existing UI untouched, cards on top). Registered the
+  `MessageCircle` + `BrainCircuit` lucide icons (the dashboard's `brain-circuit` was
+  previously unregistered → blank).
+
+**What now reaches the Python services from the website:** dashboard insight card, Brain
+tab cards, Analytics tab cards, and the AI Chat tab (RAG). The old TS brain-patterns /
+analytics / agent endpoints still back the rest of those tabs (not ripped out).
+
+**Live chat smoke (PASS, 2026-06-13):** tokenless user → `POST /ai-layer/chat`
+(`demo:true`) → dev creds → ai-layer store → context-injection RAG → gemini-2.5-flash.
+Turn 1 named the best campaign (5.06 ROAS) + spend↑/ROAS↓ trend; turn 2 (history passed)
+returned worst campaigns with real numbers + a pause recommendation. **Caveat:** full-data
+mode on the large demo account (1,193 rows / 84 campaigns) ⇒ **~18-20s and ~$0.045 per
+turn** (context is re-sent every turn). Fine on small accounts; for big accounts consider
+a summarized-context mode or a per-turn context cache. Verified: apps/api `tsc` 0 errors,
+**407 default tests pass** (+6), `madge` 0 cycles; apps/web prod build green.
+
+## Chat cost controls: summary mode + session cache [DONE 2026-06-13]
+
+The full-data chat re-sent the whole dataset every turn (~$0.045, ~18-20s on the big
+demo account). Two additive controls, **default behaviour unchanged (full context)**:
+
+- **Summary mode (opt-in button).** `chat.build_context(full=False)` already emits
+  aggregates-only (account + per-campaign + daily totals, no per-row dump). Exposed via
+  `ChatRequest.context_mode` ("full" default | "summary"). The web **AI Chat** header has
+  a "Summary mode: OFF/ON" toggle (default OFF = full, as before). Live: full **$0.045**
+  vs summary **$0.0023** per turn (~19x cheaper input), and faster.
+- **Session context cache** (`apps/ai-layer/ai_layer/context_cache.py`). Builds the
+  snapshot once per `session_id` (TTL 30m, in-memory, bounded), reuses it byte-identical
+  across turns: no per-turn refetch/rebuild, and a stable system prefix so **Gemini 2.5
+  Flash implicit caching** (automatic on OpenRouter, needs a >=1024-token identical
+  prefix with the question pushed last — verified vs OpenRouter docs) discounts the
+  repeated prefix on turns 2+. The web client generates a `session_id` per chat and echoes
+  the one returned each turn. Live: turn 2 returned `cached:true`.
+  - **Ledger caveat:** the Python cost ledger bills static price x prompt_tokens, so it
+    does NOT yet credit the implicit-cache input discount (our number is an upper bound;
+    OpenRouter's actual bill is lower on cached turns). Summary mode's saving IS reflected
+    (fewer tokens). Multi-worker deploys need a shared cache (SQLite/Redis) — documented.
+
+Wiring: `ChatRequest` +context_mode/+session_id, `ChatResponse` +session_id/+context_mode/
++cached; apps/api `fetchAiLayerChat` + `/ai-layer/chat` thread both through and echo back;
+the AI Chat component adds the toggle + per-session id + a mode/cached footer. Tests:
+ai-layer **+9** (context_cache unit + build-once integration + summary-leaner), apps/api
+chat route **+1** (summary/session forwarding). Verified: ai-layer **47 pass**, apps/api
+`tsc` 0 + **408 tests** + `madge` 0 cycles, apps/web prod build green.
+
+## Real OpenRouter cost + Refresh button [DONE 2026-06-13]
+
+**Ledger now bills OpenRouter's authoritative cost.** OpenRouter returns `usage.cost`
+(real USD, already net of prompt-cache discounts) and `usage.cost_details.cache_discount`
+in every response (the `usage:{include:true}` flag is deprecated/auto-on; verified vs
+OpenRouter docs). `chat._record_cost` reads them off the usage object (OpenAI SDK keeps
+unknown fields via `extra='allow'`; falls back to `model_extra`) and passes them to
+`cost_ledger.record(cost_usd_actual=, cache_discount_usd=)`, which records the real cost
+tagged `priced="openrouter"` (+ `cache_discount_usd` when present). If the provider omits
+cost we fall back to the static estimate (`priced="estimated"`) so nothing is lost. Live:
+a chat turn recorded `priced:"openrouter", cost_usd:0.002348`. Note: Gemini implicit
+caching is best-effort, so `cache_discount` is only populated on turns the provider
+actually discounts (often null) — but the recorded `cost` is always the true charge.
+
+**Refresh button = the only live pull; everything else reads the cache.** New
+`POST /ai-layer/refresh` (`{account_id?, demo?}`) → `ingestAiLayer` → ai-layer `/ingest`
+(live Meta pull, UPSERT into the store). After it returns the store holds the latest
+numbers, so the normal cached reads (`/insights` source=store, `/chat` session cache) are
+fresh. Until pressed, cached data is used. Web: a **Refresh** button (spinner, `refresh-cw`)
+on the **AI Layer Insights** card (so it's on Brain/Analytics/Dashboard) reloads the cards
+after refresh; on **AI Chat** it ingests, starts a new `session_id` (next turn rebuilds
+from the fresh store), and drops a "↻ Refreshed with live data through <date> (N rows)"
+note. Demo-aware (dev creds). Live: refresh returned `refreshed:true, rowsUpserted:1193,
+until:2026-06-12` in ~54s (a real live pull — hence the spinner/disabled state).
+
+Tests: ai-layer **+3** (cost-ledger estimate-vs-actual, total mixes both); apps/api chat
+route **+5** (refresh: auth, no-token, ingest, demo, degrade). Verified: ai-layer **50
+pass**, apps/api `tsc` 0 + **413 tests** + route-suite **19** + `madge` 0 cycles, apps/web
+prod build green.
+
 ## Open decisions for sign-off
 
 1. **A (Python service) vs B (TS port)?** Recommend A.

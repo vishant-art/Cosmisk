@@ -84,6 +84,7 @@ export const routes: Routes = [
       { path: 'ugc-studio/gen/:genId', loadComponent: () => import('./features/ugc-studio/generation-detail/generation-detail.component') },
       { path: 'ugc-studio/:id', loadComponent: () => import('./features/ugc-studio/project-detail/project-detail.component') },
       { path: 'brain', loadComponent: () => import('./features/brain/brain.component') },
+      { path: 'ai-chat', loadComponent: () => import('./features/ai-chat/ai-chat.component') },
       { path: 'analytics', loadComponent: () => import('./features/analytics/analytics.component') },
       { path: 'ai-studio', loadComponent: () => import('./features/ai-studio/ai-studio.component') },
       { path: 'reports', loadComponent: () => import('./features/reports/reports.component') },

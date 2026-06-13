@@ -97,6 +97,54 @@ live = pytest.mark.skipif(
     reason="set RUN_LIVE_LLM=1 + OPENROUTER_API_KEY for live LLM tests")
 
 
+def test_chat_session_cache_builds_context_once(client, monkeypatch):
+    """Offline: with a reused session_id the snapshot is built once and served from
+    the cache on turn 2 (no rebuild). LLM is mocked, so no OpenRouter call."""
+    from ai_layer import chat, context_cache
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")   # pass the 503 guard
+    context_cache.clear()
+    seed()
+
+    monkeypatch.setattr(api.chat, "complete", lambda *a, **k: "canned answer")
+    calls = {"n": 0}
+    real_build = chat.build_context
+
+    def counting_build(ds, *a, **k):
+        calls["n"] += 1
+        return real_build(ds, *a, **k)
+
+    monkeypatch.setattr(api.chat, "build_context", counting_build)
+
+    # turn 1 -> builds + caches under a new session id
+    r1 = client.post("/chat", json={"account_id": "act_1", "message": "hi", "source": "store"})
+    assert r1.status_code == 200
+    b1 = r1.json()
+    assert b1["cached"] is False and b1["session_id"] and b1["context_mode"] == "full"
+    assert calls["n"] == 1
+
+    # turn 2 with the same session id -> served from cache, NOT rebuilt
+    r2 = client.post("/chat", json={"account_id": "act_1", "message": "again",
+                                    "source": "store", "session_id": b1["session_id"]})
+    assert r2.status_code == 200
+    b2 = r2.json()
+    assert b2["cached"] is True
+    assert calls["n"] == 1
+
+
+def test_chat_summary_mode_is_leaner_than_full(client, monkeypatch):
+    """Offline: summary context omits the full per-row dump, so it's smaller."""
+    from ai_layer import chat
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    seed()
+    ds = store.load_dataset("act_1")
+    full = chat.build_context(ds, full=True)
+    summary = chat.build_context(ds, full=False)
+    assert "FULL PER-CAMPAIGN DAILY ROWS" in full
+    assert "FULL PER-CAMPAIGN DAILY ROWS" not in summary
+    assert len(summary) < len(full)
+
+
 @live
 def test_chat_endpoint_grounded(client, monkeypatch):
     monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)

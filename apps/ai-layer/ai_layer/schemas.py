@@ -68,7 +68,16 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[list[dict[str, str]]] = None
     source: str = "store"            # store | live
-    full: bool = True
+    # 'full' (default, as before) sends every per-(campaign x date) row; 'summary' is
+    # the opt-in lean mode -- pre-computed aggregates only (~6x fewer tokens, cheaper
+    # + faster). The web UI toggles this via a button; default stays 'full'.
+    context_mode: str = "full"       # full | summary
+    # Reuse a session's cached snapshot across turns (build once, stable prefix ->
+    # Gemini implicit-cache discount on turns 2+). Omit on the first turn; echo back
+    # the value returned in ChatResponse on subsequent turns.
+    session_id: Optional[str] = None
+    # Deprecated alias: full=True forces context_mode='full' (back-compat).
+    full: Optional[bool] = None
 
 
 class ChatResponse(BaseModel):
@@ -76,6 +85,9 @@ class ChatResponse(BaseModel):
     answer: str
     model: str
     cost_usd: float
+    session_id: str                  # reuse this on the next turn to hit the cache
+    context_mode: str                # the mode actually used (summary | full)
+    cached: bool                     # True if the snapshot came from the session cache
 
 
 class IngestResult(BaseModel):

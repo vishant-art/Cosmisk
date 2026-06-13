@@ -9,6 +9,7 @@ import { ApiService } from '../../core/services/api.service';
 import { ToastService } from '../../core/services/toast.service';
 import { DateRangeService } from '../../core/services/date-range.service';
 import { environment } from '../../../environments/environment';
+import { AiLayerInsightsComponent } from '../dashboard/ai-layer-insights.component';
 
 interface KpiCard {
   label: string;
@@ -32,7 +33,7 @@ interface BreakdownRow {
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, AreaChartComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, AreaChartComponent, AiLayerInsightsComponent],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -55,6 +56,10 @@ interface BreakdownRow {
           </button>
         </div>
       </div>
+
+      <!-- Deterministic-brain insights from the ai-layer (Python). Demo-aware,
+           renders nothing until data is available. -->
+      <app-ai-layer-insights />
 
       <!-- No Account Connected -->
       @if (!loading() && !hasAccount()) {

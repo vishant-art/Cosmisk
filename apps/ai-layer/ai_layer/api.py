@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from openai import OpenAI
 
-from ai_layer import brain, chat, config, cost_ledger, store
+from ai_layer import brain, chat, config, context_cache, cost_ledger, store
 from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt
 from ai_layer.schemas import (AccountInfo, AiInsight, ChatRequest, ChatResponse,
@@ -125,17 +125,35 @@ def insights(account_id: str, source: str = Query("store"),
 def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
     if not config.OPENROUTER_API_KEY:
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
-    ds = _dataset(req.account_id, req.source, token, "last_30d")
-    if len(ds) == 0:
-        raise HTTPException(status_code=404, detail="no data for this account")
-    messages = [{"role": "system", "content": chat.SYSTEM.format(context=chat.build_context(ds, full=req.full))}]
+
+    # Resolve context mode. context_mode wins; legacy full=True forces 'full'.
+    mode = "full" if req.full else req.context_mode
+    if mode not in ("summary", "full"):
+        mode = "summary"
+
+    # Session cache: build the snapshot once, reuse it byte-identical across turns
+    # (skips refetch/rebuild; stable prefix -> Gemini implicit-cache discount).
+    session_id = req.session_id or context_cache.new_session_id()
+    context = context_cache.get(session_id, req.account_id, mode)
+    cached = context is not None
+    if not cached:
+        ds = _dataset(req.account_id, req.source, token, "last_30d")
+        if len(ds) == 0:
+            raise HTTPException(status_code=404, detail="no data for this account")
+        context = chat.build_context(ds, full=(mode == "full"))
+        context_cache.put(session_id, req.account_id, mode, context)
+
+    # System (stable, cacheable) prefix first; history + the new question last so the
+    # varying part stays at the end (maximizes implicit cache hits).
+    messages = [{"role": "system", "content": chat.SYSTEM.format(context=context)}]
     messages += (req.history or [])
     messages.append({"role": "user", "content": req.message})
     client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
     before = cost_ledger.total_usd(account=req.account_id)
     answer = chat.complete(client, messages, stream=False, account=req.account_id)
     cost = round(cost_ledger.total_usd(account=req.account_id) - before, 6)
-    return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL, cost_usd=cost)
+    return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL,
+                        cost_usd=cost, session_id=session_id, context_mode=mode, cached=cached)
 
 
 @app.post("/ingest/{account_id}", response_model=IngestResult, dependencies=[Depends(require_api_key)])

@@ -247,6 +247,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
       title: 'Intelligence',
       items: [
         { label: 'Brain', icon: 'brain', route: '/app/brain', pro: true },
+        { label: 'AI Chat', icon: 'message-circle', route: '/app/ai-chat', live: true },
         { label: 'Autopilot', icon: 'zap', route: '/app/autopilot', pro: true, badge: 'autopilot' },
         { label: 'Watchdog', icon: 'scan-eye', route: '/app/agent', pro: true, live: true },
         { label: 'Competitor Spy', icon: 'search', route: '/app/competitor-spy', pro: true },
