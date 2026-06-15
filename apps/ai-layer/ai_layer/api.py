@@ -20,13 +20,15 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
 from ai_layer import brain, chat, config, context_cache, cost_ledger, store
 from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt
 from ai_layer.schemas import (AccountInfo, AiInsight, ChatRequest, ChatResponse,
-                              CostResponse, DailyPoint, IngestResult, InsightsResponse,
+                              CompleteRequest, CompleteResponse, CostResponse,
+                              DailyPoint, IngestResult, InsightsResponse,
                               InsightStatement, Totals)
 
 app = FastAPI(title="cosmisk ai-layer", version="0.1.0")
@@ -121,16 +123,13 @@ def insights(account_id: str, source: str = Query("store"),
                for _, r in daily.iterrows()])
 
 
-@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
-def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
-    if not config.OPENROUTER_API_KEY:
-        raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
-
-    # Resolve context mode. context_mode wins; legacy full=True forces 'full'.
+def _chat_messages(req: ChatRequest, token: str | None):
+    """Shared by /chat and /chat/stream: resolve mode + session-cached snapshot and
+    assemble the OpenAI message list. Returns (messages, session_id, mode, cached)."""
+    # context_mode wins; legacy full=True forces 'full'.
     mode = "full" if req.full else req.context_mode
     if mode not in ("summary", "full"):
         mode = "summary"
-
     # Session cache: build the snapshot once, reuse it byte-identical across turns
     # (skips refetch/rebuild; stable prefix -> Gemini implicit-cache discount).
     session_id = req.session_id or context_cache.new_session_id()
@@ -142,18 +141,63 @@ def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
             raise HTTPException(status_code=404, detail="no data for this account")
         context = chat.build_context(ds, full=(mode == "full"))
         context_cache.put(session_id, req.account_id, mode, context)
-
     # System (stable, cacheable) prefix first; history + the new question last so the
     # varying part stays at the end (maximizes implicit cache hits).
     messages = [{"role": "system", "content": chat.SYSTEM.format(context=context)}]
     messages += (req.history or [])
     messages.append({"role": "user", "content": req.message})
+    return messages, session_id, mode, cached
+
+
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
+def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
+    if not config.OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
+    messages, session_id, mode, cached = _chat_messages(req, token)
     client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
     before = cost_ledger.total_usd(account=req.account_id)
     answer = chat.complete(client, messages, stream=False, account=req.account_id)
     cost = round(cost_ledger.total_usd(account=req.account_id) - before, 6)
     return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL,
                         cost_usd=cost, session_id=session_id, context_mode=mode, cached=cached)
+
+
+@app.post("/chat/stream", dependencies=[Depends(require_api_key)])
+def chat_stream_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
+    """Same as /chat but streams the answer as plain-text chunks. Session/mode/cached
+    are returned as response headers (the body is the answer text)."""
+    if not config.OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
+    messages, session_id, mode, cached = _chat_messages(req, token)
+    client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
+    headers = {
+        "X-Session-Id": session_id,
+        "X-Context-Mode": mode,
+        "X-Cached": "true" if cached else "false",
+        "X-Model": chat.MODEL,
+        "Cache-Control": "no-cache",
+    }
+    return StreamingResponse(
+        chat.stream_answer(client, messages, account=req.account_id),
+        media_type="text/plain; charset=utf-8",
+        headers=headers,
+    )
+
+
+@app.post("/complete", response_model=CompleteResponse, dependencies=[Depends(require_api_key)])
+def complete_endpoint(req: CompleteRequest):
+    """Generic (non-RAG) LLM completion on OpenRouter/Gemini, recorded to the Python
+    ledger. The TS tabs (competitor-spy, autopilot, morning-briefing) call this so all
+    OpenRouter usage + cost lives here, not in the TS Anthropic gateway."""
+    if not config.OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
+    messages = ([{"role": "system", "content": req.system}] if req.system else []) + list(req.messages)
+    client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
+    before = cost_ledger.total_usd(account=req.account)
+    text = chat.raw_complete(client, messages, max_tokens=req.max_tokens,
+                             temperature=req.temperature, account=req.account, op=req.operation)
+    cost = round(cost_ledger.total_usd(account=req.account) - before, 6)
+    return CompleteResponse(text=text, model=chat.MODEL, cost_usd=cost)
 
 
 @app.post("/ingest/{account_id}", response_model=IngestResult, dependencies=[Depends(require_api_key)])

@@ -90,6 +90,24 @@ class ChatResponse(BaseModel):
     cached: bool                     # True if the snapshot came from the session cache
 
 
+class CompleteRequest(BaseModel):
+    """Generic LLM completion (non-RAG). The TS tabs (competitor-spy, autopilot,
+    morning-briefing) route their LLM work through this so all OpenRouter/Gemini
+    usage + cost stays in the Python layer."""
+    messages: list[dict[str, str]]        # OpenAI-style [{role, content}, ...]
+    system: Optional[str] = None          # prepended as a system message
+    max_tokens: int = 1024
+    temperature: float = 0.7
+    operation: str = "complete"           # ledger label
+    account: Optional[str] = None         # ledger attribution (e.g. the caller's user id)
+
+
+class CompleteResponse(BaseModel):
+    text: str
+    model: str
+    cost_usd: float
+
+
 class IngestResult(BaseModel):
     account_id: str
     rows_upserted: int

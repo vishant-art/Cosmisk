@@ -132,6 +132,32 @@ def test_chat_session_cache_builds_context_once(client, monkeypatch):
     assert calls["n"] == 1
 
 
+def test_complete_endpoint_generic(client, monkeypatch):
+    """Offline: /complete returns the model text + cost; LLM mocked (no OpenRouter)."""
+    from ai_layer import chat
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+    captured = {}
+
+    def fake_raw(client_, messages, **kw):
+        captured["messages"] = messages
+        captured["op"] = kw.get("op")
+        return "GENERATED TEXT"
+
+    monkeypatch.setattr(chat, "raw_complete", fake_raw)
+    r = client.post("/complete", json={
+        "system": "You are a tester.",
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 200, "operation": "unit.test", "account": "user-1",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["text"] == "GENERATED TEXT" and body["model"]
+    # system prepended, op forwarded
+    assert captured["messages"][0] == {"role": "system", "content": "You are a tester."}
+    assert captured["op"] == "unit.test"
+
+
 def test_chat_summary_mode_is_leaner_than_full(client, monkeypatch):
     """Offline: summary context omits the full per-row dump, so it's smaller."""
     from ai_layer import chat

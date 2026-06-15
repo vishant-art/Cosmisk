@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { safeFetch, safeJson } from '../utils/safe-fetch.js';
-import { createMessage } from '../services/llm-gateway.js';
+import { createViaAiLayer } from '../services/ai-layer-client.js';
 import { getDbAdapter } from '../db/adapter.js';
 import { decryptToken } from '../services/token-crypto.js';
 import { validate, competitorSearchSchema, competitorAnalyzeSchema } from '../validation/schemas.js';
@@ -91,7 +91,7 @@ async function analyzeCompetitorAds(userId: string, brandName: string, ads: AdLi
   }));
 
   try {
-    const response = await createMessage({
+    const response = await createViaAiLayer({
       userId,
       operation: 'competitor-spy.analyzeCompetitorAds',
       request: {

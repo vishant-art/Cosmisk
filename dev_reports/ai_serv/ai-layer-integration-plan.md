@@ -5,6 +5,31 @@
 > Each phase needs maintainer approval on a dedicated branch, verified against the
 > Test Invariant. Last updated: 2026-06-12.
 
+## Running it locally (ONE command)
+
+`cd apps/api && npm run dev` boots **both** services together via `apps/api/dev.mjs`
+(supervisor): the Python ai-layer (uvicorn :8077) and the Node api (tsx watch :3000),
+logs interleaved in one terminal, Ctrl+C stops both. `npm run dev:api` runs the api alone.
+
+The `/ai-layer/*` routes are flag-gated on `AI_LAYER_URL`; the env is wired in
+`apps/api/.env` (`AI_LAYER_URL=http://127.0.0.1:8077`, `AI_LAYER_API_KEY=testkey`,
+`META_ACCESS_TOKEN`, `DEMO_ACCOUNT_ID`) and root `.env` (`AI_LAYER_API_KEY=testkey` for the
+Python side; it already had `OPENROUTER_API_KEY` + `META_ACCESS_TOKEN`). `AI_LAYER_API_KEY`
+must match on both sides.
+
+Notes:
+- Full api boot is slow (~30–40s: LLM gateway, crons, audit scheduler, Neon DB) — the
+  ai-layer (:8077) comes up in ~3s, the api (:3000) a bit later. Watch for
+  `[ai-layer] ai-layer routes enabled` then `Cosmisk server running on port 3000`.
+- If a `npm run dev` was already running, restart it to pick up an `.env` change
+  (`tsx watch` only reloads on source edits, not `.env`).
+- If the `cos` venv is missing, `dev.mjs` warns and starts the api alone (degraded).
+- `start-ai-layer.ps1` at the repo root still exists as a standalone way to run just the
+  Python service if needed.
+
+Verified end-to-end (2026-06-13) from a single `npm run dev`: `/ai-layer/insights?demo=1`
+→ 6 cards, `/ai-layer/chat` (demo) → grounded answer ("blended ROAS … 3.60").
+
 ## Where we are
 
 Validated in `rnd/` (Python): the L1 transform + typed contract (`meta_transform`),
@@ -246,6 +271,46 @@ Tests: ai-layer **+3** (cost-ledger estimate-vs-actual, total mixes both); apps/
 route **+5** (refresh: auth, no-token, ingest, demo, degrade). Verified: ai-layer **50
 pass**, apps/api `tsc` 0 + **413 tests** + route-suite **19** + `madge` 0 cycles, apps/web
 prod build green.
+
+## Streaming chat, markdown, 3-tab Gemini migration, analytics graphs [DONE 2026-06-13]
+
+A batch of UX + migration work, all routing LLM through the **Python ai-layer / OpenRouter
+Gemini** (never the dead Anthropic gateway):
+
+- **3 tabs migrated to Python/Gemini** (autopilot, watchdog/briefing, competitor-spy). They
+  were dead because the TS gateway runs on Anthropic (no credits). Rather than add OpenRouter
+  to the TS gateway, added a generic **`POST /complete`** to the ai-layer (OpenRouter Gemini +
+  Python ledger) and a drop-in `createViaAiLayer()` (same opts shape as `createMessage`,
+  returns an Anthropic-`Message`-shaped object so `extractText` is unchanged). Swapped the 3
+  call sites (`competitor-spy.ts`, `autopilot-engine.ts`, `morning-briefing.ts`) — one
+  identifier each; the TS gateway is untouched and still backs the other ~21 callers. Trade-off:
+  these 3 bypass the gateway's per-user cap; cost is tracked in the Python ledger instead.
+- **Streaming chat.** ai-layer `chat.stream_answer()` + `POST /chat/stream` (StreamingResponse,
+  session-cache aware, session/mode/cached in headers). apps/api `POST /ai-layer/chat/stream`
+  proxies the stream (Readable.fromWeb) and forwards the headers. The web chat uses `fetch` +
+  ReadableStream to render tokens live.
+- **Markdown rendering.** Added `marked` + `DOMPurify` to apps/web; assistant bubbles render
+  sanitized Markdown (bold/bullets/tables). The chat system prompt now asks for Markdown.
+- **Length + token cap.** chat `MAX_TOKENS=1500`; system prompt defaults to **~10 sentences**
+  (expand only when asked).
+- **Chat persistence.** New root `ChatStateService` (signals + localStorage) holds the
+  conversation, session id, and summary toggle — survives tab switches and reloads. Added a
+  Clear button.
+- **Analytics graphs.** New `fetchAiLayerChartData` + `GET /ai-layer/analytics` (daily series +
+  totals from the brain). The Analytics tab now feeds its trend chart + KPI tiles from the
+  ai-layer when no Meta account is connected (demo creds), so the graphs render without a login.
+  CTR/CPA aren't in the brain totals, so those stay flat. **Dropped the duplicate
+  `<app-ai-layer-insights/>` card from Analytics** (kept on Brain + Dashboard).
+
+Verified: ai-layer **51 pytest**, apps/api `tsc` 0 + **413 vitest** + `madge` 0, apps/web prod
+build green. Live smoke (all via Python/Gemini): `/complete` → real text ($6.8e-5); demo
+`/chat/stream` → streamed Markdown with session headers (`x-context-mode: summary`); demo
+`/ai-layer/analytics` → 31 daily points + totals (spend ₹51.99L, ROAS 3.6, 84 campaigns).
+
+> Note: the 3 migrated tabs' *frontend read paths* still show DB/Meta data; the **generation**
+> steps now use Gemini, so triggering them (cron / competitor-spy analyze) no longer 400s on
+> Anthropic. Anthropic is still dry for the other ~21 TS callers — migrate the gateway itself or
+> top up credits when that matters.
 
 ## Open decisions for sign-off
 

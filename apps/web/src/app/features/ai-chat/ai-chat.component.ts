@@ -1,34 +1,28 @@
-import { Component, signal, inject, ElementRef, ViewChild, AfterViewChecked } from '@angular/core';
+import {
+  Component,
+  signal,
+  inject,
+  ElementRef,
+  ViewChild,
+  AfterViewChecked,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { LucideAngularModule } from 'lucide-angular';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
+import { AuthService } from '../../core/services/auth.service';
 import { environment } from '../../../environments/environment';
-
-interface ChatTurn {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-interface ChatResponse {
-  success: boolean;
-  answer?: string;
-  model?: string;
-  costUsd?: number;
-  demo?: boolean;
-  meta_connected?: boolean;
-  error?: string;
-  sessionId?: string;
-  contextMode?: string;
-  cached?: boolean;
-}
+import { ChatStateService } from './chat-state.service';
 
 /**
- * AI Chat — talks to the Python ai-layer RAG (`POST /api/ai-layer/chat`), grounded in
- * the selected account's data. When no Meta account is connected it falls back to the
- * shared dev/testing creds ("continue without Meta login", badged "Demo data"), so the
- * chat is usable without logging in. Degrades to an inline error if the layer is off.
+ * AI Chat — streams from the Python ai-layer RAG (`POST /api/ai-layer/chat/stream`),
+ * grounded in the selected account's data. Responses stream token-by-token and render
+ * as sanitized Markdown (bold/bullets). Conversation state lives in ChatStateService so
+ * it survives tab switches + reloads. Demo-aware ("continue without Meta login").
  */
 @Component({
   selector: 'app-ai-chat',
@@ -50,8 +44,15 @@ interface ChatResponse {
           </span>
         }
         <div class="ml-auto flex items-center gap-2">
-          <!-- Refresh: pull fresh live data into the cache and rebuild the snapshot for
-               the next message. Otherwise the cached data is reused. -->
+          <button
+            type="button"
+            (click)="clearChat()"
+            [disabled]="sending()"
+            title="Clear the conversation"
+            class="text-xs font-medium px-2.5 py-1.5 rounded-pill border border-gray-200 text-gray-500 hover:border-accent hover:text-accent transition-colors disabled:opacity-50 flex items-center gap-1.5">
+            <lucide-icon name="trash-2" [size]="13"></lucide-icon>
+            Clear
+          </button>
           <button
             type="button"
             (click)="refresh()"
@@ -61,8 +62,6 @@ interface ChatResponse {
             <lucide-icon name="refresh-cw" [size]="14" [class.animate-spin]="refreshing()"></lucide-icon>
             {{ refreshing() ? 'Refreshing…' : 'Refresh' }}
           </button>
-          <!-- Summary mode toggle: OFF = full data (default, as before); ON = lean
-               aggregates-only context (cheaper + faster). -->
           <button
             type="button"
             (click)="toggleSummary()"
@@ -75,7 +74,7 @@ interface ChatResponse {
               ? 'border-accent bg-accent text-white'
               : 'border-gray-200 text-gray-600 hover:border-accent hover:text-accent'">
             <lucide-icon [name]="summaryMode() ? 'zap' : 'layers'" [size]="14"></lucide-icon>
-            {{ summaryMode() ? 'Summary mode: ON' : 'Summary mode: OFF' }}
+            {{ summaryMode() ? 'Summary: ON' : 'Summary: OFF' }}
           </button>
         </div>
       </div>
@@ -105,22 +104,21 @@ interface ChatResponse {
         @for (m of messages(); track $index) {
           <div class="flex" [class.justify-end]="m.role === 'user'">
             <div
-              class="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm font-body whitespace-pre-wrap leading-relaxed"
+              class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm font-body leading-relaxed"
               [ngClass]="m.role === 'user'
-                ? 'bg-accent text-white rounded-br-sm'
+                ? 'bg-accent text-white rounded-br-sm whitespace-pre-wrap'
                 : 'bg-gray-100 text-navy rounded-bl-sm'">
-              {{ m.content }}
-            </div>
-          </div>
-        }
-        @if (sending()) {
-          <div class="flex">
-            <div class="bg-gray-100 text-gray-400 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm font-body">
-              <span class="inline-flex gap-1">
-                <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>
-                <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>
-                <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:300ms"></span>
-              </span>
+              @if (m.role === 'user') {
+                {{ m.content }}
+              } @else if (m.content) {
+                <div class="md-body" [innerHTML]="renderMd(m.content)"></div>
+              } @else {
+                <span class="inline-flex gap-1 py-1">
+                  <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>
+                  <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>
+                  <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:300ms"></span>
+                </span>
+              }
             </div>
           </div>
         }
@@ -133,11 +131,9 @@ interface ChatResponse {
         }
       </div>
 
-      <!-- Footer / cost -->
       @if (lastModel()) {
         <p class="text-[11px] text-gray-400 font-mono mt-1 mb-0 shrink-0 text-right">
           {{ lastModel() }} · {{ lastContextMode() }} context{{ lastCached() ? ' · cached' : '' }}
-          · session cost ~\${{ sessionCost().toFixed(4) }}
         </p>
       }
 
@@ -160,30 +156,42 @@ interface ChatResponse {
       </form>
     </div>
   `,
+  styles: [`
+    .md-body :where(p) { margin: 0 0 0.5rem; }
+    .md-body :where(p:last-child) { margin-bottom: 0; }
+    .md-body :where(ul, ol) { margin: 0.25rem 0 0.5rem; padding-left: 1.1rem; }
+    .md-body :where(li) { margin: 0.15rem 0; }
+    .md-body :where(ul) { list-style: disc; }
+    .md-body :where(ol) { list-style: decimal; }
+    .md-body :where(strong) { font-weight: 600; }
+    .md-body :where(h1, h2, h3, h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; font-size: 0.95rem; }
+    .md-body :where(code) { background: rgba(0,0,0,0.06); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
+    .md-body :where(a) { color: var(--accent); text-decoration: underline; }
+    .md-body :where(table) { border-collapse: collapse; margin: 0.25rem 0; }
+    .md-body :where(th, td) { border: 1px solid rgba(0,0,0,0.1); padding: 0.2rem 0.45rem; }
+  `],
 })
 export default class AiChatComponent implements AfterViewChecked {
   private api = inject(ApiService);
   private adAccounts = inject(AdAccountService);
+  private auth = inject(AuthService);
+  private sanitizer = inject(DomSanitizer);
+  state = inject(ChatStateService);
 
   @ViewChild('scroll') private scrollEl?: ElementRef<HTMLDivElement>;
 
-  messages = signal<ChatTurn[]>([]);
+  // Conversation state lives in the service (persists across tab switches).
+  messages = this.state.messages;
+  summaryMode = this.state.summaryMode;
+  lastModel = this.state.lastModel;
+  lastContextMode = this.state.lastContextMode;
+  lastCached = this.state.lastCached;
+
+  // Transient per-view UI state.
   draft = '';
   sending = signal(false);
-  errorMsg = signal('');
-  lastModel = signal('');
-  sessionCost = signal(0);
-
-  // Summary mode is OFF by default (full data, as before); the header button toggles it.
-  summaryMode = signal(false);
-  lastContextMode = signal('full');
-  lastCached = signal(false);
   refreshing = signal(false);
-  // Stable per-chat session id so the ai-layer reuses its cached snapshot across turns.
-  private sessionId =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : '';
-
-  // No connected account => demo mode (continue without Meta login).
+  errorMsg = signal('');
   demoMode = signal(!this.adAccounts.currentAccount());
   accountName = signal(this.adAccounts.currentAccount()?.name ?? '');
 
@@ -202,15 +210,117 @@ export default class AiChatComponent implements AfterViewChecked {
     }
   }
 
+  /** Markdown -> sanitized HTML for assistant bubbles. */
+  renderMd(text: string): SafeHtml {
+    const html = marked.parse(text ?? '', { async: false }) as string;
+    return this.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(html));
+  }
+
   toggleSummary(): void {
     this.summaryMode.update((v) => !v);
   }
 
-  /**
-   * Pull fresh live Meta data into the store cache, then start a new session so the
-   * next message rebuilds its snapshot from the just-refreshed data. Until pressed,
-   * the cached snapshot is reused across turns.
-   */
+  clearChat(): void {
+    if (this.sending()) return;
+    this.state.clear();
+    this.errorMsg.set('');
+  }
+
+  async send(preset?: string): Promise<void> {
+    const text = (preset ?? this.draft).trim();
+    if (!text || this.sending()) return;
+
+    const acc = this.adAccounts.currentAccount();
+    this.demoMode.set(!acc);
+    this.accountName.set(acc?.name ?? '');
+    this.errorMsg.set('');
+
+    // History = prior turns; then append the user turn + an empty assistant turn to stream into.
+    const history = this.messages().map((m) => ({ role: m.role, content: m.content }));
+    this.messages.set([...this.messages(), { role: 'user', content: text }, { role: 'assistant', content: '' }]);
+    const asstIndex = this.messages().length - 1;
+    this.draft = '';
+    this.sending.set(true);
+    this.shouldScroll = true;
+
+    const body: Record<string, unknown> = {
+      message: text,
+      history,
+      context_mode: this.summaryMode() ? 'summary' : 'full',
+      session_id: this.state.sessionId(),
+    };
+    if (acc) body['account_id'] = acc.id;
+    else body['demo'] = true;
+
+    try {
+      const token = this.auth.getToken();
+      const res = await fetch(`${environment.API_BASE_URL}/${environment.AI_LAYER_CHAT}/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      // Session/meta headers arrive with the response head (before the body).
+      const sid = res.headers.get('X-Session-Id');
+      if (sid) this.state.sessionId.set(sid);
+      const cm = res.headers.get('X-Context-Mode');
+      if (cm) this.lastContextMode.set(cm);
+      this.lastCached.set(res.headers.get('X-Cached') === 'true');
+      const model = res.headers.get('X-Model');
+      if (model) this.lastModel.set(model);
+
+      const contentType = res.headers.get('Content-Type') || '';
+      if (!res.ok || !res.body || !contentType.startsWith('text/plain')) {
+        // Degraded / not-connected -> a JSON body, not a stream.
+        let msg = 'Something went wrong. Please try again.';
+        try {
+          const j = (await res.json()) as { meta_connected?: boolean; error?: string };
+          if (j.meta_connected === false) msg = 'Connect a Meta ad account to chat about your data.';
+          else if (j.error) msg = j.error;
+        } catch {
+          /* keep default */
+        }
+        this.messages.set(this.messages().slice(0, asstIndex)); // drop the empty placeholder
+        this.errorMsg.set(msg);
+        this.sending.set(false);
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc2 = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc2 += decoder.decode(value, { stream: true });
+        this.updateAssistant(asstIndex, acc2);
+        this.shouldScroll = true;
+      }
+      if (!acc2) {
+        // Empty stream — drop the placeholder and show a gentle note.
+        this.messages.set(this.messages().slice(0, asstIndex));
+        this.errorMsg.set('No response — please try again.');
+      }
+      this.sending.set(false);
+    } catch {
+      this.messages.set(this.messages().slice(0, asstIndex)); // drop placeholder
+      this.errorMsg.set('The AI layer is unavailable right now. Please try again.');
+      this.sending.set(false);
+    }
+  }
+
+  private updateAssistant(index: number, content: string): void {
+    this.messages.update((arr) => {
+      if (!arr[index]) return arr;
+      const copy = [...arr];
+      copy[index] = { role: 'assistant', content };
+      return copy;
+    });
+  }
+
   refresh(): void {
     if (this.refreshing() || this.sending()) return;
     const acc = this.adAccounts.currentAccount();
@@ -229,9 +339,7 @@ export default class AiChatComponent implements AfterViewChecked {
             this.errorMsg.set(res?.error || 'Could not refresh live data. Please try again.');
             return;
           }
-          // New session id => the next turn rebuilds context from the fresh store.
-          this.sessionId =
-            typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : '';
+          this.state.resetSession(); // next turn rebuilds context from the fresh store
           this.shouldScroll = true;
           const through = res.until ? ` through ${res.until}` : '';
           this.messages.update((m) => [
@@ -249,57 +357,5 @@ export default class AiChatComponent implements AfterViewChecked {
           this.errorMsg.set('Could not refresh live data. Please try again.');
         },
       });
-  }
-
-  send(preset?: string): void {
-    const text = (preset ?? this.draft).trim();
-    if (!text || this.sending()) return;
-
-    const acc = this.adAccounts.currentAccount();
-    const demo = !acc;
-    this.demoMode.set(demo);
-    this.accountName.set(acc?.name ?? '');
-    this.errorMsg.set('');
-
-    // History = prior turns (before this message); send the new message separately.
-    const history = this.messages();
-    this.messages.set([...history, { role: 'user', content: text }]);
-    this.draft = '';
-    this.sending.set(true);
-    this.shouldScroll = true;
-
-    const body: Record<string, unknown> = {
-      message: text,
-      history,
-      context_mode: this.summaryMode() ? 'summary' : 'full',
-    };
-    if (this.sessionId) body['session_id'] = this.sessionId;
-    if (acc) body['account_id'] = acc.id;
-    else body['demo'] = true;
-
-    this.api.post<ChatResponse>(environment.AI_LAYER_CHAT, body).subscribe({
-      next: (res) => {
-        this.sending.set(false);
-        this.shouldScroll = true;
-        if (res?.meta_connected === false) {
-          this.errorMsg.set('Connect a Meta ad account to chat about your data.');
-          return;
-        }
-        if (!res?.success) {
-          this.errorMsg.set(res?.error || 'Something went wrong. Please try again.');
-          return;
-        }
-        this.messages.update((m) => [...m, { role: 'assistant', content: res.answer ?? '' }]);
-        if (res.model) this.lastModel.set(res.model);
-        if (res.sessionId) this.sessionId = res.sessionId; // keep the cache warm
-        if (res.contextMode) this.lastContextMode.set(res.contextMode);
-        this.lastCached.set(!!res.cached);
-        if (typeof res.costUsd === 'number') this.sessionCost.update((c) => c + res.costUsd!);
-      },
-      error: () => {
-        this.sending.set(false);
-        this.errorMsg.set('The AI layer is unavailable right now. Please try again.');
-      },
-    });
   }
 }

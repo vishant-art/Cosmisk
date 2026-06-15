@@ -5,6 +5,7 @@
  * by config.aiLayerUrl (empty = OFF). apps/api is outside the npm workspace so it
  * cannot import `@cosmisk/types`; the card shape is mirrored locally below.
  */
+import type { Message } from '@anthropic-ai/sdk/resources/messages.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
@@ -211,4 +212,171 @@ export async function ingestAiLayer(
     since: data.since ?? null,
     until: data.until ?? null,
   };
+}
+
+/** Daily series + totals for the analytics charts (from the deterministic brain). */
+export interface AiLayerChartData {
+  daily: { date: string; spend: number; revenue: number; roas: number }[];
+  totals: {
+    spend: number;
+    revenue: number;
+    blended_roas: number;
+    purchases: number;
+    campaigns: number;
+  } | null;
+}
+
+/**
+ * GET {aiLayerUrl}/insights/{accountId} — but used for the analytics charts: returns the
+ * `daily` series + `totals` (not the cards). Reads the warm store (demo-aware via the
+ * token the caller resolves). Lets the Analytics tab show graphs without a Meta login.
+ */
+export async function fetchAiLayerChartData(
+  accountId: string,
+  metaToken: string,
+  opts: { preset?: string } = {},
+): Promise<AiLayerChartData> {
+  const base = config.aiLayerUrl.replace(/\/+$/, '');
+  const preset = opts.preset ?? 'last_30d';
+  const url = `${base}/insights/${encodeURIComponent(accountId)}?source=store&preset=${preset}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      headers: { 'X-API-Key': config.aiLayerApiKey, 'X-Meta-Token': metaToken },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    logger.warn({ err }, '[ai-layer] analytics request failed');
+    throw new AiLayerError('ai-layer analytics request failed', 502);
+  }
+  if (!res.ok) {
+    const errBody = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new AiLayerError(errBody?.detail || `ai-layer error ${res.status}`, res.status);
+  }
+  const data = (await res.json().catch(() => ({}))) as Partial<AiLayerChartData>;
+  return { daily: data.daily ?? [], totals: data.totals ?? null };
+}
+
+/** Options for a generic (non-RAG) ai-layer completion. */
+export interface AiLayerCompleteOpts {
+  system?: string;
+  messages: { role: string; content: string }[];
+  maxTokens?: number;
+  temperature?: number;
+  operation?: string;
+  account?: string;
+}
+
+/**
+ * POST {aiLayerUrl}/complete — a generic LLM completion on OpenRouter/Gemini via the
+ * Python ai-layer (so all OpenRouter usage + cost stays there, not in the TS Anthropic
+ * gateway). Returns the answer text. Throws AiLayerError if the layer is off/unreachable
+ * so callers can fall back. This is what the migrated tabs (competitor-spy, autopilot,
+ * morning-briefing) use instead of `createMessage`.
+ */
+export async function aiLayerComplete(opts: AiLayerCompleteOpts): Promise<string> {
+  const base = config.aiLayerUrl.replace(/\/+$/, '');
+  if (!base) throw new AiLayerError('ai-layer not configured (AI_LAYER_URL)', 503);
+  const body = {
+    system: opts.system,
+    messages: opts.messages,
+    max_tokens: opts.maxTokens ?? 1024,
+    temperature: opts.temperature ?? 0.7,
+    operation: opts.operation ?? 'complete',
+    account: opts.account,
+  };
+  let res: Response;
+  try {
+    res = await fetch(`${base}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    logger.warn({ err }, '[ai-layer] complete request failed');
+    throw new AiLayerError('ai-layer complete request failed', 502);
+  }
+  if (!res.ok) {
+    const errBody = (await res.json().catch(() => ({}))) as { detail?: string };
+    throw new AiLayerError(errBody?.detail || `ai-layer error ${res.status}`, res.status);
+  }
+  const data = (await res.json().catch(() => ({}))) as { text?: string };
+  return data.text ?? '';
+}
+
+/**
+ * Drop-in replacement for llm-gateway `createMessage` that routes to the Python
+ * ai-layer (`/complete`, OpenRouter/Gemini) instead of Anthropic. Same options shape
+ * and returns an Anthropic-`Message`-shaped object (`content: [{type:'text', text}]`)
+ * so existing `extractText(response)` call sites work unchanged. `model`/`maxRetries`
+ * are accepted for compatibility but ignored (the ai-layer picks the model + retries).
+ *
+ * NOTE: this bypasses the TS gateway's Anthropic path; cost is tracked in the Python
+ * ledger instead. Used by the tabs explicitly migrated to Gemini (competitor-spy,
+ * autopilot, morning-briefing).
+ */
+export interface CreateViaAiLayerOpts {
+  userId: string;
+  operation: string;
+  maxRetries?: number;
+  request: {
+    model?: string;
+    system?: string;
+    messages: { role: string; content: string }[];
+    max_tokens?: number;
+    temperature?: number;
+  };
+}
+
+export async function createViaAiLayer(opts: CreateViaAiLayerOpts): Promise<Message> {
+  const text = await aiLayerComplete({
+    system: opts.request.system,
+    messages: opts.request.messages,
+    maxTokens: opts.request.max_tokens,
+    temperature: opts.request.temperature,
+    operation: opts.operation,
+    account: opts.userId,
+  });
+  // Minimal Message-compatible shape — enough for extractText() to read the text.
+  return { content: [{ type: 'text', text }] } as unknown as Message;
+}
+
+/**
+ * POST {aiLayerUrl}/chat/stream — returns the raw streaming Response so the caller can
+ * pipe the body (text chunks) and read the session headers (X-Session-Id, X-Context-Mode,
+ * X-Cached, X-Model). Throws AiLayerError on a connection failure.
+ */
+export async function fetchAiLayerChatStream(
+  accountId: string,
+  metaToken: string,
+  message: string,
+  history: AiLayerChatTurn[],
+  opts: { contextMode?: 'full' | 'summary'; sessionId?: string } = {},
+): Promise<Response> {
+  const base = config.aiLayerUrl.replace(/\/+$/, '');
+  const body: Record<string, unknown> = {
+    account_id: accountId,
+    message,
+    history,
+    source: 'store',
+    context_mode: opts.contextMode ?? 'full',
+  };
+  if (opts.sessionId) body['session_id'] = opts.sessionId;
+  try {
+    return await fetch(`${base}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': config.aiLayerApiKey,
+        'X-Meta-Token': metaToken,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    logger.warn({ err }, '[ai-layer] chat stream request failed');
+    throw new AiLayerError('ai-layer chat stream request failed', 502);
+  }
 }

@@ -4,7 +4,7 @@ import { MetaApiService } from './meta-api.js';
 import { parseInsightMetrics, parseCampaignBreakdown } from './insights-parser.js';
 import { assessConfidence, computeTrend } from './trend-analyzer.js';
 import { round, fmt } from './format-helpers.js';
-import { createMessage } from './llm-gateway.js';
+import { createViaAiLayer } from './ai-layer-client.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow } from '../types/index.js';
@@ -232,7 +232,7 @@ DATA CONFIDENCE AWARENESS:
 
     const userContent = formatAlertData(type, data);
 
-    const response = await createMessage({
+    const response = await createViaAiLayer({
       userId,
       operation: 'autopilot-engine.generateAlertContent',
       request: {

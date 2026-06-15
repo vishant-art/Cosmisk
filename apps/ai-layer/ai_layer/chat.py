@@ -55,6 +55,9 @@ MAX_CAMPAIGNS = None
 # (~55k tokens for an 84-campaign month) -> higher cost + a bit more latency.
 FULL_DATA = True
 STREAM = True                  # stream tokens so replies feel instant (better TTFT)
+# Hard cap on a single reply. The system prompt steers length (default ~10 sentences);
+# this is the safety ceiling that still allows a real deep-dive when the user asks.
+MAX_TOKENS = 1500
 
 SYSTEM = (
     "You are a senior Meta Ads strategist talking with the brand's owner. A data "
@@ -72,7 +75,12 @@ SYSTEM = (
     "- Cite the actual figures that support your reasoning. Be specific, direct, and "
     "conversational. Surface a key caveat when it matters (Meta-attributed revenue "
     "over-counts vs real sales; the most recent ~7 days are under-reported), but never "
-    "let caveats stop you from giving a useful, opinionated answer.\n\n"
+    "let caveats stop you from giving a useful, opinionated answer.\n"
+    "- LENGTH: default to about 10 sentences (or an equivalent short list) -- enough to "
+    "explain with specifics, not a wall of text. Expand into a longer deep-dive ONLY when "
+    "the user explicitly asks for more detail.\n"
+    "- FORMAT: reply in Markdown. Use **bold** for key numbers/verdicts and bullet lists "
+    "where it aids scanning.\n\n"
     "=== DATA SNAPSHOT ===\n{context}\n=== END SNAPSHOT ==="
 )
 
@@ -205,13 +213,14 @@ def complete(client: OpenAI, messages, stream: bool = False, account: str | None
     extra = {"reasoning": {"effort": REASONING_EFFORT}} if REASONING_EFFORT else {}
     if not stream:
         resp = client.chat.completions.create(
-            model=MODEL, temperature=TEMPERATURE, messages=messages, extra_body=extra)
+            model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
+            messages=messages, extra_body=extra)
         _record_cost(getattr(resp, "usage", None), account)
         return resp.choices[0].message.content
     out, usage = [], None
     s = client.chat.completions.create(
-        model=MODEL, temperature=TEMPERATURE, messages=messages, stream=True,
-        stream_options={"include_usage": True}, extra_body=extra)
+        model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS, messages=messages,
+        stream=True, stream_options={"include_usage": True}, extra_body=extra)
     for chunk in s:
         if chunk.choices and chunk.choices[0].delta.content:
             print(chunk.choices[0].delta.content, end="", flush=True)
@@ -221,6 +230,37 @@ def complete(client: OpenAI, messages, stream: bool = False, account: str | None
     print()
     _record_cost(usage, account)
     return "".join(out)
+
+
+def stream_answer(client: OpenAI, messages, account: str | None = None):
+    """Generator: yield answer text chunks as they arrive (for the HTTP streaming
+    endpoint), then record the call's cost from the final usage chunk. Same model
+    config as complete()."""
+    extra = {"reasoning": {"effort": REASONING_EFFORT}} if REASONING_EFFORT else {}
+    usage = None
+    s = client.chat.completions.create(
+        model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS, messages=messages,
+        stream=True, stream_options={"include_usage": True}, extra_body=extra)
+    for chunk in s:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+        if getattr(chunk, "usage", None):
+            usage = chunk.usage
+    _record_cost(usage, account, op="chat")
+
+
+def raw_complete(client: OpenAI, messages, max_tokens: int = MAX_TOKENS,
+                 temperature: float = TEMPERATURE, account: str | None = None,
+                 op: str = "complete") -> str:
+    """Generic non-RAG completion over arbitrary messages, recorded to the ledger.
+    Backs the /complete endpoint (the TS tabs route their LLM work through this so
+    all OpenRouter/Gemini usage + cost lives in one place)."""
+    resp = client.chat.completions.create(
+        model=MODEL, temperature=temperature, max_tokens=max_tokens, messages=messages)
+    if not getattr(resp, "choices", None):
+        return ""
+    _record_cost(getattr(resp, "usage", None), account, op=op)
+    return resp.choices[0].message.content or ""
 
 
 def _usage_extra(usage, key):
@@ -234,7 +274,7 @@ def _usage_extra(usage, key):
     return v
 
 
-def _record_cost(usage, account=None):
+def _record_cost(usage, account=None, op="chat"):
     """Log this call's token usage + cost to the Python-side ledger.
 
     Prefer OpenRouter's authoritative `usage.cost` (reflects prompt-cache discounts);
@@ -252,6 +292,7 @@ def _record_cost(usage, account=None):
         MODEL,
         getattr(usage, "prompt_tokens", 0),
         getattr(usage, "completion_tokens", 0),
+        op=op,
         account=account,
         cost_usd_actual=float(real) if real is not None else None,
         cache_discount_usd=float(discount) if discount is not None else None,
