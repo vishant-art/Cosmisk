@@ -46,6 +46,12 @@ The Gravity **structure + PM patterns are a strong fit** for the "cleaner codeba
 2. **Incrementally, anytime:** `packages/types` (shared contracts) + **per-service semver / auto-versioning / GHCR** — don't require the full move.
 3. **Bucket H (separate, deliberate phase, own approval):** the `apps/`+`packages/` restructure + Turborepo. **High value, high effort, outward-facing** — `angular.json`, `vercel.json`, `Dockerfile`, `railway.toml`, `nginx.conf`, and `ci.yml` all reference root paths and would need rework; Railway/Vercel build settings change. Do *after* the current refactor + Runtime Hardening stabilize.
 
+## Absorbed from Runtime Hardening: RH-2 (crons-in-API-process)
+All crons currently run **in the API process** on the shared event loop (`routes/agent.ts` ×8, `routes/autopilot.ts`, `routes/reports.ts`, `routes/automations.ts`, `services/memory-maintenance.ts`, `services/audit-scheduler.ts`) — heavy agent runs can starve API request handling / risk OOM. The clean fix is a dedicated **`apps/worker`** process, which is exactly a Bucket H deliverable. So RH-2 is folded here:
+- Add `apps/worker` alongside `apps/api` + `apps/web`. Move the cron registrations (the heavy ones: watchdog, autopilot, weekly agents, audit-scheduler) into the worker; the API process keeps only request handling.
+- Quick pre-Bucket-H win available independently: **de-dupe** the two `0 */4 * * *` crons (`autopilot.ts:22` vs `automations.ts:533`) + add concurrency guards. (Not yet done — left for whoever starts RH-2/Bucket H.)
+- See `runtime_hardening_audit.md` § RH-2 for the full cron inventory.
+
 ## Risks for Bucket H (when it happens)
 - Deploy breakage: Railway (root/build cmd), Vercel (`vercel.json`), Docker (`Dockerfile` paths), nginx — all path-coupled to the current root layout. Move behind a branch + verify each deploy target.
 - Frontend build (Angular CLI) is opinionated about project root — moving to `apps/web` means updating `angular.json` `root`/`sourceRoot` + `tsconfig` paths.
