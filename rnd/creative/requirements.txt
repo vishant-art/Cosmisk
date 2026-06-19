@@ -1,0 +1,12 @@
+# Core (needed for the mock test suite — already in the cos venv)
+pandas>=2.0
+requests>=2.31
+python-dotenv>=1.0
+openai>=1.40
+pydantic>=2.0
+pytest>=8.0
+
+# Live generation only (lazy-imported; install before a real run)
+google-genai>=2.9      # Nano Banana 2 (image) + Veo 3.1 (video)
+fal-client>=0.5        # FLUX.2 (image) + Seedance 2.0 (video) fallback
+pillow>=10.0           # reference-image handling for Nano Banana

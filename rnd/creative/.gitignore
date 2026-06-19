@@ -1,0 +1,4 @@
+output/
+data/_real*.json
+__pycache__/
+.pytest_cache/
