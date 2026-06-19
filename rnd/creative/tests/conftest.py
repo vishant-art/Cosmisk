@@ -57,7 +57,8 @@ CONCEPTS_JSON = {"concepts": [
 
 
 def _router(system_content: str) -> str:
-    if "brand designer" in system_content:
+    # the kit schema names "brand_name"; the concepts prompt never does.
+    if "brand_name" in system_content:
         return json.dumps(KIT_JSON)
     return json.dumps(CONCEPTS_JSON)
 

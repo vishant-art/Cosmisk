@@ -13,10 +13,11 @@ import config  # noqa: E402
 from schemas import AdConcept, BrandKit  # noqa: E402
 
 _KIT_SYSTEM = (
-    "You are a brand designer. From the ad-account summary you are given, INVENT a "
-    "coherent brand identity for this brand and return it as STRICT JSON only (no "
-    "prose, no markdown fences). Ground your choices in what the data shows is "
-    "working, but the visual identity is your creative invention. Schema:\n"
+    "You are an elite brand strategist and art director. From the ad-account summary, "
+    "FIRST infer the brand's category, its audience, and what the winning campaigns reveal "
+    "about what those customers actually respond to. THEN design a distinctive, ownable brand "
+    "identity that fits -- intuitive and strategically grounded, never generic, derivative, or "
+    "stock. Return STRICT JSON only (no prose, no markdown fences). Schema:\n"
     "{\n"
     '  "brand_name": str, "tagline": str,\n'
     '  "palette": [{"role": "primary|secondary|accent|bg", "hex": "#RRGGBB"}],  // 3-5 colors\n'
@@ -24,18 +25,30 @@ _KIT_SYSTEM = (
     '  "tone": str, "voice_keywords": [str],\n'
     '  "dos": [str], "donts": [str],\n'
     '  "visual_style": str,  // e.g. "clean studio, warm light, minimal props"\n'
-    '  "logo": {"brief": str}  // a vivid description an image model can render\n'
+    '  "logo": {"brief": str}  // ONE strong, renderable mark concept\n'
     "}\n"
-    "Every hex must be a real 6-digit hex. Keep lists to 3-5 items."
+    "Make it SMART, not safe:\n"
+    "- Palette: intentional and category-right, with real contrast. Avoid the obvious cliche "
+    "(default SaaS teal/orange, lazy luxury black+gold) unless it is genuinely the best call. "
+    "Give a clear primary, a supporting secondary, one accent, and a background.\n"
+    "- Tone, voice, dos, donts: specific to THIS brand and audience -- concrete and VISUAL "
+    "(things an art director can act on), never interchangeable boilerplate or platitudes.\n"
+    "- logo.brief: one memorable, reductive idea (a specific mark or monogram) -- no cliche "
+    "swoosh, globe, generic leaf, or gradient blob.\n"
+    "Every hex is a real 6-digit hex. Keep lists to 3-5 items."
 )
 
 _CONCEPTS_SYSTEM = (
-    "You are an art director. Given a brand kit and what's working in the account, "
-    "propose {n} distinct image-ad concepts as STRICT JSON only:\n"
+    "You are a senior advertising art director. Given a brand kit and what's working in the "
+    "account, propose {n} image-ad concepts that are distinct, intuitive, and scroll-stopping "
+    "-- each a DIFFERENT strategic angle (e.g. hero-product, in-use lifestyle, problem/solution, "
+    "social proof, bold visual metaphor, pattern interrupt). Return STRICT JSON only:\n"
     '{"concepts": [{"title": str, "scene": str}]}\n'
-    "Each `scene` is a concrete visual description (subject, setting, composition, "
-    "mood) for a single still ad -- no text overlays (copy is added later). Make the "
-    "concepts visually varied but unmistakably the same brand."
+    "Each `scene` is a vivid, art-directed brief for ONE still: a concrete hero subject, a "
+    "specific setting, intentional composition and camera angle, motivated lighting, and a clear "
+    "mood -- the kind of frame that stops a feed. Avoid generic stock setups (smiling person at "
+    "a laptop, plain product-on-white, soulless corporate scenes). No text overlays (copy is "
+    "added later). Keep the concepts visually varied but unmistakably the same brand."
 )
 
 

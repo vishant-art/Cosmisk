@@ -25,14 +25,17 @@ _ASPECT_PX = {
 
 
 def _nanobanana(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
-                size="2K", pro=False) -> dict:
+                size="2K", pro=False, negative=None) -> dict:
     from google import genai          # lazy
     from google.genai import types
     from PIL import Image
 
     client = genai.Client(api_key=config.GEMINI_API_KEY)
     model = config.IMAGE_PRO_MODEL if pro else config.IMAGE_PRIMARY_MODEL
-    contents: list = [prompt]
+    # Gemini follows instructions, so state the suppression as a hard rule.
+    text = prompt if not negative else (
+        f"{prompt}\n\nHard requirement: the image must contain absolutely NO {negative}.")
+    contents: list = [text]
     for r in (refs or []):
         contents.append(Image.open(r))
 
@@ -54,12 +57,13 @@ def _nanobanana(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
 
 
 def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
-          size="2K", pro=False) -> dict:
+          size="2K", pro=False, negative=None) -> dict:
     import fal_client                  # lazy
     import requests
 
     w, h = _ASPECT_PX.get(aspect, (1024, 1280))
-    args = {"prompt": prompt, "image_size": {"width": w, "height": h},
+    text = prompt if not negative else f"{prompt}\n\nMust not appear in the image: {negative}."
+    args = {"prompt": text, "image_size": {"width": w, "height": h},
             "output_format": "png"}
     # FLUX fallback ignores logo refs in v1 (text-only); the /edit endpoint would
     # carry references but we keep the fallback path simple.
@@ -72,23 +76,30 @@ def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
 
 
 def _cloudflare(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
-                size="2K", pro=False) -> dict:
-    """FREE path: Cloudflare Workers AI, FLUX.1 schnell. No card, ~hundreds/day.
-    Draft quality only -- no reference-image conditioning, square-ish output, so
-    `refs`/`aspect`/`size` are ignored. Testing-only; keep Nano Banana for real output."""
+                size="2K", pro=False, negative=None) -> dict:
+    """FREE path: Cloudflare Workers AI, SDXL. No card, ~hundreds/day. Draft quality;
+    `refs`/`size` ignored. SDXL supports `negative_prompt`, which is how text/logos get
+    suppressed here. Keep Nano Banana for real output."""
     import base64  # lazy
     import requests
 
     if not (config.CLOUDFLARE_ACCOUNT_ID and config.CLOUDFLARE_API_TOKEN):
         raise RuntimeError("CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not set")
+    w, h = _ASPECT_PX.get(aspect, (1024, 1280))
+    body = {"prompt": prompt[:2000], "num_steps": 20, "guidance": 7.5, "width": w, "height": h}
+    if negative:
+        body["negative_prompt"] = negative[:1000]
     url = (f"https://api.cloudflare.com/client/v4/accounts/"
            f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{config.IMAGE_FREE_MODEL}")
     resp = requests.post(url, headers={"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"},
-                         json={"prompt": prompt, "steps": 4}, timeout=120)
+                         json=body, timeout=120)
     resp.raise_for_status()
-    b64 = resp.json()["result"]["image"]
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(base64.b64decode(b64))
+    # SDXL returns raw image bytes; some CF models wrap base64 in JSON -- handle both.
+    if "application/json" in resp.headers.get("content-type", ""):
+        out_path.write_bytes(base64.b64decode(resp.json()["result"]["image"]))
+    else:
+        out_path.write_bytes(resp.content)
     return {"provider": "cloudflare", "model": config.IMAGE_FREE_MODEL,
             "path": str(out_path), "cost_usd": 0.0}
 
@@ -101,21 +112,21 @@ _FALLBACK = {"nanobanana": "flux", "flux": "nanobanana", "cloudflare": "flux"}
 
 
 def generate_image(prompt: str, out_path, *, provider="nanobanana", refs=None,
-                   aspect="4:5", size="2K", pro=False) -> dict:
+                   aspect="4:5", size="2K", pro=False, negative=None) -> dict:
     return _PROVIDERS[provider](prompt, Path(out_path), refs=refs, aspect=aspect,
-                                size=size, pro=pro)
+                                size=size, pro=pro, negative=negative)
 
 
 def generate_with_fallback(prompt: str, out_path, *, primary="nanobanana", refs=None,
-                           aspect="4:5", size="2K", pro=False, log=print) -> dict:
+                           aspect="4:5", size="2K", pro=False, negative=None, log=print) -> dict:
     """Try the primary provider; on ANY error fall through to the other one."""
     try:
         return generate_image(prompt, out_path, provider=primary, refs=refs,
-                              aspect=aspect, size=size, pro=pro)
+                              aspect=aspect, size=size, pro=pro, negative=negative)
     except Exception as e:  # noqa: BLE001 -- fallback is the whole point
         fb = _FALLBACK[primary]
         log(f"  [image] {primary} failed ({e!s:.120}); falling back to {fb}")
         res = generate_image(prompt, out_path, provider=fb, refs=refs,
-                            aspect=aspect, size=size, pro=pro)
+                            aspect=aspect, size=size, pro=pro, negative=negative)
         res["fell_back_from"] = primary
         return res

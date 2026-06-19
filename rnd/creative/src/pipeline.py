@@ -144,13 +144,17 @@ def _generate_images(client, kit, summary, run_dir, manifest, led, *, images,
     log(f"[4/4] generating {images} concepts + images...")
     concepts = brand_brain.generate_concepts(client, kit, summary, images)
     led.record("concepts", "openrouter", config.TEXT_MODEL, 0.0)
-    refs = [kit.logo.asset_path] if kit.logo.asset_path else None
+    # Ads are generated WITHOUT any logo baked in -- the logo (and copy) get overlaid
+    # later in post, so we pass no reference image AND a negative prompt that suppresses
+    # any text/logo/watermark. The logo asset is still saved in the kit for that post step.
+    refs = None
+    negative = prompt_builder.build_negative_prompt()
     for i, concept in enumerate(concepts, 1):
         prompt = prompt_builder.build_image_prompt(concept, kit, aspect)
         out = run_dir / f"ad_{i:02d}.png"
         res = image_providers.generate_with_fallback(
             prompt, out, primary=image_provider, refs=refs, aspect=aspect,
-            size=size, pro=pro, log=log)
+            size=size, pro=pro, negative=negative, log=log)
         led.record("image", res["provider"], res["model"], res["cost_usd"],
                    concept=concept.title, fell_back_from=res.get("fell_back_from"))
         manifest.assets.append(AssetRecord(kind="image", concept_title=concept.title,

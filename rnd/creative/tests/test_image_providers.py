@@ -9,7 +9,7 @@ import image_providers as ip  # noqa: E402
 
 
 def _fake(provider, model):
-    def fn(prompt, out_path, *, refs=None, aspect="4:5", size="2K", pro=False):
+    def fn(prompt, out_path, *, refs=None, aspect="4:5", size="2K", pro=False, negative=None):
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         Path(out_path).write_bytes(b"PNG")
         return {"provider": provider, "model": model, "path": str(out_path), "cost_usd": 0.1}
@@ -23,8 +23,7 @@ def test_generate_image_uses_named_provider(monkeypatch, tmp_path):
     assert (tmp_path / "a.png").exists()
 
 
-def test_cloudflare_decodes_and_saves(monkeypatch, tmp_path):
-    import base64
+def test_cloudflare_sdxl_saves_bytes_and_sends_negative(monkeypatch, tmp_path):
     import config
     import requests
 
@@ -33,9 +32,10 @@ def test_cloudflare_decodes_and_saves(monkeypatch, tmp_path):
 
     captured = {}
 
-    class FakeResp:
+    class FakeResp:                       # SDXL returns raw image bytes
+        headers = {"content-type": "image/png"}
+        content = b"PNGBYTES"
         def raise_for_status(self): pass
-        def json(self): return {"result": {"image": base64.b64encode(b"PNG").decode()}}
 
     def fake_post(url, headers=None, json=None, timeout=None):
         captured["url"] = url
@@ -44,12 +44,14 @@ def test_cloudflare_decodes_and_saves(monkeypatch, tmp_path):
 
     monkeypatch.setattr(requests, "post", fake_post)
 
-    res = ip.generate_image("a teal product shot", tmp_path / "cf.png", provider="cloudflare")
+    res = ip.generate_image("a teal product shot", tmp_path / "cf.png",
+                            provider="cloudflare", negative="text, logo, watermark")
     assert res["provider"] == "cloudflare"
     assert res["cost_usd"] == 0.0
-    assert (tmp_path / "cf.png").read_bytes() == b"PNG"
+    assert (tmp_path / "cf.png").read_bytes() == b"PNGBYTES"        # raw bytes, not base64
     assert "acct" in captured["url"] and config.IMAGE_FREE_MODEL in captured["url"]
     assert captured["json"]["prompt"] == "a teal product shot"
+    assert captured["json"]["negative_prompt"] == "text, logo, watermark"  # suppression sent
 
 
 def test_cloudflare_requires_keys(monkeypatch, tmp_path):

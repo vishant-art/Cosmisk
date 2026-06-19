@@ -91,8 +91,9 @@ Outputs (kit, logo, ads, `manifest.json`, `ledger.jsonl`) land in `output/<run_i
 - **Brain via OpenRouter** (already paid/working); only image+video need the new SDKs.
 - **Image is near-sync; video is dollars** (Veo 8s/720p ≈ $3.20, Seedance 5s ≈ $1.21–1.51),
   so video is off by default behind `--video`.
-- **Consistency** = every prompt carries the same palette/style + the logo as a
-  reference image. Logo drift is the known risk to measure (try `--pro` if it wobbles).
+- **Consistency** = every prompt carries the same palette/style block. The generated
+  logo is kept as a separate asset for post-production overlay; it is intentionally NOT
+  baked into the ad images, and neither is any text (logo + copy are added in post).
 - **Temporary output URLs** (Veo 2-day, fal `*.fal.media`) are downloaded immediately.
 - Costs are **estimates** from published rates, not billed amounts.
 ```

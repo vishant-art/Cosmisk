@@ -50,7 +50,9 @@ TEXT_MODEL = "google/gemini-2.5-flash"
 IMAGE_PRIMARY_MODEL = "gemini-3.1-flash-image"
 IMAGE_PRO_MODEL = "gemini-3-pro-image"               # best logo/text fidelity (opt-in)
 IMAGE_FALLBACK_MODEL = "fal-ai/flux-2-pro"
-IMAGE_FREE_MODEL = "@cf/black-forest-labs/flux-1-schnell"  # Cloudflare Workers AI (free)
+# Cloudflare Workers AI (free). SDXL (not FLUX schnell) because it supports a real
+# negative_prompt -- needed to actually suppress text/logos in the generated ads.
+IMAGE_FREE_MODEL = "@cf/stabilityai/stable-diffusion-xl-base-1.0"
 
 # Video: Veo 3.1 primary (still preview), Seedance 2.0 fallback (fal).
 VIDEO_PRIMARY_MODEL = "veo-3.1-generate-preview"
