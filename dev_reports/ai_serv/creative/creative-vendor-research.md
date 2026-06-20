@@ -2,7 +2,7 @@
 
 > Research backing `rnd/creative/` (the standalone CLI experiment). Status: **experiment (rnd)**.
 > Captures how to actually reach the four vendors: keys, SDKs, model IDs, code, pricing, gotchas.
-> Verified against official sources June 2026. Last updated: 2026-06-19.
+> Verified against official sources June 2026. Last updated: 2026-06-20.
 
 ## Decision summary
 
@@ -13,9 +13,52 @@
 
 Two SDKs cover everything: **`google-genai`** (Nano Banana + Veo, both Google) and **`fal-client`** (FLUX + Seedance, both on fal). That is the whole integration surface.
 
-Two API keys to obtain (both new to this repo, both require billing enabled — **no free tier** on any of these models):
+Two API keys to obtain (both new to this repo; see billing below):
 - `GEMINI_API_KEY` — https://aistudio.google.com/apikey (one click, no GCP project needed).
-- `FAL_KEY` — https://fal.ai/dashboard/keys (add prepaid credits before first run).
+- `FAL_KEY` — https://fal.ai/dashboard/keys (add a payment method / credits before first run).
+
+---
+
+## Pricing & billing (verified 2026-06-20)
+
+### Image — price per image
+
+| Model | Provider | 1K | 2K | 4K | Notes |
+|---|---|---|---|---|---|
+| **Nano Banana 2** `gemini-3.1-flash-image` | Google | **$0.067** | $0.101 | $0.151 | 0.5K = $0.045. Billed by tokens ($60 / 1M image-output tok) |
+| **Nano Banana Pro** `gemini-3-pro-image` | Google | $0.134 | $0.134 | $0.24 | $120 / 1M image-output tok |
+| **FLUX.2 [pro]** `fal-ai/flux-2-pro` | fal.ai | **$0.03** (1024²) | — | — | $0.03 first MP + $0.015/extra MP, rounds up; 1080×1920 ≈ $0.045. **Input ref images also count toward MP.** |
+| FLUX.1 Kontext [pro] `fal-ai/flux-pro/kontext` | fal.ai | ~$0.04 flat | — | — | per-image, not per-MP (pull from page to confirm) |
+
+Google image models get a **50% Batch API discount**. FLUX has no batch tier.
+
+### Video — price per second of output
+
+| Model | Provider | 720p | 1080p | 4K | 8s/720p clip |
+|---|---|---|---|---|---|
+| **Veo 3.1 Standard** `veo-3.1-generate-preview` | Google | $0.40 | $0.40 | $0.60 | **$3.20** |
+| **Veo 3.1 Fast** | Google | $0.10 | $0.12 | $0.30 | $0.80 |
+| **Seedance 2.0** `bytedance/seedance-2.0/text-to-video` | fal.ai | ~$0.30 | ~$0.68 (i2v) | — | 5s/720p ≈ **$1.51** |
+| **Seedance 2.0 Fast** `.../fast/*` | fal.ai | ~$0.24 | — | — | 5s/720p ≈ $1.21 |
+
+Seedance bills by tokens: `(h × w × seconds × 24) / 1024` at **$0.014 / 1k tokens**. Veo has no batch discount. Both Google and fal **only charge on success** (no charge for queue waits / server errors).
+
+### Billing models
+
+**Google (Gemini API / Vertex AI)** — **postpaid, credit card required, NO free tier** on any of these models (the ~500-img/day free quota people cite is the *older* `gemini-2.5-flash-image`, not these). Two paths, same unit rates: an **AI Studio API key** with billing enabled (simplest) or **Vertex AI** (GCP project + billing account, better for enterprise quota/IAM/regions). No stated minimum spend.
+- **$300 GCP free-trial credit covers these models on the Vertex AI path** (general GCP credit, not service-restricted) — ~2,200 Pro images or ~90s of standard Veo. Card required, expires ~90 days. This is the only way to run Veo/Nano Banana with no real spend. The standalone AI Studio key billing is a *separate* payments flow not tied to the trial credit.
+
+**fal.ai (FLUX + Seedance)** — **prepaid credits**: you load money first and it draws down; you must have a payment method / funded credits before generating. Also available **postpaid via Google Cloud Marketplace** (billed monthly through your GCP account).
+- Concurrency starts at **2 jobs**, auto-scales up to **40** as you buy credits. Excess requests queue (async auto-retries 429).
+- Output URLs are temporary (configurable retention via the `X-Fal-Object-Lifecycle-Preference` header) — download immediately.
+
+### fal.ai free credits (confirmed scene)
+
+- **Reported $10 free when you add a payment method** to a new account (surfaced from fal's own pages; **not stated on the FAQ page**, so treat as semi-official — confirm in the billing dashboard). The third-party "$20 signup" figure is **not supported** — don't rely on it.
+- **Expiration:** free / promotional credits expire **anywhere from 1 week to 1 year** depending on the grant; **purchased** credits expire **365 days** from purchase.
+- **No standing free tier** — the prepaid model means no generations without funded (or granted) credits.
+- **Alternative free route:** **fal Research Grants** (grants@fal.ai) — free compute for open-source / research work. Apply if it fits.
+- Bottom line: budget as if a card/payment method is required; the only "real free" lanes are the **GCP $300 trial** (for Veo/Nano Banana via Vertex) and **fal's ~$10 + Research Grants** (for FLUX/Seedance). For zero-setup free *image* testing, the experiment already uses **Cloudflare Workers AI (SDXL)** — see `free-and-no-billing-options.md`.
 
 ---
 
@@ -108,7 +151,7 @@ vid.video.save("ad.mp4")
 # image-to-video: add image=types.Image.from_file(location="start.png")
 ```
 
-- **Pricing (per second, billed on success only):** Standard $0.40 (720p/1080p) / $0.60 (4K); Fast $0.10 / $0.12 / $0.30; Lite $0.05 / $0.08. **An 8s/720p Standard clip ≈ $3.20.**
+- **Pricing (per second, billed on success only):** Standard $0.40 (720p/1080p) / $0.60 (4K); Fast $0.10 / $0.12 / $0.30. **An 8s/720p Standard clip ≈ $3.20.** (A "Lite" tier ~$0.05/s circulates on third-party blogs but is **not on any official Google page** — unverified.) Full table + billing in the *Pricing & billing* section above.
 
 ## 4. Video fallback — Seedance 2.0 (fal.ai)
 
@@ -151,7 +194,7 @@ print(res["video"]["url"])     # temporary *.fal.media URL — download promptly
 
 ## Sources
 
-Google: ai.google.dev/gemini-api/docs/{image-generation,video,pricing,models,api-key} · github.com/googleapis/python-genai · blog.google/.../nano-banana-2.
-fal: fal.ai/docs + model pages for flux-2-pro, flux-pro/kontext, bytedance/seedance-2.0/* · pypi.org/project/fal-client.
+Google: ai.google.dev/gemini-api/docs/{image-generation,video,pricing,models,api-key} · docs.cloud.google.com (gemini-3-1-flash-image, gemini-3-pro-image model docs) · cloud.google.com/blog (Gemini 3 + free trial) · github.com/googleapis/python-genai · blog.google/.../nano-banana-2.
+fal: fal.ai/docs/{pricing,faq,media-expiration} + model pages for flux-2-pro, flux-pro/kontext, bytedance/seedance-2.0/* · pypi.org/project/fal-client.
 
-**Flagged unverified:** exact per-model rate limits (check AI Studio dashboard); whether any free image quota currently exists (pricing page says no); fal no-watermark guarantee; fal regional limits.
+**Flagged unverified:** Veo 3.1 "Lite" tier (third-party only, no official listing); fal's **$10-on-adding-payment** signup credit (fal-sourced but not on the FAQ page — confirm in dashboard); exact per-model image/Veo RPM at each paid tier; Kontext pro $0.04/image (pull from page); fal no-watermark guarantee; fal regional limits.
