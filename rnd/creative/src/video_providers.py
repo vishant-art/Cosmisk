@@ -1,87 +1,71 @@
-"""Video generation with primary + fallback (gated behind --video; costs dollars).
+"""Video generation -- fal is the only provider (rebuild plan, decision D1).
 
-  primary  = Veo 3.1 (veo-3.1-generate-preview) via google-genai (long-running poll)
-  fallback = Seedance 2.0 (bytedance/seedance-2.0/*) via fal-client
+Seedance 2.0, mode chosen by inputs:
+  refs   -> reference-to-video  (product/brand refs)
+  image  -> image-to-video      (seed = the TEXT-FREE background, NOT the finished ad)
+  else   -> text-to-video       (no seed; least brand-consistent, last resort)
 
-SDK imports are LAZY. Each provider returns {provider, model, path, cost_usd}.
-Output URLs are temporary (Veo 2-day, fal *.fal.media) -- both fns download to disk
-immediately.
+Copy/logo are NOT baked into the i2v input (the model would warp overlaid text); they
+are composited onto the rendered clip afterwards (animated lower-third / end-card).
+
+SDK imports are LAZY. Output URLs are temporary (*.fal.media) -- downloaded immediately.
 """
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config  # noqa: E402
 import ledger  # noqa: E402
 
-
-def _veo(prompt: str, out_path: Path, *, image=None, aspect="9:16",
-         duration=8, resolution="720p", poll_s=10, log=print) -> dict:
-    from google import genai          # lazy
-    from google.genai import types
-
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
-    cfg = types.GenerateVideosConfig(aspect_ratio=aspect, resolution=resolution,
-                                     duration_seconds=str(duration))
-    kwargs = {"model": config.VIDEO_PRIMARY_MODEL, "prompt": prompt, "config": cfg}
-    if image:
-        kwargs["image"] = types.Image.from_file(location=str(image))
-    op = client.models.generate_videos(**kwargs)
-    while not op.done:
-        log(f"  [veo] rendering... ({poll_s}s)")
-        time.sleep(poll_s)
-        op = client.operations.get(op)
-    vid = op.response.generated_videos[0]
-    client.files.download(file=vid.video)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    vid.video.save(str(out_path))
-    return {"provider": "veo", "model": config.VIDEO_PRIMARY_MODEL,
-            "path": str(out_path), "cost_usd": ledger.video_cost("veo", duration, resolution)}
+# resolution -> (width, height) px for the Seedance token formula (orientation
+# doesn't change width*height, so one entry per resolution is enough).
+_VIDEO_DIMS = {"720p": (1280, 720), "1080p": (1920, 1080), "4k": (3840, 2160)}
 
 
-def _seedance(prompt: str, out_path: Path, *, image=None, aspect="9:16",
-              duration=5, resolution="720p", log=print) -> dict:
-    import fal_client                  # lazy
+def _seedance(prompt: str, out_path: Path, *, image=None, refs=None, aspect="9:16",
+              duration=5, resolution="720p", fast=False, log=print) -> dict:
+    import fal_client                   # lazy
     import requests
-
-    if image:
-        endpoint = config.VIDEO_FALLBACK_I2V
-        args = {"prompt": prompt, "image_url": fal_client.upload_file(str(image)),
-                "resolution": resolution, "duration": str(duration), "aspect_ratio": aspect}
+    common = {"prompt": prompt, "resolution": resolution,
+              "duration": str(duration), "aspect_ratio": aspect}
+    if refs:
+        endpoint = config.VIDEO_REF2V
+        args = {**common, "image_urls": [fal_client.upload_file(str(r)) for r in refs]}
+    elif image:
+        endpoint = config.VIDEO_I2V
+        args = {**common, "image_url": fal_client.upload_file(str(image))}
     else:
-        endpoint = config.VIDEO_FALLBACK_T2V
-        args = {"prompt": prompt, "resolution": resolution,
-                "duration": str(duration), "aspect_ratio": aspect}
+        endpoint = config.VIDEO_T2V
+        args = {**common}
     res = fal_client.subscribe(endpoint, arguments=args, with_logs=False)
-    url = res["video"]["url"]
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(requests.get(url, timeout=300).content)
+    out_path.write_bytes(requests.get(res["video"]["url"], timeout=300).content)
+    bucket = ("seedance_4k" if resolution == "4k" else
+              "seedance_fast" if fast else "seedance")
+    w, h = _VIDEO_DIMS.get(resolution, _VIDEO_DIMS["720p"])
     return {"provider": "seedance", "model": endpoint, "path": str(out_path),
-            "cost_usd": ledger.video_cost("seedance", duration, resolution)}
+            "cost_usd": ledger.video_cost(bucket, w, h, float(duration))}
 
 
-_PROVIDERS = {"veo": _veo, "seedance": _seedance}
-_FALLBACK = {"veo": "seedance", "seedance": "veo"}
+def generate_video(prompt: str, out_path, *, image=None, refs=None, aspect="9:16",
+                   duration=5, resolution="720p", fast=False, log=print) -> dict:
+    return _seedance(prompt, Path(out_path), image=image, refs=refs, aspect=aspect,
+                     duration=duration, resolution=resolution, fast=fast, log=log)
 
 
-def generate_video(prompt: str, out_path, *, provider="veo", image=None, aspect="9:16",
-                   duration=8, resolution="720p", log=print) -> dict:
-    return _PROVIDERS[provider](prompt, Path(out_path), image=image, aspect=aspect,
-                                duration=duration, resolution=resolution, log=log)
-
-
-def generate_with_fallback(prompt: str, out_path, *, primary="veo", image=None,
-                           aspect="9:16", duration=8, resolution="720p", log=print) -> dict:
+def generate_with_fallback(prompt: str, out_path, *, image=None, refs=None, aspect="9:16",
+                           duration=5, resolution="720p", fast=False, log=print) -> dict:
+    """Try the seeded mode; on error drop the seed and fall back to text-to-video."""
     try:
-        return generate_video(prompt, out_path, provider=primary, image=image,
-                              aspect=aspect, duration=duration, resolution=resolution, log=log)
+        return generate_video(prompt, out_path, image=image, refs=refs, aspect=aspect,
+                              duration=duration, resolution=resolution, fast=fast, log=log)
     except Exception as e:  # noqa: BLE001
-        fb = _FALLBACK[primary]
-        log(f"  [video] {primary} failed ({e!s:.120}); falling back to {fb}")
-        res = generate_video(prompt, out_path, provider=fb, image=image, aspect=aspect,
-                            duration=duration, resolution=resolution, log=log)
-        res["fell_back_from"] = primary
+        if not (image or refs):
+            raise
+        log(f"  [video] seeded mode failed ({e!s:.120}); falling back to text-to-video")
+        res = generate_video(prompt, out_path, image=None, refs=None, aspect=aspect,
+                            duration=duration, resolution=resolution, fast=fast, log=log)
+        res["fell_back_from"] = "image-to-video"
         return res

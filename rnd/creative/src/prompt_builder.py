@@ -1,9 +1,9 @@
-"""Assemble the final image prompt from an ad concept + the locked brand kit.
+"""Assemble the TEXT-FREE background prompt from an ad concept + the locked brand kit.
 
 This is the consistency glue: every prompt carries the same palette (with hex),
-visual style, and tone, so a text-to-image run stays on-brand across concepts.
-The logo is passed to the model as a REFERENCE IMAGE (not described here), since
-re-referencing the asset holds it steadier than re-describing it.
+visual style, and tone, so backgrounds stay on-brand across concepts. The prompt
+describes ONLY the scene -- no text, no logo, no copy (the negative prompt suppresses
+them). Logo and copy are composited deterministically afterwards (compositor.py).
 """
 from __future__ import annotations
 

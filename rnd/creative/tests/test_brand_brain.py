@@ -9,15 +9,24 @@ import brand_brain  # noqa: E402
 
 
 def test_generate_brand_kit(fake_client):
-    kit = brand_brain.generate_brand_kit(fake_client, "ACCOUNT: Test")
+    kit, cost = brand_brain.generate_brand_kit(fake_client, "ACCOUNT: Test")
     assert kit.brand_name == "Lumen"
     assert len(kit.palette) == 3
+    assert cost == 0.0                       # fake client returns no usage.cost
 
 
 def test_generate_concepts_count(fake_client, brand_kit):
-    out = brand_brain.generate_concepts(fake_client, brand_kit, "ctx", 3)
+    out, cost = brand_brain.generate_concepts(fake_client, brand_kit, "ctx", 3)
     assert len(out) == 3
     assert out[0].title == "Morning Glow"
+    assert cost == 0.0
+
+
+def test_generate_concepts_carry_copy(fake_client, brand_kit):
+    out, _ = brand_brain.generate_concepts(fake_client, brand_kit, "ctx", 2)
+    assert out[0].ad_copy.headline           # first-class copy, not buried in prose
+    assert out[0].ad_copy.cta_label
+    assert out[0].ad_copy.angle
 
 
 class _OneShot:
@@ -32,5 +41,7 @@ class _OneShot:
 
 
 def test_concepts_fallback_when_empty(brand_kit):
-    out = brand_brain.generate_concepts(_OneShot(), brand_kit, "ctx", 2)
+    out, _ = brand_brain.generate_concepts(_OneShot(), brand_kit, "ctx", 2)
     assert len(out) == 2          # synthesises placeholders rather than returning nothing
+    assert out[0].ad_copy.headline   # even placeholders carry valid copy
+    assert out[0].ad_copy.cta_label

@@ -12,7 +12,7 @@ import prompt_builder  # noqa: E402
 from schemas import BrandKit  # noqa: E402
 
 
-def generate_logo(kit: BrandKit, out_path, *, provider="nanobanana", size="2K",
+def generate_logo(kit: BrandKit, out_path, *, provider="flux", size="2K",
                   pro=False, log=print) -> dict:
     prompt = prompt_builder.build_logo_prompt(kit)
     res = image_providers.generate_with_fallback(

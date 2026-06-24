@@ -10,7 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config  # noqa: E402
-from schemas import AdConcept, BrandKit  # noqa: E402
+import ledger  # noqa: E402
+from schemas import AdConcept, BrandKit, CopySet  # noqa: E402
 
 _KIT_SYSTEM = (
     "You are an elite brand strategist and art director. From the ad-account summary, "
@@ -43,17 +44,31 @@ _CONCEPTS_SYSTEM = (
     "account, propose {n} image-ad concepts that are distinct, intuitive, and scroll-stopping "
     "-- each a DIFFERENT strategic angle (e.g. hero-product, in-use lifestyle, problem/solution, "
     "social proof, bold visual metaphor, pattern interrupt). Return STRICT JSON only:\n"
-    '{"concepts": [{"title": str, "scene": str}]}\n'
+    '{"concepts": [{"title": str, "scene": str, "ad_copy": '
+    '{"headline": str, "cta_label": str, "angle": str, "subhead": str|null, "legal": str|null}}]}\n'
     "Each `scene` is a vivid, art-directed brief for ONE still: a concrete hero subject, a "
     "specific setting, intentional composition and camera angle, motivated lighting, and a clear "
     "mood -- the kind of frame that stops a feed. Avoid generic stock setups (smiling person at "
-    "a laptop, plain product-on-white, soulless corporate scenes). No text overlays (copy is "
-    "added later). Keep the concepts visually varied but unmistakably the same brand."
+    "a laptop, plain product-on-white, soulless corporate scenes). The scene must contain NO text "
+    "and NO logo -- describe only the visual (copy and logo are composited later).\n"
+    "`ad_copy` is the words placed over the scene afterwards, NOT drawn by the image model:\n"
+    "- headline: <=6 words, specific and on-voice, the single hook. No clickbait, no hedging.\n"
+    "- cta_label: 1-3 words, an action (Shop now, Get yours, Book a call).\n"
+    "- angle: the strategic reason this creative exists (the angle name above).\n"
+    "- subhead: optional one short supporting line, or null.\n"
+    "- legal: optional fine print (e.g. *T&C apply), or null.\n"
+    "Keep the concepts visually varied but unmistakably the same brand."
 )
 
 
-def _chat_json(client, system: str, user: str) -> dict:
-    """One OpenRouter call constrained to a JSON object; tolerant of stray fences."""
+def _fallback_copy(kit: BrandKit, i: int) -> CopySet:
+    """A valid, on-brand placeholder so a missing concept never blocks a run."""
+    return CopySet(headline=kit.tagline, cta_label="Shop now", angle=f"placeholder {i + 1}")
+
+
+def _chat_json(client, system: str, user: str) -> tuple[dict, float]:
+    """One OpenRouter call constrained to a JSON object; tolerant of stray fences.
+    Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost."""
     resp = client.chat.completions.create(
         model=config.TEXT_MODEL,
         temperature=config.TEXT_TEMPERATURE,
@@ -65,21 +80,22 @@ def _chat_json(client, system: str, user: str) -> dict:
     if text.startswith("```"):
         text = text.strip("`")
         text = text[text.find("{"):text.rfind("}") + 1]
-    return json.loads(text)
+    return json.loads(text), ledger.response_cost(resp)
 
 
-def generate_brand_kit(client, summary: str) -> BrandKit:
-    data = _chat_json(client, _KIT_SYSTEM, summary)
-    return BrandKit.model_validate(data)
+def generate_brand_kit(client, summary: str) -> tuple[BrandKit, float]:
+    data, cost = _chat_json(client, _KIT_SYSTEM, summary)
+    return BrandKit.model_validate(data), cost
 
 
-def generate_concepts(client, kit: BrandKit, summary: str, n: int) -> list[AdConcept]:
+def generate_concepts(client, kit: BrandKit, summary: str, n: int) -> tuple[list[AdConcept], float]:
     user = (
         f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
         f"ACCOUNT CONTEXT:\n{summary}\n\nPropose exactly {n} concepts."
     )
-    data = _chat_json(client, _CONCEPTS_SYSTEM.replace("{n}", str(n)), user)
+    data, cost = _chat_json(client, _CONCEPTS_SYSTEM.replace("{n}", str(n)), user)
     concepts = [AdConcept.model_validate(c) for c in data.get("concepts", [])]
-    return concepts[:n] if concepts else [
-        AdConcept(title=f"Concept {i+1}", scene=kit.visual_style) for i in range(n)
-    ]
+    if not concepts:
+        concepts = [AdConcept(title=f"Concept {i+1}", scene=kit.visual_style,
+                              ad_copy=_fallback_copy(kit, i)) for i in range(n)]
+    return concepts[:n], cost

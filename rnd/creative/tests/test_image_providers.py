@@ -1,82 +1,118 @@
-"""Provider selection + fallback-on-error (no SDKs touched)."""
+"""fal-only image providers: arg shaping, refs, product-shot, fallback, outpaint.
+fal_client / requests are lazily imported, so we inject fakes via sys.modules."""
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import config  # noqa: E402
 import image_providers as ip  # noqa: E402
 
 
-def _fake(provider, model):
-    def fn(prompt, out_path, *, refs=None, aspect="4:5", size="2K", pro=False, negative=None):
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(out_path).write_bytes(b"PNG")
-        return {"provider": provider, "model": model, "path": str(out_path), "cost_usd": 0.1}
-    return fn
+def _install_fake_fal(monkeypatch, captured, *, url="https://fal.media/img.png"):
+    fal = types.ModuleType("fal_client")
+
+    def subscribe(endpoint, arguments=None, with_logs=False):
+        captured["endpoint"] = endpoint
+        captured["args"] = arguments
+        return {"images": [{"url": url}]}
+
+    def upload_file(p):
+        captured.setdefault("uploads", []).append(str(p))
+        return f"https://fal.media/up/{Path(p).name}"
+
+    fal.subscribe = subscribe
+    fal.upload_file = upload_file
+    monkeypatch.setitem(sys.modules, "fal_client", fal)
+
+    req = types.ModuleType("requests")
+
+    class _R:
+        content = b"IMGBYTES"
+
+    req.get = lambda url, timeout=None: _R()
+    monkeypatch.setitem(sys.modules, "requests", req)
 
 
-def test_generate_image_uses_named_provider(monkeypatch, tmp_path):
-    monkeypatch.setitem(ip._PROVIDERS, "flux", _fake("flux", "fal-ai/flux-2-pro"))
-    res = ip.generate_image("p", tmp_path / "a.png", provider="flux")
+def test_flux_flex_is_default_and_shapes_call(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    res = ip.generate_image("a teal product scene", tmp_path / "a.png",
+                            aspect="1:1", negative="text, logo")
+    assert cap["endpoint"] == config.IMAGE_MODEL_FLEX
+    assert cap["args"]["image_size"] == {"width": 1024, "height": 1024}
+    assert "Must NOT appear in the image: text, logo" in cap["args"]["prompt"]
     assert res["provider"] == "flux"
-    assert (tmp_path / "a.png").exists()
+    assert (tmp_path / "a.png").read_bytes() == b"IMGBYTES"
 
 
-def test_cloudflare_sdxl_saves_bytes_and_sends_negative(monkeypatch, tmp_path):
-    import config
-    import requests
-
-    monkeypatch.setattr(config, "CLOUDFLARE_ACCOUNT_ID", "acct")
-    monkeypatch.setattr(config, "CLOUDFLARE_API_TOKEN", "tok")
-
-    captured = {}
-
-    class FakeResp:                       # SDXL returns raw image bytes
-        headers = {"content-type": "image/png"}
-        content = b"PNGBYTES"
-        def raise_for_status(self): pass
-
-    def fake_post(url, headers=None, json=None, timeout=None):
-        captured["url"] = url
-        captured["json"] = json
-        return FakeResp()
-
-    monkeypatch.setattr(requests, "post", fake_post)
-
-    res = ip.generate_image("a teal product shot", tmp_path / "cf.png",
-                            provider="cloudflare", negative="text, logo, watermark")
-    assert res["provider"] == "cloudflare"
-    assert res["cost_usd"] == 0.0
-    assert (tmp_path / "cf.png").read_bytes() == b"PNGBYTES"        # raw bytes, not base64
-    assert "acct" in captured["url"] and config.IMAGE_FREE_MODEL in captured["url"]
-    assert captured["json"]["prompt"] == "a teal product shot"
-    assert captured["json"]["negative_prompt"] == "text, logo, watermark"  # suppression sent
+def test_flux_uploads_refs_as_image_urls(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"L")
+    ip.generate_image("scene", tmp_path / "b.png", refs=[logo])
+    assert cap["args"]["image_urls"] == [f"https://fal.media/up/{logo.name}"]
 
 
-def test_cloudflare_requires_keys(monkeypatch, tmp_path):
-    import config
-    monkeypatch.setattr(config, "CLOUDFLARE_ACCOUNT_ID", None)
-    monkeypatch.setattr(config, "CLOUDFLARE_API_TOKEN", None)
+def test_pro_flag_routes_to_flux_pro(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    res = ip.generate_image("scene", tmp_path / "c.png", provider="flux", pro=True)
+    assert cap["endpoint"] == config.IMAGE_MODEL_PRO
+    assert res["provider"] == "flux_pro"
+
+
+def test_product_shot_requires_a_ref(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
     try:
-        ip.generate_image("p", tmp_path / "x.png", provider="cloudflare")
-        assert False, "expected RuntimeError when keys are missing"
+        ip.generate_image("scene", tmp_path / "d.png", provider="product")
+        assert False, "expected RuntimeError without a product ref"
     except RuntimeError as e:
-        assert "CLOUDFLARE" in str(e)
+        assert "product" in str(e).lower()
 
 
-def test_cloudflare_fallback_registered():
-    assert ip._FALLBACK["cloudflare"] == "flux"
+def test_product_shot_shapes_call(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    prod = tmp_path / "prod.png"
+    prod.write_bytes(b"P")
+    ip.generate_image("on a marble shelf, warm light", tmp_path / "e.png",
+                      provider="product", refs=[prod])
+    assert cap["endpoint"] == config.IMAGE_MODEL_PRODUCT
+    assert cap["args"]["image_url"].endswith(prod.name)
+    assert "marble shelf" in cap["args"]["scene_description"]
+
+
+def test_outpaint_targets_format_dims(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    src = tmp_path / "bg.png"
+    src.write_bytes(b"BG")
+    ip.outpaint(src, tmp_path / "story.png", fmt="9:16")
+    assert cap["endpoint"] == config.IMAGE_OUTPAINT_MODEL
+    assert cap["args"]["image_size"] == {"width": 1080, "height": 1920}
+
+
+def test_fallback_registered():
+    assert ip._FALLBACK["flux"] == "flux_pro"
+    assert ip._FALLBACK["product"] == "flux"
 
 
 def test_fallback_on_primary_error(monkeypatch, tmp_path):
     def boom(*a, **k):
-        raise RuntimeError("nano down")
-    monkeypatch.setitem(ip._PROVIDERS, "nanobanana", boom)
-    monkeypatch.setitem(ip._PROVIDERS, "flux", _fake("flux", "fal-ai/flux-2-pro"))
+        raise RuntimeError("flex down")
 
-    res = ip.generate_with_fallback("p", tmp_path / "b.png", primary="nanobanana",
-                                    log=lambda *_: None)
-    assert res["provider"] == "flux"
-    assert res["fell_back_from"] == "nanobanana"
-    assert (tmp_path / "b.png").exists()
+    def ok(prompt, out_path, **k):
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_path).write_bytes(b"PNG")
+        return {"provider": "flux_pro", "model": "m", "path": str(out_path), "cost_usd": 0.03}
+
+    monkeypatch.setitem(ip._PROVIDERS, "flux", boom)
+    monkeypatch.setitem(ip._PROVIDERS, "flux_pro", ok)
+    res = ip.generate_with_fallback("p", tmp_path / "f.png", primary="flux", log=lambda *_: None)
+    assert res["provider"] == "flux_pro"
+    assert res["fell_back_from"] == "flux"

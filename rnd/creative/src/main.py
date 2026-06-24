@@ -1,14 +1,15 @@
-"""CLI entry point for the creative experiment.
+"""CLI entry point for the creative experiment (fal-only generation).
 
-  # auto: kit + logo + N on-brand images, grounded in top-ROAS campaigns
-  python src/main.py --data ../data/_real_sample.json --select top-roas --images 4
+  # auto: kit + logo + N on-brand ads (text-free bg -> composite -> QA), multi-format
+  python src/main.py --data ../data/_real_sample.json --select top-roas --images 4 \
+      --formats 1:1,4:5,9:16 --vlm
 
   # review: kit + logo only; edit output/<run>/brand_kit.json, then:
   python src/main.py --mode review --data ../data/_real_sample.json
   python src/main.py --resume 2026-06-19_120000 --data ../data/_real_sample.json --images 4
 
-  # video smoke (EXPLICIT, costs dollars): Veo -> Seedance fallback
-  python src/main.py --resume <run> --video --video-provider veo --duration 8
+  # video smoke (EXPLICIT, costs dollars): Seedance i2v from the text-free bg -> t2v
+  python src/main.py --resume <run> --video --duration 5
 """
 from __future__ import annotations
 
@@ -40,38 +41,43 @@ def main() -> None:
     ap.add_argument("--n-campaigns", type=int, default=5)
     ap.add_argument("--mode", default="auto", choices=["auto", "review"])
     ap.add_argument("--images", type=int, default=5)
-    ap.add_argument("--image-provider", default="nanobanana",
-                    choices=["nanobanana", "flux", "cloudflare"],
-                    help="cloudflare = free FLUX.1 schnell (no card; draft quality)")
-    ap.add_argument("--pro", action="store_true", help="use Nano Banana Pro for images")
-    ap.add_argument("--aspect", default="4:5")
-    ap.add_argument("--size", default="2K", choices=["1K", "2K", "4K"])
-    ap.add_argument("--resume", help="run_id to resume (generate images from edited kit)")
+    ap.add_argument("--image-provider", default="flux",
+                    choices=["flux", "flux_pro", "product"],
+                    help="flux = FLUX.2 flex (brand scenes); product = Bria product-shot")
+    ap.add_argument("--pro", action="store_true", help="use FLUX.2 [pro] for images")
+    ap.add_argument("--formats", default="4:5",
+                    help="comma list of aspect ratios: 1:1,4:5,9:16,16:9 (first is the base)")
+    ap.add_argument("--qa-retries", type=int, default=1,
+                    help="background regenerations allowed before a concept is rejected")
+    ap.add_argument("--vlm", action="store_true", help="run the VLM critic in the QA gate")
+    ap.add_argument("--resume", help="run_id to resume (generate ads from edited kit)")
     # video smoke (gated)
     ap.add_argument("--video", action="store_true", help="run one video clip (costs $$)")
-    ap.add_argument("--video-provider", default="veo", choices=["veo", "seedance"])
     ap.add_argument("--video-prompt", default="")
-    ap.add_argument("--duration", type=int, default=8)
-    ap.add_argument("--resolution", default="720p", choices=["720p", "1080p", "4k"])
+    ap.add_argument("--duration", type=int, default=5)
+    ap.add_argument("--resolution", default="720p", choices=["720p", "1080p"])
+    ap.add_argument("--video-aspect", default="9:16", choices=["9:16", "16:9"])
     args = ap.parse_args()
+
+    formats = [f.strip() for f in args.formats.split(",") if f.strip()]
 
     if args.video:
         run_id = args.resume or _new_run_id()
         prompt = args.video_prompt or "Cinematic product hero shot, slow push-in, on-brand."
-        pipeline.video_smoke(run_id=run_id, prompt=prompt, provider=args.video_provider,
-                             duration=args.duration, resolution=args.resolution)
+        pipeline.video_smoke(run_id=run_id, prompt=prompt, duration=args.duration,
+                             resolution=args.resolution, aspect=args.video_aspect)
         return
 
     if args.resume:
         pipeline.resume(run_id=args.resume, data_path=args.data, images=args.images,
-                        image_provider=args.image_provider, aspect=args.aspect,
-                        size=args.size, pro=args.pro)
+                        image_provider=args.image_provider, formats=formats,
+                        qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro)
         return
 
     pipeline.run(data_path=args.data, run_id=_new_run_id(), strategy=args.select,
                  n_campaigns=args.n_campaigns, mode=args.mode, images=args.images,
-                 image_provider=args.image_provider, aspect=args.aspect,
-                 size=args.size, pro=args.pro)
+                 image_provider=args.image_provider, formats=formats,
+                 qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro)
 
 
 if __name__ == "__main__":

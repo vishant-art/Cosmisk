@@ -32,31 +32,30 @@ _env = _find_env()
 if _env:
     load_dotenv(_env)
 
-# --- keys (image/video are NEW; add to repo-root .env before a live run) ------
+# --- keys -----------------------------------------------------------------------
+# Text brain + VLM verifier go through OpenRouter; ALL image/video generation goes
+# through fal (the only generation provider -- see the rebuild plan, decision D1).
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")         # Nano Banana 2 + Veo (google-genai)
-FAL_KEY = os.getenv("FAL_KEY")                        # FLUX + Seedance (fal-client)
-# Cloudflare Workers AI: a FREE, no-card image path (FLUX.1 schnell). Draft quality,
-# testing-only -- see dev_reports/ai_serv/creative/free-and-no-billing-options.md.
-CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID")
-CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN")
+FAL_KEY = os.getenv("FAL_KEY")                        # FLUX.2 + Bria + Seedance (fal-client)
 
 # --- model IDs (verified June 2026; see vendor research doc) ------------------
-# Brain (text -> BrandKit/concepts) goes through OpenRouter, which already works.
+# Brain (text -> BrandKit/concepts) and the VLM critic go through OpenRouter.
 TEXT_MODEL = "google/gemini-2.5-flash"
+VISION_MODEL = "google/gemini-2.5-flash"             # verifier critic (multimodal)
 
-# Image: Nano Banana 2 primary (GA, no -preview), FLUX.2 pro fallback (fal).
-IMAGE_PRIMARY_MODEL = "gemini-3.1-flash-image"
-IMAGE_PRO_MODEL = "gemini-3-pro-image"               # best logo/text fidelity (opt-in)
-IMAGE_FALLBACK_MODEL = "fal-ai/flux-2-pro"
-# Cloudflare Workers AI (free). SDXL (not FLUX schnell) because it supports a real
-# negative_prompt -- needed to actually suppress text/logos in the generated ads.
-IMAGE_FREE_MODEL = "@cf/stabilityai/stable-diffusion-xl-base-1.0"
+# Image (fal-only). flux-2-flex is the brand-scene primary (typography + up to 10
+# reference images); flux-2-pro is the simpler fallback; bria product-shot drops a
+# real product into a generated scene; flux fill outpaints one bg to other ratios.
+IMAGE_MODEL_FLEX = "fal-ai/flux-2-flex"
+IMAGE_MODEL_PRO = "fal-ai/flux-2-pro"
+IMAGE_MODEL_PRODUCT = "fal-ai/bria/product-shot"
+IMAGE_OUTPAINT_MODEL = "fal-ai/flux-pro/v1/fill"
 
-# Video: Veo 3.1 primary (still preview), Seedance 2.0 fallback (fal).
-VIDEO_PRIMARY_MODEL = "veo-3.1-generate-preview"
-VIDEO_FALLBACK_T2V = "bytedance/seedance-2.0/text-to-video"
-VIDEO_FALLBACK_I2V = "bytedance/seedance-2.0/image-to-video"
+# Video (fal-only). Seedance 2.0: image-to-video (seed = the text-free background),
+# reference-to-video (product/brand refs), text-to-video (no seed; last resort).
+VIDEO_I2V = "bytedance/seedance-2.0/image-to-video"
+VIDEO_REF2V = "bytedance/seedance-2.0/reference-to-video"
+VIDEO_T2V = "bytedance/seedance-2.0/text-to-video"
 
 TEXT_TEMPERATURE = 0.7        # brand identity is creative; concepts vary run-to-run

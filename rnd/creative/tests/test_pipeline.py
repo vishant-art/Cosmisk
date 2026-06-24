@@ -1,7 +1,7 @@
-"""End-to-end pipeline with the brain + providers monkeypatched (zero spend).
+"""End-to-end pipeline with the brain + fal providers monkeypatched (zero spend).
 
-Proves: auto mode runs through to N images and writes the manifest/kit/ledger;
-review mode stops before any image is generated.
+Backgrounds/logo are faked as REAL PNGs so the new flow's compositor + verifier run
+for real: concept -> text-free bg -> layout -> composite -> verify -> (outpaint).
 """
 from __future__ import annotations
 
@@ -9,71 +9,75 @@ import json
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import brand_brain  # noqa: E402
 import config  # noqa: E402
 import image_providers  # noqa: E402
 import logo as logo_mod  # noqa: E402
 import pipeline  # noqa: E402
-from schemas import AdConcept  # noqa: E402
+import verifier  # noqa: E402
 
 
-def _patch_all(monkeypatch, brand_kit, concepts, calls):
-    monkeypatch.setattr(brand_brain, "generate_brand_kit", lambda c, s: brand_kit)
+def _png(path, size=(1080, 1350), color="white"):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color).save(path)
+
+
+def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
+    monkeypatch.setattr(brand_brain, "generate_brand_kit", lambda c, s: (brand_kit, 0.0))
     monkeypatch.setattr(brand_brain, "generate_concepts",
-                        lambda c, k, s, n: concepts[:n])
+                        lambda c, k, s, n: (concepts[:n], 0.0))
 
     def fake_logo(kit, out_path, **kw):
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(out_path).write_bytes(b"PNG")
+        _png(out_path, size=(400, 400), color="red")
         kit.logo.asset_path = str(out_path)
-        return {"provider": "nanobanana", "model": "m", "path": str(out_path), "cost_usd": 0.1}
+        return {"provider": "flux", "model": "m", "path": str(out_path), "cost_usd": 0.05}
 
-    def fake_img(prompt, out_path, **kw):
-        calls.append(out_path)
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(out_path).write_bytes(b"PNG")
-        return {"provider": "nanobanana", "model": "m", "path": str(out_path), "cost_usd": 0.1}
+    def fake_bg(prompt, out_path, **kw):
+        bg_calls.append(str(out_path))
+        _png(out_path)                                    # a valid text-free background
+        return {"provider": "flux", "model": "m", "path": str(out_path), "cost_usd": 0.05}
 
     monkeypatch.setattr(logo_mod, "generate_logo", fake_logo)
-    monkeypatch.setattr(image_providers, "generate_with_fallback", fake_img)
+    monkeypatch.setattr(image_providers, "generate_with_fallback", fake_bg)
 
 
 def test_auto_mode_full_run(monkeypatch, tmp_path, envelope_path, brand_kit, concepts):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
-    calls = []
-    _patch_all(monkeypatch, brand_kit, concepts, calls)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
 
     m = pipeline.run(data_path=envelope_path, run_id="r1", strategy="top-roas",
                      mode="auto", images=3, log=lambda *_: None)
 
     assert m.status == "complete"
+    assert len(bg_calls) == 3                             # one background per concept
     imgs = [a for a in m.assets if a.kind == "image"]
-    assert len(imgs) == 3 and len(calls) == 3
+    assert len(imgs) == 3 and len(m.ads) == 3            # one format (4:5) default
+    assert m.rejected == []
     run_dir = tmp_path / "r1"
     assert (run_dir / "manifest.json").exists()
-    assert (run_dir / "brand_kit.json").exists()
-    assert (run_dir / "ledger.jsonl").exists()
+    assert (run_dir / "ad_01_4x5.png").exists()
     manifest = json.loads((run_dir / "manifest.json").read_text("utf-8"))
     assert manifest["brand_kit"]["brand_name"] == "Lumen"
     assert m.total_cost_usd > 0
 
 
-def test_review_mode_stops_before_images(monkeypatch, tmp_path, envelope_path,
-                                         brand_kit, concepts):
+def test_review_mode_stops_before_ads(monkeypatch, tmp_path, envelope_path,
+                                      brand_kit, concepts):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
-    calls = []
-    _patch_all(monkeypatch, brand_kit, concepts, calls)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
 
     m = pipeline.run(data_path=envelope_path, run_id="r2", mode="review",
                      images=4, log=lambda *_: None)
 
     assert m.status == "awaiting_review"
-    assert calls == []                                    # no images generated
-    assert [a for a in m.assets if a.kind == "image"] == []
+    assert bg_calls == [] and m.ads == []                # nothing generated past the kit/logo
     assert (tmp_path / "r2" / "brand_kit.json").exists()
     assert (tmp_path / "r2" / "logo.png").exists()
-    # the on-disk kit reflects the generated logo path (not null)
     saved = json.loads((tmp_path / "r2" / "brand_kit.json").read_text("utf-8"))
     assert saved["logo"]["asset_path"] is not None
 
@@ -81,12 +85,56 @@ def test_review_mode_stops_before_images(monkeypatch, tmp_path, envelope_path,
 def test_resume_generates_from_saved_kit(monkeypatch, tmp_path, envelope_path,
                                          brand_kit, concepts):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
-    calls = []
-    _patch_all(monkeypatch, brand_kit, concepts, calls)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
     pipeline.run(data_path=envelope_path, run_id="r3", mode="review",
                  images=4, log=lambda *_: None)
 
     m = pipeline.resume(run_id="r3", data_path=envelope_path, images=2,
                         log=lambda *_: None)
     assert m.status == "complete"
-    assert len([a for a in m.assets if a.kind == "image"]) == 2
+    assert len(m.ads) == 2
+
+
+def test_multiformat_outpaints_non_base(monkeypatch, tmp_path, envelope_path,
+                                        brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+    outpaints = []
+
+    def fake_outpaint(src, out_path, *, fmt, **kw):
+        outpaints.append(fmt)
+        _png(out_path)
+        return {"provider": "flux_fill", "model": "m", "path": str(out_path), "cost_usd": 0.05}
+
+    monkeypatch.setattr(image_providers, "outpaint", fake_outpaint)
+
+    m = pipeline.run(data_path=envelope_path, run_id="r4", mode="auto", images=2,
+                     formats=["1:1", "4:5"], log=lambda *_: None)
+
+    assert len(bg_calls) == 2                             # one base bg per concept
+    assert outpaints == ["4:5", "4:5"]                   # non-base outpainted once per concept
+    assert len(m.ads) == 4                               # 2 concepts x 2 formats
+    assert (tmp_path / "r4" / "ad_01_1x1.png").exists()
+    assert (tmp_path / "r4" / "ad_01_4x5.png").exists()
+
+
+def test_qa_reject_excludes_concept(monkeypatch, tmp_path, envelope_path,
+                                    brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    from schemas import QAReport
+    monkeypatch.setattr(verifier, "verify",
+                        lambda *a, **k: QAReport(checks=[], verdict="fail",
+                                                 retry_hint="forced"))
+
+    m = pipeline.run(data_path=envelope_path, run_id="r5", mode="auto", images=2,
+                     qa_retries=0, log=lambda *_: None)
+
+    assert m.status == "complete"
+    assert m.ads == []                                   # nothing passed QA
+    assert len(m.rejected) == 2
+    assert len(bg_calls) == 2                            # one attempt each (qa_retries=0)

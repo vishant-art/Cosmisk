@@ -1,11 +1,15 @@
-"""Image generation with primary + fallback.
+"""Image generation -- fal is the only provider (rebuild plan, decision D1).
 
-  primary  = Nano Banana 2 (gemini-3.1-flash-image) via the google-genai SDK
-  fallback = FLUX.2 [pro] (fal-ai/flux-2-pro) via fal-client
+  flux      = FLUX.2 [flex]  (fal-ai/flux-2-flex)  -- brand-scene primary, up to 10 refs
+  flux_pro  = FLUX.2 [pro]   (fal-ai/flux-2-pro)   -- simpler fallback
+  product   = Bria product-shot (fal-ai/bria/product-shot) -- real product into a scene
 
-SDK imports are LAZY (inside each provider fn) so this module imports fine -- and
-the mock test suite runs -- without google-genai / fal-client installed. Each
-provider returns a dict: {provider, model, path, cost_usd}.
+All generation produces a TEXT-FREE background/scene; copy + logo are composited
+later (compositor.py). `outpaint()` extends one background to other aspect ratios.
+
+SDK imports (`fal_client`, `requests`) are LAZY so this module imports -- and the
+mock test suite runs -- without them installed. Each provider returns a dict:
+{provider, model, path, cost_usd}.
 """
 from __future__ import annotations
 
@@ -16,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config  # noqa: E402
 import ledger  # noqa: E402
 
-# aspect -> (width, height) for providers that need explicit pixels (FLUX).
+# aspect -> (width, height) px for fal's explicit image_size.
 _ASPECT_PX = {
     "1:1": (1024, 1024), "4:5": (1024, 1280), "5:4": (1280, 1024),
     "9:16": (1080, 1920), "16:9": (1920, 1080), "3:4": (1080, 1440),
@@ -24,109 +28,101 @@ _ASPECT_PX = {
 }
 
 
-def _nanobanana(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
-                size="2K", pro=False, negative=None) -> dict:
-    from google import genai          # lazy
-    from google.genai import types
-    from PIL import Image
-
-    client = genai.Client(api_key=config.GEMINI_API_KEY)
-    model = config.IMAGE_PRO_MODEL if pro else config.IMAGE_PRIMARY_MODEL
-    # Gemini follows instructions, so state the suppression as a hard rule.
-    text = prompt if not negative else (
-        f"{prompt}\n\nHard requirement: the image must contain absolutely NO {negative}.")
-    contents: list = [text]
-    for r in (refs or []):
-        contents.append(Image.open(r))
-
-    resp = client.models.generate_content(
-        model=model, contents=contents,
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE"],
-            image_config=types.ImageConfig(aspect_ratio=aspect, image_size=size),
-        ),
-    )
-    for part in resp.parts:
-        if getattr(part, "inline_data", None) is not None:
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(part.inline_data.data)
-            cost = ledger.image_cost("nanobanana_pro" if pro else "nanobanana", size)
-            return {"provider": "nanobanana", "model": model,
-                    "path": str(out_path), "cost_usd": cost}
-    raise RuntimeError("nanobanana returned no image part")
+def _suppress(prompt: str, negative: str | None) -> str:
+    """Fold the negative list into the prompt as a hard suppression instruction."""
+    return prompt if not negative else f"{prompt}\n\nMust NOT appear in the image: {negative}."
 
 
-def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
-          size="2K", pro=False, negative=None) -> dict:
-    import fal_client                  # lazy
-    import requests
-
-    w, h = _ASPECT_PX.get(aspect, (1024, 1280))
-    text = prompt if not negative else f"{prompt}\n\nMust not appear in the image: {negative}."
-    args = {"prompt": text, "image_size": {"width": w, "height": h},
-            "output_format": "png"}
-    # FLUX fallback ignores logo refs in v1 (text-only); the /edit endpoint would
-    # carry references but we keep the fallback path simple.
-    res = fal_client.subscribe(config.IMAGE_FALLBACK_MODEL, arguments=args, with_logs=False)
-    url = res["images"][0]["url"]
+def _download(url: str, out_path: Path) -> None:
+    import requests                     # lazy
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(requests.get(url, timeout=60).content)
-    return {"provider": "flux", "model": config.IMAGE_FALLBACK_MODEL,
-            "path": str(out_path), "cost_usd": ledger.image_cost("flux")}
+    out_path.write_bytes(requests.get(url, timeout=120).content)
 
 
-def _cloudflare(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
-                size="2K", pro=False, negative=None) -> dict:
-    """FREE path: Cloudflare Workers AI, SDXL. No card, ~hundreds/day. Draft quality;
-    `refs`/`size` ignored. SDXL supports `negative_prompt`, which is how text/logos get
-    suppressed here. Keep Nano Banana for real output."""
-    import base64  # lazy
-    import requests
-
-    if not (config.CLOUDFLARE_ACCOUNT_ID and config.CLOUDFLARE_API_TOKEN):
-        raise RuntimeError("CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN not set")
+def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5", negative=None,
+          flex=True, **_ignore) -> dict:
+    import fal_client                   # lazy
     w, h = _ASPECT_PX.get(aspect, (1024, 1280))
-    body = {"prompt": prompt[:2000], "num_steps": 20, "guidance": 7.5, "width": w, "height": h}
-    if negative:
-        body["negative_prompt"] = negative[:1000]
-    url = (f"https://api.cloudflare.com/client/v4/accounts/"
-           f"{config.CLOUDFLARE_ACCOUNT_ID}/ai/run/{config.IMAGE_FREE_MODEL}")
-    resp = requests.post(url, headers={"Authorization": f"Bearer {config.CLOUDFLARE_API_TOKEN}"},
-                         json=body, timeout=120)
-    resp.raise_for_status()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    # SDXL returns raw image bytes; some CF models wrap base64 in JSON -- handle both.
-    if "application/json" in resp.headers.get("content-type", ""):
-        out_path.write_bytes(base64.b64decode(resp.json()["result"]["image"]))
-    else:
-        out_path.write_bytes(resp.content)
-    return {"provider": "cloudflare", "model": config.IMAGE_FREE_MODEL,
-            "path": str(out_path), "cost_usd": 0.0}
+    endpoint = config.IMAGE_MODEL_FLEX if flex else config.IMAGE_MODEL_PRO
+    args = {"prompt": _suppress(prompt, negative),
+            "image_size": {"width": w, "height": h}, "output_format": "png"}
+    if refs:                            # brand-asset conditioning (flex supports up to 10)
+        args["image_urls"] = [fal_client.upload_file(str(r)) for r in refs]
+    res = fal_client.subscribe(endpoint, arguments=args, with_logs=False)
+    _download(res["images"][0]["url"], out_path)
+    return {"provider": "flux" if flex else "flux_pro", "model": endpoint,
+            "path": str(out_path),
+            "cost_usd": ledger.image_cost("flux_flex" if flex else "flux_pro", w, h)}
 
 
-_PROVIDERS = {"nanobanana": _nanobanana, "flux": _flux, "cloudflare": _cloudflare}
-# cloudflare is the free primary; its fallback is a paid provider (only fires on a
-# cloudflare error, and will itself error if no paid key is configured -- which is
-# the correct signal rather than silently spending).
-_FALLBACK = {"nanobanana": "flux", "flux": "nanobanana", "cloudflare": "flux"}
+def _flux_flex(prompt, out_path, **kw) -> dict:
+    return _flux(prompt, out_path, flex=True, **kw)
 
 
-def generate_image(prompt: str, out_path, *, provider="nanobanana", refs=None,
-                   aspect="4:5", size="2K", pro=False, negative=None) -> dict:
+def _flux_pro(prompt, out_path, **kw) -> dict:
+    return _flux(prompt, out_path, flex=False, **kw)
+
+
+def _product_shot(prompt: str, out_path: Path, *, refs=None, aspect="4:5",
+                  negative=None, **_ignore) -> dict:
+    """Drop a real product (refs[0]) into a generated, text-free scene."""
+    import fal_client                   # lazy
+    if not refs:
+        raise RuntimeError("product_shot needs the product image in refs[0]")
+    args = {"image_url": fal_client.upload_file(str(refs[0])),
+            "scene_description": _suppress(prompt, negative)}
+    res = fal_client.subscribe(config.IMAGE_MODEL_PRODUCT, arguments=args, with_logs=False)
+    imgs = res.get("images") or res.get("result", {}).get("images") or []
+    if not imgs:
+        raise RuntimeError("product_shot returned no image")
+    _download(imgs[0]["url"], out_path)
+    return {"provider": "product", "model": config.IMAGE_MODEL_PRODUCT,
+            "path": str(out_path), "cost_usd": ledger.image_cost("product")}
+
+
+_PROVIDERS = {"flux": _flux_flex, "flux_pro": _flux_pro, "product": _product_shot}
+_FALLBACK = {"flux": "flux_pro", "flux_pro": "flux", "product": "flux"}
+
+
+def generate_image(prompt: str, out_path, *, provider="flux", refs=None, aspect="4:5",
+                   negative=None, pro=False, log=print, **_ignore) -> dict:
+    # back-compat shim: `pro=True` on the flux path routes to FLUX.2 [pro].
+    if pro and provider == "flux":
+        provider = "flux_pro"
     return _PROVIDERS[provider](prompt, Path(out_path), refs=refs, aspect=aspect,
-                                size=size, pro=pro, negative=negative)
+                                negative=negative)
 
 
-def generate_with_fallback(prompt: str, out_path, *, primary="nanobanana", refs=None,
-                           aspect="4:5", size="2K", pro=False, negative=None, log=print) -> dict:
-    """Try the primary provider; on ANY error fall through to the other one."""
+def generate_with_fallback(prompt: str, out_path, *, primary="flux", refs=None, aspect="4:5",
+                           negative=None, pro=False, log=print, **_ignore) -> dict:
+    """Try the primary fal provider; on ANY error fall through to its fallback."""
+    if pro and primary == "flux":
+        primary = "flux_pro"
     try:
         return generate_image(prompt, out_path, provider=primary, refs=refs,
-                              aspect=aspect, size=size, pro=pro, negative=negative)
+                              aspect=aspect, negative=negative)
     except Exception as e:  # noqa: BLE001 -- fallback is the whole point
         fb = _FALLBACK[primary]
         log(f"  [image] {primary} failed ({e!s:.120}); falling back to {fb}")
         res = generate_image(prompt, out_path, provider=fb, refs=refs,
-                            aspect=aspect, size=size, pro=pro, negative=negative)
+                            aspect=aspect, negative=negative)
         res["fell_back_from"] = primary
         return res
+
+
+def outpaint(src_path, out_path, *, fmt: str, prompt: str = "", negative=None) -> dict:
+    """Extend one background to another aspect ratio (fal flux fill), preserving the
+    focal point. Drives multi-format output without re-generating a fresh scene.
+    NOTE: fal fill schema needs live verification; mock-tested here."""
+    import fal_client                   # lazy
+    from layout import FORMATS          # lazy, avoids import cycle at module load
+    if fmt not in FORMATS:
+        raise ValueError(f"unknown format {fmt!r}")
+    w, h = FORMATS[fmt]
+    args = {"image_url": fal_client.upload_file(str(src_path)),
+            "image_size": {"width": w, "height": h},
+            "prompt": _suppress(prompt, negative)}
+    res = fal_client.subscribe(config.IMAGE_OUTPAINT_MODEL, arguments=args, with_logs=False)
+    _download(res["images"][0]["url"], Path(out_path))
+    return {"provider": "flux_fill", "model": config.IMAGE_OUTPAINT_MODEL,
+            "path": str(out_path), "cost_usd": ledger.image_cost("flux_fill", w, h)}

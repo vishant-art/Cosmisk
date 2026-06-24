@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from schemas import AdConcept, BrandKit  # noqa: E402
+from schemas import AdConcept, BrandKit, CopySet  # noqa: E402
 
 # --- a fake OpenAI-compatible client that routes on the system prompt ---------
 
@@ -48,11 +48,18 @@ KIT_JSON = {
     "logo": {"brief": "a soft rounded lamp glyph beside the wordmark"},
 }
 
+def _copy(headline, cta, angle):
+    return {"headline": headline, "cta_label": cta, "angle": angle}
+
 CONCEPTS_JSON = {"concepts": [
-    {"title": "Morning Glow", "scene": "product on a sunlit oak table, soft shadows"},
-    {"title": "Night Calm", "scene": "product glowing on a dark bedside, cozy mood"},
-    {"title": "Studio Hero", "scene": "product centered on seamless backdrop, rim light"},
-    {"title": "In The Hand", "scene": "hands holding the product against a warm wall"},
+    {"title": "Morning Glow", "scene": "product on a sunlit oak table, soft shadows",
+     "ad_copy": _copy("Wake to warm light", "Shop now", "in-use lifestyle")},
+    {"title": "Night Calm", "scene": "product glowing on a dark bedside, cozy mood",
+     "ad_copy": _copy("Calm, on a dimmer", "Discover", "mood/benefit")},
+    {"title": "Studio Hero", "scene": "product centered on seamless backdrop, rim light",
+     "ad_copy": _copy("Light, made simple", "See the range", "hero-product")},
+    {"title": "In The Hand", "scene": "hands holding the product against a warm wall",
+     "ad_copy": _copy("Fits your everyday", "Get yours", "human scale")},
 ]}
 
 
@@ -76,6 +83,12 @@ def brand_kit() -> BrandKit:
 @pytest.fixture
 def concepts() -> list[AdConcept]:
     return [AdConcept.model_validate(c) for c in CONCEPTS_JSON["concepts"]]
+
+
+@pytest.fixture
+def copyset() -> CopySet:
+    return CopySet(headline="Light, made simple", subhead="For every room",
+                   cta_label="Shop now", legal="*T&C apply", angle="hero-product")
 
 
 @pytest.fixture
