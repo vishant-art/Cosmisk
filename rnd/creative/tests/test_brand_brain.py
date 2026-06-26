@@ -29,6 +29,18 @@ def test_generate_concepts_carry_copy(fake_client, brand_kit):
     assert out[0].ad_copy.angle
 
 
+def test_grounding_builds_multimodal_message_and_still_parses(fake_client, tmp_path):
+    from PIL import Image
+    w = tmp_path / "winner.png"
+    Image.new("RGB", (8, 8), "white").save(w)
+    # vision message is a list of parts (text + image), and the kit still validates
+    parts = brand_brain._vision_user("ACCOUNT: X", [str(w)], "ground it")
+    assert parts[0]["type"] == "text"
+    assert any(p["type"] == "image_url" for p in parts)
+    kit, _ = brand_brain.generate_brand_kit(fake_client, "ACCOUNT: X", ground_images=[str(w)])
+    assert kit.brand_name == "Lumen"
+
+
 class _OneShot:
     """Minimal client returning a fixed JSON string (no concepts)."""
     class _C:

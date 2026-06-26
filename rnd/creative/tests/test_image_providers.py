@@ -97,6 +97,23 @@ def test_outpaint_targets_format_dims(monkeypatch, tmp_path):
     assert cap["args"]["image_size"] == {"width": 1080, "height": 1920}
 
 
+def test_cutout_calls_birefnet(monkeypatch, tmp_path):
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    # birefnet returns {"image": {"url": ...}}
+    monkeypatch.setitem(sys.modules, "fal_client", sys.modules["fal_client"])
+    src = tmp_path / "prod.jpg"
+    src.write_bytes(b"P")
+    # override subscribe to return the birefnet shape
+    fal = sys.modules["fal_client"]
+    fal.subscribe = lambda endpoint, arguments=None, with_logs=False: (
+        cap.__setitem__("endpoint", endpoint) or {"image": {"url": "https://fal.media/cut.png"}})
+    res = ip.cutout(src, tmp_path / "cut.png")
+    assert cap["endpoint"] == config.IMAGE_CUTOUT_MODEL
+    assert (tmp_path / "cut.png").read_bytes() == b"IMGBYTES"
+    assert res["provider"] == "birefnet"
+
+
 def test_fallback_registered():
     assert ip._FALLBACK["flux"] == "flux_pro"
     assert ip._FALLBACK["product"] == "flux"

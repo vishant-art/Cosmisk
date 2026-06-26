@@ -51,6 +51,7 @@ IMAGE_MODEL_FLEX = "fal-ai/flux-2-flex"
 IMAGE_MODEL_PRO = "fal-ai/flux-2-pro"
 IMAGE_MODEL_PRODUCT = "fal-ai/bria/product-shot"
 IMAGE_OUTPAINT_MODEL = "fal-ai/flux-pro/v1/fill"
+IMAGE_CUTOUT_MODEL = "fal-ai/birefnet/v2"            # background removal (product cutout)
 
 # Video (fal-only). Seedance 2.0: image-to-video (seed = the text-free background),
 # reference-to-video (product/brand refs), text-to-video (no seed; last resort).

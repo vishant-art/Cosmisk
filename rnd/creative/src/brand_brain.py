@@ -83,8 +83,25 @@ def _chat_json(client, system: str, user: str) -> tuple[dict, float]:
     return json.loads(text), ledger.response_cost(resp)
 
 
-def generate_brand_kit(client, summary: str) -> tuple[BrandKit, float]:
-    data, cost = _chat_json(client, _KIT_SYSTEM, summary)
+def _vision_user(summary: str, image_paths: list[str], instruction: str):
+    """A multimodal user message: the summary text plus real winning-ad images so the
+    brain grounds the kit in what actually converts (palette/style/product)."""
+    import base64
+    from pathlib import Path as _P
+    parts = [{"type": "text", "text": f"{instruction}\n\n{summary}"}]
+    for p in (image_paths or [])[:6]:
+        data = base64.b64encode(_P(p).read_bytes()).decode()
+        parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}"}})
+    return parts
+
+
+def generate_brand_kit(client, summary: str, ground_images: list[str] | None = None
+                       ) -> tuple[BrandKit, float]:
+    user = summary if not ground_images else _vision_user(
+        summary, ground_images,
+        "Ground the brand identity in these REAL winning ads from this account -- infer the "
+        "actual palette, visual style, and product look from them, not just the numbers.")
+    data, cost = _chat_json(client, _KIT_SYSTEM, user)
     return BrandKit.model_validate(data), cost
 
 

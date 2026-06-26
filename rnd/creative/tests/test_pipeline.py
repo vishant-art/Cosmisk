@@ -26,7 +26,8 @@ def _png(path, size=(1080, 1350), color="white"):
 
 
 def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
-    monkeypatch.setattr(brand_brain, "generate_brand_kit", lambda c, s: (brand_kit, 0.0))
+    monkeypatch.setattr(brand_brain, "generate_brand_kit",
+                        lambda c, s, ground_images=None: (brand_kit, 0.0))
     monkeypatch.setattr(brand_brain, "generate_concepts",
                         lambda c, k, s, n: (concepts[:n], 0.0))
 
@@ -36,7 +37,8 @@ def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
         return {"provider": "flux", "model": "m", "path": str(out_path), "cost_usd": 0.05}
 
     def fake_bg(prompt, out_path, **kw):
-        bg_calls.append(str(out_path))
+        bg_calls.append({"out": str(out_path), "refs": kw.get("refs"),
+                         "primary": kw.get("primary")})
         _png(out_path)                                    # a valid text-free background
         return {"provider": "flux", "model": "m", "path": str(out_path), "cost_usd": 0.05}
 
@@ -138,3 +140,50 @@ def test_qa_reject_excludes_concept(monkeypatch, tmp_path, envelope_path,
     assert m.ads == []                                   # nothing passed QA
     assert len(m.rejected) == 2
     assert len(bg_calls) == 2                            # one attempt each (qa_retries=0)
+
+
+def test_refs_condition_the_background(monkeypatch, tmp_path, envelope_path, brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    pipeline.run(data_path=envelope_path, run_id="r6", mode="auto", images=1,
+                 refs=["/winner1.png", "/winner2.png"], log=lambda *_: None)
+    assert bg_calls[0]["refs"] == ["/winner1.png", "/winner2.png"]
+    assert bg_calls[0]["primary"] == "flux"
+
+
+def test_product_image_routes_through_product_shot(monkeypatch, tmp_path, envelope_path,
+                                                   brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    def fake_cutout(src, out):
+        _png(out, size=(300, 300))
+        return {"provider": "birefnet", "model": "m", "path": str(out), "cost_usd": 0.0}
+
+    monkeypatch.setattr(image_providers, "cutout", fake_cutout)
+
+    pipeline.run(data_path=envelope_path, run_id="r7", mode="auto", images=1,
+                 product_image="/my_product.jpg", log=lambda *_: None)
+    assert bg_calls[0]["primary"] == "product"
+    assert bg_calls[0]["refs"][0].endswith("product_cutout.png")     # the cutout, not raw
+
+
+def test_meta_account_pulls_winner_refs(monkeypatch, tmp_path, envelope_path,
+                                        brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setenv("META_ACCESS_TOKEN", "tok")
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    import meta_creatives
+    monkeypatch.setattr(meta_creatives, "fetch_winning_creatives",
+                        lambda *a, **k: [
+                            meta_creatives.CreativeAsset("a1", "Win", 6.0, "image", "/w1.png"),
+                            meta_creatives.CreativeAsset("a2", "Win2", 5.0, "video", None)])
+
+    pipeline.run(data_path=envelope_path, run_id="r8", mode="auto", images=1,
+                 meta_account="act_1", log=lambda *_: None)
+    assert bg_calls[0]["refs"] == ["/w1.png"]            # only the usable image winner

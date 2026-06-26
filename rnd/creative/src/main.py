@@ -50,6 +50,15 @@ def main() -> None:
     ap.add_argument("--qa-retries", type=int, default=1,
                     help="background regenerations allowed before a concept is rejected")
     ap.add_argument("--vlm", action="store_true", help="run the VLM critic in the QA gate")
+    # condition generation on REAL assets (Meta winners / a product image / explicit refs)
+    ap.add_argument("--meta-account", help="act_<id>: pull winning running-ad images as refs")
+    ap.add_argument("--meta-preset", default="last_30d", help="Meta date_preset for winners")
+    ap.add_argument("--top-creatives", type=int, default=5, help="how many winners to pull")
+    ap.add_argument("--ground", action="store_true",
+                    help="ground the brand kit in the pulled winners (vision pass)")
+    ap.add_argument("--product", help="path to a product image -> Bria product-shot scenes")
+    ap.add_argument("--ref", action="append", default=[],
+                    help="explicit reference image path(s) for generation; repeatable")
     ap.add_argument("--resume", help="run_id to resume (generate ads from edited kit)")
     # video smoke (gated)
     ap.add_argument("--video", action="store_true", help="run one video clip (costs $$)")
@@ -68,16 +77,22 @@ def main() -> None:
                              resolution=args.resolution, aspect=args.video_aspect)
         return
 
+    refs = args.ref or None
+
     if args.resume:
         pipeline.resume(run_id=args.resume, data_path=args.data, images=args.images,
                         image_provider=args.image_provider, formats=formats,
-                        qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro)
+                        qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro,
+                        refs=refs, product_image=args.product)
         return
 
     pipeline.run(data_path=args.data, run_id=_new_run_id(), strategy=args.select,
                  n_campaigns=args.n_campaigns, mode=args.mode, images=args.images,
                  image_provider=args.image_provider, formats=formats,
-                 qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro)
+                 qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro,
+                 refs=refs, product_image=args.product, meta_account=args.meta_account,
+                 ground_from_meta=args.ground, meta_preset=args.meta_preset,
+                 top_creatives=args.top_creatives)
 
 
 if __name__ == "__main__":

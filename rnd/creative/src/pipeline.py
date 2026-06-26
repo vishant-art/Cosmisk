@@ -12,14 +12,17 @@ the whole flow with zero spend.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))  # rnd/src (Meta layer)
 import brand_brain  # noqa: E402
 import campaign_select as cs  # noqa: E402
+import meta_creatives  # noqa: E402
 import compositor  # noqa: E402
 import config  # noqa: E402
 import image_providers  # noqa: E402
@@ -36,6 +39,25 @@ DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1
 
 def _slug(fmt: str) -> str:
     return fmt.replace(":", "x")
+
+
+def _meta_winner_refs(account, *, preset, top_n, run_dir, token=None, log=print) -> list[str]:
+    """Pull the account's winning RUNNING-ad images via the Meta API (downloaded
+    immediately, URLs expire) to use as brand/reference conditioning. Returns local
+    image paths; empty + a log line if no token (never blocks a run)."""
+    token = token or os.getenv("META_ACCESS_TOKEN")
+    if not token:
+        log("[meta] META_ACCESS_TOKEN not set; skipping winner fetch")
+        return []
+    try:
+        assets = meta_creatives.fetch_winning_creatives(
+            token, account, preset=preset, top_n=top_n, out_dir=Path(run_dir) / "winners")
+    except Exception as e:  # noqa: BLE001 -- never let Meta hiccups break a run
+        log(f"[meta] winner fetch failed ({e!s:.120}); proceeding without refs")
+        return []
+    imgs = [a.local_path for a in assets if a.kind == "image" and a.local_path]
+    log(f"[meta] pulled {len(imgs)} winning image ref(s) from {account}")
+    return imgs
 
 
 def _client() -> OpenAI:
@@ -56,7 +78,9 @@ def _write_kit(run_dir: Path, kit: BrandKit) -> None:
 
 def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
         mode="auto", images=4, image_provider="flux", formats=None,
-        qa_retries=1, run_vlm=False, pro=False, log=print) -> RunManifest:
+        qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
+        meta_account=None, ground_from_meta=False, meta_preset="last_30d",
+        top_creatives=5, log=print) -> RunManifest:
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -67,9 +91,16 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     summary = cs.summarize(ds, subset)
     log(f"[1/4] {ds.account_name}: {len(subset)} campaigns via '{strategy}'")
 
+    # Pull real winning creatives from Meta to condition generation (optional).
+    winner_refs = (_meta_winner_refs(meta_account, preset=meta_preset, top_n=top_creatives,
+                                     run_dir=run_dir, log=log) if meta_account else [])
+    if refs is None and winner_refs:
+        refs = winner_refs                       # condition backgrounds on real winners
+    ground_images = winner_refs if (ground_from_meta and winner_refs) else None
+
     client = _client()
     log("[2/4] generating brand kit...")
-    kit, kit_cost = brand_brain.generate_brand_kit(client, summary)
+    kit, kit_cost = brand_brain.generate_brand_kit(client, summary, ground_images=ground_images)
     led.record("brandkit", "openrouter", config.TEXT_MODEL, kit_cost)
     _write_kit(run_dir, kit)
 
@@ -96,7 +127,7 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
 
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
-                  run_vlm=run_vlm, pro=pro, log=log)
+                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -107,7 +138,8 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
 
 
 def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
-           formats=None, qa_retries=1, run_vlm=False, pro=False, log=print) -> RunManifest:
+           formats=None, qa_retries=1, run_vlm=False, pro=False, refs=None,
+           product_image=None, log=print) -> RunManifest:
     """Generate ads from a (possibly user-edited) brand_kit.json in output/<run>."""
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
@@ -130,7 +162,7 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     client = _client()
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
-                  run_vlm=run_vlm, pro=pro, log=log)
+                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -160,16 +192,35 @@ def video_smoke(*, run_id: str, prompt: str, image=None, duration=5,
 
 
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
-                  image_provider, formats, qa_retries, run_vlm, pro, log) -> None:
+                  image_provider, formats, qa_retries, run_vlm, pro, refs=None,
+                  product_image=None, log=print) -> None:
     """For each concept: a text-free background (QA-gated, regenerated on fail) ->
     per-format layout -> Pillow composite -> verify. The base format is the gate;
-    other formats are outpainted from the accepted background, then composited."""
+    other formats are outpainted from the accepted background, then composited.
+
+    Conditioning: `product_image` -> Bria product-shot (real product into the scene,
+    after a BiRefNet cutout); else `refs` (e.g. real winning creatives) -> FLUX.2 flex
+    reference images; else a blind text-only background."""
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
     concepts, concepts_cost = brand_brain.generate_concepts(client, kit, summary, images)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     negative = prompt_builder.build_negative_prompt()
     base_fmt = formats[0]
     logo_path = kit.logo.asset_path
+
+    # Resolve the conditioning mode once. Product cutout (background removed) makes
+    # product-shot place the real product cleanly into the generated scene.
+    if product_image:
+        cut = run_dir / "product_cutout.png"
+        try:
+            cres = image_providers.cutout(product_image, cut)
+            led.record("cutout", cres["provider"], cres["model"], cres["cost_usd"])
+            bg_primary, bg_refs = "product", [str(cut)]
+        except Exception as e:  # noqa: BLE001 -- cutout is best-effort
+            log(f"  [product] cutout failed ({e!s:.80}); using raw product image")
+            bg_primary, bg_refs = "product", [product_image]
+    else:
+        bg_primary, bg_refs = image_provider, (refs or None)
 
     for i, concept in enumerate(concepts, 1):
         layouts = layout_mod.plan_all_formats(concept.ad_copy, formats,
@@ -180,10 +231,11 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
         accepted = None
 
         for attempt in range(qa_retries + 1):
-            # Background is TEXT-FREE: no logo ref, negative prompt suppresses text/logo.
+            # Background is TEXT-FREE: negative prompt suppresses text/logo. `bg_refs`
+            # condition the scene on the real product / winning creatives (or None).
             prompt = prompt_builder.build_image_prompt(concept, kit, base_fmt)
             res = image_providers.generate_with_fallback(
-                prompt, bg, primary=image_provider, refs=None, aspect=base_fmt,
+                prompt, bg, primary=bg_primary, refs=bg_refs, aspect=base_fmt,
                 negative=negative, pro=pro, log=log)
             led.record("background", res["provider"], res["model"], res["cost_usd"],
                        concept=concept.title, fell_back_from=res.get("fell_back_from"))

@@ -110,6 +110,18 @@ def generate_with_fallback(prompt: str, out_path, *, primary="flux", refs=None, 
         return res
 
 
+def cutout(src_path, out_path) -> dict:
+    """Remove the background of a product image (fal BiRefNet) so it can be dropped
+    into a generated scene via product-shot. Returns {provider, model, path, cost_usd}."""
+    import fal_client                   # lazy
+    args = {"image_url": fal_client.upload_file(str(src_path))}
+    res = fal_client.subscribe(config.IMAGE_CUTOUT_MODEL, arguments=args, with_logs=False)
+    img = res.get("image") or (res.get("images") or [{}])[0]
+    _download(img["url"], Path(out_path))
+    return {"provider": "birefnet", "model": config.IMAGE_CUTOUT_MODEL,
+            "path": str(out_path), "cost_usd": 0.0}   # negligible; fal rate unverified
+
+
 def outpaint(src_path, out_path, *, fmt: str, prompt: str = "", negative=None) -> dict:
     """Extend one background to another aspect ratio (fal flux fill), preserving the
     focal point. Drives multi-format output without re-generating a fresh scene.
