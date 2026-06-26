@@ -45,6 +45,8 @@ def main() -> None:
                     choices=["flux", "flux_pro", "product"],
                     help="flux = FLUX.2 flex (brand scenes); product = Bria product-shot")
     ap.add_argument("--pro", action="store_true", help="use FLUX.2 [pro] for images")
+    ap.add_argument("--no-logo", action="store_true",
+                    help="do not generate or composite a logo onto the ads")
     ap.add_argument("--formats", default="4:5",
                     help="comma list of aspect ratios: 1:1,4:5,9:16,16:9 (first is the base)")
     ap.add_argument("--qa-retries", type=int, default=1,
@@ -92,7 +94,7 @@ def main() -> None:
                  qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro,
                  refs=refs, product_image=args.product, meta_account=args.meta_account,
                  ground_from_meta=args.ground, meta_preset=args.meta_preset,
-                 top_creatives=args.top_creatives)
+                 top_creatives=args.top_creatives, no_logo=args.no_logo)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,16 @@ def test_flux_pro_tiered():
     assert ledger.image_cost("flux_pro", 1920, 1080) == 0.045     # 0.03 + 1 extra MP
 
 
+def test_flux_flex_counts_reference_input_mp():
+    # fal bills input refs too: 1MP output + 2x 1MP refs = 3MP * $0.05
+    assert ledger.image_cost("flux_flex", 1024, 1024, ref_mp=2) == 0.15
+
+
+def test_flux_pro_counts_reference_input_mp():
+    # 0.03 first MP + 0.015*(0 extra output + 2 ref) = 0.06
+    assert ledger.image_cost("flux_pro", 1024, 1024, ref_mp=2) == 0.06
+
+
 def test_product_shot_flat():
     assert ledger.image_cost("product", 1080, 1350) == 0.04
     assert ledger.image_cost("product", 99, 99) == 0.04
@@ -62,6 +72,16 @@ class _Resp:
 def test_response_cost_reads_usage_cost():
     r = _Resp({"usage": {"cost": 0.0123, "prompt_tokens": 50}})
     assert ledger.response_cost(r) == 0.0123
+
+
+def test_response_cost_byok_uses_upstream_when_cost_zero():
+    r = _Resp({"usage": {"cost": 0, "cost_details": {"upstream_inference_cost": 0.0068204}}})
+    assert ledger.response_cost(r) == 0.00682
+
+
+def test_response_cost_sums_direct_and_upstream():
+    r = _Resp({"usage": {"cost": 0.001, "cost_details": {"upstream_inference_cost": 0.002}}})
+    assert ledger.response_cost(r) == 0.003
 
 
 def test_response_cost_defaults_zero_when_absent():

@@ -80,7 +80,7 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
         mode="auto", images=4, image_provider="flux", formats=None,
         qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
         meta_account=None, ground_from_meta=False, meta_preset="last_30d",
-        top_creatives=5, log=print) -> RunManifest:
+        top_creatives=5, no_logo=False, log=print) -> RunManifest:
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -104,18 +104,21 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     led.record("brandkit", "openrouter", config.TEXT_MODEL, kit_cost)
     _write_kit(run_dir, kit)
 
-    log("[3/4] generating logo...")
-    logo_res = logo_mod.generate_logo(kit, run_dir / "logo.png",
-                                      provider=image_provider, log=log)
-    led.record("logo", logo_res["provider"], logo_res["model"],
-               logo_res["cost_usd"], path=logo_res["path"])
-    _write_kit(run_dir, kit)   # re-write now that logo.asset_path is set
-
     manifest = RunManifest(
         run_id=run_id, account_name=ds.account_name, select_strategy=strategy,
         mode=mode, status="awaiting_review", brand_kit=kit, formats=formats,
-        assets=[AssetRecord(kind="logo", **_asset(logo_res))],
     )
+    if no_logo:
+        kit.logo.asset_path = None            # no logo generated or composited
+        log("[3/4] skipping logo (--no-logo)")
+    else:
+        log("[3/4] generating logo...")
+        logo_res = logo_mod.generate_logo(kit, run_dir / "logo.png",
+                                          provider=image_provider, log=log)
+        led.record("logo", logo_res["provider"], logo_res["model"],
+                   logo_res["cost_usd"], path=logo_res["path"])
+        _write_kit(run_dir, kit)   # re-write now that logo.asset_path is set
+        manifest.assets.append(AssetRecord(kind="logo", **_asset(logo_res)))
 
     if mode == "review":
         manifest.total_cost_usd = led.total
@@ -172,9 +175,11 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
 
 
 def video_smoke(*, run_id: str, prompt: str, image=None, duration=5,
-                resolution="720p", aspect="9:16", log=print) -> AssetRecord:
+                resolution="720p", aspect="9:16", copy=None, kit=None,
+                logo_path=None, log=print) -> AssetRecord:
     """Explicit, budget-gated single-clip smoke (Seedance i2v -> t2v fallback).
-    Seeds from a TEXT-FREE background of this run so the clip matches the static ad."""
+    Seeds from a TEXT-FREE background of this run so the clip matches the static ad.
+    If `copy` (+ `kit`) is given, burns the headline/CTA lower-third onto the clip."""
     run_dir = config.OUTPUT_DIR / run_id
     led = Ledger(run_dir)
     seed = image
@@ -188,6 +193,19 @@ def video_smoke(*, run_id: str, prompt: str, image=None, duration=5,
                fell_back_from=res.get("fell_back_from"))
     log(f"[video] {res['provider']} ({'i2v' if seed else 't2v'}) -> {res['path']} "
         f"(est ${res['cost_usd']:.2f})")
+
+    if copy is not None and kit is not None:           # burn copy/logo onto the clip
+        try:
+            import video_post
+            final = video_post.add_copy_overlay(
+                res["path"], run_dir / "video_captioned.mp4", copy, kit,
+                fmt=aspect, logo_path=logo_path)
+            res["path"] = final
+            log(f"[video] copy overlay -> {final}")
+        except Exception as e:  # noqa: BLE001 -- overlay is best-effort
+            log(f"[video] copy overlay failed ({e!s:.100}); keeping raw clip")
+
+    led.finalize()
     return AssetRecord(kind="video", **_asset(res))
 
 
@@ -242,7 +260,8 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
             comp = compositor.compose(bg, base_spec, concept.ad_copy, base_out, kit=kit,
                                       logo_path=logo_path, concept_title=concept.title)
             report = verifier.verify(comp, base_spec, concept.ad_copy,
-                                     client=client if run_vlm else None, run_vlm=run_vlm)
+                                     client=client if run_vlm else None, run_vlm=run_vlm,
+                                     expect_logo=bool(logo_path))
             manifest.qa_reports.append(report)
             if report.cost_usd:
                 led.record("qa_vlm", "openrouter", config.VISION_MODEL,

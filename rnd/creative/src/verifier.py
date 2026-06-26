@@ -109,18 +109,23 @@ def check_presence(spec: LayoutSpec, copy: CopySet) -> QACheck:
 
 # --- VLM critic ---------------------------------------------------------------
 
-_VLM_SYSTEM = (
-    "You are a meticulous advertising creative director reviewing ONE finished static ad. "
-    "Judge it against this rubric and return STRICT JSON only: "
-    '{"passed": bool, "issues": [str]}. '
-    "Fail (passed=false) if ANY: the headline is unreadable or low-contrast; the headline or "
-    "CTA overlaps/obscures the product; spelling is wrong vs the intended copy; the CTA is "
-    "missing or invisible; the logo is missing or crowded; it looks generic, off-brand, or "
-    "AI-slop. List concrete issues. If it is clean and on-brand, passed=true with [] issues."
-)
+def _vlm_system(expect_logo: bool) -> str:
+    logo_rule = ("the logo is missing or crowded; " if expect_logo
+                 else "")   # no logo expected on this ad -- do NOT flag a missing logo
+    return (
+        "You are a meticulous advertising creative director reviewing ONE finished static ad. "
+        "Judge it against this rubric and return STRICT JSON only: "
+        '{"passed": bool, "issues": [str]}. '
+        "Fail (passed=false) if ANY: the headline is unreadable or low-contrast; the headline or "
+        "CTA overlaps/obscures the product; spelling is wrong vs the intended copy; the CTA is "
+        f"missing or invisible; {logo_rule}it looks generic, off-brand, or "
+        "AI-slop. List concrete issues. If it is clean and on-brand, passed=true with [] issues."
+        + ("" if expect_logo else " This ad intentionally has NO logo; that is correct, not a defect.")
+    )
 
 
-def vlm_critique(image_path, copy: CopySet, *, client, model: str | None = None) -> QACheck:
+def vlm_critique(image_path, copy: CopySet, *, client, model: str | None = None,
+                 expect_logo: bool = True) -> QACheck:
     data = base64.b64encode(Path(image_path).read_bytes()).decode()
     user = [
         {"type": "text", "text": f"Intended copy -- headline: {copy.headline!r}, "
@@ -131,7 +136,8 @@ def vlm_critique(image_path, copy: CopySet, *, client, model: str | None = None)
     resp = client.chat.completions.create(
         model=model or config.VISION_MODEL, temperature=0,
         response_format={"type": "json_object"},
-        messages=[{"role": "system", "content": _VLM_SYSTEM},
+        extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
+        messages=[{"role": "system", "content": _vlm_system(expect_logo)},
                   {"role": "user", "content": user}],
     )
     text = (resp.choices[0].message.content or "").strip()
@@ -149,12 +155,13 @@ def vlm_critique(image_path, copy: CopySet, *, client, model: str | None = None)
 # --- gate ---------------------------------------------------------------------
 
 def verify(ad, spec: LayoutSpec, copy: CopySet, *, client=None, run_vlm: bool = False,
-           vision_model: str | None = None) -> QAReport:
+           vision_model: str | None = None, expect_logo: bool = True) -> QAReport:
     from PIL import Image                 # lazy
     img = Image.open(ad.path).convert("RGB")
     checks = [check_safe_zone(spec), check_presence(spec, copy), check_contrast(img, spec)]
     if run_vlm and client is not None:
-        checks.append(vlm_critique(ad.path, copy, client=client, model=vision_model))
+        checks.append(vlm_critique(ad.path, copy, client=client, model=vision_model,
+                                   expect_logo=expect_logo))
     failed = [c for c in checks if not c.passed]
     return QAReport(checks=checks, verdict="fail" if failed else "pass",
                     retry_hint=failed[0].detail if failed else None,

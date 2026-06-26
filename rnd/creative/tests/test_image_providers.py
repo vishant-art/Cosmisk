@@ -57,6 +57,18 @@ def test_flux_uploads_refs_as_image_urls(monkeypatch, tmp_path):
     assert cap["args"]["image_urls"] == [f"https://fal.media/up/{logo.name}"]
 
 
+def test_flux_cost_includes_reference_input_mp(monkeypatch, tmp_path):
+    from PIL import Image
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)
+    r1 = tmp_path / "r1.png"; Image.new("RGB", (1024, 1024), "white").save(r1)
+    r2 = tmp_path / "r2.png"; Image.new("RGB", (1024, 1024), "white").save(r2)
+    res = ip.generate_image("scene", tmp_path / "o.png", aspect="1:1", refs=[r1, r2])
+    assert res["cost_usd"] == 0.15           # 1MP output + 2x 1MP refs = 3MP * $0.05
+    bare = ip.generate_image("scene", tmp_path / "o2.png", aspect="1:1")
+    assert bare["cost_usd"] == 0.05          # no refs -> output only
+
+
 def test_pro_flag_routes_to_flux_pro(monkeypatch, tmp_path):
     cap = {}
     _install_fake_fal(monkeypatch, cap)
@@ -87,14 +99,18 @@ def test_product_shot_shapes_call(monkeypatch, tmp_path):
     assert "marble shelf" in cap["args"]["scene_description"]
 
 
-def test_outpaint_targets_format_dims(monkeypatch, tmp_path):
+def test_outpaint_builds_mask_and_targets_dims(monkeypatch, tmp_path):
+    from PIL import Image
     cap = {}
     _install_fake_fal(monkeypatch, cap)
     src = tmp_path / "bg.png"
-    src.write_bytes(b"BG")
+    Image.new("RGB", (1024, 1024), "white").save(src)
     ip.outpaint(src, tmp_path / "story.png", fmt="9:16")
     assert cap["endpoint"] == config.IMAGE_OUTPAINT_MODEL
-    assert cap["args"]["image_size"] == {"width": 1080, "height": 1920}
+    assert "image_url" in cap["args"] and "mask_url" in cap["args"]   # the fix: mask provided
+    assert len(cap["uploads"]) == 2                                  # canvas + mask uploaded
+    assert Image.open(tmp_path / "story_canvas.png").size == (1080, 1920)   # target dims
+    assert Image.open(tmp_path / "story_mask.png").size == (1080, 1920)
 
 
 def test_cutout_calls_birefnet(monkeypatch, tmp_path):

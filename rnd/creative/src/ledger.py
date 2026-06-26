@@ -62,11 +62,18 @@ def video_cost(bucket: str, width: int, height: int, seconds: float, *,
 
 
 def response_cost(resp) -> float:
-    """Authoritative OpenRouter cost from a chat-completion response (USD).
-    Reads usage.cost robustly; returns 0.0 if the field/shape is absent."""
+    """Authoritative OpenRouter cost (USD) from a chat-completion response.
+
+    Normal requests put the charge in `usage.cost`. BYOK requests (an underlying
+    provider key) report `usage.cost = 0` and the real spend in
+    `usage.cost_details.upstream_inference_cost`. Summing both captures either mode
+    (upstream is 0/absent for non-BYOK). Returns 0.0 if the shape is absent."""
     try:
         usage = resp.model_dump().get("usage") or {}
-        return round(float(usage.get("cost") or 0.0), 6)
+        direct = float(usage.get("cost") or 0.0)
+        details = usage.get("cost_details") or {}
+        upstream = float(details.get("upstream_inference_cost") or 0.0)
+        return round(direct + upstream, 6)
     except Exception:                 # noqa: BLE001 -- any non-conforming response -> 0
         return 0.0
 

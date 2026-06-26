@@ -142,6 +142,22 @@ def test_qa_reject_excludes_concept(monkeypatch, tmp_path, envelope_path,
     assert len(bg_calls) == 2                            # one attempt each (qa_retries=0)
 
 
+def test_no_logo_skips_logo(monkeypatch, tmp_path, envelope_path, brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+    logo_called = []
+    monkeypatch.setattr(logo_mod, "generate_logo",
+                        lambda *a, **k: logo_called.append(1))
+
+    m = pipeline.run(data_path=envelope_path, run_id="rnl", mode="auto", images=1,
+                     no_logo=True, log=lambda *_: None)
+    assert logo_called == []                              # logo never generated
+    assert not (tmp_path / "rnl" / "logo.png").exists()
+    assert [a for a in m.assets if a.kind == "logo"] == []
+    assert m.brand_kit.logo.asset_path is None
+
+
 def test_refs_condition_the_background(monkeypatch, tmp_path, envelope_path, brand_kit, concepts):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     bg_calls = []

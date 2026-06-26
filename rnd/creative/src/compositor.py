@@ -183,3 +183,44 @@ def compose(background, spec: LayoutSpec, copy: CopySet, out_path, *, kit: Brand
     return CompositedAd(path=str(out), fmt=spec.fmt, width=W, height=H,
                         background_path=str(background), concept_title=concept_title,
                         scrim_used=scrim_used)
+
+
+def render_overlay(spec: LayoutSpec, copy: CopySet, kit: BrandKit, out_path, *,
+                   width: int | None = None, height: int | None = None,
+                   logo_path: str | None = None) -> str:
+    """A TRANSPARENT PNG of copy + CTA (+ optional logo), NO background -- to burn
+    onto a moving video as a lower-third. Boxes are relative, so pass the actual
+    video width/height. Text always gets a scrim (the video background is unknown)."""
+    from PIL import Image, ImageDraw      # lazy
+    W = width or spec.width
+    H = height or spec.height
+    canvas = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas, "RGBA")
+    cta_fill = _palette(kit, "accent", "#B87333")
+    bg_color = _palette(kit, "bg", "#FFFFFF")
+
+    for box in sorted(spec.boxes, key=lambda b: b.z):
+        bx, by = int(box.x * W), int(box.y * H)
+        bw, bh = int(box.w * W), int(box.h * H)
+        if box.role == "logo":
+            if logo_path:
+                _paste_logo(canvas, logo_path, bx, by, bw, bh)
+            continue
+        if box.role == "product":
+            continue
+        text = getattr(copy, _TEXT_FOR_ROLE[box.role], None)
+        if not text:
+            continue
+        if box.role == "cta":
+            _draw_cta(draw, text, bx, by, bw, bh, fill=cta_fill,
+                      text_color=bg_color, max_pt=box.max_font_pt or 36)
+            continue
+        if box.role in ("headline", "subhead"):
+            _draw_scrim(canvas, bx, by, bw, bh)        # always, over arbitrary motion
+        _draw_text_block(draw, text, bx, by, bw, bh,
+                         max_pt=box.max_font_pt or 96, color="#FFFFFF", align=box.align)
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(out)
+    return str(out)

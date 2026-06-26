@@ -73,6 +73,7 @@ def _chat_json(client, system: str, user: str) -> tuple[dict, float]:
         model=config.TEXT_MODEL,
         temperature=config.TEXT_TEMPERATURE,
         response_format={"type": "json_object"},
+        extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": user}],
     )

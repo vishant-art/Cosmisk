@@ -10,6 +10,7 @@ matplotlib>=3.7         # brain EDA plots + DejaVu Sans fallback font for the co
 
 # Live generation only (lazy-imported; install before a real run)
 fal-client>=0.5         # the ONLY generation provider: FLUX.2 + Bria (image) + Seedance (video)
+imageio-ffmpeg>=0.5     # bundled static ffmpeg (no system install) for the video copy overlay
 
 # Optional: a sharper saliency model for text placement (Pillow edge-density is the default)
 # opencv-python-headless>=4.9

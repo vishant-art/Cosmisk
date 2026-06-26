@@ -86,6 +86,27 @@ def test_fetch_winning_creatives_downloads_image(monkeypatch, tmp_path):
     assert Path(a.local_path).read_bytes() == b"X" and seen == ["https://cdn/a.png"]
 
 
+def test_one_bad_winner_does_not_kill_the_batch(monkeypatch, tmp_path):
+    monkeypatch.setattr(mc, "fetch_ad_insights",
+                        lambda *a, **k: [{"ad_id": "bad", "ad_name": "Catalog",
+                                          "purchase_roas": [{"value": "180"}]},
+                                         {"ad_id": "good", "ad_name": "Hero",
+                                          "purchase_roas": [{"value": "6"}]}])
+
+    def creative(tok, ad):
+        if ad == "bad":
+            raise RuntimeError("(#10) Application does not have permission")
+        return {"image_url": "https://cdn/good.png"}
+
+    monkeypatch.setattr(mc, "get_creative", creative)
+    monkeypatch.setattr(mc, "_download", _fake_dl)
+
+    assets = mc.fetch_winning_creatives("tok", "act_1", top_n=2, out_dir=tmp_path,
+                                        log=lambda *_: None)
+    assert len(assets) == 1                      # the bad winner is skipped, not fatal
+    assert assets[0].ad_name == "Hero"
+
+
 def test_fetch_winner_video_source_then_thumb(monkeypatch, tmp_path):
     monkeypatch.setattr(mc, "fetch_ad_insights",
                         lambda *a, **k: [{"ad_id": "v", "ad_name": "Vid",

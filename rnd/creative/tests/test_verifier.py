@@ -88,6 +88,13 @@ def test_vlm_critic_pass_and_fail(copyset, brand_kit, tmp_path):
     assert bad.passed is False and "covers product" in bad.detail
 
 
+def test_vlm_system_drops_logo_rule_when_not_expected():
+    assert "logo is missing" in verifier._vlm_system(expect_logo=True)
+    sys_no = verifier._vlm_system(expect_logo=False)
+    assert "logo is missing" not in sys_no
+    assert "intentionally has NO logo" in sys_no
+
+
 def test_verify_includes_vlm_when_requested(copyset, brand_kit, tmp_path):
     ad, spec = _good_ad(copyset, brand_kit, tmp_path)
     no = FakeClient(lambda _sys: json.dumps({"passed": False, "issues": ["off-brand"]}))

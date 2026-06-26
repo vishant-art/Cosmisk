@@ -39,6 +39,22 @@ def _download(url: str, out_path: Path) -> None:
     out_path.write_bytes(requests.get(url, timeout=120).content)
 
 
+def _ref_megapixels(refs) -> int:
+    """Total input megapixels of the reference images. FLUX.2 bills input refs at
+    the same per-MP rate as output, so they must be counted for an accurate cost."""
+    if not refs:
+        return 0
+    from PIL import Image               # lazy
+    total = 0
+    for r in refs:
+        try:
+            with Image.open(r) as im:
+                total += ledger.megapixels(*im.size)
+        except Exception:               # noqa: BLE001 -- unreadable ref ~ assume 1MP
+            total += 1
+    return total
+
+
 def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5", negative=None,
           flex=True, **_ignore) -> dict:
     import fal_client                   # lazy
@@ -46,13 +62,15 @@ def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5", negative=None
     endpoint = config.IMAGE_MODEL_FLEX if flex else config.IMAGE_MODEL_PRO
     args = {"prompt": _suppress(prompt, negative),
             "image_size": {"width": w, "height": h}, "output_format": "png"}
+    ref_mp = _ref_megapixels(refs)
     if refs:                            # brand-asset conditioning (flex supports up to 10)
         args["image_urls"] = [fal_client.upload_file(str(r)) for r in refs]
     res = fal_client.subscribe(endpoint, arguments=args, with_logs=False)
     _download(res["images"][0]["url"], out_path)
     return {"provider": "flux" if flex else "flux_pro", "model": endpoint,
             "path": str(out_path),
-            "cost_usd": ledger.image_cost("flux_flex" if flex else "flux_pro", w, h)}
+            "cost_usd": ledger.image_cost("flux_flex" if flex else "flux_pro", w, h,
+                                          ref_mp=ref_mp)}
 
 
 def _flux_flex(prompt, out_path, **kw) -> dict:
@@ -123,18 +141,38 @@ def cutout(src_path, out_path) -> dict:
 
 
 def outpaint(src_path, out_path, *, fmt: str, prompt: str = "", negative=None) -> dict:
-    """Extend one background to another aspect ratio (fal flux fill), preserving the
-    focal point. Drives multi-format output without re-generating a fresh scene.
-    NOTE: fal fill schema needs live verification; mock-tested here."""
+    """Extend one background to another aspect ratio, preserving the focal point.
+
+    `flux-pro/v1/fill` is an inpainting model -- it needs an `image_url` (a canvas)
+    AND a `mask_url` (white = regenerate, black = keep). We fit the source into a
+    target-size canvas and mask the new margins, so the model paints only the
+    extension. This is the standard outpaint-via-inpaint technique.
+    """
     import fal_client                   # lazy
-    from layout import FORMATS          # lazy, avoids import cycle at module load
+    from PIL import Image, ImageDraw     # lazy
+    from layout import FORMATS           # lazy, avoids an import cycle at module load
     if fmt not in FORMATS:
         raise ValueError(f"unknown format {fmt!r}")
-    w, h = FORMATS[fmt]
-    args = {"image_url": fal_client.upload_file(str(src_path)),
-            "image_size": {"width": w, "height": h},
-            "prompt": _suppress(prompt, negative)}
+    tw, th = FORMATS[fmt]
+
+    src = Image.open(src_path).convert("RGB")
+    scale = min(tw / src.width, th / src.height)      # fit the whole source inside
+    sw, sh = max(1, int(src.width * scale)), max(1, int(src.height * scale))
+    ox, oy = (tw - sw) // 2, (th - sh) // 2
+    canvas = Image.new("RGB", (tw, th), (127, 127, 127))
+    canvas.paste(src.resize((sw, sh)), (ox, oy))
+    mask = Image.new("L", (tw, th), 255)              # white = regenerate the new margins
+    ImageDraw.Draw(mask).rectangle([ox, oy, ox + sw - 1, oy + sh - 1], fill=0)  # black = keep
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cpath = out.with_name(out.stem + "_canvas.png"); canvas.save(cpath)
+    mpath = out.with_name(out.stem + "_mask.png"); mask.save(mpath)
+    text = _suppress(prompt or "extend the scene naturally, matching the existing "
+                     "style, lighting and colors", negative)
+    args = {"image_url": fal_client.upload_file(str(cpath)),
+            "mask_url": fal_client.upload_file(str(mpath)), "prompt": text}
     res = fal_client.subscribe(config.IMAGE_OUTPAINT_MODEL, arguments=args, with_logs=False)
-    _download(res["images"][0]["url"], Path(out_path))
+    _download(res["images"][0]["url"], out)
     return {"provider": "flux_fill", "model": config.IMAGE_OUTPAINT_MODEL,
-            "path": str(out_path), "cost_usd": ledger.image_cost("flux_fill", w, h)}
+            "path": str(out), "cost_usd": ledger.image_cost("flux_fill", tw, th)}

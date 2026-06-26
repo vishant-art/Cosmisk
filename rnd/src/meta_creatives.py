@@ -177,45 +177,51 @@ def get_video(token: str, video_id: str) -> dict:
 
 # --- orchestration ------------------------------------------------------------
 
+def _one_winner(token, account, ad_id, ad_name, roas, out_dir, i, want_video) -> CreativeAsset:
+    """Pull a single winner's best asset. Raises on API errors -- the caller isolates."""
+    creative = get_creative(token, ad_id)
+    urls, hashes = image_targets(creative)
+
+    url, img_hash, permalink = (urls[0] if urls else None), None, None
+    if url is None and hashes:
+        resolved = resolve_hashes(token, account, hashes[:1]).get(hashes[0])
+        if resolved:
+            url, img_hash, permalink = resolved.get("url"), hashes[0], resolved.get("permalink_url")
+    if url:
+        path = _download(url, out_dir / f"winner_{i:02d}.png")
+        return CreativeAsset(ad_id, ad_name, roas, "image", path, img_hash, permalink)
+
+    if want_video:
+        vids = video_ids(creative)
+        if vids:
+            video = get_video(token, vids[0])
+            if video.get("source"):
+                path = _download(video["source"], out_dir / f"winner_{i:02d}.mp4")
+                return CreativeAsset(ad_id, ad_name, roas, "video", path,
+                                     video_id=vids[0], has_source=True,
+                                     permalink=video.get("permalink_url"))
+            thumb = preferred_thumb(video)
+            if thumb:
+                path = _download(thumb, out_dir / f"winner_{i:02d}.png")
+                return CreativeAsset(ad_id, ad_name, roas, "image", path,
+                                     video_id=vids[0], has_source=False,
+                                     permalink=video.get("permalink_url"))
+    return CreativeAsset(ad_id, ad_name, roas, "image", None)   # nothing usable
+
+
 def fetch_winning_creatives(token: str, account: str, *, preset: str = "last_30d",
-                            top_n: int = 5, out_dir, want_video: bool = True) -> list[CreativeAsset]:
+                            top_n: int = 5, out_dir, want_video: bool = True,
+                            log=print) -> list[CreativeAsset]:
     """Rank an account's running ads by ROAS, pull each winner's creative asset, and
-    download it immediately (URLs expire). Returns one CreativeAsset per winner."""
+    download it immediately (URLs expire). One bad winner (permission error, catalog
+    ad with no static creative, expired URL) is skipped, never fatal to the batch."""
     out_dir = Path(out_dir)
     winners = rank_winners(fetch_ad_insights(token, account, preset=preset), top_n)
     assets: list[CreativeAsset] = []
-
     for i, (ad_id, ad_name, roas) in enumerate(winners, 1):
-        creative = get_creative(token, ad_id)
-        urls, hashes = image_targets(creative)
-
-        url, img_hash, permalink = (urls[0] if urls else None), None, None
-        if url is None and hashes:
-            resolved = resolve_hashes(token, account, hashes[:1]).get(hashes[0])
-            if resolved:
-                url, img_hash, permalink = resolved.get("url"), hashes[0], resolved.get("permalink_url")
-        if url:
-            path = _download(url, out_dir / f"winner_{i:02d}.png")
-            assets.append(CreativeAsset(ad_id, ad_name, roas, "image", path, img_hash, permalink))
-            continue
-
-        if want_video:
-            vids = video_ids(creative)
-            if vids:
-                video = get_video(token, vids[0])
-                if video.get("source"):
-                    path = _download(video["source"], out_dir / f"winner_{i:02d}.mp4")
-                    assets.append(CreativeAsset(ad_id, ad_name, roas, "video", path,
-                                                video_id=vids[0], has_source=True,
-                                                permalink=video.get("permalink_url")))
-                    continue
-                thumb = preferred_thumb(video)
-                if thumb:
-                    path = _download(thumb, out_dir / f"winner_{i:02d}.png")
-                    assets.append(CreativeAsset(ad_id, ad_name, roas, "image", path,
-                                                video_id=vids[0], has_source=False,
-                                                permalink=video.get("permalink_url")))
-                    continue
-
-        assets.append(CreativeAsset(ad_id, ad_name, roas, "image", None))   # nothing usable
+        try:
+            assets.append(_one_winner(token, account, ad_id, ad_name, roas,
+                                      out_dir, i, want_video))
+        except Exception as e:  # noqa: BLE001 -- isolate per-winner API failures
+            log(f"[meta]   winner '{ad_name[:40]}' (ad {ad_id}) skipped: {e!s:.90}")
     return assets
