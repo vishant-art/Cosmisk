@@ -65,9 +65,13 @@ def main() -> None:
     # video smoke (gated)
     ap.add_argument("--video", action="store_true", help="run one video clip (costs $$)")
     ap.add_argument("--video-prompt", default="")
-    ap.add_argument("--duration", type=int, default=5)
+    ap.add_argument("--duration", type=int, default=10, help="clip length in seconds")
     ap.add_argument("--resolution", default="720p", choices=["720p", "1080p"])
     ap.add_argument("--video-aspect", default="9:16", choices=["9:16", "16:9"])
+    ap.add_argument("--no-audio", action="store_true",
+                    help="disable Seedance native audio (on by default)")
+    ap.add_argument("--voiceover", action="store_true",
+                    help="add an AI voiceover (brain script -> fal TTS -> muxed)")
     args = ap.parse_args()
 
     formats = [f.strip() for f in args.formats.split(",") if f.strip()]
@@ -75,8 +79,18 @@ def main() -> None:
     if args.video:
         run_id = args.resume or _new_run_id()
         prompt = args.video_prompt or "Cinematic product hero shot, slow push-in, on-brand."
+        # for a voiceover we need the brand kit (+ an LLM client) from the run dir
+        kit, client = None, None
+        if args.voiceover:
+            from schemas import BrandKit  # noqa: E402
+            kit_file = config.OUTPUT_DIR / run_id / "brand_kit.json"
+            if kit_file.exists():
+                kit = BrandKit.model_validate_json(kit_file.read_text("utf-8"))
+                client = pipeline._client()
         pipeline.video_smoke(run_id=run_id, prompt=prompt, duration=args.duration,
-                             resolution=args.resolution, aspect=args.video_aspect)
+                             resolution=args.resolution, aspect=args.video_aspect,
+                             generate_audio=not args.no_audio, voiceover=args.voiceover,
+                             kit=kit, client=client)
         return
 
     refs = args.ref or None

@@ -174,24 +174,33 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     return manifest
 
 
-def video_smoke(*, run_id: str, prompt: str, image=None, duration=5,
-                resolution="720p", aspect="9:16", copy=None, kit=None,
-                logo_path=None, log=print) -> AssetRecord:
+def video_smoke(*, run_id: str, prompt: str, image=None,
+                duration=config.VIDEO_DURATION_DEFAULT, resolution="720p", aspect="9:16",
+                copy=None, kit=None, logo_path=None, generate_audio=True,
+                voiceover=False, client=None, log=print) -> AssetRecord:
     """Explicit, budget-gated single-clip smoke (Seedance i2v -> t2v fallback).
     Seeds from a TEXT-FREE background of this run so the clip matches the static ad.
-    If `copy` (+ `kit`) is given, burns the headline/CTA lower-third onto the clip."""
+    - `generate_audio` (default True): Seedance synced native audio (free).
+    - `copy` (+ `kit`): burns the headline/CTA lower-third onto the clip.
+    - `voiceover` (+ `client`, `kit`): brain writes a script -> fal TTS -> muxed on."""
     run_dir = config.OUTPUT_DIR / run_id
     led = Ledger(run_dir)
     seed = image
     if seed is None:                                   # prefer a text-free bg from this run
         cands = sorted(run_dir.glob("concept_*_bg.png"))
         seed = str(cands[0]) if cands else None
-    res = video_providers.generate_with_fallback(
-        prompt, run_dir / "video.mp4", image=seed, duration=duration,
-        resolution=resolution, aspect=aspect, log=log)
+    try:
+        res = video_providers.generate_with_fallback(
+            prompt, run_dir / "video.mp4", image=seed, duration=duration,
+            resolution=resolution, aspect=aspect, generate_audio=generate_audio, log=log)
+    except Exception as e:  # noqa: BLE001 -- a total video failure must not crash the run
+        log(f"[video] generation failed entirely ({e!s:.140}); no clip produced")
+        led.finalize()
+        return None
     led.record("video", res["provider"], res["model"], res["cost_usd"],
-               fell_back_from=res.get("fell_back_from"))
-    log(f"[video] {res['provider']} ({'i2v' if seed else 't2v'}) -> {res['path']} "
+               fell_back_from=res.get("fell_back_from"), audio=res.get("audio", generate_audio))
+    log(f"[video] {res['provider']} ({'i2v' if seed else 't2v'}, "
+        f"audio={'on' if res.get('audio', generate_audio) else 'off'}) -> {res['path']} "
         f"(est ${res['cost_usd']:.2f})")
 
     if copy is not None and kit is not None:           # burn copy/logo onto the clip
@@ -204,6 +213,23 @@ def video_smoke(*, run_id: str, prompt: str, image=None, duration=5,
             log(f"[video] copy overlay -> {final}")
         except Exception as e:  # noqa: BLE001 -- overlay is best-effort
             log(f"[video] copy overlay failed ({e!s:.100}); keeping raw clip")
+
+    if voiceover and kit is not None and client is not None:   # script -> TTS -> mux
+        try:
+            hook = copy.headline if copy else prompt
+            cta = copy.cta_label if copy else ""
+            script, vo_cost = brand_brain.generate_vo_script(client, kit, hook, cta, duration)
+            led.record("vo_script", "openrouter", config.TEXT_MODEL, vo_cost)
+            vo = video_providers.generate_voiceover(script, run_dir / "voiceover.mp3", log=log)
+            led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"], chars=len(script))
+            merged = video_providers.merge_audio_onto_video(
+                res["path"], vo["path"], run_dir / "video_voiceover.mp4",
+                seconds=duration, log=log)
+            led.record("audio_merge", merged["provider"], merged["model"], merged["cost_usd"])
+            res["path"] = merged["path"]
+            log(f"[video] voiceover ({len(script)} chars) muxed -> {merged['path']}")
+        except Exception as e:  # noqa: BLE001 -- voiceover is best-effort
+            log(f"[video] voiceover failed ({e!s:.100}); keeping clip without VO")
 
     led.finalize()
     return AssetRecord(kind="video", **_asset(res))
@@ -259,6 +285,7 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                        concept=concept.title, fell_back_from=res.get("fell_back_from"))
             comp = compositor.compose(bg, base_spec, concept.ad_copy, base_out, kit=kit,
                                       logo_path=logo_path, concept_title=concept.title)
+            comp.ad_copy = concept.ad_copy        # carry copy for video overlay / VO reuse
             report = verifier.verify(comp, base_spec, concept.ad_copy,
                                      client=client if run_vlm else None, run_vlm=run_vlm,
                                      expect_logo=bool(logo_path))

@@ -41,6 +41,24 @@ def test_grounding_builds_multimodal_message_and_still_parses(fake_client, tmp_p
     assert kit.brand_name == "Lumen"
 
 
+def test_generate_vo_script(fake_client, brand_kit):
+    script, cost = brand_brain.generate_vo_script(fake_client, brand_kit,
+                                                  "Timeless craftsmanship", "Shop now", 10)
+    assert "collection" in script.lower()          # from the fake VO router branch
+    assert cost == 0.0
+
+
+def test_generate_vo_script_falls_back_to_hook(brand_kit):
+    class _Bad:
+        class _C:
+            @staticmethod
+            def create(**kw):
+                raise RuntimeError("llm down")
+        chat = type("Chat", (), {"completions": _C()})()
+    script, _ = brand_brain.generate_vo_script(_Bad(), brand_kit, "Heritage weaves", "Buy", 8)
+    assert "Heritage weaves" in script             # graceful fallback to the hook
+
+
 class _OneShot:
     """Minimal client returning a fixed JSON string (no concepts)."""
     class _C:

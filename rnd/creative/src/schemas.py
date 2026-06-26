@@ -121,6 +121,7 @@ class CompositedAd(BaseModel):
     background_path: str
     concept_title: str | None = None
     scrim_used: bool = False
+    ad_copy: CopySet | None = None       # the copy on this ad (reused for video overlay/VO)
 
 
 class QACheck(BaseModel):

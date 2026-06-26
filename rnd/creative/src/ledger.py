@@ -61,6 +61,20 @@ def video_cost(bucket: str, width: int, height: int, seconds: float, *,
     return round(tokens / 1000 * rate, 6)
 
 
+TTS_PER_1K_CHARS = 0.10               # MiniMax Speech-02 HD ($/1K characters)
+AUDIO_MERGE_PER_S = 0.0002            # fal ffmpeg merge-audio-video ($/second)
+
+
+def tts_cost(chars: int) -> float:
+    """USD for a TTS voiceover by character count."""
+    return round(max(0, chars) / 1000 * TTS_PER_1K_CHARS, 6)
+
+
+def merge_cost(seconds: float) -> float:
+    """USD to mux an audio track onto a video (fal ffmpeg merge)."""
+    return round(max(0.0, seconds) * AUDIO_MERGE_PER_S, 6)
+
+
 def response_cost(resp) -> float:
     """Authoritative OpenRouter cost (USD) from a chat-completion response.
 

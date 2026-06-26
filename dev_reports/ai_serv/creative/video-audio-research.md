@@ -169,11 +169,21 @@ and the bundled-ffmpeg toolchain.
 
 ## Build status (for context)
 
-- **Built:** the video **copy-overlay** (`compositor.render_overlay` + `video_post.add_copy_overlay`,
-  bundled ffmpeg, verified live on a real clip) and the **outpaint fix** (mask-based, real
-  aspect-ratio extension). Tests green (creative 85, rnd 36).
-- **Not built (this doc is the plan):** the audio stage above. It is additive and mock-friendly,
-  same lazy-import discipline as the rest.
+- **Built — video copy-overlay** (`compositor.render_overlay` + `video_post.add_copy_overlay`,
+  bundled ffmpeg) and the **outpaint fix** (mask-based, real aspect-ratio extension).
+- **Built — audio stage (per §7, minus the music bed):**
+  - Seedance **native audio** default-on (`generate_audio=true`), `--no-audio` toggle on
+    `video_providers`.
+  - Optional **voiceover**: `brand_brain.generate_vo_script` (the brain writes a time-fit script)
+    -> `video_providers.generate_voiceover` via **`fal-ai/minimax/speech-02-hd`** (fal-hosted,
+    NOT ElevenLabs) -> `video_providers.merge_audio_onto_video` via
+    **`fal-ai/ffmpeg-api/merge-audio-video`**. Wired into `pipeline.video_smoke`
+    (`voiceover=True`) and the CLI (`--voiceover`, `--no-audio`). Default clip length is now
+    **10s** (`config.VIDEO_DURATION_DEFAULT`).
+  - **Music bed: intentionally NOT built** (per direction). Lip-sync out of scope.
+  - **Live-verified:** brain script -> MiniMax TTS -> fal mux produced a final clip with a
+    confirmed audio stream. Tests green (creative 91, rnd 36).
+- **Default voice:** `Wise_Woman` (MiniMax `voice_id`) -- swap in `config.VIDEO_TTS_VOICE`.
 
 ### Flagged unverified
 Kling's audio flag name; Seedance/Veo exact per-second math vs token billing; several music/TTS

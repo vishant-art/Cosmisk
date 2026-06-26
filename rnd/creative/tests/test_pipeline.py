@@ -142,6 +142,41 @@ def test_qa_reject_excludes_concept(monkeypatch, tmp_path, envelope_path,
     assert len(bg_calls) == 2                            # one attempt each (qa_retries=0)
 
 
+def test_video_smoke_native_audio_and_voiceover(monkeypatch, tmp_path, brand_kit, copyset):
+    import video_providers, brand_brain, schemas
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    (tmp_path / "vid").mkdir()
+    (tmp_path / "vid" / "concept_01_bg.png").write_bytes(b"BG")
+    calls = {}
+
+    def fake_vid(prompt, out_path, **kw):
+        calls["generate_audio"] = kw.get("generate_audio")
+        Path(out_path).write_bytes(b"V")
+        return {"provider": "seedance", "model": "m", "path": str(out_path), "cost_usd": 1.5}
+
+    monkeypatch.setattr(video_providers, "generate_with_fallback", fake_vid)
+    monkeypatch.setattr(brand_brain, "generate_vo_script",
+                        lambda c, k, hook, cta, sec: ("Shop the new collection now.", 0.001))
+    monkeypatch.setattr(video_providers, "generate_voiceover",
+                        lambda text, out, **kw: (Path(out).write_bytes(b"A"),
+                                                 {"provider": "minimax-tts", "model": "m",
+                                                  "path": str(out), "cost_usd": 0.003})[1])
+    merged = {}
+    monkeypatch.setattr(video_providers, "merge_audio_onto_video",
+                        lambda v, a, out, **kw: (merged.update(done=True), Path(out).write_bytes(b"M"),
+                                                 {"provider": "fal-ffmpeg", "model": "m",
+                                                  "path": str(out), "cost_usd": 0.002})[2])
+
+    rec = pipeline.video_smoke(run_id="vid", prompt="hero shot", duration=10,
+                               voiceover=True, kit=brand_kit, client=object(),
+                               log=lambda *_: None)
+    assert calls["generate_audio"] is True               # native audio on by default
+    assert merged.get("done") is True                    # voiceover muxed on
+    assert rec.path.endswith("video_voiceover.mp4")      # final = the VO'd clip
+    rows = (tmp_path / "vid" / "ledger.jsonl").read_text("utf-8")
+    assert "voiceover" in rows and "audio_merge" in rows
+
+
 def test_no_logo_skips_logo(monkeypatch, tmp_path, envelope_path, brand_kit, concepts):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     bg_calls = []

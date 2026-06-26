@@ -25,11 +25,12 @@ _VIDEO_DIMS = {"720p": (1280, 720), "1080p": (1920, 1080), "4k": (3840, 2160)}
 
 
 def _seedance(prompt: str, out_path: Path, *, image=None, refs=None, aspect="9:16",
-              duration=5, resolution="720p", fast=False, log=print) -> dict:
+              duration=10, resolution="720p", fast=False, generate_audio=True,
+              log=print) -> dict:
     import fal_client                   # lazy
     import requests
-    common = {"prompt": prompt, "resolution": resolution,
-              "duration": str(duration), "aspect_ratio": aspect}
+    common = {"prompt": prompt, "resolution": resolution, "duration": str(duration),
+              "aspect_ratio": aspect, "generate_audio": bool(generate_audio)}
     if refs:
         endpoint = config.VIDEO_REF2V
         args = {**common, "image_urls": [fal_client.upload_file(str(r)) for r in refs]}
@@ -50,22 +51,78 @@ def _seedance(prompt: str, out_path: Path, *, image=None, refs=None, aspect="9:1
 
 
 def generate_video(prompt: str, out_path, *, image=None, refs=None, aspect="9:16",
-                   duration=5, resolution="720p", fast=False, log=print) -> dict:
+                   duration=config.VIDEO_DURATION_DEFAULT, resolution="720p", fast=False,
+                   generate_audio=True, log=print) -> dict:
     return _seedance(prompt, Path(out_path), image=image, refs=refs, aspect=aspect,
-                     duration=duration, resolution=resolution, fast=fast, log=log)
+                     duration=duration, resolution=resolution, fast=fast,
+                     generate_audio=generate_audio, log=log)
 
 
 def generate_with_fallback(prompt: str, out_path, *, image=None, refs=None, aspect="9:16",
-                           duration=5, resolution="720p", fast=False, log=print) -> dict:
-    """Try the seeded mode; on error drop the seed and fall back to text-to-video."""
-    try:
-        return generate_video(prompt, out_path, image=image, refs=refs, aspect=aspect,
-                              duration=duration, resolution=resolution, fast=fast, log=log)
-    except Exception as e:  # noqa: BLE001
-        if not (image or refs):
-            raise
-        log(f"  [video] seeded mode failed ({e!s:.120}); falling back to text-to-video")
-        res = generate_video(prompt, out_path, image=None, refs=None, aspect=aspect,
-                            duration=duration, resolution=resolution, fast=fast, log=log)
-        res["fell_back_from"] = "image-to-video"
-        return res
+                           duration=config.VIDEO_DURATION_DEFAULT, resolution="720p",
+                           fast=False, generate_audio=True, log=print) -> dict:
+    """Try seeded i2v/ref2v first; on failure, progressively drop NATIVE AUDIO, then
+    the seed (t2v). Seedance rejects a clip if its auto-generated audio trips a content
+    filter ('Output audio has sensitive content'), so audio-off is a key fallback and
+    matters more than keeping the seed. Charged on success only."""
+    seeded = bool(image or refs)
+    if seeded:
+        plan = [("seeded", image, refs, generate_audio)]
+        if generate_audio:
+            plan.append(("seeded/no-audio", image, refs, False))
+        plan.append(("t2v/no-audio", None, None, False))
+    else:
+        plan = [("t2v", None, None, generate_audio)]
+        if generate_audio:
+            plan.append(("t2v/no-audio", None, None, False))
+
+    last = None
+    for i, (tag, img, rf, aud) in enumerate(plan):
+        try:
+            res = generate_video(prompt, out_path, image=img, refs=rf, aspect=aspect,
+                                 duration=duration, resolution=resolution, fast=fast,
+                                 generate_audio=aud, log=log)
+            res["audio"] = aud
+            if i > 0:
+                res["fell_back_from"] = tag
+            return res
+        except Exception as e:  # noqa: BLE001 -- try the next fallback
+            last = e
+            log(f"  [video] {tag} failed ({e!s:.110})")
+    raise last
+
+
+def generate_voiceover(text: str, out_path, *, voice=None, log=print) -> dict:
+    """Generate a spoken voiceover via a fal-hosted TTS model (MiniMax Speech-02 HD,
+    NOT ElevenLabs). Returns {provider, model, path, cost_usd}."""
+    import fal_client                   # lazy
+    import requests
+    args = {"text": text,
+            "voice_setting": {"voice_id": voice or config.VIDEO_TTS_VOICE}}
+    res = fal_client.subscribe(config.VIDEO_TTS_MODEL, arguments=args, with_logs=False)
+    audio = res.get("audio") or res.get("audio_file") or {}
+    url = audio.get("url") or res.get("url")
+    if not url:
+        raise RuntimeError("tts returned no audio url")
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(requests.get(url, timeout=120).content)
+    return {"provider": "minimax-tts", "model": config.VIDEO_TTS_MODEL,
+            "path": str(out), "cost_usd": ledger.tts_cost(len(text))}
+
+
+def merge_audio_onto_video(video_path, audio_path, out_path, *, seconds=0, log=print) -> dict:
+    """Lay an audio track onto a video without re-rendering frames (fal ffmpeg muxer)."""
+    import fal_client                   # lazy
+    import requests
+    args = {"video_url": fal_client.upload_file(str(video_path)),
+            "audio_url": fal_client.upload_file(str(audio_path))}
+    res = fal_client.subscribe(config.AUDIO_MERGE_MODEL, arguments=args, with_logs=False)
+    url = (res.get("video") or {}).get("url") or res.get("url")
+    if not url:
+        raise RuntimeError("merge returned no video url")
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(requests.get(url, timeout=300).content)
+    return {"provider": "fal-ffmpeg", "model": config.AUDIO_MERGE_MODEL,
+            "path": str(out), "cost_usd": ledger.merge_cost(seconds)}

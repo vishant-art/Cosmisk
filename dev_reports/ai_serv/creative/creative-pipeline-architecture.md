@@ -42,9 +42,12 @@ campaigns (by metric) → brand_brain (OpenRouter, opt. vision-grounded) → Bra
      → compositor (Pillow)                   copy + logo + scrim + CTA
      → verifier (contrast/safe-zone/presence + opt. Gemini VLM critic)
           · pass → ship | fail → regen bg (≤ qa_retries) | give up → reject
-     → outpaint base bg to other ratios → recomposite → ad_NN_{1x1,4x5,9x16,16x9}.png
+     → outpaint base bg to other ratios (mask-based fill) → recomposite
+                                          → ad_NN_{1x1,4x5,9x16,16x9}.png
    → ledger.jsonl  (every step priced) + TOTAL ; manifest.json
-   optional --video: Seedance i2v seeded from the TEXT-FREE bg (copy overlaid after)
+   optional --video: Seedance i2v seeded from the TEXT-FREE bg, 10s, native audio on
+        → copy/CTA lower-third burned on (Pillow + bundled ffmpeg)
+        → optional voiceover: brain writes script → fal TTS → fal muxer lays it on
 ```
 
 ---
@@ -70,10 +73,12 @@ campaigns (by metric) → brand_brain (OpenRouter, opt. vision-grounded) → Bra
 | `image_providers.py` | fal-only: flux-2-flex/pro, bria product-shot, birefnet cutout, flux-fill outpaint |
 | `saliency.py` | region busyness → scrim decision (Pillow; cv2 optional) |
 | `compositor.py` | Pillow: wrap/auto-fit copy, scrim, CTA button, logo clear-space |
-| `verifier.py` | WCAG contrast + safe-zone + presence + Gemini-vision critic |
-| `video_providers.py` | fal-only Seedance i2v/ref2v/t2v (seeded from text-free bg) |
-| `logo.py` | generate logo once; composited onto every ad |
-| `ledger.py` | per-step pricing (fal computed / OpenRouter actual) + TOTAL |
+| `verifier.py` | WCAG contrast + safe-zone + presence + Gemini-vision critic (logo-aware) |
+| `compositor.py` (`render_overlay`) | transparent copy/CTA lower-third for video overlay |
+| `video_providers.py` | fal-only Seedance i2v/ref2v/t2v + native audio + fal TTS + fal muxer |
+| `video_post.py` | **NEW** — burn the copy overlay onto a clip (bundled ffmpeg) |
+| `logo.py` | generate logo once; composited onto every ad (skippable via `--no-logo`) |
+| `ledger.py` | per-step pricing (fal computed incl. ref-MP / OpenRouter actual incl. BYOK) + TOTAL |
 | `pipeline.py` | orchestration (`run` / `resume` / `video_smoke` / `_meta_winner_refs`) |
 | `main.py` | CLI |
 
@@ -101,16 +106,36 @@ run**; the pipeline falls back to blind generation.
 
 ---
 
+## Video & audio (optional, gated)
+
+`--video` generates one clip and assembles it:
+1. **Seedance i2v** seeded from the concept's TEXT-FREE background — default **10s**, 720p,
+   with **native audio on** (`generate_audio=true`, free synced ambient/SFX); `--no-audio` to
+   silence. i2v → t2v fallback on error.
+2. **Copy overlay** (`video_post.add_copy_overlay`): the headline/subhead/CTA (+ optional logo)
+   are rendered as a transparent lower-third (`compositor.render_overlay`) and burned on with the
+   **ffmpeg bundled by `imageio-ffmpeg`** (no system ffmpeg). Text is never fed to the video
+   model — it's composited after, so it stays crisp.
+3. **Optional voiceover** (`--voiceover`): `brand_brain.generate_vo_script` writes a time-fit
+   script → `fal-ai/minimax/speech-02-hd` TTS (fal-hosted, not ElevenLabs) →
+   `fal-ai/ffmpeg-api/merge-audio-video` muxes it on (~free). Music bed is intentionally out of
+   scope; lip-sync too. Full options + licensing in `video-audio-research.md`.
+
+---
+
 ## Cost ledger
 
-- **OpenRouter steps** (brand kit, concepts, VLM critic) record the **authoritative**
-  `response.usage.cost`.
+- **OpenRouter steps** (brand kit, concepts, VLM critic, VO script) record the **authoritative**
+  cost: `usage.cost`, plus `cost_details.upstream_inference_cost` for BYOK keys (where
+  `usage.cost` is 0). The `usage.include` flag is sent so the fields return.
 - **fal steps** are **computed** from published rates (fal returns no cost): flux-2-flex
-  $0.05/MP, flux-2-pro $0.03 first MP + $0.015/extra, bria $0.04 flat, flux-fill $0.05/MP,
-  Seedance `(w·h·sec·24)/1024` tokens × $0.014/1k (fal "MP" = 1024², rounded up).
-- Every step writes a priced JSONL row; `finalize()` appends a `TOTAL` with a per-op
-  breakdown. A typical 3-concept × 3-format run ≈ **$0.6–0.8**. Full pricing detail +
-  the "does the API return cost" research is in `creative-vendor-research.md`.
+  $0.05/MP **including input reference-image MPs**, flux-2-pro $0.03 first MP + $0.015/extra,
+  bria $0.04 flat, flux-fill $0.05/MP, Seedance `(w·h·sec·24)/1024` tokens × $0.014/1k, MiniMax
+  TTS $0.10/1K chars, fal muxer ~$0.0002/s (fal "MP" = 1024², rounded up).
+- Every step writes a priced JSONL row; `finalize()` appends a `TOTAL` with a per-op breakdown.
+  Cost is dominated by reference-conditioned backgrounds (each Meta winner ref adds ~$0.05) and
+  video (a 10s 720p clip ≈ $3). Full pricing + the "does the API return cost" research is in
+  `creative-vendor-research.md`.
 
 ---
 
@@ -132,40 +157,43 @@ cd "rnd\creative"
 ..\..\cos\Scripts\python.exe src\main.py --data ..\data\_real_sample.json `
     --product .\product.jpg --images 4
 
-# video smoke (gated, $$): Seedance i2v seeded from the text-free background
-..\..\cos\Scripts\python.exe src\main.py --resume <run_id> --video --duration 5
+# no logo on the ads (logo not generated or composited)
+..\..\cos\Scripts\python.exe src\main.py --data ..\data\_real_sample.json --no-logo --images 2
+
+# video (gated, $$): 10s Seedance i2v + native audio + copy overlay + AI voiceover
+..\..\cos\Scripts\python.exe src\main.py --resume <run_id> --video --voiceover
 ```
 
 Outputs land in `output/<run_id>/`: `brand_kit.json`, `logo.png`, `winners/` (pulled
-Meta creatives), `concept_NN_bg*.png`, `ad_NN_<fmt>.png`, `manifest.json`, `ledger.jsonl`.
+Meta creatives), `concept_NN_bg*.png`, `ad_NN_<fmt>.png`, `manifest.json`, `ledger.jsonl`,
+and (with `--video`) `video.mp4` → `video_captioned.mp4` → `video_voiceover.mp4`.
 
 ---
 
 ## Test inventory
 
-`rnd/creative/tests` — **76 passing**: copy, layout, image_providers (fal + cutout),
-saliency, compositor, verifier, ledger, brand_brain (+grounding), pipeline (incl. refs /
-product / Meta-winner conditioning, QA reject, multi-format), video_providers.
-`rnd/tests` — **35 passing** (incl. `test_meta_creatives` 8), 5 skipped (opt-in live LLM).
-Everything is mock-tested at $0.
+`rnd/creative/tests` — **91 passing**: copy, layout, image_providers (fal + cutout + ref-MP +
+mask outpaint), saliency, compositor (+overlay), verifier (logo-aware), ledger (+BYOK +ref-MP),
+brand_brain (+grounding +VO script), pipeline (refs / product / Meta-winner / QA reject /
+multi-format / no-logo / voiceover), video_providers (+native audio +TTS +mux), video_post.
+`rnd/tests` — **36 passing** (incl. `test_meta_creatives` 9), 5 skipped (opt-in live LLM).
+Mock-tested at $0; key vendor paths additionally smoke-tested live (see below).
 
 ---
 
 ## Status & honest caveats
 
-- **Built and green offline.** No live fal/Meta call has been exercised in tests.
-- **Vendor-schema smoke pending:** the exact fal request/response shapes for
-  `bria/product-shot`, `birefnet/v2`, `flux-pro/v1/fill` (outpaint), and Seedance are
-  coded from vendor research; the first live run validates them (failures degrade
-  gracefully — bg→flux_pro, outpaint→resize, video→t2v).
-- **Video copy-overlay not implemented:** the video stage produces the clip correctly
-  seeded from the text-free background; the ffmpeg lower-third/end-card overlay is a
-  documented next step.
-- **Meta video `source`** needs a Page-admin / System-User token; with our current token
-  we get winning **images** + video **thumbnails** but not owned MP4s (see the access
-  probe + `meta-api-creative-asset-retrieval.md`). Competitor creatives are out of scope
-  (Ad Library returns text + snapshot only).
+- **Built, green offline, and key paths live-verified.** Live-confirmed: fal flux-2-flex image
+  gen + ref-MP cost; Meta winner image fetch (resilient per-asset); Seedance i2v video + native
+  audio; the copy overlay (real clip); MiniMax TTS + fal muxer voiceover; BYOK LLM cost capture.
+- **Still coded-from-docs (verify on first use):** `bria/product-shot`, `birefnet/v2` cutout, and
+  the exact MiniMax `voice_id`. All degrade gracefully on mismatch.
+- **Outpaint:** now mask-based (real aspect-ratio extension via `flux-pro/v1/fill`), replacing the
+  earlier resize fallback.
+- **Meta video `source`** needs Page-admin (the token HAS it for 31 pages incl. clients), so owned
+  ad MP4s are downloadable; competitor creatives remain out of scope (Ad Library = text + snapshot).
 - **Meta API version:** code is on **v23.0** (supported); bump to **v25.0** when convenient.
+- **Not committed yet:** all of the above lives in the working tree on `feat/ai_analy`.
 
 Related docs: `creative-pipeline-fal-rebuild-plan.md` (the plan, now built),
 `static-ad-generation-architecture-research.md` (why this shape),

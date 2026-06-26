@@ -140,32 +140,63 @@ def cutout(src_path, out_path) -> dict:
             "path": str(out_path), "cost_usd": 0.0}   # negligible; fal rate unverified
 
 
-def outpaint(src_path, out_path, *, fmt: str, prompt: str = "", negative=None) -> dict:
-    """Extend one background to another aspect ratio, preserving the focal point.
+def _fit(src, w, h):
+    """Resize `src` to fit ENTIRELY within (w,h), preserving aspect."""
+    scale = min(w / src.width, h / src.height)
+    return src.resize((max(1, int(src.width * scale)), max(1, int(src.height * scale))))
 
-    `flux-pro/v1/fill` is an inpainting model -- it needs an `image_url` (a canvas)
-    AND a `mask_url` (white = regenerate, black = keep). We fit the source into a
-    target-size canvas and mask the new margins, so the model paints only the
-    extension. This is the standard outpaint-via-inpaint technique.
+
+def _cover_blur(src, w, h, *, blur=42):
+    """A (w,h) blurred background that COVERS the canvas with the scene's own colors."""
+    from PIL import ImageFilter         # lazy
+    cover = max(w / src.width, h / src.height)
+    big = src.resize((int(src.width * cover) + 1, int(src.height * cover) + 1))
+    left, top = (big.width - w) // 2, (big.height - h) // 2
+    return big.crop((left, top, left + w, top + h)).filter(ImageFilter.GaussianBlur(blur))
+
+
+def outpaint(src_path, out_path, *, fmt: str, prompt: str = "", negative=None,
+             mode: str = "blur") -> dict:
+    """Reframe one background to another aspect ratio, preserving the focal point.
+
+    mode="blur" (default, deterministic, free): the sharp source is centered and the
+    new margins are filled with a scaled-up, heavily-blurred copy of the SAME scene --
+    the standard social-reframe look. No model, so it can never hallucinate text/logos
+    in the margins (the failure mode of the generative fill).
+
+    mode="generative": FLUX fill paints the margins (mask-based). Higher fidelity when
+    it works, but can invent garbled signage despite the negative prompt -- opt-in.
     """
-    import fal_client                   # lazy
-    from PIL import Image, ImageDraw     # lazy
+    from PIL import Image               # lazy
     from layout import FORMATS           # lazy, avoids an import cycle at module load
     if fmt not in FORMATS:
         raise ValueError(f"unknown format {fmt!r}")
     tw, th = FORMATS[fmt]
-
     src = Image.open(src_path).convert("RGB")
-    scale = min(tw / src.width, th / src.height)      # fit the whole source inside
-    sw, sh = max(1, int(src.width * scale)), max(1, int(src.height * scale))
-    ox, oy = (tw - sw) // 2, (th - sh) // 2
-    canvas = Image.new("RGB", (tw, th), (127, 127, 127))
-    canvas.paste(src.resize((sw, sh)), (ox, oy))
-    mask = Image.new("L", (tw, th), 255)              # white = regenerate the new margins
-    ImageDraw.Draw(mask).rectangle([ox, oy, ox + sw - 1, oy + sh - 1], fill=0)  # black = keep
-
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    if mode == "generative":
+        return _outpaint_generative(src, out, tw, th, prompt, negative)
+
+    canvas = _cover_blur(src, tw, th)                 # blurred scene fills the margins
+    fg = _fit(src, tw, th)                            # sharp source, centered
+    canvas.paste(fg, ((tw - fg.width) // 2, (th - fg.height) // 2))
+    canvas.save(out)
+    return {"provider": "reframe-blur", "model": "pillow",
+            "path": str(out), "cost_usd": 0.0}
+
+
+def _outpaint_generative(src, out, tw, th, prompt, negative) -> dict:
+    """FLUX fill (inpaint) painting the new margins via a canvas + mask. Opt-in."""
+    import fal_client                   # lazy
+    from PIL import Image, ImageDraw     # lazy
+    fg = _fit(src, tw, th)
+    ox, oy = (tw - fg.width) // 2, (th - fg.height) // 2
+    canvas = Image.new("RGB", (tw, th), (127, 127, 127))
+    canvas.paste(fg, (ox, oy))
+    mask = Image.new("L", (tw, th), 255)              # white = regenerate the new margins
+    ImageDraw.Draw(mask).rectangle([ox, oy, ox + fg.width - 1, oy + fg.height - 1], fill=0)
     cpath = out.with_name(out.stem + "_canvas.png"); canvas.save(cpath)
     mpath = out.with_name(out.stem + "_mask.png"); mask.save(mpath)
     text = _suppress(prompt or "extend the scene naturally, matching the existing "

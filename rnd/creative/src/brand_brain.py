@@ -66,6 +66,30 @@ def _fallback_copy(kit: BrandKit, i: int) -> CopySet:
     return CopySet(headline=kit.tagline, cta_label="Shop now", angle=f"placeholder {i + 1}")
 
 
+_VO_SYSTEM = (
+    "You are an advertising copywriter writing a SHORT spoken VOICEOVER script for a "
+    "{sec}-second video ad. Natural spoken-word, one or two sentences, ~{words} words MAX "
+    "(it must fit the time when read aloud), on-brand for the given tone, ending on the call "
+    "to action. No stage directions, no narrator labels. Return STRICT JSON: {\"script\": str}."
+)
+
+
+def generate_vo_script(client, kit: BrandKit, hook: str, cta: str = "",
+                       seconds: int = 10) -> tuple[str, float]:
+    """Write a short, time-fit voiceover script for a video ad. Falls back to the
+    hook text if the model returns nothing usable."""
+    words = max(6, int(seconds * 2.4))            # ~145 words/min spoken
+    system = _VO_SYSTEM.replace("{sec}", str(seconds)).replace("{words}", str(words))
+    user = (f"BRAND: {kit.brand_name} -- tone: {kit.tone}. "
+            f"HOOK: {hook}. CALL TO ACTION: {cta or 'shop now'}.")
+    try:
+        data, cost = _chat_json(client, system, user)
+        script = (data.get("script") or "").strip()
+    except Exception:                              # noqa: BLE001 -- never block the video
+        script, cost = "", 0.0
+    return (script or f"{hook}. {cta}".strip(" .") + ".", cost)
+
+
 def _chat_json(client, system: str, user: str) -> tuple[dict, float]:
     """One OpenRouter call constrained to a JSON object; tolerant of stray fences.
     Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost."""

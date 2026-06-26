@@ -64,7 +64,9 @@ CONCEPTS_JSON = {"concepts": [
 
 
 def _router(system_content: str) -> str:
-    # the kit schema names "brand_name"; the concepts prompt never does.
+    # route on a token unique to each system prompt.
+    if "VOICEOVER" in system_content:
+        return json.dumps({"script": "Discover timeless craftsmanship. Shop the new collection."})
     if "brand_name" in system_content:
         return json.dumps(KIT_JSON)
     return json.dumps(CONCEPTS_JSON)

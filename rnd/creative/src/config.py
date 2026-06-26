@@ -55,8 +55,16 @@ IMAGE_CUTOUT_MODEL = "fal-ai/birefnet/v2"            # background removal (produ
 
 # Video (fal-only). Seedance 2.0: image-to-video (seed = the text-free background),
 # reference-to-video (product/brand refs), text-to-video (no seed; last resort).
+# Seedance emits synced native audio when generate_audio=true (default on, free).
 VIDEO_I2V = "bytedance/seedance-2.0/image-to-video"
 VIDEO_REF2V = "bytedance/seedance-2.0/reference-to-video"
 VIDEO_T2V = "bytedance/seedance-2.0/text-to-video"
+VIDEO_DURATION_DEFAULT = 10           # seconds (Seedance accepts ~4-15)
+
+# Voiceover audio (fal-hosted TTS, NOT ElevenLabs) + the fal muxer that lays an
+# audio track onto a video without re-rendering frames (~$0.0002/s).
+VIDEO_TTS_MODEL = "fal-ai/minimax/speech-02-hd"   # voice_id below; confirm live
+VIDEO_TTS_VOICE = "Wise_Woman"
+AUDIO_MERGE_MODEL = "fal-ai/ffmpeg-api/merge-audio-video"
 
 TEXT_TEMPERATURE = 0.7        # brand identity is creative; concepts vary run-to-run

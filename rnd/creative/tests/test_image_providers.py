@@ -99,18 +99,31 @@ def test_product_shot_shapes_call(monkeypatch, tmp_path):
     assert "marble shelf" in cap["args"]["scene_description"]
 
 
-def test_outpaint_builds_mask_and_targets_dims(monkeypatch, tmp_path):
+def test_outpaint_blur_extends_deterministically(monkeypatch, tmp_path):
+    from PIL import Image
+    cap = {}
+    _install_fake_fal(monkeypatch, cap)              # installed but must NOT be called
+    src = tmp_path / "bg.png"
+    Image.new("RGB", (1024, 1024), "white").save(src)
+    res = ip.outpaint(src, tmp_path / "story.png", fmt="9:16")       # default mode=blur
+    assert res["provider"] == "reframe-blur" and res["cost_usd"] == 0.0
+    assert "endpoint" not in cap                     # no fal call -> can't hallucinate text
+    out = Image.open(tmp_path / "story.png")
+    assert out.size == (1080, 1920)                  # target dims
+    # the sharp source is centred and white; centre pixel stays white
+    assert out.getpixel((540, 960)) == (255, 255, 255)
+
+
+def test_outpaint_generative_mode_uses_mask(monkeypatch, tmp_path):
     from PIL import Image
     cap = {}
     _install_fake_fal(monkeypatch, cap)
     src = tmp_path / "bg.png"
     Image.new("RGB", (1024, 1024), "white").save(src)
-    ip.outpaint(src, tmp_path / "story.png", fmt="9:16")
+    ip.outpaint(src, tmp_path / "story.png", fmt="9:16", mode="generative")
     assert cap["endpoint"] == config.IMAGE_OUTPAINT_MODEL
-    assert "image_url" in cap["args"] and "mask_url" in cap["args"]   # the fix: mask provided
-    assert len(cap["uploads"]) == 2                                  # canvas + mask uploaded
-    assert Image.open(tmp_path / "story_canvas.png").size == (1080, 1920)   # target dims
-    assert Image.open(tmp_path / "story_mask.png").size == (1080, 1920)
+    assert "image_url" in cap["args"] and "mask_url" in cap["args"]
+    assert Image.open(tmp_path / "story_canvas.png").size == (1080, 1920)
 
 
 def test_cutout_calls_birefnet(monkeypatch, tmp_path):
