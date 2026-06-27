@@ -22,6 +22,12 @@ Branch: `feat/data-connectors` · Date: 2026-06-26
    end-to-end), what it costs (~1.5–2.5 months), and what really constrains it (Google
    token-approval calendar, attribution correctness).
 
+## Built implementation
+
+The connector is implemented (native Python, isolated) at **`apps/connectors/`** — see its
+[`README.md`](../../../apps/connectors/README.md) for the usage/design doc (facade, `.env` keys,
+contract, deploy). 24 offline tests, $0. Plan: `.claude/plans/cosmic-humming-wave.md`.
+
 ## The decision in one line
 
 - **Lowest risk / weeks:** Hybrid — TS keeps ingestion + credentials, Python owns
