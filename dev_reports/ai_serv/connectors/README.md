@@ -22,6 +22,12 @@ Branch: `feat/data-connectors` · Date: 2026-06-26
    end-to-end), what it costs (~1.5–2.5 months), and what really constrains it (Google
    token-approval calendar, attribution correctness).
 
+4. **[RUN_AND_TEST.md](./RUN_AND_TEST.md)**
+   — How to run the whole platform locally, test as a user/admin, exercise the connector, and
+   run the `ai_analy` creative system (image/video/audio) with a **cost ladder to stay ≤ $2**.
+
+Built connector usage doc: **[apps/connectors/README.md](../../../apps/connectors/README.md)**.
+
 ## Built implementation
 
 The connector is implemented (native Python, isolated) at **`apps/connectors/`** — see its
