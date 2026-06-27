@@ -14,10 +14,11 @@ from connectors.contract import AssetRecord, ConnectorStatus, DateWindow, Unifie
 class FakeHttp:
     """Drop-in for base.Http. `json_map` keys are substrings matched against the URL."""
 
-    def __init__(self, json_map=None, files=None, headers_map=None):
+    def __init__(self, json_map=None, files=None, headers_map=None, errors=None):
         self.json_map = json_map or {}
         self.files = files or {}            # url-substring -> bytes
         self.headers_map = headers_map or {}  # url-substring -> response headers dict
+        self.errors = errors or {}          # url-substring -> Exception to raise
         self.calls = []
 
     async def get_with_headers(self, url, *, params=None, headers=None):
@@ -31,6 +32,9 @@ class FakeHttp:
 
     async def get_json(self, url, *, params=None, headers=None):
         self.calls.append(("GET", url, params))
+        for frag, exc in self.errors.items():
+            if frag in url:
+                raise exc
         for frag, payload in self.json_map.items():
             if frag in url:
                 return payload(params) if callable(payload) else payload

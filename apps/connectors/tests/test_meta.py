@@ -53,3 +53,18 @@ def test_fetch_assets_ranks_by_roas_and_downloads():
     assert len(assets) == 1
     assert assets[0].entity_name == "High"            # ranked winner first
     assert assets[0].local_path and assets[0].durable_ref == "h9"
+
+
+def test_fetch_assets_skips_a_broken_winner_keeps_the_rest():
+    # One winner's creative call fails (permission error); the batch must not be sunk.
+    ad_rows = {"data": [
+        {"ad_id": "good", "ad_name": "Good", "purchase_roas": [{"value": "9.0"}]},
+        {"ad_id": "bad", "ad_name": "Bad", "purchase_roas": [{"value": "5.0"}]},
+    ]}
+    creative = {"creative": {"image_url": "https://scontent.fbcdn.net/x.png", "image_hash": "h"}}
+    http = FakeHttp(json_map={"/insights": ad_rows, "good": creative},
+                    files={"fbcdn.net": b"IMG"},
+                    errors={"bad": RuntimeError("permission denied")})
+    conn = MetaConnector(CREDS, Settings(), http=http)
+    assets = asyncio.run(conn.fetch_assets(None, top_n=2))
+    assert [a.entity_name for a in assets] == ["Good"]     # bad skipped, good kept

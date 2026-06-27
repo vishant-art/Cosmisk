@@ -3,12 +3,15 @@
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from ..base import Http
 from ..config import MetaCredentials, Settings
 from ..contract import AssetRecord, ConnectorStatus, DateWindow, UnifiedFact
 from . import normalize as nz
+
+logger = logging.getLogger("connectors.meta")
 
 AD_FIELDS = ["ad_id", "ad_name", "spend", "impressions",
              "purchase_roas", "website_purchase_roas", "actions"]
@@ -104,9 +107,23 @@ class MetaConnector:
                 urls.append(im["url"])
         return list(dict.fromkeys(urls))
 
+    async def _one_winner(self, ad_id, ad_name, roas, out_dir, i) -> AssetRecord:
+        """Pull a single winner's creative + asset. Raises on API errors so the caller can
+        isolate per winner (one bad ad never sinks the batch)."""
+        body = await self._get(ad_id, {"fields": CREATIVE_FIELDS})
+        creative = body.get("creative", {}) or {}
+        urls = self._image_urls(creative)
+        local = None
+        if urls:
+            try:
+                local = await self.http.download(urls[0], out_dir / f"winner_{i:02d}.png")
+            except Exception:  # noqa: BLE001 -- a single bad asset URL never sinks the winner
+                local = None
+        return AssetRecord(platform="meta", entity_id=ad_id, entity_name=ad_name, kind="image",
+                           local_path=local, durable_ref=creative.get("image_hash"), roas=roas)
+
     async def fetch_assets(self, account_id: str | None, top_n: int) -> list[AssetRecord]:
         acct = self._acct(account_id)
-        import json
         rows = await self._insights_paged(acct, {
             "level": "ad", "fields": ",".join(AD_FIELDS),
             "date_preset": "last_30d", "limit": 200,
@@ -114,16 +131,9 @@ class MetaConnector:
         out_dir = Path(self.settings.asset_dir) / "meta"
         assets: list[AssetRecord] = []
         for i, (ad_id, ad_name, roas) in enumerate(self._rank(rows, top_n), 1):
-            body = await self._get(ad_id, {"fields": CREATIVE_FIELDS})
-            creative = body.get("creative", {}) or {}
-            urls = self._image_urls(creative)
-            local = None
-            if urls:
-                try:
-                    local = await self.http.download(urls[0], out_dir / f"winner_{i:02d}.png")
-                except Exception:  # noqa: BLE001 -- a single bad asset never sinks the set
-                    local = None
-            assets.append(AssetRecord(platform="meta", entity_id=ad_id, entity_name=ad_name,
-                                      kind="image", local_path=local,
-                                      durable_ref=creative.get("image_hash"), roas=roas))
+            try:
+                assets.append(await self._one_winner(ad_id, ad_name, roas, out_dir, i))
+            except Exception as e:  # noqa: BLE001 -- isolate per-winner API failures
+                logger.warning("[meta] winner '%s' (ad %s) skipped: %s",
+                               ad_name[:40], ad_id, str(e)[:90])
         return assets
