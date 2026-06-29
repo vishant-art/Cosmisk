@@ -52,9 +52,18 @@ UnifiedFact     platform, account_id, entity_id, entity_name, date,
                 spend, impressions, clicks, conversions, revenue, platform_extra: dict
 Blended         spend, revenue_meta_pixel, revenue_shopify, blended_roas, revenue_gap_pct
 ConnectorStatus platform, state("ok"|"degraded"|"skipped"|"failed"), detail, fact_count, elapsed_ms
-AssetRecord     platform, entity_id, entity_name, kind, local_path, durable_ref, roas, stats
+AssetRecord     platform, entity_id, entity_name, kind, local_path, durable_ref, source_url, roas, stats
 UnifiedSnapshot brand_id, since, until, currency, facts[], blended, assets[], statuses[]
 ```
+
+**Assets — image vs video.** For an image creative, `kind="image"`, `local_path` is the
+downloaded still and `durable_ref` is the Meta `image_hash`. For a video creative (detected by a
+`video_id` anywhere in the creative spec — `video_data` / `template_data` / `link_data` /
+`child_attachments`), `kind="video"`, `durable_ref` is the **video_id** (stable), `source_url` is
+the resolved mp4/permalink (**time-limited** — re-resolve from `video_id` via
+`/{video_id}?fields=source`), and `local_path` is a downloaded still frame (full-size when its URL
+is fetchable, else the 64×64 thumbnail). A winner whose creative call fails is skipped, never
+sinking the batch.
 
 **Fault tolerance (guaranteed):** every connector runs concurrently with its own rate limiter,
 a hard timeout, and exception capture. A failing platform → a `failed`/`degraded`/`skipped`

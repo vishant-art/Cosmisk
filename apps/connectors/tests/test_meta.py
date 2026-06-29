@@ -55,6 +55,25 @@ def test_fetch_assets_ranks_by_roas_and_downloads():
     assert assets[0].local_path and assets[0].durable_ref == "h9"
 
 
+def test_fetch_assets_handles_video_creative_thumbnail_and_source():
+    # A video winner: no image_url/image_hash, but a video_id + thumbnail. We must download the
+    # thumbnail, classify kind=video, keep video_id as durable_ref, and resolve the source URL.
+    ad_rows = {"data": [{"ad_id": "v1", "ad_name": "Vid", "purchase_roas": [{"value": "7.0"}]}]}
+    creative = {"creative": {"video_id": "vid_42",
+                             "thumbnail_url": "https://scontent.fbcdn.net/thumb.jpg"}}
+    video_meta = {"source": "https://video.fbcdn.net/clip.mp4", "permalink_url": "https://fb.com/x"}
+    http = FakeHttp(json_map={"/insights": ad_rows, "v1": creative, "vid_42": video_meta},
+                    files={"fbcdn.net": b"JPGDATA"})
+    conn = MetaConnector(CREDS, Settings(), http=http)
+    assets = asyncio.run(conn.fetch_assets(None, top_n=1))
+    assert len(assets) == 1
+    a = assets[0]
+    assert a.kind == "video"
+    assert a.durable_ref == "vid_42"                       # durable; source URL re-resolvable from it
+    assert a.source_url == "https://video.fbcdn.net/clip.mp4"
+    assert a.local_path and a.local_path.endswith(".jpg")  # thumbnail downloaded
+
+
 def test_fetch_assets_skips_a_broken_winner_keeps_the_rest():
     # One winner's creative call fails (permission error); the batch must not be sunk.
     ad_rows = {"data": [

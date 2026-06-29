@@ -107,20 +107,80 @@ class MetaConnector:
                 urls.append(im["url"])
         return list(dict.fromkeys(urls))
 
+    @staticmethod
+    def _deep_find(obj, key: str):
+        """First value for `key` anywhere in a nested dict/list (Meta nests video_id under
+        video_data / template_data / link_data / child_attachments depending on format)."""
+        stack = [obj]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                if cur.get(key):
+                    return cur[key]
+                stack.extend(cur.values())
+            elif isinstance(cur, list):
+                stack.extend(cur)
+        return None
+
+    @staticmethod
+    def _deep_collect(obj, keys: set[str]) -> list[str]:
+        """Every http(s) string under any of `keys`, anywhere in the spec."""
+        out, stack = [], [obj]
+        while stack:
+            cur = stack.pop()
+            if isinstance(cur, dict):
+                for k, v in cur.items():
+                    if k in keys and isinstance(v, str) and v.startswith("http"):
+                        out.append(v)
+                    stack.append(v)
+            elif isinstance(cur, list):
+                stack.extend(cur)
+        return out
+
+    @staticmethod
+    def _video_id(creative: dict) -> str | None:
+        """A creative is a video ad if a video_id appears anywhere in its spec."""
+        return MetaConnector._deep_find(creative, "video_id")
+
+    @staticmethod
+    def _thumb_urls(creative: dict) -> list[str]:
+        """Still-frame previews for a video creative. Prefer full-size stills (picture/image_url,
+        VLM-usable); the top-level thumbnail_url is a 64x64 crop, used only as a last resort."""
+        full = MetaConnector._deep_collect(creative, {"image_url", "picture"})
+        thumb = [creative["thumbnail_url"]] if creative.get("thumbnail_url") else []
+        return list(dict.fromkeys(full + thumb))
+
+    async def _resolve_video_source(self, video_id: str) -> str | None:
+        """The mp4 `source` URL is time-limited; re-resolve later from the durable video_id."""
+        try:
+            body = await self._get(video_id, {"fields": "source,permalink_url"})
+            return body.get("source") or body.get("permalink_url")
+        except Exception as e:  # noqa: BLE001 -- a missing source never sinks the winner
+            logger.debug("[meta] video %s source unresolved: %s", video_id, str(e)[:80])
+            return None
+
     async def _one_winner(self, ad_id, ad_name, roas, out_dir, i) -> AssetRecord:
         """Pull a single winner's creative + asset. Raises on API errors so the caller can
-        isolate per winner (one bad ad never sinks the batch)."""
+        isolate per winner (one bad ad never sinks the batch). Images download the still;
+        videos download a thumbnail and resolve the source URL."""
         body = await self._get(ad_id, {"fields": CREATIVE_FIELDS})
         creative = body.get("creative", {}) or {}
-        urls = self._image_urls(creative)
+        video_id = self._video_id(creative)
+        if video_id:
+            kind, durable, source_url = "video", video_id, await self._resolve_video_source(video_id)
+            urls, ext = self._thumb_urls(creative), "jpg"
+        else:
+            kind, durable, source_url = "image", creative.get("image_hash"), None
+            urls, ext = self._image_urls(creative), "png"
         local = None
-        if urls:
+        for url in urls:  # try candidates in order (full-size still → thumbnail) until one lands
             try:
-                local = await self.http.download(urls[0], out_dir / f"winner_{i:02d}.png")
+                local = await self.http.download(url, out_dir / f"winner_{i:02d}.{ext}")
+                break
             except Exception:  # noqa: BLE001 -- a single bad asset URL never sinks the winner
                 local = None
-        return AssetRecord(platform="meta", entity_id=ad_id, entity_name=ad_name, kind="image",
-                           local_path=local, durable_ref=creative.get("image_hash"), roas=roas)
+        return AssetRecord(platform="meta", entity_id=ad_id, entity_name=ad_name, kind=kind,
+                           local_path=local, durable_ref=durable, source_url=source_url, roas=roas)
 
     async def fetch_assets(self, account_id: str | None, top_n: int) -> list[AssetRecord]:
         acct = self._acct(account_id)

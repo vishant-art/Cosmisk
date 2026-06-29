@@ -82,8 +82,9 @@ class AssetRecord(BaseModel):
     entity_id: str
     entity_name: str = ""
     kind: Literal["image", "video"] = "image"
-    local_path: str | None = None       # downloaded file (None if only a durable ref survived)
-    durable_ref: str | None = None      # stable hash / permalink to re-resolve later
+    local_path: str | None = None       # downloaded file (image still / video thumbnail)
+    durable_ref: str | None = None      # stable hash / video_id to re-resolve later
+    source_url: str | None = None       # video source/permalink (time-limited; re-resolve via durable_ref)
     roas: float = 0.0
     stats: UnifiedFact | None = None
 
