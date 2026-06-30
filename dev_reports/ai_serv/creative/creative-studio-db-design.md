@@ -3,11 +3,17 @@
 > The persistence design for promoting the creative pipeline into the main repo. Covers:
 > (1) where the actual media bytes live, (2) what DB rows are written and to which tables,
 > (3) exact column conventions, (4) cost tracking, (5) migrations.
-> **STATUS: DESIGN / DOC ONLY — DEFERRED (decided 2026-06-30).** The first integration cut does
-> NOT build this: no object-storage bucket and no `studio_generations`/`studio_outputs`
-> persistence yet. The ai-layer serves assets from its own (ephemeral) static mount, and costs
-> stay in the Python ledger. This doc is the blueprint for when the DB/storage phase is greenlit.
-> Companion: `creative-studio-integration-plan.md`. Drafted 2026-06-30.
+> **STATUS: BUILDING the DB layer (greenlit 2026-07-01).** Decisions locked:
+> - **Reuse `studio_generations`/`studio_outputs`** + additive nullable columns (no new table).
+> - **Cost: `cost_cents` only** on the generation row (display) + the Python ledger for detail.
+>   NO `cost_ledger` rows and NO daily-cap gating for creative (per the earlier "Python ledger" call).
+> - **Persist the brand kit + Meta winners** (`brand_kit_json`/`winners_json`); the ai-layer
+>   `/jobs` response gains `brand_kit` + `winners` for this.
+> - **Object storage is still SEPARATE / NOT in this layer** — bytes stay on the ephemeral ai-layer
+>   and are proxied, so stored asset URLs are not durable across an ai-layer redeploy yet.
+>
+> Concrete column additions + wiring are in §2/§5 below.
+> Companion: `creative-studio-integration-plan.md`. Drafted 2026-06-30, building 2026-07-01.
 
 ---
 

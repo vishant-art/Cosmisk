@@ -499,6 +499,14 @@ export const studioGenerations = pgTable('studio_generations', {
   formats: text('formats').notNull(),
   metaAccountId: text('meta_account_id'),
   status: text('status').notNull().default('generating'),
+  // Creative Studio (M4) — populated when generation runs through the ai-layer pipeline.
+  aiJobId: text('ai_job_id'),                          // durable link to the ai-layer job
+  stage: text('stage'),                                // latest milestone ("Brand kit decided")
+  progressJson: text('progress_json').default('[]'),   // all milestones (text JSON)
+  brandKitJson: text('brand_kit_json'),                // AI brand kit (palette/tone/logo)
+  winnersJson: text('winners_json'),                   // pulled Meta winning-creative refs
+  costCents: integer('cost_cents').default(0),         // rolled-up run cost (display only)
+  errorMessage: text('error_message'),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
 });
@@ -511,6 +519,7 @@ export const studioOutputs = pgTable('studio_outputs', {
   outputJson: text('output_json'),
   costCents: integer('cost_cents').default(0),
   errorMessage: text('error_message'),
+  assetUrl: text('asset_url'),                         // first-class proxied URL (publish path)
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   scoreJson: text('score_json'),

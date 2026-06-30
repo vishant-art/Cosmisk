@@ -38,6 +38,8 @@ export interface CreativeGenJob {
   run_id: string | null;
   assets: CreativeGenAsset[];
   video: { url: string } | null;
+  brand_kit: Record<string, unknown> | null;
+  winners: { url: string }[];
   cost_usd: number;
   rejected: string[];
   error: string | null;
@@ -117,9 +119,11 @@ export async function getCreativeJob(jobId: string): Promise<CreativeGenJob> {
   return (await res.json()) as CreativeGenJob;
 }
 
-/** GET /creative/assets/{jobId}/{file} -> the raw Response, to stream bytes through the proxy. */
-export async function fetchCreativeAsset(jobId: string, file: string): Promise<Response> {
-  const url = `${base()}/creative/assets/${encodeURIComponent(jobId)}/${encodeURIComponent(file)}`;
+/** GET /creative/assets/{jobId}/{path} -> the raw Response, to stream bytes through the
+ *  proxy. `path` may contain a subdir (e.g. winners/winner_06.png) — slashes are kept. */
+export async function fetchCreativeAsset(jobId: string, path: string): Promise<Response> {
+  const safe = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  const url = `${base()}/creative/assets/${encodeURIComponent(jobId)}/${safe}`;
   return fetch(url, {
     method: 'GET',
     headers: { 'X-API-Key': config.aiLayerApiKey },

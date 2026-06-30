@@ -104,6 +104,10 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             for a in m.ads
         ]
         job["cost_usd"] = m.total_cost_usd
+        job["brand_kit"] = m.brand_kit.model_dump() if m.brand_kit else None
+        wdir = run_dir / "winners"
+        job["winners"] = ([{"url": f"/creative/assets/{job_id}/winners/{p.name}"}
+                           for p in sorted(wdir.glob("*.png"))] if wdir.exists() else [])
 
         # 3. Optional video (Seedance i2v from a text-free bg + native audio + overlay + VO).
         if req.with_video and m.ads:
@@ -131,7 +135,8 @@ def generate(req: CreativeRequest, background: BackgroundTasks,
     job_id = uuid.uuid4().hex
     _JOBS[job_id] = {"job_id": job_id, "status": "queued", "stage": "Queued",
                      "progress": [], "run_id": None, "assets": [], "video": None,
-                     "cost_usd": 0.0, "rejected": [], "error": None}
+                     "brand_kit": None, "winners": [], "cost_usd": 0.0,
+                     "rejected": [], "error": None}
     background.add_task(_run_job, job_id, req, token)
     return {"job_id": job_id, "status": "queued"}
 
