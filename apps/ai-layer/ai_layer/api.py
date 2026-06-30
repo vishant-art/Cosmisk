@@ -208,3 +208,18 @@ def ingest(account_id: str, preset: str = Query("last_30d"), token: str | None =
 @app.get("/cost", response_model=CostResponse, dependencies=[Depends(require_api_key)])
 def cost(account_id: str | None = Query(None)):
     return CostResponse(account_id=account_id, total_usd=cost_ledger.total_usd(account=account_id))
+
+
+# ---- Creative Studio (M4 Generative Engine) ------------------------------
+# Async generation router + a static mount serving finished assets from the run
+# output dir (ephemeral; durable object storage is the deferred DB phase). The
+# API-key gate applies to the router; static assets are open for the client to fetch.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from ai_layer.creative import config as _creative_config  # noqa: E402
+from ai_layer.creative.service import router as _creative_router  # noqa: E402
+
+app.include_router(_creative_router, dependencies=[Depends(require_api_key)])
+_creative_config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/creative/assets",
+          StaticFiles(directory=str(_creative_config.OUTPUT_DIR), check_dir=False),
+          name="creative-assets")

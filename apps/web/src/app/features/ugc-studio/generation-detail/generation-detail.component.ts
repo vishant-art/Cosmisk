@@ -42,7 +42,7 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
             @if (generation()!.status === 'generating') {
               <span class="inline-flex items-center gap-1.5">
                 <span class="w-3 h-3 border-2 border-blue-400/30 border-t-blue-600 rounded-full animate-spin"></span>
-                Generating...
+                {{ generation()!.stage || 'Generating...' }}
               </span>
             } @else {
               {{ generation()!.status }}

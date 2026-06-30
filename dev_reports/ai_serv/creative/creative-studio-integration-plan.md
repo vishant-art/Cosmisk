@@ -1,10 +1,19 @@
 # Creative Studio — Main-Repo Integration Plan (M4 promotion)
 
 > How the built `rnd/creative/` pipeline gets promoted into the production monorepo as
-> the **Creative Studio / M4 Generative Engine**. PLAN ONLY — no code until decisions
-> below are approved. Companion: `creative-studio-db-design.md` (what's stored, where).
+> the **Creative Studio / M4 Generative Engine**. Companion: `creative-studio-db-design.md`.
 > Drafted 2026-06-30 from a 4-strand read of `apps/ai-layer`, `apps/api` creative routes,
 > the DB schema, and the product docs.
+>
+> **BUILD STATUS (2026-06-30): Phase A + C DONE and live-verified** on branch
+> `feat/creative-studio-integration`. The full pipeline is ported into
+> `apps/ai-layer/ai_layer/creative/` (+ `ai_layer/meta_creatives.py`); FastAPI endpoints
+> `POST /creative/generate` + `GET /creative/jobs/{id}` + a `/creative/assets` static mount
+> are live; 156 ai-layer tests pass (102 ported + 3 service + existing); one live run through
+> the service path produced 2 multi-format ads ($0.81, 0 rejected) from real Meta winners.
+> Hardened `_chat_json` with a JSON-parse retry (the LLM intermittently truncates JSON).
+> **DEFERRED (per decisions):** Phase B object storage, DB persistence, the apps/api TS
+> wiring, and Phase E delivery hooks. `rnd/creative/` left in place as the source until retired.
 
 ---
 

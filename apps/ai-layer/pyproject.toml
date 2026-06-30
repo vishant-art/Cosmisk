@@ -11,6 +11,10 @@ dependencies = [
     "openai>=1.40",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
+    # Creative Studio generation pipeline (lazy-imported; needed for live runs):
+    "pillow>=10.1",          # deterministic compositor (copy/logo/scrim)
+    "fal-client>=0.5",       # the only generation provider (FLUX.2 + Bria + Seedance)
+    "imageio-ffmpeg>=0.5",   # bundled static ffmpeg for the video copy overlay
 ]
 
 [project.optional-dependencies]
@@ -21,4 +25,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["ai_layer"]
+packages = ["ai_layer", "ai_layer.creative"]

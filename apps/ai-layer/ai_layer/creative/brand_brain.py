@@ -1,0 +1,150 @@
+"""The brain: turn the selected-campaign summary into a structured BrandKit and a
+set of ad concepts. Text generation goes through OpenRouter (already wired and
+paid), returned as strict JSON and validated against the schemas.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from ai_layer.creative import config
+from ai_layer.creative import ledger
+from ai_layer.creative.schemas import AdConcept, BrandKit, CopySet  # noqa: E402
+
+_KIT_SYSTEM = (
+    "You are an elite brand strategist and art director. From the ad-account summary, "
+    "FIRST infer the brand's category, its audience, and what the winning campaigns reveal "
+    "about what those customers actually respond to. THEN design a distinctive, ownable brand "
+    "identity that fits -- intuitive and strategically grounded, never generic, derivative, or "
+    "stock. Return STRICT JSON only (no prose, no markdown fences). Schema:\n"
+    "{\n"
+    '  "brand_name": str, "tagline": str,\n'
+    '  "palette": [{"role": "primary|secondary|accent|bg", "hex": "#RRGGBB"}],  // 3-5 colors\n'
+    '  "typography": {"heading_style": str, "body_style": str},\n'
+    '  "tone": str, "voice_keywords": [str],\n'
+    '  "dos": [str], "donts": [str],\n'
+    '  "visual_style": str,  // e.g. "clean studio, warm light, minimal props"\n'
+    '  "logo": {"brief": str}  // ONE strong, renderable mark concept\n'
+    "}\n"
+    "Make it SMART, not safe:\n"
+    "- Palette: intentional and category-right, with real contrast. Avoid the obvious cliche "
+    "(default SaaS teal/orange, lazy luxury black+gold) unless it is genuinely the best call. "
+    "Give a clear primary, a supporting secondary, one accent, and a background.\n"
+    "- Tone, voice, dos, donts: specific to THIS brand and audience -- concrete and VISUAL "
+    "(things an art director can act on), never interchangeable boilerplate or platitudes.\n"
+    "- logo.brief: one memorable, reductive idea (a specific mark or monogram) -- no cliche "
+    "swoosh, globe, generic leaf, or gradient blob.\n"
+    "Every hex is a real 6-digit hex. Keep lists to 3-5 items."
+)
+
+_CONCEPTS_SYSTEM = (
+    "You are a senior advertising art director. Given a brand kit and what's working in the "
+    "account, propose {n} image-ad concepts that are distinct, intuitive, and scroll-stopping "
+    "-- each a DIFFERENT strategic angle (e.g. hero-product, in-use lifestyle, problem/solution, "
+    "social proof, bold visual metaphor, pattern interrupt). Return STRICT JSON only:\n"
+    '{"concepts": [{"title": str, "scene": str, "ad_copy": '
+    '{"headline": str, "cta_label": str, "angle": str, "subhead": str|null, "legal": str|null}}]}\n'
+    "Each `scene` is a vivid, art-directed brief for ONE still: a concrete hero subject, a "
+    "specific setting, intentional composition and camera angle, motivated lighting, and a clear "
+    "mood -- the kind of frame that stops a feed. Avoid generic stock setups (smiling person at "
+    "a laptop, plain product-on-white, soulless corporate scenes). The scene must contain NO text "
+    "and NO logo -- describe only the visual (copy and logo are composited later).\n"
+    "`ad_copy` is the words placed over the scene afterwards, NOT drawn by the image model:\n"
+    "- headline: <=6 words, specific and on-voice, the single hook. No clickbait, no hedging.\n"
+    "- cta_label: 1-3 words, an action (Shop now, Get yours, Book a call).\n"
+    "- angle: the strategic reason this creative exists (the angle name above).\n"
+    "- subhead: optional one short supporting line, or null.\n"
+    "- legal: optional fine print (e.g. *T&C apply), or null.\n"
+    "Keep the concepts visually varied but unmistakably the same brand."
+)
+
+
+def _fallback_copy(kit: BrandKit, i: int) -> CopySet:
+    """A valid, on-brand placeholder so a missing concept never blocks a run."""
+    return CopySet(headline=kit.tagline, cta_label="Shop now", angle=f"placeholder {i + 1}")
+
+
+_VO_SYSTEM = (
+    "You are an advertising copywriter writing a SHORT spoken VOICEOVER script for a "
+    "{sec}-second video ad. Natural spoken-word, one or two sentences, ~{words} words MAX "
+    "(it must fit the time when read aloud), on-brand for the given tone, ending on the call "
+    "to action. No stage directions, no narrator labels. Return STRICT JSON: {\"script\": str}."
+)
+
+
+def generate_vo_script(client, kit: BrandKit, hook: str, cta: str = "",
+                       seconds: int = 10) -> tuple[str, float]:
+    """Write a short, time-fit voiceover script for a video ad. Falls back to the
+    hook text if the model returns nothing usable."""
+    words = max(6, int(seconds * 2.4))            # ~145 words/min spoken
+    system = _VO_SYSTEM.replace("{sec}", str(seconds)).replace("{words}", str(words))
+    user = (f"BRAND: {kit.brand_name} -- tone: {kit.tone}. "
+            f"HOOK: {hook}. CALL TO ACTION: {cta or 'shop now'}.")
+    try:
+        data, cost = _chat_json(client, system, user)
+        script = (data.get("script") or "").strip()
+    except Exception:                              # noqa: BLE001 -- never block the video
+        script, cost = "", 0.0
+    return (script or f"{hook}. {cta}".strip(" .") + ".", cost)
+
+
+def _chat_json(client, system: str, user, *, attempts: int = 3) -> tuple[dict, float]:
+    """One OpenRouter call constrained to a JSON object; tolerant of stray fences.
+    Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost.
+    The model occasionally returns truncated/invalid JSON, so retry the parse a few
+    times (temperature > 0 gives fresh output each attempt)."""
+    last = None
+    for _ in range(max(1, attempts)):
+        resp = client.chat.completions.create(
+            model=config.TEXT_MODEL,
+            temperature=config.TEXT_TEMPERATURE,
+            response_format={"type": "json_object"},
+            extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text[text.find("{"):text.rfind("}") + 1]
+        try:
+            return json.loads(text), ledger.response_cost(resp)
+        except json.JSONDecodeError as e:
+            last = e
+    raise last
+
+
+def _vision_user(summary: str, image_paths: list[str], instruction: str):
+    """A multimodal user message: the summary text plus real winning-ad images so the
+    brain grounds the kit in what actually converts (palette/style/product)."""
+    import base64
+    from pathlib import Path as _P
+    parts = [{"type": "text", "text": f"{instruction}\n\n{summary}"}]
+    for p in (image_paths or [])[:6]:
+        data = base64.b64encode(_P(p).read_bytes()).decode()
+        parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}"}})
+    return parts
+
+
+def generate_brand_kit(client, summary: str, ground_images: list[str] | None = None
+                       ) -> tuple[BrandKit, float]:
+    user = summary if not ground_images else _vision_user(
+        summary, ground_images,
+        "Ground the brand identity in these REAL winning ads from this account -- infer the "
+        "actual palette, visual style, and product look from them, not just the numbers.")
+    data, cost = _chat_json(client, _KIT_SYSTEM, user)
+    return BrandKit.model_validate(data), cost
+
+
+def generate_concepts(client, kit: BrandKit, summary: str, n: int) -> tuple[list[AdConcept], float]:
+    user = (
+        f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
+        f"ACCOUNT CONTEXT:\n{summary}\n\nPropose exactly {n} concepts."
+    )
+    data, cost = _chat_json(client, _CONCEPTS_SYSTEM.replace("{n}", str(n)), user)
+    concepts = [AdConcept.model_validate(c) for c in data.get("concepts", [])]
+    if not concepts:
+        concepts = [AdConcept(title=f"Concept {i+1}", scene=kit.visual_style,
+                              ad_copy=_fallback_copy(kit, i)) for i in range(n)]
+    return concepts[:n], cost

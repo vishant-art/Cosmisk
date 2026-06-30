@@ -64,6 +64,8 @@ export interface StudioGeneration {
   formats: string[];
   meta_account_id: string | null;
   status: string;
+  stage?: string | null;       // live milestone while generating ("Brand kit decided", ...)
+  progress?: string[];         // all milestones so far
   outputs?: StudioOutput[];
   created_at: string;
   updated_at: string;
