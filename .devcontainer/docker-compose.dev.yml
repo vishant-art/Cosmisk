@@ -9,34 +9,37 @@ services:
     command: ["sleep", "infinity"]
     init: true
     ports:
-      - "3000:3000"
+      - "4200:4200"   # Angular dev server (ng serve) — the UI you open
+      - "3000:3000"   # Fastify API
+      - "8077:8077"   # Python ai-layer (FastAPI; /docs for OpenAPI)
     environment:
-      # production: required so server/src/index.ts:265 mounts the static
-      # frontend bundle. The boot guard in server/src/config.ts:68-101 passes
-      # because .env.example has truthy placeholders for ANTHROPIC_API_KEY
-      # and META_APP_SECRET (calls fail at request time, not boot time).
-      NODE_ENV: production
+      # Full dev shape: ng serve + tsx watch + uvicorn --reload, all hot.
+      # NODE_ENV/PORT/APP_URL are set here; the API self-loads apps/api/.env via
+      # dotenv/config and dotenv does NOT override already-set vars, so these
+      # win and .env supplies the rest (DATABASE_URL, JWT_SECRET, API keys).
+      NODE_ENV: development
       PORT: "3000"
-      DATABASE_PATH: /workspace/server/data/cosmisk.db
-      APP_URL: http://localhost:3000
+      APP_URL: http://localhost:4200
       PUPPETEER_SKIP_DOWNLOAD: "true"
-    env_file:
-      - ../server/.env
     volumes:
       # Source: bind-mounted so host edits are visible inside the container
       - ../:/workspace:cached
       # node_modules: named volumes (avoid host FS perf hit, keep host clean)
       - root_node_modules:/workspace/node_modules
-      - server_node_modules:/workspace/server/node_modules
-      # SQLite data: bind-mounted so DB survives container removal and is host-inspectable
-      - ../server/data:/workspace/server/data
+      - web_node_modules:/workspace/apps/web/node_modules
+      - api_node_modules:/workspace/apps/api/node_modules
+      # Python venv at the exact path apps/api/dev.mjs expects (cos/bin/python),
+      # in a named volume so it's fast and never pollutes the host tree.
+      - py_venv:/workspace/cos
     deploy:
       resources:
         limits:
-          memory: 2g
-          cpus: "2.0"
+          memory: 4g
+          cpus: "4.0"
     restart: unless-stopped
 
 volumes:
   root_node_modules:
-  server_node_modules:
+  web_node_modules:
+  api_node_modules:
+  py_venv:

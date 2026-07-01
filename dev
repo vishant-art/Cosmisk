@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Cosmisk lean devcontainer helper.
+# Cosmisk full-stack dev container helper.
+# Runs the whole monorepo (Angular UI + Fastify API + Python ai-layer) with hot
+# reload inside one container, backed by your remote Neon DB.
 # Run from repo root. Requires: docker, docker compose plugin.
 
 set -Eeuo pipefail
@@ -8,119 +10,100 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/.devcontainer/docker-compose.dev.yml"
 SERVICE="cosmisk-dev"
 
-dc() {
-  docker compose -f "${COMPOSE_FILE}" "$@"
-}
+WEB_URL="https://localhost:4200"   # ng serve uses a self-signed cert in this repo
+API_URL="http://localhost:3000"
+AI_URL="http://localhost:8077"
 
-dexec() {
-  dc exec -T "${SERVICE}" "$@"
-}
+dc()        { docker compose -f "${COMPOSE_FILE}" "$@"; }
+dexec()     { dc exec -T "${SERVICE}" "$@"; }
+dexec_tty() { dc exec "${SERVICE}" "$@"; }
 
-dexec_tty() {
-  dc exec "${SERVICE}" "$@"
-}
-
-ensure_env() {
-  if [ ! -f "${REPO_ROOT}/server/.env" ]; then
-    echo "!! server/.env not found. Bootstrapping from .env.example with random secrets."
-    cp "${REPO_ROOT}/server/.env.example" "${REPO_ROOT}/server/.env"
-    local jwt tek
-    jwt=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-    tek=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${jwt}|" "${REPO_ROOT}/server/.env" || true
-    sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=${tek}|" "${REPO_ROOT}/server/.env" || true
-  fi
-  mkdir -p "${REPO_ROOT}/server/data"
+# True on first run (or after volumes are wiped): deps/venv not yet installed.
+needs_bootstrap() {
+  ! dexec test -x /workspace/cos/bin/python \
+    || ! dexec test -d /workspace/apps/api/node_modules/fastify \
+    || ! dexec test -d /workspace/node_modules/@angular
 }
 
 cmd_up() {
-  ensure_env
   dc up -d --build
-
-  if ! dexec test -d /workspace/node_modules/@angular; then
-    echo "==> First run: installing root deps"
-    dexec bash -lc "cd /workspace && npm install --no-audit --no-fund"
+  if needs_bootstrap; then
+    echo "==> First run: bootstrapping deps + venv + apps/api/.env (~5-8 min)"
+    dexec bash -lc 'bash /workspace/.devcontainer/post-create.sh'
   fi
-  if ! dexec test -d /workspace/server/node_modules/fastify; then
-    echo "==> First run: installing server deps"
-    dexec bash -lc "cd /workspace/server && npm install --no-audit --no-fund"
-  fi
-
-  # Rebuild if either the backend tsc output OR the frontend bundle is missing.
-  # cmd_rebuild already restarts the server when it finishes; only call cmd_start
-  # in the no-rebuild-needed branch to avoid a duplicate start.
-  if ! dexec test -f /workspace/server/dist/index.js \
-       || ! dexec test -f /workspace/server/public/index.html; then
-    cmd_rebuild
-  else
-    cmd_start
-  fi
-
-  # Run migrations after server boot — the scripts touch tables (e.g. users)
-  # that only exist after createTables() runs at server start.
-  cmd_run-migrations
-  echo
-  echo "==> Cosmisk is up at http://localhost:3000"
+  cmd_start
 }
 
 cmd_down() {
   dc down
 }
 
-cmd_rebuild() {
-  echo "==> Rebuilding backend (tsc)"
-  dexec bash -lc "cd /workspace/server && npm run build"
-
-  echo "==> Rebuilding frontend (ng build --configuration production)"
-  dexec bash -lc "cd /workspace && npx ng build --configuration development"
-
-  echo "==> Copying Angular bundle into server/public"
-  dexec bash -lc '
-    mkdir -p /workspace/server/public
-    rm -rf /workspace/server/public/*
-    if [ -d /workspace/dist/cosmisk/browser ]; then
-      cp -r /workspace/dist/cosmisk/browser/* /workspace/server/public/
-    elif [ -d /workspace/dist/cosmisk ]; then
-      cp -r /workspace/dist/cosmisk/* /workspace/server/public/
-    fi
-  '
-  cmd_restart
-}
-
+# Start all three services, each detached (docker exec -d survives the exec
+# session; a plain `&` would be SIGKILLed when the exec exits). Each logs to its
+# own file inside the container.
 cmd_start() {
-  echo "==> Starting server (detached, inside container)"
-  # Use docker exec -d so the process survives the exec session teardown.
-  # nohup + & alone gets SIGKILLed when docker exec exits.
-  dexec bash -lc 'pkill -f "[n]ode dist/index.js" 2>/dev/null || true; sleep 0.5'
-  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/server && exec node dist/index.js > /tmp/cosmisk.log 2>&1'
+  echo "==> Starting ai-layer (uvicorn --reload) -> ${AI_URL}"
+  dexec bash -lc 'pkill -f "uvicorn ai_layer.api:app" 2>/dev/null || true; sleep 0.3'
+  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/apps/ai-layer && exec /workspace/cos/bin/python -m uvicorn ai_layer.api:app --host 0.0.0.0 --port 8077 --reload > /tmp/ai-layer.log 2>&1'
 
-  echo -n "    waiting for /health"
-  for i in $(seq 1 30); do
-    if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-      echo " — up"
-      dexec bash -lc 'echo "    server PID: $(pgrep -f "[n]ode dist/index.js" | head -1)"'
-      return 0
-    fi
-    echo -n "."
-    sleep 1
+  echo "==> Starting API (tsx watch)            -> ${API_URL}"
+  dexec bash -lc 'pkill -f "tsx watch src/index.ts" 2>/dev/null || true; sleep 0.3'
+  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/apps/api && exec npx tsx watch src/index.ts > /tmp/api.log 2>&1'
+
+  echo "==> Starting Web (ng serve)             -> ${WEB_URL}"
+  dexec bash -lc 'pkill -f "ng serve" 2>/dev/null || true; sleep 0.3'
+  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/apps/web && exec npx ng serve --host 0.0.0.0 --port 4200 > /tmp/web.log 2>&1'
+
+  echo -n "    waiting for API /health"
+  local api_ok=0
+  for _ in $(seq 1 40); do
+    if curl -sf "${API_URL}/health" >/dev/null 2>&1; then api_ok=1; echo " — up"; break; fi
+    echo -n "."; sleep 1
   done
-  echo " — TIMED OUT"
-  echo "!! server did not respond on /health within 30s"
-  echo "   tail of /tmp/cosmisk.log:"
-  dexec bash -lc 'tail -40 /tmp/cosmisk.log 2>/dev/null || echo "   (no log)"'
-  return 1
-}
+  [ "${api_ok}" = 1 ] || { echo " — TIMED OUT"; echo "   tail /tmp/api.log:"; dexec bash -lc 'tail -40 /tmp/api.log 2>/dev/null || true'; }
 
-cmd_restart() {
-  cmd_start
+  echo -n "    waiting for Web (ng compile, can take ~60s)"
+  local web_ok=0
+  for _ in $(seq 1 90); do
+    if curl -skf -o /dev/null "${WEB_URL}" 2>/dev/null; then web_ok=1; echo " — up"; break; fi
+    echo -n "."; sleep 1
+  done
+  [ "${web_ok}" = 1 ] || { echo " — not ready yet"; echo "   check './dev logs web' — ng serve may still be compiling"; }
+
+  echo
+  echo "==> Open the UI:  ${WEB_URL}"
+  echo "    API:          ${API_URL}      AI layer docs: ${AI_URL}/docs"
+  echo "    No DATABASE_URL? data routes 500 — see apps/api/.env, then './dev migrate'"
 }
 
 cmd_stop() {
-  dexec bash -lc 'pkill -f "[n]ode dist/index.js" 2>/dev/null || true; echo "    server stopped"'
+  dexec bash -lc '
+    pkill -f "ng serve" 2>/dev/null || true
+    pkill -f "tsx watch src/index.ts" 2>/dev/null || true
+    pkill -f "uvicorn ai_layer.api:app" 2>/dev/null || true
+    echo "    all three services stopped"
+  '
+}
+
+cmd_restart() {
+  cmd_stop || true
+  cmd_start
+}
+
+cmd_migrate() {
+  echo "==> drizzle migrate against Neon (uses MIGRATION_DATABASE_URL / DATABASE_URL from apps/api/.env)"
+  dexec bash -lc 'cd /workspace/apps/api && npm run db:migrate'
 }
 
 cmd_logs() {
-  dexec_tty bash -lc 'tail -F /tmp/cosmisk.log'
+  local which="${1:-all}"
+  case "${which}" in
+    api) dexec_tty bash -lc 'tail -F /tmp/api.log' ;;
+    web) dexec_tty bash -lc 'tail -F /tmp/web.log' ;;
+    ai|ai-layer) dexec_tty bash -lc 'tail -F /tmp/ai-layer.log' ;;
+    all) dexec_tty bash -lc 'tail -F /tmp/api.log /tmp/web.log /tmp/ai-layer.log' ;;
+    *) echo "usage: ./dev logs [api|web|ai|all]"; return 1 ;;
+  esac
 }
 
 cmd_shell() {
@@ -131,60 +114,49 @@ cmd_status() {
   echo "==> Container:"
   dc ps
   echo
-  echo "==> Server process:"
-  dexec bash -lc 'pgrep -af "[n]ode dist/index.js" || echo "  (not running)"'
+  echo "==> Service processes:"
+  dexec bash -lc 'pgrep -af "[n]g serve"               || echo "  web:      (not running)"'
+  dexec bash -lc 'pgrep -af "[t]sx watch src/index.ts" || echo "  api:      (not running)"'
+  dexec bash -lc 'pgrep -af "[u]vicorn ai_layer.api"   || echo "  ai-layer: (not running)"'
   echo
   echo "==> Health:"
-  curl -sf http://localhost:3000/health && echo || echo "  (no response on :3000)"
+  curl -sf "${API_URL}/health" && echo || echo "  API:  (no response on :3000)"
+  curl -skf -o /dev/null -w "  Web:  HTTP %{http_code} on :4200 (https)\n" "${WEB_URL}" 2>/dev/null || echo "  Web:  (no response on :4200)"
   echo
-}
-
-cmd_run-migrations() {
-  echo "==> Running one-off schema scripts (idempotent)"
-  dexec bash -lc 'cd /workspace/server && npx tsx scripts/add-audit-tables.ts'
-  dexec bash -lc 'cd /workspace/server && npx tsx scripts/add-shopify-tables.ts'
-}
-
-cmd_reset-db() {
-  read -r -p "!! This wipes server/data/cosmisk.db. Continue? [y/N] " yn
-  case "$yn" in
-    [yY]*)
-      dexec bash -lc 'rm -f /workspace/server/data/cosmisk.db /workspace/server/data/cosmisk.db-shm /workspace/server/data/cosmisk.db-wal'
-      echo "    DB wiped. Run './dev start' to recreate, then './dev run-migrations'."
-      ;;
-    *) echo "    aborted" ;;
-  esac
 }
 
 cmd_test() {
-  dexec bash -lc 'cd /workspace/server && npm test'
+  dexec bash -lc 'cd /workspace/apps/api && npm test'
 }
 
 cmd_help() {
   cat <<EOF
-Cosmisk lean devcontainer
+Cosmisk full-stack dev container
 
 Usage: ./dev <command>
 
 Lifecycle:
-  up               build image, install deps (first run), build app, start server
-  down             stop and remove container (volumes + DB persist)
-  rebuild          rebuild backend + frontend, restart server (~45 s)
-  start            (re)start the node server inside the container
-  stop             stop the node server (container keeps running)
-  restart          alias for start
+  up               build image, bootstrap (first run), start all three services
+  down             stop and remove the container (named volumes persist)
+  start            (re)start web + api + ai-layer inside the container
+  stop             stop the three services (container keeps running)
+  restart          stop + start
+
+Database (Neon):
+  migrate          run drizzle migrations against your Neon DB (opt-in)
 
 Inspection:
-  status           container + server + /health
-  logs             tail server logs (Ctrl-C to stop)
+  status           container + the three processes + /health + :4200
+  logs [svc]       tail logs; svc = api | web | ai | all (default all)
   shell            bash shell inside the container
 
-Maintenance:
-  run-migrations   run the one-off audit + shopify table scripts
-  reset-db         wipe SQLite (prompts for confirmation)
-  test             run server vitest suite
+  test             run the apps/api vitest suite
 
-Default URL: http://localhost:3000
+URLs:  UI ${WEB_URL}   API ${API_URL}   AI layer ${AI_URL}/docs
+
+First time: set Neon DATABASE_URL + MIGRATION_DATABASE_URL in apps/api/.env,
+then './dev migrate'. To reach /app/dashboard, sign up at the UI and set
+onboarding_complete=1 (and role='admin') for your user in Neon.
 EOF
 }
 
@@ -192,19 +164,17 @@ cmd="${1:-help}"
 shift || true
 
 case "$cmd" in
-  up)              cmd_up "$@" ;;
-  down)            cmd_down "$@" ;;
-  rebuild)         cmd_rebuild "$@" ;;
-  start)           cmd_start "$@" ;;
-  stop)            cmd_stop "$@" ;;
-  restart)         cmd_restart "$@" ;;
-  logs)            cmd_logs "$@" ;;
-  shell)           cmd_shell "$@" ;;
-  status)          cmd_status "$@" ;;
-  run-migrations)  cmd_run-migrations "$@" ;;
-  reset-db)        cmd_reset-db "$@" ;;
-  test)            cmd_test "$@" ;;
-  help|-h|--help)  cmd_help ;;
+  up)            cmd_up "$@" ;;
+  down)          cmd_down "$@" ;;
+  start)         cmd_start "$@" ;;
+  stop)          cmd_stop "$@" ;;
+  restart)       cmd_restart "$@" ;;
+  migrate)       cmd_migrate "$@" ;;
+  logs)          cmd_logs "$@" ;;
+  shell)         cmd_shell "$@" ;;
+  status)        cmd_status "$@" ;;
+  test)          cmd_test "$@" ;;
+  help|-h|--help) cmd_help ;;
   *)
     echo "unknown command: $cmd"
     echo
