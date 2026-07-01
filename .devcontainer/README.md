@@ -1,89 +1,111 @@
-# Lean devcontainer
+# Full-stack dev devcontainer
 
-Runs Cosmisk in the **production shape** (single Node process serving the pre-built
-Angular bundle on `:3000`) inside a container — but with source bind-mounted so
-you can edit from the host. Optimised for occasional swaps, not active dev.
+Runs the **whole monorepo** with hot reload inside one container, backed by your
+remote **Neon** database:
 
-**Resource budget:** ~300 MB RAM idle, ~1.2 GB during a rebuild, ~2 GB total
-disk (image + node_modules volumes). Hard cap: 2 GB / 2 CPU.
+| Service | Path | Port | URL |
+|---|---|---|---|
+| Web (Angular `ng serve`) | `apps/web` | 4200 | <https://localhost:4200> ← open this |
+| API (Fastify, `tsx watch`) | `apps/api` | 3000 | <http://localhost:3000> |
+| AI layer (FastAPI, `uvicorn --reload`) | `apps/ai-layer` | 8077 | <http://localhost:8077/docs> |
+
+`apps/connectors` is a Python library (no port); it's installed into the venv
+only if present on the branch.
+
+**Resource budget:** three hot-reload watchers ≈ 1.5–2 GB RAM. Hard cap: 4 GB / 4 CPU.
 
 ## What's where
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | `node:22-bookworm-slim` + `python3` / `build-essential` for `better-sqlite3` |
-| `docker-compose.dev.yml` | Container definition: bind mounts, named-volume `node_modules`, port 3000 |
+| `Dockerfile` | `node:22-bookworm-slim` + `python3`/venv + build tooling, `postgresql-client` |
+| `docker-compose.dev.yml` | One container; ports 4200/3000/8077; named-volume `node_modules` + `cos` venv |
 | `devcontainer.json` | VS Code Dev Containers metadata (optional — works without VS Code) |
-| `post-create.sh` | First-time bootstrap: install deps, generate secrets, build, run migrations |
-| `../dev` | Host-side helper script (`./dev up`, `./dev rebuild`, …) |
+| `post-create.sh` | First-time bootstrap: install Node + Python deps, make `cos` venv, seed `apps/api/.env` |
+| `../dev` | Host-side helper (`./dev up`, `./dev logs`, `./dev status`, …) |
 
-## Use without VS Code
+## Quick start (without VS Code)
 
 ```bash
-./dev up         # first run: ~5 min (image build + deps + first build)
-./dev status     # verify it's healthy
-./dev logs       # tail server logs
-./dev rebuild    # after editing code (~45 s)
-./dev down       # stop
+./dev up          # first run: ~5-8 min (image + npm + pip); warm: a few sec
+./dev status      # container + 3 procs + health
+./dev logs all    # tail api + web + ai-layer logs (Ctrl-C to stop)
+./dev down        # stop
 ```
 
-Open <http://localhost:3000>. The seeded reviewer login is
-`reviewer@cosmisk.com` / `MetaReview2026!`.
+Then open <https://localhost:4200> (HTTPS with a self-signed cert — accept the
+browser warning once).
+
+## Database (Neon — required)
+
+The app is Postgres-only; only the API needs it. On first `./dev up`,
+`post-create.sh` creates `apps/api/.env` from `.env.example` (generating
+`JWT_SECRET` + `TOKEN_ENCRYPTION_KEY`) and **warns if `DATABASE_URL` is empty**.
+Add your Neon strings to `apps/api/.env`:
+
+```
+DATABASE_URL=<neon pooled connection>
+MIGRATION_DATABASE_URL=<neon direct connection>
+```
+
+Then apply the schema and restart the API:
+
+```bash
+./dev migrate
+./dev restart
+```
+
+For AI features (chat/insights) also set `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`.
+The ai-layer keeps its own local SQLite store, so it needs no DB wiring.
+
+## Logging in / reaching the dashboard
+
+There is **no separate admin dashboard** and no seeded credentials — auth is a
+role-based JWT. At <https://localhost:4200>, sign up (creates `role: 'user'`).
+A fresh user is sent to `/onboarding` until onboarding completes (connecting
+Meta). To jump straight into `/app/dashboard` locally, flip the flag in Neon:
+
+```sql
+UPDATE users SET onboarding_complete = 1, role = 'admin' WHERE email = 'you@example.com';
+```
+
+Log in again and you land in the dashboard with the full feature set.
+
+## Running `feat/ai_analy` with this container
+
+These devcontainer files are kept as **uncommitted** edits and are byte-identical
+across branches, so they carry across a branch switch without conflict. But your
+uncommitted `package-lock.json` differs between branches and would block a plain
+`git checkout feat/ai_analy`. Cleanest path — a **git worktree** (leaves your
+current tree and its uncommitted changes completely frozen):
+
+```bash
+git worktree add ../Cosmisk-ai feat/ai_analy
+cp -r .devcontainer ../Cosmisk-ai/ && cp dev ../Cosmisk-ai/
+cd ../Cosmisk-ai
+./dev up
+```
+
+On `feat/ai_analy` there's no `apps/connectors`, so bootstrap skips it.
 
 ## Use with VS Code
 
-Open the repo, press F1 → "Dev Containers: Reopen in Container". VS Code runs
-`docker-compose.dev.yml`, attaches to the container, and runs `post-create.sh`
-once. After that, use the `./dev` script from the integrated terminal as above.
-
-## Env vars
-
-`server/.env` is mounted into the container. If it doesn't exist, `./dev up`
-copies `server/.env.example` and generates random `JWT_SECRET` and
-`TOKEN_ENCRYPTION_KEY`. All other API keys (Anthropic, Meta, Stripe, …) stay
-as placeholders — features that need them will error at request time. Edit
-`server/.env` on the host and `./dev rebuild` (or just `./dev start`) to pick
-up changes.
-
-## NODE_ENV
-
-The container runs with `NODE_ENV=production` because Fastify only mounts the
-static frontend bundle (`server/src/index.ts:265`) when it sees `production`.
-The boot guard in `server/src/config.ts:68-101` is satisfied by the truthy
-placeholder values in `.env.example` for `ANTHROPIC_API_KEY` and
-`META_APP_SECRET` — the server boots cleanly; SDK calls that need real keys
-fail at request time instead. The lean memory profile comes from skipping
-`tsx watch` / `ng serve`, not from `NODE_ENV`.
-
-## Why no hot reload
-
-`tsx watch` and `ng serve` together hold ~1.2 GB resident. With <2 swaps/week,
-that's a bad trade. We pay one explicit `./dev rebuild` (~45 s) per change and
-live at ~300 MB the rest of the time. If you start doing daily dev, switch to
-the bare-metal flow in `dev_reports/run_guide.md` or extend the compose file
-to run `npm run dev` + `ng serve`.
+Open the repo → F1 → "Dev Containers: Reopen in Container". VS Code runs
+`docker-compose.dev.yml`, attaches, and runs `post-create.sh` once. Then start
+the services from the integrated terminal with `./dev start` (or `./dev up` the
+first time).
 
 ## Caveats
 
-- **Frontend uses the dev environment file, not `environment.prod.ts`.** The
-  prod environment file in this repo is currently out of sync with the dev
-  one (missing keys like `AUDIT_RUN`), which breaks `ng build --configuration
-  production`. The lean container runs plain `ng build`, which uses
-  `environment.ts` and produces a working — if unminified — single bundle in
-  `server/public/`. This is a separate codebase bug; fixing it also unblocks
-  the production Dockerfile.
-- **Puppeteer Chromium download is skipped** (`PUPPETEER_SKIP_DOWNLOAD=true`)
-  to keep the image lean. PDF-generation paths in audits will fail until you
-  install Chromium inside the container (`apt-get install -y chromium`) and
-  set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`.
-- **Frontend on `:3000`, not `:4200`.** The dev-mode HTTPS self-signed cert
-  doesn't apply here — it's plain HTTP because Fastify serves the static
-  bundle directly.
-- **No Playwright browsers.** If you ever need e2e: `./dev shell` then
-  `npx playwright install chromium`.
-- **`node_modules` lives in named Docker volumes**, not the bind mount. To
-  fully reset deps: `docker compose -f .devcontainer/docker-compose.dev.yml down -v`.
+- **Hot reload is on for all three** (`ng serve`, `tsx watch`, `uvicorn --reload`).
+  That's the RAM cost; if you want it lighter, run only the services you need.
+- **First `ng serve` compile** can take ~60 s — `./dev status` will show the UI
+  as not-ready until it finishes; watch `./dev logs web`.
+- **Puppeteer Chromium is skipped** (`PUPPETEER_SKIP_DOWNLOAD=true`). PDF-generation
+  paths in audits fail until you `apt-get install -y chromium` inside the
+  container and set `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`.
+- **No Playwright browsers.** For e2e: `./dev shell` then `npx playwright install chromium`.
+- **`node_modules` and the `cos` venv live in named Docker volumes**, not the
+  bind mount. Full dep reset: `docker compose -f .devcontainer/docker-compose.dev.yml down -v`.
 
-## Continue claude chat for lean-devcontainer
-
-claude --resume 345ea638-ea23-413d-bf6d-0b211bb98b14
+See `commands.md` for the full command reference.

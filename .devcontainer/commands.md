@@ -1,97 +1,57 @@
-# Lean devcontainer — command reference
+# Full-stack dev container — command reference
 
-All host-side commands run from the repo root. The `./dev` helper script is the
-public surface; everything below is a verb you can pass to it. Raw
-`docker compose` calls are documented at the bottom for emergencies.
+All host-side commands run from the repo root via the `./dev` helper.
 
-> **Container name:** `cosmisk-dev`
-> **Compose file:** `.devcontainer/docker-compose.dev.yml`
-> **Service name:** `cosmisk-dev`
-> **Default URL:** <http://localhost:3000>
+> **Container:** `cosmisk-dev` · **Compose:** `.devcontainer/docker-compose.dev.yml`
+> **UI:** <https://localhost:4200> · **API:** <http://localhost:3000> · **AI layer:** <http://localhost:8077/docs>
 
 ---
 
 ## Lifecycle
 
 ### `./dev up`
-
 First-time bootstrap **and** day-to-day start. Idempotent.
+1. `docker compose up -d --build` — build image if needed, start container (`sleep infinity`).
+2. On first run only (deps/venv missing) runs `post-create.sh`: `npm install`
+   (root + `apps/api`), create `/workspace/cos` venv, `pip install -e apps/ai-layer`
+   (+ `apps/connectors` if present), seed `apps/api/.env`.
+3. `./dev start` — launch all three services.
 
-What it does, in order:
-1. Bootstraps `server/.env` from `.env.example` if missing, generating random
-   `JWT_SECRET` and `TOKEN_ENCRYPTION_KEY` via `openssl rand -hex 32`.
-2. `docker compose ... up -d --build` — builds the image if needed, starts the
-   container with `sleep infinity` as PID 1.
-3. Installs root + server `npm` deps into the named volumes (only on first
-   run, or if the volumes are wiped).
-4. Calls `./dev rebuild` if either `server/dist/index.js` or
-   `server/public/index.html` is missing.
-5. Otherwise calls `./dev start`.
-6. Calls `./dev run-migrations` (server must be up first so the `users` table
-   exists).
-
-```bash
-./dev up
-```
-
-Cold first run: ~5–8 min (image build + npm installs + first compile).
-Warm run: ~3 seconds (container already exists, server already built).
+Cold first run: ~5–8 min. Warm: a few seconds.
 
 ### `./dev down`
-
-Stops and removes the container. **Keeps:**
-- The named volumes (`root_node_modules`, `server_node_modules`)
-- The bind-mounted `server/data/` directory (your SQLite DB)
-
-```bash
-./dev down
-```
-
-### `./dev rebuild`
-
-Rebuild backend (`tsc`) + frontend (`ng build --configuration development`),
-copy the Angular bundle into `server/public/`, then restart the server. This
-is what you run after editing code (the whole reason the lean container
-exists in this shape).
-
-```bash
-./dev rebuild
-```
-
-Typical duration: ~45 s (tsc ~5 s, ng build ~30 s, copy + restart ~10 s).
-RAM during the build briefly spikes to ~1.2 GB, then drops back to ~80 MiB.
+Stop and remove the container. Named volumes (`root_node_modules`,
+`web_node_modules`, `api_node_modules`, `py_venv`) persist.
 
 ---
 
-## Server process control
+## Service control
 
 ### `./dev start`
+Starts (detached, inside the container):
+- **ai-layer** — `uvicorn ai_layer.api:app --host 0.0.0.0 --port 8077 --reload` → `/tmp/ai-layer.log`
+- **api** — `npx tsx watch src/index.ts` (listens `0.0.0.0:3000`) → `/tmp/api.log`
+- **web** — `npx ng serve --host 0.0.0.0 --port 4200` → `/tmp/web.log`
 
-Restart the Node server inside the container. Kills any existing
-`node dist/index.js` first. Detaches with `docker compose exec -d` (a plain
-`nohup … &` would be SIGKILLed when the exec session ends). Polls
-`http://localhost:3000/health` for up to 30 seconds before returning. On
-timeout, prints the last 40 lines of `/tmp/cosmisk.log` from inside the
-container so you can see why it didn't come up.
-
-```bash
-./dev start
-```
+Polls `:3000/health`, then `:4200` (ng compile can take ~60 s).
 
 ### `./dev stop`
-
-Stop the Node server **without** stopping the container. Useful when you want
-the container alive (for `./dev shell`) but the port free.
-
-```bash
-./dev stop
-```
+Stops all three processes; container stays up (for `./dev shell`).
 
 ### `./dev restart`
+`stop` then `start`. Run this after editing `apps/api/.env`.
 
-Alias for `./dev start`. Provided for muscle memory.
+---
+
+## Database (Neon)
+
+### `./dev migrate`
+Runs `npm run db:migrate` (drizzle) in `apps/api` against your Neon DB. Opt-in —
+**not** run automatically, so it never surprises a shared database. Requires
+`MIGRATION_DATABASE_URL` / `DATABASE_URL` in `apps/api/.env`.
 
 ```bash
+./dev migrate
 ./dev restart
 ```
 
@@ -100,210 +60,58 @@ Alias for `./dev start`. Provided for muscle memory.
 ## Inspection
 
 ### `./dev status`
+Container `ps` + the three process checks + `/health` + a `:4200` HTTP probe.
 
-Three-section health check:
-1. Container: `docker compose ps` output.
-2. Server process: `pgrep -af` for the running Node PID (uses the
-   `[n]ode dist/index.js` regex trick to avoid matching pgrep itself).
-3. HTTP: `curl -sf http://localhost:3000/health` and prints the JSON body.
-
-```bash
-./dev status
+Healthy:
 ```
-
-Expected output when healthy:
-```
-==> Container:
-NAME          ... STATUS         PORTS
-cosmisk-dev   ... Up 5 minutes   0.0.0.0:3000->3000/tcp
-
-==> Server process:
-165 node dist/index.js
-
+==> Service processes:
+  ... ng serve --host 0.0.0.0 --port 4200
+  ... tsx watch src/index.ts
+  ... uvicorn ai_layer.api:app --host 0.0.0.0 --port 8077 --reload
 ==> Health:
-{"status":"ok","uptime":300,"db":"connected","env":"production",...}
+{"status":"ok",...}
+  Web:  HTTP 200 on :4200
 ```
 
-### `./dev logs`
-
-Tail `/tmp/cosmisk.log` inside the container. `Ctrl-C` to stop.
-
-```bash
-./dev logs
-```
+### `./dev logs [api|web|ai|all]`
+Tail one service or all three (`all` is the default). Ctrl-C to stop.
 
 ### `./dev shell`
-
-Bash login shell inside the container, working directory `/workspace`. Use
-this for ad-hoc poking — `npm test`, running a single migration script,
-inspecting `node_modules`, etc.
-
-```bash
-./dev shell
-```
-
-Inside the shell, `/workspace/server/data/cosmisk.db` is the SQLite file.
-
----
-
-## Maintenance
-
-### `./dev run-migrations`
-
-Runs the two out-of-tree schema scripts (idempotent):
-- `server/scripts/add-audit-tables.ts` — creates `brands`, `brand_context`,
-  `audits`; seeds three demo brands.
-- `server/scripts/add-shopify-tables.ts` — creates `shopify_tokens`, adds
-  `shopify_domain` column, populates demo Shopify domains.
-
-The server **must already be running** when you call this — these scripts
-reference the `users` table, which only exists after `createTables()` runs at
-server boot.
-
-```bash
-./dev run-migrations
-```
-
-### `./dev reset-db`
-
-Wipes `server/data/cosmisk.db*` (db, `-wal`, `-shm`). Prompts for
-confirmation. After resetting, the server's next boot will recreate the
-in-tree schema; you'll need to run `./dev run-migrations` again to recreate
-the out-of-tree tables and re-seed the demo brands.
-
-```bash
-./dev reset-db
-# y[Enter]
-./dev start            # recreate in-tree schema
-./dev run-migrations   # recreate audits/brands/shopify_tokens
-```
+Bash shell inside the container at `/workspace`. The venv is `cos/bin/python`;
+`psql "$DATABASE_URL"` works (postgresql-client is installed).
 
 ### `./dev test`
-
-Runs the server-side `vitest` suite inside the container.
-
-```bash
-./dev test
-```
-
-The frontend test suite (`npm test` at repo root → Karma) is **not** wired
-into `./dev` because Karma needs a real browser; run it on the host if you
-need it.
-
-### `./dev help`
-
-Print the help text. `./dev` with no arguments and `./dev -h` / `--help`
-also print it.
-
-```bash
-./dev help
-```
+Runs the `apps/api` vitest suite inside the container.
 
 ---
 
-## Smoke-test flow (after a fresh `./dev up`)
+## Smoke test (after `./dev up` + Neon configured + `./dev migrate`)
 
 ```bash
-# Health
 curl -sf http://localhost:3000/health
+curl -skI https://localhost:4200/ | head -1         # HTTPS (self-signed); expect HTTP/1.1 200 OK
+curl -sf http://localhost:8077/health              # ai-layer liveness
 
-# Frontend serves
-curl -sI http://localhost:3000/ | head -1
-# expect: HTTP/1.1 200 OK
-
-# Sign up
+# Sign up via the API
 curl -X POST http://localhost:3000/auth/signup \
   -H 'Content-Type: application/json' \
-  -d '{"email":"smoke@test.dev","password":"smoketest123","name":"Smoke"}'
-
-# Or log in as the seeded reviewer
-curl -X POST http://localhost:3000/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"reviewer@cosmisk.com","password":"MetaReview2026!"}'
-
-# Use the JWT for an authenticated route
-TOKEN='<paste from above>'
-curl -H "Authorization: Bearer $TOKEN" http://localhost:3000/dashboard/summary
-```
-
----
-
-## Environment-variable changes
-
-Edit `server/.env` on the host. Then restart the server inside the container:
-
-```bash
-./dev start
-```
-
-You don't need to rebuild the image or re-run `npm install` for env changes.
-
----
-
-## Resource inspection (raw docker)
-
-```bash
-# Live RAM/CPU for the container
-docker stats --no-stream cosmisk-dev
-
-# Image size
-docker images devcontainer-cosmisk-dev
-
-# Volume sizes
-docker system df -v | grep -E "root_node_modules|server_node_modules"
-
-# Disk used by the SQLite DB
-du -sh server/data/
-```
-
-Healthy idle baseline:
-- Memory: ~80 MiB / 2 GiB cap
-- CPU: <1%
-- Image: ~850 MB
-- Volumes: ~1.3 GB combined (root 1.06 GB, server 220 MB)
-- DB: ~500 KB on a fresh seed
-
----
-
-## Full reset (nuke everything)
-
-When the container, deps, or DB are wedged and you want a truly clean slate:
-
-```bash
-./dev down
-docker compose -f .devcontainer/docker-compose.dev.yml down -v   # drops named volumes
-rm -rf server/data/cosmisk.db*                                    # drop SQLite
-docker image rm devcontainer-cosmisk-dev                          # force image rebuild
-./dev up                                                          # ~7 min to come back
+  -d '{"email":"you@test.dev","password":"supersecret1","name":"You"}'
+# -> returns { token, user }. Then in Neon:
+#    UPDATE users SET onboarding_complete = 1, role = 'admin' WHERE email = 'you@test.dev';
+# Log in at https://localhost:4200 and you land in /app/dashboard.
 ```
 
 ---
 
 ## Raw `docker compose` escape hatches
 
-If `./dev` itself is broken or you need to run something the script doesn't
-expose, these are the commands the script is wrapping:
-
 ```bash
-# Compose file shorthand
 COMPOSE='docker compose -f .devcontainer/docker-compose.dev.yml'
-
-# Up / down
 $COMPOSE up -d --build
 $COMPOSE down
-$COMPOSE down -v   # also drops named volumes
-
-# Run an arbitrary command in the container
-$COMPOSE exec cosmisk-dev bash -lc 'whatever you want'
-
-# Detached (survives the exec session — what ./dev start uses)
-$COMPOSE exec -d cosmisk-dev bash -lc 'cd /workspace/server && exec node dist/index.js > /tmp/cosmisk.log 2>&1'
-
-# Tail a file inside
-$COMPOSE exec cosmisk-dev tail -F /tmp/cosmisk.log
-
-# Inspect the SQLite DB from inside
-$COMPOSE exec cosmisk-dev sqlite3 /workspace/server/data/cosmisk.db '.tables'
+$COMPOSE down -v                                   # also drops named volumes (deps + venv)
+$COMPOSE exec cosmisk-dev bash -lc 'whatever'
+$COMPOSE exec cosmisk-dev tail -F /tmp/api.log
 ```
 
 ---
@@ -313,13 +121,12 @@ $COMPOSE exec cosmisk-dev sqlite3 /workspace/server/data/cosmisk.db '.tables'
 | Goal | Command |
 |---|---|
 | Start everything | `./dev up` |
-| Stop everything | `./dev down` |
-| You changed code | `./dev rebuild` |
-| You changed `.env` | `./dev start` |
+| Stop services (keep container) | `./dev stop` |
+| Stop + remove container | `./dev down` |
+| You changed `.env` | `./dev restart` |
+| Apply Neon migrations | `./dev migrate` |
 | Is it running? | `./dev status` |
-| Why isn't it running? | `./dev logs` |
+| Watch logs | `./dev logs all` (or `api`/`web`/`ai`) |
 | Poke around inside | `./dev shell` |
-| Wipe SQLite | `./dev reset-db` |
-| Run server tests | `./dev test` |
-| Recreate audits/brands tables | `./dev run-migrations` |
-| Full reset | see "Full reset" above |
+| Run API tests | `./dev test` |
+| Full dep reset | `docker compose -f .devcontainer/docker-compose.dev.yml down -v` |
