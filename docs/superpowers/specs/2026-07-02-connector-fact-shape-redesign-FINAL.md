@@ -19,6 +19,8 @@ assets-timeout (#35). No `apps/ai-layer` edits, no deploy changes.
 - The 3 normalizers (`meta`, `shopify`, `google`) mapping their sources onto the superset.
 - Capability-set constants exported from the package.
 - Currency propagation (capture per-platform account currency; reconcile; flag mismatch).
+- **FX configuration scaffolding** — `Settings` knobs + env vars for the future forex service,
+  shipped **inert** so enabling FX later is a switch-flip, not a reshape (§8).
 - `#35` — bound the Shopify `fetch_assets` order scan so `get_assets` stops hanging at 30s.
 - Tests + a live Shopify re-smoke.
 
@@ -213,8 +215,30 @@ class RateProvider(Protocol):
 
 `get_snapshot(brand, window, platforms=None, rate_provider=None, target_currency=None)`:
 `rate_provider=None` (default) → no conversion, mismatch → flag. When provided → conversion path
-above; `target_currency` defaults to the revenue (Shopify) currency, since blended ROAS is
-revenue-denominated. Phase 0 ships the protocol + the `None` default only.
+above. `target_currency` resolution: explicit arg > `Settings.fx_target_currency` > the revenue
+(Shopify) currency, since blended ROAS is revenue-denominated. Phase 0 ships the protocol + the
+`None` default only — conversion happens **iff** a `rate_provider` is supplied.
+
+### FX configuration scaffolding (shipped Phase 0 — inert by default)
+
+Per the "config the connector for the future forex service" requirement, `Settings`
+(`connectors/config.py`) gains FX knobs now, all defaulting to no-op, read in `get_settings()` from
+env (same pattern as `CONNECTOR_TIMEOUT_S`), and documented in `.env.example`:
+
+```python
+class Settings(BaseModel):
+    ...
+    fx_enabled: bool = False              # master switch; when False, no auto-provider is built
+    fx_target_currency: str | None = None # normalize blended into this; None → revenue currency
+    fx_cache_ttl_hours: int = 24          # TTL contract the injected provider must honor
+    fx_source: str = "frankfurter"        # source selector (documented contract; ECB/Frankfurter)
+    fx_rate_url: str | None = None         # optional source-endpoint override
+```
+
+Env: `CONNECTOR_FX_ENABLED`, `CONNECTOR_FX_TARGET_CURRENCY`, `CONNECTOR_FX_CACHE_TTL_HOURS`,
+`CONNECTOR_FX_SOURCE`, `CONNECTOR_FX_RATE_URL`. **Phase-0 behavior is unchanged** (no provider is
+built or injected by default, so nothing converts); the knobs exist so the future forex service
+reads its config from the canonical place and enabling it needs no contract change.
 
 ### FX provider design (future work — documented, not built now)
 
@@ -252,7 +276,11 @@ richer `UnifiedFact`.
 - `tests/test_capability_sets.py` — membership matches the semantic rule (Google derived-in,
   reach/frequency/atc/checkout-out; Shopify = {revenue, conversions}).
 - `tests/test_currency.py` — single-currency pass-through; mismatch → `currency_mismatch=True` +
-  `snapshot.currency="MIXED"`; injected `RateProvider` converts and clears the flag.
+  `snapshot.currency="MIXED"`; injected `RateProvider` converts and clears the flag;
+  `target_currency` honors the explicit-arg > `Settings.fx_target_currency` > revenue-currency order.
+- `tests/test_fx_config.py` — the FX `Settings` knobs default inert (`fx_enabled=False`,
+  `fx_target_currency=None`, TTL 24) and are overridden from `CONNECTOR_FX_*` env vars; with no
+  `rate_provider`, behavior is identical to FX-off (nothing converts).
 - `tests/test_assets_window.py` — the Shopify assets scan is date-bounded (asserts the query
   carries the window; no unbounded pagination).
 - Brain-compat smoke — build a `UnifiedFact`, run a `chat.build_context`-style format over every
@@ -278,5 +306,6 @@ richer `UnifiedFact`.
 | — | Capability semantics | **Semantic** — derived counts as measured; only truly-absent = N/A |
 | — | `impressions`/`clicks` type | **`float`** (parity) |
 | — | Currency on mismatch | Propagate + **flag** (`currency_mismatch`), no FX in Phase 0 |
+| — | FX config scaffolding | Inert `Settings` knobs + `CONNECTOR_FX_*` env shipped in Phase 0 |
 | — | FX provider (future) | Daily fetch → 24h **Neon** cache → on-demand convert; Redis = alt |
 | — | #35 assets timeout | **Folded** into this spec |
