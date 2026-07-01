@@ -35,12 +35,15 @@ __all__ = [
 
 
 def get_snapshot(brand: BrandRef, window: DateWindow,
-                 platforms: list[str] | None = None) -> UnifiedSnapshot:
-    """Sync facade: fetch + merge all enabled platforms into one UnifiedSnapshot."""
+                 platforms: list[str] | None = None, *,
+                 rate_provider=None, target_currency: str | None = None) -> UnifiedSnapshot:
+    """Sync facade: fetch + merge all enabled platforms into one UnifiedSnapshot.
+    Pass a RateProvider (see connectors.fx) to normalize blended figures across currencies."""
     import asyncio
 
     from . import funnel
-    return asyncio.run(funnel.run(brand, window, platforms))
+    return asyncio.run(funnel.run(brand, window, platforms,
+                                  rate_provider=rate_provider, target_currency=target_currency))
 
 
 def get_assets(brand: BrandRef, top_n: int = 5,
