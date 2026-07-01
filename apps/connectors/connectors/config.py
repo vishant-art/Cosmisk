@@ -53,6 +53,12 @@ class Settings(BaseModel):
         "cdn.shopify.com", "myshopify.com",        # Shopify
         "googleusercontent.com", "ggpht.com",      # Google
     )
+    # FX conversion (inert scaffolding — no provider is built/injected by default; see fx.py)
+    fx_enabled: bool = False
+    fx_target_currency: str | None = None
+    fx_cache_ttl_hours: int = 24
+    fx_source: str = "frankfurter"
+    fx_rate_url: str | None = None
 
 
 def get_meta_creds() -> MetaCredentials | None:
@@ -90,4 +96,14 @@ def get_settings() -> Settings:
         s.timeout_s = float(t)
     if (d := _env("CONNECTOR_ASSET_DIR")):
         s.asset_dir = Path(d)
+    if (e := _env("CONNECTOR_FX_ENABLED")):
+        s.fx_enabled = e.lower() in ("1", "true", "yes", "on")
+    if (c := _env("CONNECTOR_FX_TARGET_CURRENCY")):
+        s.fx_target_currency = c
+    if (ttl := _env("CONNECTOR_FX_CACHE_TTL_HOURS")):
+        s.fx_cache_ttl_hours = int(ttl)
+    if (src := _env("CONNECTOR_FX_SOURCE")):
+        s.fx_source = src
+    if (u := _env("CONNECTOR_FX_RATE_URL")):
+        s.fx_rate_url = u
     return s
