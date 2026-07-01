@@ -62,6 +62,16 @@ def test_fetch_facts_paginates_via_link_header():
     assert [f.date for f in facts] == ["2026-06-01", "2026-06-02"]   # both pages
 
 
+def test_fetch_assets_bounds_the_order_scan_by_window():
+    http = FakeHttp(json_map={"orders.json": {"orders": []}})
+    conn = ShopifyConnector(CREDS, Settings(), http=http)
+    asyncio.run(conn.fetch_assets(None, top_n=3))
+    orders_calls = [c for c in http.calls if "orders.json" in c[1]]
+    assert orders_calls, "assets path must query orders.json"
+    params = orders_calls[0][2] or {}
+    assert "created_at_min" in params and "created_at_max" in params  # scan is date-bounded (#35)
+
+
 def test_fetch_assets_downloads_top_product_image():
     orders = {"orders": [{"line_items": [{"product_id": 7, "title": "Hat", "price": "25", "quantity": "4"}]}]}
     product = {"product": {"id": 7, "title": "Hat", "image": {"src": "https://cdn.shopify.com/hat.png"}}}

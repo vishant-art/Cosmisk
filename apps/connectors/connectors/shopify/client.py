@@ -12,6 +12,7 @@ from ..contract import AssetRecord, ConnectorStatus, DateWindow, UnifiedFact
 from . import normalize as nz
 
 _NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
+ASSETS_WINDOW_DAYS = 30   # bound the winning-products scan so get_assets can't hang (#35)
 
 
 class ShopifyConnector:
@@ -54,9 +55,12 @@ class ShopifyConnector:
         return nz.orders_to_daily_facts(orders, self.creds.shop_domain)
 
     async def fetch_assets(self, account_id: str | None, top_n: int) -> list[AssetRecord]:
-        # Winning products = top revenue from order line items; attach the product image.
+        # Winning products = top revenue from RECENT order line items; bounded so it can't hang.
+        win = DateWindow.last_n_days(ASSETS_WINDOW_DAYS)
         orders = await self._paginate("orders.json", {
             "status": "any", "limit": 250, "fields": nz.ORDER_LINE_FIELDS,
+            "created_at_min": f"{win.since}T00:00:00Z",
+            "created_at_max": f"{win.until}T23:59:59Z",
         }, key="orders")
         out_dir = Path(self.settings.asset_dir) / "shopify"
         assets: list[AssetRecord] = []
