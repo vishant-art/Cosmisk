@@ -42,18 +42,40 @@ class BrandRef(BaseModel):
 
 
 class UnifiedFact(BaseModel):
-    """One platform × entity × day row. The common core every platform maps onto;
-    platform-specific extras live in `platform_extra` so the contract stays stable."""
+    """One platform × entity × day row — a flat superset preserving CampaignDayFact titles.
+    Every numeric is a non-null float (the brain is not None-safe); metrics a platform does not
+    measure are 0.0 and disambiguated by the capability sets (see connectors.capabilities).
+    Only true residue (currency transport, platform-unique keys) lives in platform_extra."""
+    # identity
     platform: Platform
     account_id: str
     entity_id: str
     entity_name: str = ""
-    date: str                       # ISO YYYY-MM-DD
+    date: str                           # ISO YYYY-MM-DD
+    # delivery
     spend: float = 0.0
-    impressions: int = 0
-    clicks: int = 0
-    conversions: float = 0.0        # purchases / orders
+    impressions: float = 0.0            # float for parity with CampaignDayFact
+    reach: float = 0.0                  # Meta only
+    frequency: float = 0.0              # Meta only
+    # all-clicks (secondary)
+    clicks: float = 0.0                 # float for parity
+    ctr: float = 0.0
+    cpc: float = 0.0
+    # link-clicks (headline traffic)
+    link_clicks: float = 0.0
+    link_ctr: float = 0.0
+    cost_per_link_click: float = 0.0
+    # efficiency
+    cpm: float = 0.0
+    # funnel
+    add_to_cart: float = 0.0            # Meta pixel; Shopify/Google N/A
+    checkout: float = 0.0               # Meta pixel; Shopify/Google N/A
+    conversions: float = 0.0            # Meta purchases / Shopify orders / Google conversions
     revenue: float = 0.0
+    # derived (STORED — parity with CampaignDayFact)
+    roas: float = 0.0                   # revenue / spend (DERIVED, never a reported field)
+    cpa: float = 0.0                    # spend / conversions
+    # residue only
     platform_extra: dict = Field(default_factory=dict)
 
 
@@ -64,6 +86,8 @@ class Blended(BaseModel):
     revenue_shopify: float = 0.0        # Shopify revenue (the truth side)
     blended_roas: float = 0.0           # truth revenue / total ad spend
     revenue_gap_pct: float = 0.0        # (shopify - meta_pixel) / shopify * 100
+    currency: str = ""                  # currency the blended figures are expressed in
+    currency_mismatch: bool = False     # True if platforms disagreed and no FX was applied
 
 
 class ConnectorStatus(BaseModel):
@@ -74,6 +98,7 @@ class ConnectorStatus(BaseModel):
     fact_count: int = 0
     asset_count: int = 0
     elapsed_ms: int = 0
+    currency: str | None = None         # account currency this connector reported (funnel-surfaced)
 
 
 class AssetRecord(BaseModel):
@@ -94,7 +119,7 @@ class UnifiedSnapshot(BaseModel):
     brand_id: str
     since: str
     until: str
-    currency: str = "USD"
+    currency: str = ""                  # set by the funnel from the connectors' reported currencies
     facts: list[UnifiedFact] = Field(default_factory=list)
     blended: Blended = Field(default_factory=Blended)
     assets: list[AssetRecord] = Field(default_factory=list)
