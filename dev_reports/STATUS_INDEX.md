@@ -6,6 +6,8 @@
 **Legend:** ✅ IMPLEMENTED · ❌ INVALIDATED · ♻️ SUPERSEDED · 🔵 ACTIVE · 📖 REFERENCE (durable) · 📓 LOG (untouched).
 **Untouched by rule:** every `log.md`, `session_log.md`, and per-folder `INDEX.md` — chronological/navigation records, left as the raw history.
 
+**2026-06-17 volume reduction:** the `05_05/` and `19_05/` report bodies were **compressed in-place** — redundant restatement removed; each file's unique essence + every externally-cited section retained; status banners and successor pointers unchanged. Logs (`05_05/log.md`, `19_05/log.md`, `19_05/INDEX.md`) left untouched. Folder sizes `05_05` 360K→164K, `19_05` 204K→152K. Full originals remain in git history. Operation log + per-file table: [`17_06/dev_reports_volume_reduction.md`](./17_06/dev_reports_volume_reduction.md).
+
 ---
 
 ## Active & current (read these first)
