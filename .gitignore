@@ -102,6 +102,9 @@ temp_reports/
 
 #venv
 cos/
+.venv/
+# connector live-smoke asset downloads (regenerable)
+connector_assets/
 #servers??
 server/
 
