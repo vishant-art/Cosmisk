@@ -9,8 +9,9 @@ assets) and merge both branches to `main` as fast as is safe.
 
 ## 0. The single biggest unblock (do this first)
 
-**🟨 Answer OQ1** (applicability-flag mechanism). It blocks the connector redesign implementation,
-which blocks everything in Phase 0. Send the AI engineer the files in §4 today.
+**✅ DONE (2026-07-01) — OQ1 answered: Option 1 (static per-platform capability sets).** All four
+OQs resolved with the recommended option (see §2). The connector redesign is unblocked; Phase 0
+implementation can start.
 
 ---
 
@@ -26,17 +27,15 @@ which blocks everything in Phase 0. Send the AI engineer the files in §4 today.
 
 Full text + trade-offs in `DEVIATIONS_FROM_AI_ANALY.md` (§ Open Questions). Short form:
 
-- [ ] **OQ1 (BLOCKING)** — applicability flag: static per-platform capability sets *(suggested)* vs
-      per-fact `na_fields`. → gates redesign impl.
-- [ ] **OQ2** — `conversions` vs `purchases` field name *(suggested: keep `conversions` + 1-line
-      brain alias)*.
-- [ ] **OQ3** — derived fields stored vs computed-on-read *(suggested: store, parity with
-      CampaignDayFact)*.
-- [ ] **OQ4** — dedup `CampaignDayFact` now vs Phase-C *(suggested: defer)*.
+- [x] **OQ1 (BLOCKING)** — applicability flag: **Option 1, static per-platform capability sets**
+      (export as `connectors.META_METRICS`/`GOOGLE_METRICS`/`SHOPIFY_METRICS`). ✅
+- [x] **OQ2** — `conversions` vs `purchases`: **keep `conversions` + 1-line brain alias**. ✅
+- [x] **OQ3** — derived fields: **store** (parity with `CampaignDayFact`). ✅
+- [x] **OQ4** — dedup `CampaignDayFact`: **defer to Approach C**. ✅
 
 ## 3. Phase 0 — redesign + integrate + DEMO LOCALLY (no `main`, no prod risk)
 
-- [ ] **OQ1 answered** 🟨
+- [x] **OQ1 answered** 🟨 — Option 1 (static capability sets), 2026-07-01
 - [ ] **Implement Approach A redesign** 🟦 — `UnifiedFact` flat superset (preserve CampaignDayFact
       titles) + meta/shopify/google normalizers + flag (per OQ1) + tests. On `feat/data-connectors`.
       *(BLOCKED on OQ1.)*  Spec: `docs/superpowers/specs/2026-07-01-connector-fact-shape-redesign-design.md`.

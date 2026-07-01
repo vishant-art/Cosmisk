@@ -60,7 +60,19 @@ features. The two Meta paths run in parallel for now (duplication tracked in OPE
 > Standing convention: every open question is presented as two options with trade-offs and a
 > recommended choice with reasoning.
 
-### OQ1 — Applicability flag (how to mark "0.0 = not measured") — **DECIDE WITH AI ENGINEER**
+> **✅ ALL RESOLVED 2026-07-01 (maintainer + ai-layer owner) — all four took the recommended option:**
+> - **OQ1 → Option 1** (static per-platform capability sets). Implementation note from the ai-layer
+>   side: export them from the connectors package (`connectors.META_METRICS` / `GOOGLE_METRICS` /
+>   `SHOPIFY_METRICS`) so the brain imports the single source of truth instead of hardcoding a copy.
+> - **OQ2 → Option 1** (keep `conversions`; the ai-layer adds the one-line `purchases = fact.conversions`
+>   alias in its adapter — I own that seam).
+> - **OQ3 → Option 1** (store the derived fields; parity with `CampaignDayFact`, preserves
+>   platform-reported values).
+> - **OQ4 → Option 1** (defer the `CampaignDayFact` dedup to Approach C; tracked in OPEN_ISSUES).
+>
+> **`feat/data-connectors` is unblocked to implement the Approach A redesign.**
+
+### OQ1 — Applicability flag (how to mark "0.0 = not measured") — **✅ RESOLVED: Option 1**
 Because values must stay numeric (B above), `0.0` is ambiguous. Two ways to flag N/A:
 
 - **Option 1 — Static per-platform capability sets.** Module-level constants
@@ -77,7 +89,7 @@ Because values must stay numeric (B above), `0.0` is ambiguous. Two ways to flag
   *platform*, not the *row*, so encoding it per-row is redundant and bloats payloads; a single
   declarative map is cheaper and harder to get inconsistent. **Confirm before implementation.**
 
-### OQ2 — `conversions` vs `purchases` field name
+### OQ2 — `conversions` vs `purchases` field name — **✅ RESOLVED: Option 1**
 Your brain reads `purchases`; the connector core calls it `conversions`.
 
 - **Option 1 — Keep `conversions`; you add a one-line alias** (`purchases = fact.conversions`) in
@@ -91,7 +103,7 @@ Your brain reads `purchases`; the connector core calls it `conversions`.
 - **Suggestion: Option 1.** Reasoning: the unified contract should be semantically honest across
   platforms; the alias is trivial and lives at the seam where the mapping belongs.
 
-### OQ3 — Derived fields: stored vs computed-on-read
+### OQ3 — Derived fields: stored vs computed-on-read — **✅ RESOLVED: Option 1**
 `ctr, cpc, link_ctr, cost_per_link_click, cpm, roas, cpa` are derivable from raw fields.
 
 - **Option 1 — Store them** (as `CampaignDayFact` does).
@@ -106,7 +118,7 @@ Your brain reads `purchases`; the connector core calls it `conversions`.
   unchanged and preserves platform-reported metrics; the redesign's whole point is first-class
   titles, and derived metrics are titles the brain already reads.
 
-### OQ4 — Dedup `CampaignDayFact` (×2 identical: `apps/ai-layer` + `rnd/src`, +1 connector variant)
+### OQ4 — Dedup `CampaignDayFact` (×2 identical: `apps/ai-layer` + `rnd/src`, +1 connector variant) — **✅ RESOLVED: Option 1 (defer)**
 - **Option 1 — Defer** (log only; do it in Approach C when `UnifiedFact` could become canonical).
   - *Pro:* zero risk/scope-creep now; copies are byte-identical so nothing is broken. *Con:* a
     future Meta-field change touches multiple files.
