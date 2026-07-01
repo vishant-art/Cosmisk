@@ -43,31 +43,33 @@ def _action_value(arr, wanted) -> float:
 def row_to_fact(raw: dict, account_id: str) -> UnifiedFact:
     spend = _f(raw.get("spend"))
     impressions = _f(raw.get("impressions"))
+    reach = _f(raw.get("reach"))
     clicks = _f(raw.get("clicks"))
     link_clicks = _f(raw.get("inline_link_clicks")) \
         or _action_value(raw.get("actions"), LINK_CLICK_ACTION_TYPES)
     purchases = _action_value(raw.get("actions"), PURCHASE_ACTION_TYPES)
     revenue = _action_value(raw.get("action_values"), PURCHASE_ACTION_TYPES)
+    # Prefer platform-reported derived metrics; fall back to derivation (never None).
+    ctr = _f(raw.get("ctr")) or (clicks / impressions * 100 if impressions else 0.0)
+    cpc = _f(raw.get("cpc")) or (spend / clicks if clicks else 0.0)
+    link_ctr = _f(raw.get("inline_link_click_ctr")) or (link_clicks / impressions * 100 if impressions else 0.0)
+    cost_per_link_click = _f(raw.get("cost_per_inline_link_click")) or (spend / link_clicks if link_clicks else 0.0)
+    cpm = _f(raw.get("cpm")) or (spend / impressions * 1000 if impressions else 0.0)
+    frequency = _f(raw.get("frequency")) or (impressions / reach if reach else 0.0)
     return UnifiedFact(
         platform="meta",
         account_id=account_id,
         entity_id=str(raw.get("campaign_id", "")),
         entity_name=raw.get("campaign_name", raw.get("campaign_id", "unknown")),
         date=raw.get("date_start", ""),
-        spend=spend,
-        impressions=int(impressions),
-        clicks=int(clicks),
-        conversions=purchases,
-        revenue=revenue,
-        platform_extra={
-            "reach": _f(raw.get("reach")),
-            "frequency": _f(raw.get("frequency")),
-            "link_clicks": link_clicks,
-            "cpm": _f(raw.get("cpm")),
-            "add_to_cart": _action_value(raw.get("actions"), ATC_ACTION_TYPES),
-            "checkout": _action_value(raw.get("actions"), CHECKOUT_ACTION_TYPES),
-            "roas": revenue / spend if spend else 0.0,      # DERIVED, never the reported field
-            "cpa": spend / purchases if purchases else 0.0,
-            "currency": raw.get("account_currency"),
-        },
+        spend=spend, impressions=impressions, reach=reach, frequency=frequency,
+        clicks=clicks, ctr=ctr, cpc=cpc,
+        link_clicks=link_clicks, link_ctr=link_ctr, cost_per_link_click=cost_per_link_click,
+        cpm=cpm,
+        add_to_cart=_action_value(raw.get("actions"), ATC_ACTION_TYPES),
+        checkout=_action_value(raw.get("actions"), CHECKOUT_ACTION_TYPES),
+        conversions=purchases, revenue=revenue,
+        roas=(revenue / spend if spend else 0.0),        # DERIVED, never the reported field
+        cpa=(spend / purchases if purchases else 0.0),
+        platform_extra={"currency": raw.get("account_currency")},
     )

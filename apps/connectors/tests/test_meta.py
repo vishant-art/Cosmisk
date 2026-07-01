@@ -23,8 +23,37 @@ def test_row_to_fact_uses_pixel_purchase_and_derived_roas():
     f = row_to_fact(raw, "act_123")
     assert f.platform == "meta" and f.entity_id == "c1"
     assert f.spend == 100 and f.conversions == 5 and f.revenue == 400
-    assert f.platform_extra["roas"] == 4.0          # 400/100 derived
-    assert f.platform_extra["link_clicks"] == 40
+    assert f.roas == 4.0            # 400/100 derived, now first-class
+    assert f.link_clicks == 40      # inline link clicks, now first-class
+    assert f.platform_extra == {} or set(f.platform_extra) <= {"currency"}  # residue only
+
+
+def test_row_to_fact_populates_all_metric_fields_and_derives_missing():
+    raw = {
+        "campaign_id": "c1", "campaign_name": "Promo", "date_start": "2026-06-01",
+        "account_currency": "INR",
+        "spend": "100", "impressions": "1000", "reach": "800", "clicks": "50",
+        "inline_link_clicks": "40",
+        # ctr/cpc/link_ctr/cost_per_link_click/cpm/frequency omitted -> derived
+        "actions": [{"action_type": "offsite_conversion.fb_pixel_purchase", "value": "5"},
+                    {"action_type": "add_to_cart", "value": "20"},
+                    {"action_type": "initiate_checkout", "value": "12"}],
+        "action_values": [{"action_type": "offsite_conversion.fb_pixel_purchase", "value": "400"}],
+    }
+    f = row_to_fact(raw, "act_123")
+    assert isinstance(f.impressions, float) and f.impressions == 1000.0
+    assert isinstance(f.clicks, float) and f.clicks == 50.0
+    assert f.reach == 800.0
+    assert round(f.ctr, 2) == 5.0                 # 50/1000*100
+    assert round(f.cpc, 2) == 2.0                 # 100/50
+    assert round(f.link_ctr, 2) == 4.0            # 40/1000*100
+    assert round(f.cost_per_link_click, 2) == 2.5  # 100/40
+    assert round(f.cpm, 2) == 100.0               # 100/1000*1000
+    assert round(f.frequency, 2) == 1.25          # 1000/800
+    assert f.add_to_cart == 20.0 and f.checkout == 12.0
+    assert f.conversions == 5.0 and f.revenue == 400.0
+    assert round(f.roas, 2) == 4.0 and round(f.cpa, 2) == 20.0
+    assert f.platform_extra == {"currency": "INR"}
 
 
 def test_fetch_facts_paginates_and_normalizes():
