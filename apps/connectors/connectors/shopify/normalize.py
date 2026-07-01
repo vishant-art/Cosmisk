@@ -7,7 +7,7 @@ from __future__ import annotations
 from ..contract import UnifiedFact
 
 # Minimal order fields — no customer PII.
-ORDER_FIELDS = "id,created_at,total_price,current_total_price,financial_status"
+ORDER_FIELDS = "id,created_at,total_price,current_total_price,financial_status,currency"
 ORDER_LINE_FIELDS = "id,created_at,line_items"
 
 
@@ -20,10 +20,13 @@ def _f(v, default: float = 0.0) -> float:
 
 def orders_to_daily_facts(orders, domain: str) -> list[UnifiedFact]:
     by_day: dict[str, list] = {}     # date -> [revenue, count]
+    currency = None                  # shop currency — first order that carries it
     for o in orders:
         d = (o.get("created_at") or "")[:10]
         if not d:
             continue
+        if currency is None:
+            currency = o.get("currency")
         rev = _f(o.get("current_total_price") or o.get("total_price"))
         agg = by_day.setdefault(d, [0.0, 0])
         agg[0] += rev
@@ -31,7 +34,7 @@ def orders_to_daily_facts(orders, domain: str) -> list[UnifiedFact]:
     return [
         UnifiedFact(platform="shopify", account_id=domain, entity_id="orders",
                     entity_name="Shopify orders", date=d, revenue=rev, conversions=cnt,
-                    platform_extra={"orders": cnt})
+                    platform_extra={"orders": cnt, "currency": currency})
         for d, (rev, cnt) in sorted(by_day.items())
     ]
 

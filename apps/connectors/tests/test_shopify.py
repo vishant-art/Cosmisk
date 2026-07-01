@@ -23,6 +23,22 @@ def test_orders_to_daily_facts_groups_revenue_by_day():
     assert all(f.platform == "shopify" and f.spend == 0 for f in facts)
 
 
+def test_orders_to_daily_facts_captures_currency_in_platform_extra():
+    orders = [
+        {"created_at": "2026-06-01T10:00:00Z", "current_total_price": "100", "currency": "INR"},
+        {"created_at": "2026-06-01T12:00:00Z", "total_price": "50", "currency": "INR"},
+    ]
+    facts = orders_to_daily_facts(orders, "acme.myshopify.com")
+    assert facts[0].platform_extra["currency"] == "INR"
+    assert facts[0].platform_extra["orders"] == 2
+    assert facts[0].revenue == 150 and facts[0].conversions == 2
+
+
+def test_order_fields_requests_currency():
+    from connectors.shopify.normalize import ORDER_FIELDS
+    assert "currency" in ORDER_FIELDS
+
+
 def test_aggregate_products_ranks_by_revenue():
     orders = [
         {"line_items": [{"product_id": 1, "title": "Mug", "price": "10", "quantity": "2"},
