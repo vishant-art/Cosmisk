@@ -12,7 +12,11 @@ from ..contract import AssetRecord, ConnectorStatus, DateWindow, UnifiedFact
 from . import normalize as nz
 
 _NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
-ASSETS_WINDOW_DAYS = 30   # bound the winning-products scan so get_assets can't hang (#35)
+# Bound the winning-products scan so get_assets can't hang (#35). The window alone is not enough
+# for high-volume stores (heavy line_items payloads); the page cap is a hard latency bound —
+# it samples the most-recent-window orders, sufficient to rank top products for a demo.
+ASSETS_WINDOW_DAYS = 30
+ASSETS_MAX_PAGES = 5      # <= 1250 orders scanned regardless of store volume
 
 
 class ShopifyConnector:
@@ -61,7 +65,7 @@ class ShopifyConnector:
             "status": "any", "limit": 250, "fields": nz.ORDER_LINE_FIELDS,
             "created_at_min": f"{win.since}T00:00:00Z",
             "created_at_max": f"{win.until}T23:59:59Z",
-        }, key="orders")
+        }, key="orders", max_pages=ASSETS_MAX_PAGES)
         out_dir = Path(self.settings.asset_dir) / "shopify"
         assets: list[AssetRecord] = []
         for i, (pid, title, rev, units) in enumerate(nz.aggregate_products(orders)[:top_n], 1):

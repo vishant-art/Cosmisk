@@ -72,6 +72,20 @@ def test_fetch_assets_bounds_the_order_scan_by_window():
     assert "created_at_min" in params and "created_at_max" in params  # scan is date-bounded (#35)
 
 
+def test_fetch_assets_caps_pages_to_avoid_timeout():
+    # A perpetual "next" link would paginate forever on a high-volume store; the cap stops it.
+    from connectors.shopify.client import ASSETS_MAX_PAGES
+    page = {"orders": [{"line_items": [{"product_id": 1, "title": "X", "price": "1", "quantity": "1"}]}]}
+    http = FakeHttp(
+        json_map={"orders": page},
+        headers_map={"orders": {"link": '<https://acme.myshopify.com/admin/api/2024-10/orders.json?page_info=NEXT>; rel="next"'}},
+    )
+    conn = ShopifyConnector(CREDS, Settings(), http=http)
+    asyncio.run(conn.fetch_assets(None, top_n=1))
+    order_calls = [c for c in http.calls if "orders" in c[1]]
+    assert len(order_calls) == ASSETS_MAX_PAGES   # hard-bounded, not unbounded
+
+
 def test_fetch_assets_downloads_top_product_image():
     orders = {"orders": [{"line_items": [{"product_id": 7, "title": "Hat", "price": "25", "quantity": "4"}]}]}
     product = {"product": {"id": 7, "title": "Hat", "image": {"src": "https://cdn.shopify.com/hat.png"}}}
