@@ -9,6 +9,13 @@ Google payload, and a failing platform never raises — it shows up in `snapshot
 """
 from __future__ import annotations
 
+from .capabilities import (
+    CAPABILITIES,
+    GOOGLE_METRICS,
+    META_METRICS,
+    SHOPIFY_METRICS,
+    measures,
+)
 from .contract import (
     AssetRecord,
     Blended,
@@ -23,6 +30,7 @@ __all__ = [
     "get_snapshot", "get_assets",
     "BrandRef", "DateWindow", "UnifiedSnapshot", "UnifiedFact",
     "AssetRecord", "Blended", "ConnectorStatus",
+    "META_METRICS", "GOOGLE_METRICS", "SHOPIFY_METRICS", "CAPABILITIES", "measures",
 ]
 
 
