@@ -21,6 +21,21 @@ def test_google_maps_rows_when_token_works():
     assert facts[0].revenue == 250 and facts[0].conversions == 3
 
 
+def test_google_rows_map_onto_superset_with_derived_and_currency():
+    rows = [{"campaign_id": 7, "campaign_name": "Search", "date": "2026-06-01",
+             "currency_code": "USD", "cost_micros": 10_000_000, "impressions": 1000,
+             "clicks": 50, "conversions": 5, "conversions_value": 250}]
+    from connectors.google.normalize import rows_to_facts
+    f = rows_to_facts(rows, "123")[0]
+    assert f.spend == 10.0 and f.impressions == 1000.0 and f.clicks == 50.0
+    assert round(f.ctr, 2) == 5.0 and round(f.cpc, 2) == 0.2 and round(f.cpm, 2) == 10.0
+    assert f.link_clicks == 50.0 and round(f.link_ctr, 2) == 5.0   # link ≈ all clicks for Google
+    assert f.conversions == 5.0 and f.revenue == 250.0
+    assert round(f.roas, 2) == 25.0 and round(f.cpa, 2) == 2.0
+    assert f.reach == 0.0 and f.frequency == 0.0 and f.add_to_cart == 0.0  # N/A stays 0.0
+    assert f.platform_extra["currency"] == "USD"
+
+
 def test_no_google_creds_means_skipped_not_failed(monkeypatch):
     for v in ("GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET",
               "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_CUSTOMER_ID"):

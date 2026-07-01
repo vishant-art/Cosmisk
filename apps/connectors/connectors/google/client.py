@@ -50,6 +50,7 @@ class GoogleConnector:
                     "campaign_id": r.campaign.id,
                     "campaign_name": r.campaign.name,
                     "date": r.segments.date,
+                    "currency_code": r.customer.currency_code,
                     "cost_micros": r.metrics.cost_micros,
                     "impressions": r.metrics.impressions,
                     "clicks": r.metrics.clicks,
