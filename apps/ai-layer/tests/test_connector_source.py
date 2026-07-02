@@ -256,3 +256,41 @@ def test_cache_caps_entries_evicting_oldest(monkeypatch):
     cs.get_cached_snapshot("b")   # still cached
     cs.get_cached_snapshot("a")   # was evicted -> refetch
     assert calls == ["a", "b", "c", "a"]
+
+
+def test_single_flight_concurrent_requests_share_one_fetch(monkeypatch):
+    import threading as th
+    calls = []
+    gate = th.Event()
+
+    def slow_fetch(brand, window, platforms=None):
+        calls.append(1)
+        gate.wait(timeout=5)          # hold the fetch open while callers pile up
+        return snap([fact()])
+
+    monkeypatch.setattr(cs, "get_snapshot", slow_fetch)
+    results = []
+
+    def worker():
+        results.append(cs.get_cached_snapshot("acme"))
+
+    threads = [th.Thread(target=worker) for _ in range(5)]
+    for t in threads:
+        t.start()
+    import time as _t
+    _t.sleep(0.2)                     # let every thread reach the key lock
+    gate.set()
+    for t in threads:
+        t.join(timeout=10)
+    assert len(calls) == 1            # exactly one platform sweep
+    assert len(results) == 5
+    assert all(r[0] is results[0][0] for r in results)   # all share the snapshot
+
+
+def test_fetch_connector_dataset_shares_the_cache(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    cs.get_cached_snapshot("act_9", "last_30d")           # warm the entry
+    ds = cs.fetch_connector_dataset("act_9", "last_30d")  # must reuse it
+    assert len(calls) == 1
+    assert ds.source == "connectors" and ds.account_id == "act_9"

@@ -63,15 +63,10 @@ _PRESET_DAYS = {"last_7d": 7, "last_30d": 30, "last_90d": 90}
 
 def fetch_connector_dataset(account_id: str, preset: str = "last_30d",
                             platforms: list[str] | None = None) -> mt.Dataset:
-    """Pull a cross-platform snapshot and adapt it. First call can take up to
-    ~120s on large accounts (CONTRACT.md section 6) -- ingest-grade, not
-    interactive-grade; chat reuses the session context cache across turns."""
-    window = DateWindow.last_n_days(_PRESET_DAYS.get(preset, 30))
-    brand = BrandRef(
-        brand_id=account_id,
-        meta_account_id=account_id if account_id.startswith("act_") else None,
-    )
-    return snapshot_to_dataset(get_snapshot(brand, window, platforms), account_id)
+    """Adapt the (cached) cross-platform snapshot. Repeat calls within
+    CONNECTOR_CACHE_TTL_S share one platform sweep -- see get_cached_snapshot."""
+    snapshot, _ = get_cached_snapshot(account_id, preset, platforms)
+    return snapshot_to_dataset(snapshot, account_id)
 
 
 # ---- snapshot cache (#28) ---------------------------------------------------
