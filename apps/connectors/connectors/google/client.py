@@ -40,11 +40,11 @@ class GoogleConnector:
             cfg["login_customer_id"] = self.creds.login_customer_id
         return GoogleAdsClient.load_from_dict(cfg)
 
-    def _search_blocking(self, query: str) -> list[dict]:
+    def _search_blocking(self, query: str, customer_id: str) -> list[dict]:
         client = self._build_client()
         svc = client.get_service("GoogleAdsService")
         rows: list[dict] = []
-        for batch in svc.search_stream(customer_id=self.creds.customer_id, query=query):
+        for batch in svc.search_stream(customer_id=customer_id, query=query):
             for r in batch.results:
                 rows.append({
                     "campaign_id": r.campaign.id,
@@ -59,12 +59,14 @@ class GoogleConnector:
                 })
         return rows
 
-    async def _search(self, query: str) -> list[dict]:
+    async def _search(self, query: str, customer_id: str | None = None) -> list[dict]:
+        # BrandRef.google_customer_id retargets the query; None → single-tenant creds default.
+        cid = customer_id or self.creds.customer_id
         if self._searcher is not None:
-            res = self._searcher(self.creds.customer_id, query)
+            res = self._searcher(cid, query)
             return await res if asyncio.iscoroutine(res) else res
         # Real gRPC client is sync/blocking → run off the event loop.
-        return await asyncio.to_thread(self._search_blocking, query)
+        return await asyncio.to_thread(self._search_blocking, query, cid)
 
     async def health(self) -> ConnectorStatus:
         try:
@@ -74,9 +76,10 @@ class GoogleConnector:
             return ConnectorStatus(platform=self.platform, state="failed", detail=str(e)[:200])
 
     async def fetch_facts(self, account_id: str | None, window: DateWindow) -> list[UnifiedFact]:
+        cid = account_id or self.creds.customer_id
         query = nz.GAQL_CAMPAIGN_DAILY.format(since=window.since, until=window.until)
-        rows = await self._search(query)
-        return nz.rows_to_facts(rows, account_id or self.creds.customer_id)
+        rows = await self._search(query, cid)
+        return nz.rows_to_facts(rows, cid)
 
     async def fetch_assets(self, account_id: str | None, top_n: int) -> list[AssetRecord]:
         # Google image-asset retrieval (AssetService) is a documented follow-up; many Google

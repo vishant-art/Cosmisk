@@ -36,6 +36,22 @@ def test_google_rows_map_onto_superset_with_derived_and_currency():
     assert f.platform_extra["currency"] == "USD"
 
 
+def test_fetch_facts_queries_the_brand_customer_id_when_given():
+    # BrandRef.google_customer_id must retarget the QUERY itself — not just relabel facts.
+    # One OAuth user commonly accesses many client accounts (multi-brand agency mode).
+    seen = {}
+
+    def capture(cid, q):
+        seen["cid"] = cid
+        return []
+
+    conn = GoogleConnector(CREDS, Settings(), searcher=capture)
+    asyncio.run(conn.fetch_facts("999", WINDOW))
+    assert seen["cid"] == "999"                     # queried, not merely labeled
+    asyncio.run(conn.fetch_facts(None, WINDOW))
+    assert seen["cid"] == "123"                     # falls back to creds (single-tenant)
+
+
 def test_no_google_creds_means_skipped_not_failed(monkeypatch):
     for v in ("GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET",
               "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_CUSTOMER_ID"):
