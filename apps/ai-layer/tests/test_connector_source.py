@@ -88,3 +88,31 @@ def test_all_platforms_down_yields_empty_dataset_not_an_error():
     ds = cs.snapshot_to_dataset(snap([], ok=()), "acme")
     assert len(ds) == 0
     assert ds.account_name == "acme [connectors: none]"
+
+
+# ---- Task 3: fetch_connector_dataset ----
+
+def test_fetch_maps_preset_to_window_and_act_ids_to_meta_account(monkeypatch):
+    seen = {}
+
+    def fake_get_snapshot(brand, window, platforms=None):
+        seen.update(brand=brand, window=window, platforms=platforms)
+        return snap([fact()])
+
+    monkeypatch.setattr(cs, "get_snapshot", fake_get_snapshot)
+
+    ds = cs.fetch_connector_dataset("act_123", preset="last_7d")
+    assert len(ds) == 1 and ds.account_id == "act_123"
+    assert seen["brand"].brand_id == "act_123"
+    assert seen["brand"].meta_account_id == "act_123"      # act_ rule
+    assert seen["platforms"] is None
+    from datetime import date
+    w = seen["window"]
+    span = (date.fromisoformat(w.until) - date.fromisoformat(w.since)).days
+    assert span == 6                                       # last_7d inclusive window
+
+    cs.fetch_connector_dataset("pratapsons", preset="nonsense")
+    assert seen["brand"].meta_account_id is None           # brand handle -> env fallback
+    w = seen["window"]
+    span = (date.fromisoformat(w.until) - date.fromisoformat(w.since)).days
+    assert span == 29                                      # unknown preset -> 30d
