@@ -64,3 +64,27 @@ def test_shopify_facts_are_excluded_from_the_dataset():
              ok=("meta", "shopify")),
         "acme")
     assert len(ds.facts) == 1 and ds.facts[0].campaign_id == "meta:c1"
+
+
+# ---- Task 2: dataset metadata ----
+
+def test_metadata_carries_window_currency_and_platform_status():
+    ds = cs.snapshot_to_dataset(snap([fact()], ok=("meta", "google")), "acme")
+    assert ds.account_id == "acme"
+    assert ds.account_name == "acme [connectors: meta+google]"
+    assert ds.currency == "INR"
+    assert (ds.since, ds.until) == ("2026-06-01", "2026-06-30")
+    assert ds.level == "campaign" and ds.source == "connectors"
+
+
+def test_currency_mismatch_is_labeled_never_silent():
+    ds = cs.snapshot_to_dataset(
+        snap([fact()], currency="MIXED", mismatch=True), "acme")
+    assert ds.currency == "MIXED"
+    assert ds.account_name.endswith("; currency MIXED")
+
+
+def test_all_platforms_down_yields_empty_dataset_not_an_error():
+    ds = cs.snapshot_to_dataset(snap([], ok=()), "acme")
+    assert len(ds) == 0
+    assert ds.account_name == "acme [connectors: none]"

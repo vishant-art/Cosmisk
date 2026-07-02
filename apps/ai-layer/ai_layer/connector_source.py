@@ -40,10 +40,14 @@ def _to_fact(f: UnifiedFact) -> mt.CampaignDayFact:
 
 
 def snapshot_to_dataset(snapshot: UnifiedSnapshot, account_id: str) -> mt.Dataset:
-    """Pure mapping -- no I/O. Metadata rules are covered in Task 2."""
+    """Pure mapping -- no I/O. Platform status and currency caveats ride
+    account_name (the one metadata string chat puts in front of the LLM)."""
     facts = tuple(_to_fact(f) for f in snapshot.facts
                   if f.platform not in EXCLUDED_PLATFORMS)
-    return mt.Dataset(account_id=account_id, account_name=account_id,
+    name = f"{account_id} [connectors: {'+'.join(snapshot.ok_platforms) or 'none'}]"
+    if snapshot.blended.currency_mismatch:
+        name += "; currency MIXED"
+    return mt.Dataset(account_id=account_id, account_name=name,
                       currency=snapshot.currency, since=snapshot.since,
                       until=snapshot.until, level="campaign",
                       source="connectors", facts=facts)
