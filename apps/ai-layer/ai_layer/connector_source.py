@@ -14,6 +14,11 @@ is only ever lazy-imported (api.py returns 503 when the package is absent).
 """
 from __future__ import annotations
 
+import os
+import threading
+import time
+from datetime import datetime, timezone
+
 from connectors import BrandRef, DateWindow, get_snapshot
 from connectors.contract import UnifiedFact, UnifiedSnapshot
 
@@ -67,3 +72,69 @@ def fetch_connector_dataset(account_id: str, preset: str = "last_30d",
         meta_account_id=account_id if account_id.startswith("act_") else None,
     )
     return snapshot_to_dataset(get_snapshot(brand, window, platforms), account_id)
+
+
+# ---- snapshot cache (#28) ---------------------------------------------------
+# Shared by /insights?source=connectors, /chat, and /blended. TTL sized to the
+# platforms' own reporting latency (Meta finalizes over ~24h, Google lags ~3h),
+# so an hour-old snapshot is fresher than the sources guarantee. Single-flight:
+# concurrent callers for one key share a single platform sweep.
+#
+# Key is (account_id, preset, platforms). Single-tenant .env credentials make
+# account_id sufficient today; when per-brand credentials (I10) land, the
+# credential identity MUST join this key.
+
+_CACHE_MAX = 100
+_cache: dict[tuple, tuple[float, UnifiedSnapshot, str]] = {}   # key -> (at, snap, fetched_at)
+_cache_guard = threading.Lock()
+_key_locks: dict[tuple, threading.Lock] = {}
+
+
+def _now_s() -> float:
+    return time.time()
+
+
+def _ttl_s() -> float:
+    return float(os.getenv("CONNECTOR_CACHE_TTL_S", "3600"))
+
+
+def _cache_clear() -> None:
+    with _cache_guard:
+        _cache.clear()
+        _key_locks.clear()
+
+
+def _fresh(entry: tuple | None, refresh: bool) -> bool:
+    return bool(entry) and not refresh and (_now_s() - entry[0]) < _ttl_s()
+
+
+def get_cached_snapshot(account_id: str, preset: str = "last_30d",
+                        platforms: list[str] | None = None,
+                        refresh: bool = False) -> tuple[UnifiedSnapshot, str]:
+    """Cached cross-platform snapshot -> (snapshot, fetched_at ISO). One fetch
+    per key per TTL window; concurrent requests for the same key block on the
+    fetching thread and share its result (bounded by the connector deadline)."""
+    key = (account_id, preset, tuple(platforms or ()))
+    with _cache_guard:
+        entry = _cache.get(key)
+        if _fresh(entry, refresh):
+            return entry[1], entry[2]
+        lock = _key_locks.setdefault(key, threading.Lock())
+    with lock:                                   # single-flight per key
+        with _cache_guard:                       # double-check after the wait
+            entry = _cache.get(key)
+            if _fresh(entry, refresh):
+                return entry[1], entry[2]
+        window = DateWindow.last_n_days(_PRESET_DAYS.get(preset, 30))
+        brand = BrandRef(
+            brand_id=account_id,
+            meta_account_id=account_id if account_id.startswith("act_") else None,
+        )
+        snapshot = get_snapshot(brand, window, platforms)
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        with _cache_guard:
+            if len(_cache) >= _CACHE_MAX:
+                oldest = min(_cache, key=lambda k: _cache[k][0])
+                _cache.pop(oldest, None)
+            _cache[key] = (_now_s(), snapshot, fetched_at)
+        return snapshot, fetched_at

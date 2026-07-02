@@ -184,3 +184,75 @@ def test_default_source_untouched(client, monkeypatch, tmp_path):
     monkeypatch.setattr(config, "META_ACCESS_TOKEN", None)
     r = client.get("/insights/act_none")
     assert r.status_code == 400
+
+
+# ---- Task: snapshot cache (#28) ----
+
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    # Cache is module-level; isolate every test in this file (incl. the earlier
+    # #27 fetch tests, which now populate it via fetch_connector_dataset).
+    cs._cache_clear()
+    yield
+    cs._cache_clear()
+
+
+def _counting_fetcher(calls):
+    def fake(brand, window, platforms=None):
+        calls.append(brand.brand_id)
+        return snap([fact()])
+    return fake
+
+
+def test_cache_miss_fetches_then_hit_reuses(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    s1, at1 = cs.get_cached_snapshot("acme")
+    s2, at2 = cs.get_cached_snapshot("acme")
+    assert calls == ["acme"]                 # one fetch, second call served from cache
+    assert s1 is s2 and at1 == at2
+    assert isinstance(at1, str) and "T" in at1   # ISO timestamp present
+
+
+def test_cache_expires_after_ttl(monkeypatch):
+    monkeypatch.delenv("CONNECTOR_CACHE_TTL_S", raising=False)   # default 3600
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    t = [1000.0]
+    monkeypatch.setattr(cs, "_now_s", lambda: t[0])
+    cs.get_cached_snapshot("acme")
+    t[0] += 3599.0
+    cs.get_cached_snapshot("acme")           # still fresh
+    t[0] += 2.0
+    cs.get_cached_snapshot("acme")           # expired -> refetch
+    assert len(calls) == 2
+
+
+def test_refresh_bypasses_fresh_entry(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    cs.get_cached_snapshot("acme")
+    cs.get_cached_snapshot("acme", refresh=True)
+    assert len(calls) == 2
+
+
+def test_cache_keys_isolate_customers_and_presets(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    cs.get_cached_snapshot("acme")
+    cs.get_cached_snapshot("globex")                     # other customer -> own entry
+    cs.get_cached_snapshot("acme", preset="last_7d")     # other window -> own entry
+    cs.get_cached_snapshot("acme")                       # original still cached
+    assert calls == ["acme", "globex", "acme"]
+
+
+def test_cache_caps_entries_evicting_oldest(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    monkeypatch.setattr(cs, "_CACHE_MAX", 2)
+    cs.get_cached_snapshot("a")
+    cs.get_cached_snapshot("b")
+    cs.get_cached_snapshot("c")   # cap hit -> evicts oldest ("a")
+    cs.get_cached_snapshot("b")   # still cached
+    cs.get_cached_snapshot("a")   # was evicted -> refetch
+    assert calls == ["a", "b", "c", "a"]
