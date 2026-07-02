@@ -52,3 +52,6 @@ contract, deploy). 24 offline tests, $0. Plan: `.claude/plans/cosmic-humming-wav
   (only Shopify waits 1s).
 - `meta_live`/`meta_transform` are **duplicated** in `rnd/src` and `apps/ai-layer` → de-dup
   first, regardless of option.
+
+> **2026-07-02:** the binding AI-layer interface now lives at `apps/connectors/CONTRACT.md`
+> (UnifiedFact superset + capability sets + currency rules + storage seam; live-validated).

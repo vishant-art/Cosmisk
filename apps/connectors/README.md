@@ -47,6 +47,9 @@ Pass `platforms=["meta","shopify"]` to restrict. Per-brand account ids can be se
 
 ## 4. The contract (what you receive — and the only thing to import)
 
+> **Binding, field-by-field version with adapter mapping, currency rules, capability sets,
+> and the storage seam: [`CONTRACT.md`](CONTRACT.md).** This section is the short form.
+
 ```
 UnifiedFact     platform, account_id, entity_id, entity_name, date,
                 spend, impressions, clicks, conversions, revenue, platform_extra: dict
@@ -78,7 +81,7 @@ blended math) · `meta|shopify|google/` (per-platform `client.py` + `normalize.p
 injectable seam, so the suite runs at $0:
 
 ```bash
-cd apps/connectors && python -m pytest tests       # 24 tests, no network
+cd apps/connectors && python -m pytest tests       # 47 tests, no network
 ```
 
 ## 6. Deploy (Railway)
