@@ -116,3 +116,71 @@ def test_fetch_maps_preset_to_window_and_act_ids_to_meta_account(monkeypatch):
     w = seen["window"]
     span = (date.fromisoformat(w.until) - date.fromisoformat(w.since)).days
     assert span == 29                                      # unknown preset -> 30d
+
+
+# ---- Task 4: the api seam ----
+import sys
+
+import pytest
+from fastapi.testclient import TestClient
+
+from ai_layer import api
+
+
+@pytest.fixture
+def client(monkeypatch):
+    # This repo's local .env sets AI_LAYER_API_KEY; disable auth for these
+    # unauthenticated-client tests (same pattern as tests/test_api.py).
+    from ai_layer import config
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    return TestClient(api.app)
+
+
+def _dataset_for_api():
+    return cs.snapshot_to_dataset(
+        snap([fact(spend=100.0, conversions=10.0, revenue=800.0, roas=8.0)]),
+        "acme")
+
+
+def test_insights_source_connectors_end_to_end(client, monkeypatch):
+    monkeypatch.setattr(cs, "fetch_connector_dataset",
+                        lambda account_id, preset="last_30d", platforms=None:
+                        _dataset_for_api())
+    r = client.get("/insights/acme?source=connectors")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "connectors"
+    assert body["account_name"] == "acme [connectors: meta]"
+    assert body["totals"]["spend"] == 100.0 and body["totals"]["purchases"] == 10
+
+
+def test_empty_connector_snapshot_hits_existing_404(client, monkeypatch):
+    monkeypatch.setattr(cs, "fetch_connector_dataset",
+                        lambda account_id, preset="last_30d", platforms=None:
+                        cs.snapshot_to_dataset(snap([], ok=()), "acme"))
+    assert client.get("/insights/acme?source=connectors").status_code == 404
+
+
+def test_missing_connectors_package_yields_503_with_hint(client, monkeypatch):
+    # sys.modules[name] = None makes `from ai_layer import connector_source`
+    # raise ImportError -- simulates the package being absent in the image. Also
+    # drop the cached attribute on the `ai_layer` package: this test module already
+    # did `from ai_layer import connector_source as cs` at import time, so the
+    # submodule is cached as a package attribute and the fromlist import would
+    # resolve via that attribute, bypassing the sys.modules sentinel.
+    import ai_layer
+    monkeypatch.delattr(ai_layer, "connector_source", raising=False)
+    monkeypatch.setitem(sys.modules, "ai_layer.connector_source", None)
+    r = client.get("/insights/acme?source=connectors")
+    assert r.status_code == 503
+    assert "connectors package" in r.json()["detail"]
+
+
+def test_default_source_untouched(client, monkeypatch, tmp_path):
+    # No connectors involvement on the default path: empty store falls through to
+    # the live branch, which 400s without a token. Hermetic: temp store + no env token.
+    from ai_layer import config
+    monkeypatch.setattr(config, "STORE_DB_PATH", tmp_path / "store.sqlite")
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", None)
+    r = client.get("/insights/act_none")
+    assert r.status_code == 400

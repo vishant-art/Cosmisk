@@ -74,9 +74,26 @@ def _cards(statements) -> list[AiInsight]:
             for tag, text in statements]
 
 
+def _connector_dataset(account_id: str, preset: str) -> mt.Dataset:
+    """Lazy import: the cosmisk-connectors package is optional until the image
+    bundles it (build-context change); absent -> a clean 503, never an ImportError
+    at module load."""
+    try:
+        from ai_layer import connector_source
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="connectors package not installed — pip install -e apps/connectors",
+        ) from exc
+    return connector_source.fetch_connector_dataset(account_id, preset)
+
+
 def _dataset(account_id: str, source: str, token: str | None, preset: str) -> mt.Dataset:
     """source='store' reads the accumulated store (falls back to live if empty);
-    source='live' always fetches fresh."""
+    source='live' always fetches fresh; source='connectors' adapts the
+    cross-platform connector snapshot (opt-in, no store writes)."""
+    if source == "connectors":
+        return _connector_dataset(account_id, preset)
     if source == "store":
         ds = store.load_dataset(account_id)
         if len(ds) > 0:
