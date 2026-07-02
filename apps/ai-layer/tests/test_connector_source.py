@@ -294,3 +294,77 @@ def test_fetch_connector_dataset_shares_the_cache(monkeypatch):
     ds = cs.fetch_connector_dataset("act_9", "last_30d")  # must reuse it
     assert len(calls) == 1
     assert ds.source == "connectors" and ds.account_id == "act_9"
+
+
+# ---- Task: /blended route (#28) ----
+
+def _rich_snapshot(mismatch=False):
+    cur = "MIXED" if mismatch else "INR"
+    return UnifiedSnapshot(
+        brand_id="acme", since="2026-06-03", until="2026-07-02", currency=cur,
+        facts=[],
+        blended=Blended(spend=1000.0, revenue_meta_pixel=2500.0,
+                        revenue_shopify=3000.0, blended_roas=3.0,
+                        revenue_gap_pct=16.67, currency=cur,
+                        currency_mismatch=mismatch),
+        statuses=[ConnectorStatus(platform="meta", state="ok", fact_count=42,
+                                  elapsed_ms=77000, currency="INR"),
+                  ConnectorStatus(platform="shopify", state="ok", fact_count=30,
+                                  elapsed_ms=3000,
+                                  currency="USD" if mismatch else "INR"),
+                  ConnectorStatus(platform="google", state="skipped",
+                                  detail="no creds")])
+
+
+def test_blended_route_happy_path(client, monkeypatch):
+    monkeypatch.setattr(cs, "get_cached_snapshot",
+                        lambda account_id, preset="last_30d", platforms=None, refresh=False:
+                        (_rich_snapshot(), "2026-07-03T10:00:00+00:00"))
+    r = client.get("/blended/acme")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["account_id"] == "acme"
+    assert body["fetched_at"] == "2026-07-03T10:00:00+00:00"
+    assert body["window"] == {"since": "2026-06-03", "until": "2026-07-02"}
+    assert body["blended"]["blended_roas"] == 3.0
+    assert body["blended"]["revenue_shopify"] == 3000.0
+    assert body["blended"]["currency_mismatch"] is False
+    assert body["ok_platforms"] == ["meta", "shopify"]
+    states = {s["platform"]: s["state"] for s in body["statuses"]}
+    assert states == {"meta": "ok", "shopify": "ok", "google": "skipped"}
+
+
+def test_blended_route_mixed_currency_flag_passes_through(client, monkeypatch):
+    monkeypatch.setattr(cs, "get_cached_snapshot",
+                        lambda *a, **k: (_rich_snapshot(mismatch=True),
+                                         "2026-07-03T10:00:00+00:00"))
+    body = client.get("/blended/acme").json()
+    assert body["blended"]["currency_mismatch"] is True
+    assert body["blended"]["currency"] == "MIXED"
+
+
+def test_blended_route_refresh_and_preset_reach_the_cache(client, monkeypatch):
+    seen = {}
+
+    def capture(account_id, preset="last_30d", platforms=None, refresh=False):
+        seen.update(account_id=account_id, preset=preset, refresh=refresh)
+        return _rich_snapshot(), "2026-07-03T10:00:00+00:00"
+
+    monkeypatch.setattr(cs, "get_cached_snapshot", capture)
+    client.get("/blended/acme?preset=last_7d&refresh=true")
+    assert seen == {"account_id": "acme", "preset": "last_7d", "refresh": True}
+
+
+def test_blended_route_404_when_no_platform_contributed(client, monkeypatch):
+    monkeypatch.setattr(cs, "get_cached_snapshot",
+                        lambda *a, **k: (snap([], ok=()), "2026-07-03T10:00:00+00:00"))
+    assert client.get("/blended/acme").status_code == 404
+
+
+def test_blended_route_503_when_connectors_missing(client, monkeypatch):
+    import ai_layer
+    monkeypatch.delattr(ai_layer, "connector_source", raising=False)
+    monkeypatch.setitem(sys.modules, "ai_layer.connector_source", None)
+    r = client.get("/blended/acme")
+    assert r.status_code == 503
+    assert "connectors package" in r.json()["detail"]

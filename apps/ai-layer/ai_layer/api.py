@@ -26,10 +26,11 @@ from openai import OpenAI
 from ai_layer import brain, chat, config, context_cache, cost_ledger, store
 from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt
-from ai_layer.schemas import (AccountInfo, AiInsight, ChatRequest, ChatResponse,
-                              CompleteRequest, CompleteResponse, CostResponse,
-                              DailyPoint, IngestResult, InsightsResponse,
-                              InsightStatement, Totals)
+from ai_layer.schemas import (AccountInfo, AiInsight, BlendedBlock, BlendedResponse,
+                              ChatRequest, ChatResponse, CompleteRequest,
+                              CompleteResponse, CostResponse, DailyPoint,
+                              IngestResult, InsightsResponse, InsightStatement,
+                              PlatformStatus, Totals)
 
 app = FastAPI(title="cosmisk ai-layer", version="0.1.0")
 
@@ -225,6 +226,42 @@ def ingest(account_id: str, preset: str = Query("last_30d"), token: str | None =
 @app.get("/cost", response_model=CostResponse, dependencies=[Depends(require_api_key)])
 def cost(account_id: str | None = Query(None)):
     return CostResponse(account_id=account_id, total_usd=cost_ledger.total_usd(account=account_id))
+
+
+@app.get("/blended/{account_id}", response_model=BlendedResponse,
+         dependencies=[Depends(require_api_key)])
+def blended(account_id: str, preset: str = Query("last_30d"),
+            refresh: bool = Query(False)):
+    """Cross-platform blended ROAS (Meta+Google spend vs Shopify revenue truth).
+    Served from the shared snapshot cache (CONNECTOR_CACHE_TTL_S, default 1h);
+    refresh=true forces a live pull. fetched_at tells the caller the data age."""
+    try:
+        from ai_layer import connector_source
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="connectors package not installed — pip install -e apps/connectors",
+        ) from exc
+    snapshot, fetched_at = connector_source.get_cached_snapshot(
+        account_id, preset, refresh=refresh)
+    if not snapshot.ok_platforms:
+        raise HTTPException(status_code=404, detail="no platform contributed data")
+    b = snapshot.blended
+    return BlendedResponse(
+        account_id=account_id,
+        window={"since": snapshot.since, "until": snapshot.until},
+        fetched_at=fetched_at,
+        blended=BlendedBlock(spend=b.spend, revenue_meta_pixel=b.revenue_meta_pixel,
+                             revenue_shopify=b.revenue_shopify,
+                             blended_roas=b.blended_roas,
+                             revenue_gap_pct=b.revenue_gap_pct,
+                             currency=b.currency,
+                             currency_mismatch=b.currency_mismatch),
+        statuses=[PlatformStatus(platform=s.platform, state=s.state, detail=s.detail,
+                                 fact_count=s.fact_count, elapsed_ms=s.elapsed_ms,
+                                 currency=s.currency) for s in snapshot.statuses],
+        ok_platforms=snapshot.ok_platforms,
+    )
 
 
 # ---- Creative Studio (M4 Generative Engine) ------------------------------

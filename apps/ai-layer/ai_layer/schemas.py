@@ -118,3 +118,33 @@ class IngestResult(BaseModel):
 class CostResponse(BaseModel):
     account_id: Optional[str] = None
     total_usd: float
+
+
+class PlatformStatus(BaseModel):
+    """Per-connector outcome for a snapshot pull (mirrors connectors.ConnectorStatus)."""
+    platform: str
+    state: str                       # ok | degraded | skipped | failed
+    detail: Optional[str] = None
+    fact_count: int = 0
+    elapsed_ms: int = 0
+    currency: Optional[str] = None
+
+
+class BlendedBlock(BaseModel):
+    """Cross-platform truth: Meta+Google spend vs Shopify revenue."""
+    spend: float
+    revenue_meta_pixel: float
+    revenue_shopify: float
+    blended_roas: float
+    revenue_gap_pct: float
+    currency: str
+    currency_mismatch: bool          # True -> do NOT render blended_roas as a plain number
+
+
+class BlendedResponse(BaseModel):
+    account_id: str
+    window: dict[str, Optional[str]]
+    fetched_at: str                  # ISO UTC -- when the snapshot was pulled (cache-aware)
+    blended: BlendedBlock
+    statuses: list[PlatformStatus]
+    ok_platforms: list[str]
