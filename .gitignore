@@ -125,3 +125,5 @@ apps/ai-layer/data/_real_*.json
 apps/ai-layer/data/cost_ledger.jsonl
 apps/ai-layer/data/*.sqlite
 apps/ai-layer/data/*.sqlite-*
+# hand-off scratch docs (forwarded manually, never committed)
+temp_docs/
