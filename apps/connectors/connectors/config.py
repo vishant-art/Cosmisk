@@ -43,7 +43,7 @@ class GoogleCredentials(BaseModel):
 
 
 class Settings(BaseModel):
-    timeout_s: float = 30.0             # hard per-connector deadline
+    timeout_s: float = 120.0            # hard per-connector deadline (large Meta accounts ~77s)
     max_concurrency: int = 8            # per-connector in-flight cap (asset downloads etc.)
     circuit_breaker_threshold: int = 5  # consecutive failures before a connector short-circuits
     asset_dir: Path = Path("./connector_assets")

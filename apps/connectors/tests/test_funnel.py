@@ -72,3 +72,9 @@ def test_run_assets_collects_across_platforms_and_tolerates_failure():
     ]
     assets = asyncio.run(run_assets(BRAND, top_n=3, _connectors=conns))
     assert len(assets) == 1 and assets[0].platform == "meta"
+
+
+def test_default_deadline_accommodates_large_ad_accounts():
+    # Live finding (#37): a 141-campaign Meta account needs ~77s for 30d daily insights;
+    # the old 30s default falsely degraded it. 120s still hard-bounds a stalled platform.
+    assert Settings().timeout_s == 120.0
