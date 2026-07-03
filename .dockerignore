@@ -7,3 +7,15 @@ dist
 .git
 .env
 *.log
+.venv
+**/__pycache__
+**/*.egg-info
+apps/ai-layer/data
+connector_assets
+temp_docs
+cosmisk-wiki
+dev_reports
+docs
+.superpowers
+.devcontainer
+.claude
