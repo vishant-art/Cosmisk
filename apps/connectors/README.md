@@ -86,14 +86,12 @@ cd apps/connectors && python -m pytest tests       # 47 tests, no network
 
 ## 6. Deploy (Railway)
 
-The connector is a **library inside the ai-layer service**, not a separate service. Because the
-`apps/ai-layer` image build context is `apps/ai-layer`, bundling this sibling requires building
-that service from the **repo root** and installing both:
+The connector is a **library inside the ai-layer service**, not a separate service.
+`apps/ai-layer/Dockerfile` builds from the **repo root** and installs both packages
+(`pip install ./apps/connectors[google] ./apps/ai-layer`); the `INSTALL_GOOGLE` build-arg
+(default `1`) drops the heavy `google-ads` dep when set to `0` — the Google connector
+lazy-imports it and degrades to `skipped`. Railway service settings live in
+`apps/ai-layer/railway.toml` (root directory = repo root, config path = that file).
 
-```dockerfile
-COPY apps/connectors apps/connectors
-COPY apps/ai-layer  apps/ai-layer
-RUN pip install ./apps/connectors ./apps/ai-layer
-```
 Prod credentials come from **Railway service variables** (no `.env` file) — `config.py` reads
-`os.environ` either way. `google-ads` is an optional extra to keep Meta+Shopify images lean.
+`os.environ` either way.

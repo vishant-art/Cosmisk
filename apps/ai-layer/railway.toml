@@ -1,0 +1,11 @@
+# Railway config for the ai-layer service (#32/I6 creates the service).
+# Service settings must be: root directory = repo root, config file path = this file.
+[build]
+builder = "dockerfile"
+dockerfilePath = "apps/ai-layer/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 180
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
