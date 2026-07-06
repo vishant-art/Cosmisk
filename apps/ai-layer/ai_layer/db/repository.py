@@ -85,3 +85,37 @@ def load_dataset(account_id: str, since: str | None = None,
         since=min(dates) if dates else None,
         until=max(dates) if dates else None,
         level="campaign", source="store", facts=facts)
+
+
+def record_cost(model: str, prompt_tokens: int, completion_tokens: int,
+                op: str = "chat", account: str | None = None,
+                cost_usd_actual: float | None = None,
+                cache_discount_usd: float | None = None,
+                brand_id: str | None = None) -> float:
+    from ai_layer.cost_ledger import cost_usd as _estimate  # lazy: avoids import cycle
+    pt, ct = int(prompt_tokens or 0), int(completion_tokens or 0)
+    if cost_usd_actual is not None:
+        c, priced = float(cost_usd_actual), "openrouter"
+    else:
+        c, priced = _estimate(model, pt, ct), "estimated"
+    try:
+        with engine.get_session() as s:
+            s.add(m.CostLedgerEntry(
+                brand_id=brand_id or account, account_id=account, model=model, op=op,
+                prompt_tokens=pt, completion_tokens=ct, cost_usd=round(c, 6), priced=priced,
+                cache_discount_usd=(round(float(cache_discount_usd), 6)
+                                    if cache_discount_usd is not None else None)))
+            s.commit()
+    except Exception:  # noqa: BLE001 -- cost accounting must never fail the primary op
+        log.exception("cost_ledger write failed (continuing)")
+    return c
+
+
+def total_usd(account: str | None = None, brand_id: str | None = None) -> float:
+    with engine.get_session() as s:
+        q = select(func.coalesce(func.sum(m.CostLedgerEntry.cost_usd), 0.0))
+        if brand_id is not None:
+            q = q.where(m.CostLedgerEntry.brand_id == brand_id)
+        if account is not None:
+            q = q.where(m.CostLedgerEntry.account_id == account)
+        return round(float(s.execute(q).scalar_one()), 6)
