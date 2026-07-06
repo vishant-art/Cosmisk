@@ -119,3 +119,82 @@ def total_usd(account: str | None = None, brand_id: str | None = None) -> float:
         if account is not None:
             q = q.where(m.CostLedgerEntry.account_id == account)
         return round(float(s.execute(q).scalar_one()), 6)
+
+
+def _ensure_brand(s, brand_id: str | None, account_id: str | None = None) -> None:
+    """Insert a minimal brands row if absent, so brand_config/creative_jobs FKs hold."""
+    if not brand_id:
+        return
+    s.execute(pg_insert(m.Brand).values(brand_id=brand_id, meta_account_id=account_id)
+              .on_conflict_do_nothing(index_elements=[m.Brand.brand_id]))
+
+
+def get_brand_config(brand_id: str) -> dict | None:
+    with engine.get_session() as s:
+        row = s.get(m.BrandConfig, brand_id)
+        return dict(row.brand_kit_json) if row and row.brand_kit_json else None
+
+
+def upsert_brand_config(brand_id: str, brand_kit: dict) -> None:
+    with engine.get_session() as s:
+        _ensure_brand(s, brand_id)
+        s.execute(pg_insert(m.BrandConfig).values(brand_id=brand_id, brand_kit_json=brand_kit)
+                  .on_conflict_do_update(index_elements=[m.BrandConfig.brand_id],
+                                         set_={"brand_kit_json": brand_kit, "updated_at": func.now()}))
+        s.commit()
+
+
+# _JOBS dict key  ->  creative_jobs column
+_JOB_MAP = {"progress": "progress_json", "assets": "assets_json", "video": "video_json",
+            "brand_kit": "brand_kit_json", "winners": "winners_json",
+            "rejected": "rejected_json", "request": "request_json", "ledger": "ledger_json"}
+_JOB_DIRECT = ("status", "stage", "cost_usd", "error", "account_id")
+
+
+def _job_to_columns(job: dict, brand_id: str | None) -> dict:
+    bid = brand_id or job.get("brand_id") or job.get("account_id")
+    cols: dict = {"job_id": job["job_id"], "brand_id": bid}
+    for k in _JOB_DIRECT:
+        if k in job:
+            cols[k] = job[k]
+    for src, col in _JOB_MAP.items():
+        if src in job:
+            cols[col] = job[src]
+    return cols
+
+
+def _columns_to_job(row: m.CreativeJob) -> dict:
+    return {"job_id": row.job_id, "status": row.status, "stage": row.stage,
+            "run_id": row.job_id, "cost_usd": row.cost_usd, "error": row.error,
+            "account_id": row.account_id, "brand_id": row.brand_id,
+            "progress": row.progress_json or [], "assets": row.assets_json or [],
+            "video": row.video_json, "brand_kit": row.brand_kit_json,
+            "winners": row.winners_json or [], "rejected": row.rejected_json or [],
+            "request": row.request_json, "ledger": row.ledger_json}
+
+
+def save_job(job: dict, brand_id: str | None = None) -> None:
+    cols = _job_to_columns(job, brand_id)
+    upd = {k: v for k, v in cols.items() if k != "job_id"}
+    upd["updated_at"] = func.now()
+    with engine.get_session() as s:
+        _ensure_brand(s, cols.get("brand_id"), cols.get("account_id"))
+        s.execute(pg_insert(m.CreativeJob).values(**cols)
+                  .on_conflict_do_update(index_elements=[m.CreativeJob.job_id], set_=upd))
+        s.commit()
+
+
+def load_job(job_id: str, brand_id: str | None = None) -> dict | None:
+    with engine.get_session() as s:
+        row = s.get(m.CreativeJob, job_id)
+        if row is None or (brand_id is not None and row.brand_id != brand_id):
+            return None
+        return _columns_to_job(row)
+
+
+def list_jobs(brand_id: str, limit: int = 50) -> list[dict]:
+    with engine.get_session() as s:
+        rows = s.execute(select(m.CreativeJob)
+                         .where(m.CreativeJob.brand_id == brand_id)
+                         .order_by(m.CreativeJob.created_at.desc()).limit(limit)).scalars().all()
+        return [_columns_to_job(r) for r in rows]
