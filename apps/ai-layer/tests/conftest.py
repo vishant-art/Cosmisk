@@ -3,8 +3,8 @@
 - Adds the app dir to sys.path so `import ai_layer` resolves without an editable install.
 - Repoints DATABASE_URL/MIGRATION_DATABASE_URL at the Neon TEST BRANCH (built from the
   PG*/PG*_POOL vars in the repo-root .env) for the whole session, so no test ever touches
-  the prod database. `_migrate_once` (added once models+migrate exist) applies the schema;
-  `db_session` gives per-test transactional rollback.
+  the prod database. `_migrate_once` applies the schema once; `db_session` gives per-test
+  transactional rollback (every engine.get_session() joins the rolled-back transaction).
 """
 import os
 import sys
@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -31,13 +32,17 @@ def _testbranch_url(pooled: bool) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _use_test_branch():
-    """Point the engine at the TEST BRANCH for the whole session; restore prod on teardown."""
+def _migrate_once():
+    """Point the engine at the TEST BRANCH (built from PG*), verify reachability, and apply
+    migrations once for the whole session. Prod URLs are restored on teardown."""
     from ai_layer.db import engine as db_engine
     saved = {k: os.environ.get(k) for k in ("DATABASE_URL", "MIGRATION_DATABASE_URL")}
     os.environ["DATABASE_URL"] = _testbranch_url(pooled=True)
     os.environ["MIGRATION_DATABASE_URL"] = _testbranch_url(pooled=False)
     db_engine.reset_engine()
+    db_engine.preflight()
+    from ai_layer.db.migrate import upgrade_head
+    upgrade_head()
     yield
     db_engine.reset_engine()
     for k, v in saved.items():
@@ -45,3 +50,27 @@ def _use_test_branch():
             os.environ.pop(k, None)
         else:
             os.environ[k] = v
+
+
+@pytest.fixture
+def db_session(monkeypatch):
+    """A Session bound to a transaction rolled back at teardown. Every engine.get_session()
+    during the test joins this transaction via SAVEPOINT, so nothing persists."""
+    from ai_layer.db import engine as db_engine
+    eng = db_engine.get_engine()
+    conn = eng.connect()
+    trans = conn.begin()
+    Session = sessionmaker(bind=conn, expire_on_commit=False,
+                           join_transaction_mode="create_savepoint")
+    sess = Session()
+
+    def _get_session():
+        return Session()
+
+    monkeypatch.setattr(db_engine, "get_session", _get_session)
+    try:
+        yield sess
+    finally:
+        sess.close()
+        trans.rollback()
+        conn.close()
