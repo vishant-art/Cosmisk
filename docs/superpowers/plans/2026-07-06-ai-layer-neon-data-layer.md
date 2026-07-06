@@ -124,10 +124,10 @@ def get_engine() -> Engine:
             pool_recycle=300,
             pool_size=5,
             max_overflow=5,
-            connect_args={
-                "prepare_threshold": None,               # PgBouncer transaction pooling
-                "options": f"-csearch_path={SCHEMA}",
-            },
+            # PgBouncer transaction pooling rejects prepared statements AND the
+            # `options=search_path` startup param (Neon pooled endpoint errors on it),
+            # so neither is set — tables are schema-qualified via MetaData(schema=...).
+            connect_args={"prepare_threshold": None},
         )
         _Session = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine

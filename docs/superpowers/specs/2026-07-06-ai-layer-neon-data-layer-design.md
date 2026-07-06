@@ -81,7 +81,9 @@ ingest/connector fetch (`brand_id`, `meta_account_id`, `currency`).
   (like TS `npm run db:migrate`) — **never on container boot**.
 - Runtime engine URL is rewritten to `postgresql+psycopg://` and set
   `connect_args={"prepare_threshold": None}` (PgBouncer transaction pooling rejects prepared
-  statements). Alembic uses the **direct** URL.
+  statements). **The Neon pooled endpoint also rejects an `options=search_path` startup param
+  ("unsupported startup parameter"), so search_path is NOT set — every table is schema-qualified
+  via `MetaData(schema="ai_layer")`.** Alembic uses the **direct** URL.
 
 ## Files
 
