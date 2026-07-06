@@ -25,7 +25,7 @@
 - **The 20 `CampaignDayFact` fields** (declaration order): `campaign_id, campaign_name, date, spend, impressions, reach, frequency, clicks, ctr, cpc, link_clicks, link_ctr, cost_per_link_click, cpm, add_to_cart, checkout, purchases, revenue, roas, cpa`. The 3 text/dim = `campaign_id, campaign_name, date`; the other 17 are floats.
 - **Run tests** from `apps/ai-layer` with the repo venv: `cd apps/ai-layer && ../../.venv/bin/python -m pytest tests -q`.
 - **No `git push`** at any point. Commits only. No AI attribution in commit messages.
-- **Execution DB:** the user-provisioned Neon `test` branch, via `DATABASE_URL`/`MIGRATION_DATABASE_URL` already in the repo-root `.env`. **Before any DDL (Task 3), verify the target is the test branch, not prod** (Task 0).
+- **Execution DB:** the user-provisioned Neon `test` branch (endpoint `ep-plain-breeze-akrkpqmf`), supplied in the repo-root `.env` as **discrete `PG*` component vars** under the `#test branch db` comment — non-pooled (`PGHOST/PGDATABASE/PGUSER/PGPASSWORD/PGSSLMODE/PGCHANNELBINDING`) for DDL and pooled (`PGHOST_POOL/…`) for runtime. `DATABASE_URL`/`MIGRATION_DATABASE_URL` stay on **prod** and are NOT touched by this task. Tests + all local DDL verification build psycopg3 URLs from the `PG*` vars and point the engine/alembic there via `os.environ` overrides. URL shape: `postgresql+psycopg://{user}:{pw}@{host}/{db}?sslmode={ssl}&channel_binding={cb}`.
 
 ---
 
@@ -33,22 +33,9 @@
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Confirm the two URLs resolve and point at the intended (test) branch**
+- [ ] **Step 1: Confirm the TEST BRANCH (PG* vars) is reachable and clean** — DONE 2026-07-07
 
-Run (never prints secret values):
-```bash
-cd /home/anantdluffy/workspace/Cosmisk && .venv/bin/python - <<'PY'
-import re
-from pathlib import Path
-env={}
-for l in Path(".env").read_text().splitlines():
-    if "=" in l and not l.strip().startswith("#"):
-        k,v=l.split("=",1); env[k.strip()]=v.strip().strip('"').strip("'")
-for k in ("DATABASE_URL","MIGRATION_DATABASE_URL"):
-    m=re.search(r"@([^/:?]+)", env.get(k,"")); print(k,"host=",m.group(1) if m else "MISSING")
-PY
-```
-Expected: both present. **Stop and ask the user** if the host is the known prod endpoint `ep-little-rain-akekou1s*` rather than the test branch they created.
+Verified: the `PG*` (+ `PG*_POOL`) vars build URLs to endpoint `ep-plain-breeze-akrkpqmf` (distinct from prod `ep-little-rain-akekou1s`); both endpoints connect; `public.tables=80` (copy-on-write branch), `ai_layer.tables=0` (clean). `DATABASE_URL`/`MIGRATION_DATABASE_URL` remain prod and are untouched. **Stop and ask** only if the `PG*` host ever reads as the prod endpoint.
 
 - [ ] **Step 2: Confirm deps installed in the venv**
 
@@ -586,24 +573,33 @@ if __name__ == "__main__":
     print("ai_layer migrations applied (head).")
 ```
 
-- [ ] **Step 6: Apply to the test branch and verify tables + public untouched**
+- [ ] **Step 6: Apply to the TEST BRANCH and verify tables + public untouched**
+
+Build the test-branch URLs from `PG*` and point migrate at them (never touches prod):
 ```bash
-cd apps/ai-layer && ../../.venv/bin/python -m ai_layer.db.migrate
-../../.venv/bin/python - <<'PY'
-import os, re, psycopg
+cd /home/anantdluffy/workspace/Cosmisk && .venv/bin/python - <<'PY'
+import os
+from urllib.parse import quote
 from pathlib import Path
-env={}
-for l in Path("../../.env").read_text().splitlines():
+for l in Path(".env").read_text().splitlines():
     if "=" in l and not l.strip().startswith("#"):
-        k,v=l.split("=",1); env[k.strip()]=v.strip().strip('"').strip("'")
-with psycopg.connect(env["MIGRATION_DATABASE_URL"]) as c, c.cursor() as cur:
+        k,v=l.split("=",1); os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+def u(sfx):
+    return (f"postgresql+psycopg://{quote(os.environ['PGUSER'+sfx])}:{quote(os.environ['PGPASSWORD'+sfx])}"
+            f"@{os.environ['PGHOST'+sfx]}/{os.environ['PGDATABASE'+sfx]}"
+            f"?sslmode={os.environ.get('PGSSLMODE'+sfx,'require')}&channel_binding={os.environ.get('PGCHANNELBINDING'+sfx,'require')}")
+os.environ["MIGRATION_DATABASE_URL"]=u(""); os.environ["DATABASE_URL"]=u("_POOL")
+import sys; sys.path.insert(0,"apps/ai-layer")
+from ai_layer.db.migrate import upgrade_head; upgrade_head()
+import psycopg
+with psycopg.connect(os.environ["MIGRATION_DATABASE_URL"].replace("+psycopg","")) as c, c.cursor() as cur:
     cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema='ai_layer' ORDER BY 1")
     print("ai_layer:", [r[0] for r in cur.fetchall()])
     cur.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
     print("public tables:", cur.fetchone()[0])
 PY
 ```
-Expected: `ai_layer:` lists `accounts, alembic_version, brand_config, brands, cost_ledger, creative_jobs, facts`; `public tables:` unchanged (80 on a branch copied from prod).
+Expected: `ai_layer:` lists `accounts, alembic_version, brand_config, brands, cost_ledger, creative_jobs, facts`; `public tables:` unchanged (80 on the branch).
 
 - [ ] **Step 7: Run the unit test to verify it passes**
 Run: `cd apps/ai-layer && ../../.venv/bin/python -m pytest tests/test_db_migration.py -q`
@@ -656,28 +652,53 @@ Expected: FAIL (`fixture 'db_session' not found`).
 - [ ] **Step 3: Implement — extend `conftest.py`** (keep the existing `sys.path` line)
 ```python
 # apps/ai-layer/tests/conftest.py  (append below the existing sys.path insert)
-import pytest
-from sqlalchemy import event
+import os
+from urllib.parse import quote
 
-from ai_layer.db import engine as db_engine
+import pytest
+
+from ai_layer import config as _config  # noqa: F401 -- loads repo-root .env into os.environ
+
+
+def _testbranch_url(pooled: bool) -> str:
+    """Build a psycopg3 URL for the Neon TEST BRANCH from the PG* / PG*_POOL vars."""
+    sfx = "_POOL" if pooled else ""
+    user = quote(os.environ[f"PGUSER{sfx}"])
+    pw = quote(os.environ[f"PGPASSWORD{sfx}"])
+    host = os.environ[f"PGHOST{sfx}"]
+    db = os.environ[f"PGDATABASE{sfx}"]
+    ssl = os.environ.get(f"PGSSLMODE{sfx}", "require")
+    cb = os.environ.get(f"PGCHANNELBINDING{sfx}", "require")
+    return f"postgresql+psycopg://{user}:{pw}@{host}/{db}?sslmode={ssl}&channel_binding={cb}"
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _migrate_once():
-    """Point the engine at the test branch (env already set), verify reachability,
-    and apply migrations once for the whole test session."""
+    """Repoint DATABASE_URL/MIGRATION_DATABASE_URL at the TEST BRANCH (built from PG*),
+    verify reachability, and apply migrations once for the whole test session. Prod
+    URLs are restored on teardown."""
+    from ai_layer.db import engine as db_engine
+    saved = {k: os.environ.get(k) for k in ("DATABASE_URL", "MIGRATION_DATABASE_URL")}
+    os.environ["DATABASE_URL"] = _testbranch_url(pooled=True)
+    os.environ["MIGRATION_DATABASE_URL"] = _testbranch_url(pooled=False)
     db_engine.reset_engine()
     db_engine.preflight()
     from ai_layer.db.migrate import upgrade_head
     upgrade_head()
     yield
     db_engine.reset_engine()
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 @pytest.fixture
 def db_session(monkeypatch):
     """A Session bound to a transaction that is rolled back at teardown. Every
     engine.get_session() during the test joins this transaction (SAVEPOINT restart)."""
+    from ai_layer.db import engine as db_engine
     eng = db_engine.get_engine()
     conn = eng.connect()
     trans = conn.begin()
