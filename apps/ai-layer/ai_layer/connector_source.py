@@ -105,11 +105,13 @@ def _fresh(entry: tuple | None, refresh: bool) -> bool:
 
 def get_cached_snapshot(account_id: str, preset: str = "last_30d",
                         platforms: list[str] | None = None,
-                        refresh: bool = False) -> tuple[UnifiedSnapshot, str]:
+                        refresh: bool = False,
+                        brand_id: str | None = None) -> tuple[UnifiedSnapshot, str]:
     """Cached cross-platform snapshot -> (snapshot, fetched_at ISO). One fetch
     per key per TTL window; concurrent requests for the same key block on the
     fetching thread and share its result (bounded by the connector deadline)."""
-    key = (account_id, preset, tuple(platforms or ()))
+    bid = brand_id or account_id
+    key = (bid, account_id, preset, tuple(platforms or ()))
     with _cache_guard:
         entry = _cache.get(key)
         if _fresh(entry, refresh):
@@ -122,7 +124,7 @@ def get_cached_snapshot(account_id: str, preset: str = "last_30d",
                 return entry[1], entry[2]
         window = DateWindow.last_n_days(_PRESET_DAYS.get(preset, 30))
         brand = BrandRef(
-            brand_id=account_id,
+            brand_id=bid,
             meta_account_id=account_id if account_id.startswith("act_") else None,
         )
         snapshot = get_snapshot(brand, window, platforms)

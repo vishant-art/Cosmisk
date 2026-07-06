@@ -246,6 +246,16 @@ def test_cache_keys_isolate_customers_and_presets(monkeypatch):
     assert calls == ["acme", "globex", "acme"]
 
 
+def test_cache_key_includes_brand(monkeypatch):
+    """Same account_id under different brand_id -> distinct cache entries (multi-tenant)."""
+    calls = []
+    monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
+    cs.get_cached_snapshot("act_1", brand_id="brandA")
+    cs.get_cached_snapshot("act_1", brand_id="brandB")   # different brand -> refetch
+    cs.get_cached_snapshot("act_1", brand_id="brandA")   # same brand -> cache hit
+    assert calls == ["brandA", "brandB"]
+
+
 def test_cache_caps_entries_evicting_oldest(monkeypatch):
     calls = []
     monkeypatch.setattr(cs, "get_snapshot", _counting_fetcher(calls))
