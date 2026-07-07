@@ -34,4 +34,5 @@ EXPOSE 8000
 # pooled + direct; the facts store and cost ledger live in the ai_layer schema, no SQLite),
 # connector creds per apps/connectors/.env.example, CONNECTOR_CACHE_TTL_S (default 3600).
 # Apply migrations out-of-band before/at deploy: `python -m ai_layer.db.migrate` (never on boot).
-CMD ["uvicorn", "ai_layer.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form so ${PORT} expands: Railway (and most PaaS) inject $PORT; fall back to 8000 locally.
+CMD uvicorn ai_layer.api:app --host 0.0.0.0 --port ${PORT:-8000}
