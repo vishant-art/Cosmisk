@@ -24,8 +24,8 @@ RUN if [ "$INSTALL_GOOGLE" = "1" ]; then \
         pip install ./apps/connectors ./apps/ai-layer; \
     fi
 
-# Ephemeral working data (store.sqlite, cost ledger, creative output) — see #29
-# for the durable-storage plan. Railway volume mount point when I3 lands.
+# Scratch dir for transient creative output only. The facts store and cost ledger are
+# durable in Neon (ai_layer schema) — the service is STATELESS, no volume required (#29).
 RUN mkdir -p /app/data
 
 EXPOSE 8000

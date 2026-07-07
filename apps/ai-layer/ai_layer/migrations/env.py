@@ -10,8 +10,11 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool, text
 
-# make `import ai_layer` resolve when alembic runs from apps/ai-layer
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# make `import ai_layer` resolve when alembic runs from the source tree.
+# env.py now lives at apps/ai-layer/ai_layer/migrations/env.py, so apps/ai-layer
+# (the dir that CONTAINS the ai_layer package) is parents[2]. When pip-installed,
+# ai_layer is already importable and this insert is harmless.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ai_layer import config as _cfg  # noqa: E402,F401  (loads repo-root .env)
 from ai_layer.db.engine import SCHEMA, to_psycopg3  # noqa: E402

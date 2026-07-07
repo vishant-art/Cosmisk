@@ -29,4 +29,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["ai_layer", "ai_layer.creative", "ai_layer.db"]
+packages = ["ai_layer", "ai_layer.creative", "ai_layer.db", "ai_layer.migrations"]
+
+[tool.setuptools.package-data]
+# Ship the Alembic migration assets inside the wheel/image so `python -m
+# ai_layer.db.migrate` works from a pip-installed package (not just the source tree).
+"ai_layer.migrations" = ["*.mako", "versions/*.py"]
