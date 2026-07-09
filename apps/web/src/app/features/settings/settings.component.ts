@@ -165,10 +165,13 @@ import { environment } from '../../../environments/environment';
                     Disconnect
                   </button>
                 }
-                @if (metaOAuth.connectionStatus() === 'disconnected' || metaOAuth.connectionStatus() === 'expired') {
+                @if ((metaOAuth.connectionStatus() === 'disconnected' || metaOAuth.connectionStatus() === 'expired') && metaOAuth.oauthEnabled) {
                   <button (click)="connectMeta()" class="px-4 py-2 rounded-pill text-xs font-body font-semibold bg-accent text-white hover:bg-accent/90 transition-colors">
                     {{ metaOAuth.connectionStatus() === 'expired' ? 'Reconnect' : 'Connect' }}
                   </button>
+                }
+                @if ((metaOAuth.connectionStatus() === 'disconnected' || metaOAuth.connectionStatus() === 'expired') && !metaOAuth.oauthEnabled) {
+                  <span class="px-4 py-2 text-xs font-body text-gray-400">Meta connection finalizing…</span>
                 }
                 @if (metaOAuth.connectionStatus() === 'loading') {
                   <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>

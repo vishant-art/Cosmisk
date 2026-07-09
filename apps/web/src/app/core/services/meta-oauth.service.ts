@@ -13,6 +13,11 @@ export class MetaOAuthService {
   metaUserName = signal('');
   expiresAt = signal<string | null>(null);
 
+  // Fail-safe: when the Vercel redirect URI is not yet whitelisted, this is set
+  // false (via environment.META_OAUTH_ENABLED) so the connect flow does not open
+  // a popup Facebook would reject. See split-deploy spec §5.
+  oauthEnabled = environment.META_OAUTH_ENABLED;
+
   isConnected = computed(() => this.connectionStatus() === 'connected');
 
   constructor() {
@@ -48,6 +53,7 @@ export class MetaOAuthService {
   }
 
   openOAuthPopup() {
+    if (!this.oauthEnabled) return;
     const redirectUri = `${window.location.origin}/app/settings/meta-callback`;
     const state = localStorage.getItem('cosmisk_token') || '';
     const url = `https://www.facebook.com/v22.0/dialog/oauth`
