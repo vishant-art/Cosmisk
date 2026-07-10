@@ -243,15 +243,26 @@ def apply_plan(video_in, video_out, plan: EditPlan, *, log=print) -> str:
     vf = build_video_filters(plan, meta)
     af = build_audio_filters(plan)
 
+    # `recompress` is an encoder setting, not a filter: it produces no vf/af but MUST
+    # re-encode (its whole point is throwing bits away). So the copy fast-path fires only
+    # when there is nothing to encode AND no recompress requested.
+    recompress = bool(plan.style and plan.style.recompress)
+
     video_out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [_ffmpeg(), "-y", "-i", str(video_in)]
-    if vf:
-        cmd += ["-vf", ",".join(vf)]
-    if af and meta["has_audio"]:
-        cmd += ["-af", ",".join(af)]
-    elif meta["has_audio"]:
-        cmd += ["-c:a", "copy"]
-    cmd += encode_args(plan) + [str(video_out)]
+    if not vf and not af and not recompress:
+        # A no-op plan (e.g. a static shot with punch=1.0 and no style). Stream-copy
+        # instead of burning a full libx264 generation for zero visual change.
+        cmd += ["-c", "copy"]
+    else:
+        if vf:
+            cmd += ["-vf", ",".join(vf)]
+        if af and meta["has_audio"]:
+            cmd += ["-af", ",".join(af)]
+        elif meta["has_audio"]:
+            cmd += ["-c:a", "copy"]
+        cmd += encode_args(plan)
+    cmd.append(str(video_out))
     _run(cmd)
 
     if plan.sfx:
@@ -457,8 +468,10 @@ def concat(clips: list, video_out, *, keep_audio: bool = False, log=print) -> st
     listing.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in paths),
                        encoding="utf-8")
 
-    cmd = [_ffmpeg(), "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
-           "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+    # Stream-copy, no re-encode: every input is already libx264/yuv420p (emitted by
+    # apply_plan/trim) and the geometry is asserted equal above, so the concat demuxer
+    # can splice them without a whole-timeline encode generation.
+    cmd = [_ffmpeg(), "-y", "-f", "concat", "-safe", "0", "-i", str(listing), "-c:v", "copy"]
     cmd += (["-c:a", "aac"] if keep_audio else ["-an"])
     _run(cmd + [str(video_out)])
     listing.unlink(missing_ok=True)

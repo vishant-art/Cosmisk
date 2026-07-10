@@ -207,6 +207,34 @@ def test_apply_plan_runs_the_whole_chain(synth_video, tmp_path):
     assert after["duration"] == pytest.approx(before["duration"], abs=0.3)
 
 
+def test_a_noop_plan_stream_copies_instead_of_re_encoding(synth_video, tmp_path):
+    """A static shot (no filters, no recompress) must be COPIED, not re-encoded -- no
+    quality generation lost. Frame-identical output proves the stream copy fired."""
+    import imageio_ffmpeg
+
+    def frames(p):
+        gen = imageio_ffmpeg.read_frames(str(p))
+        next(gen)
+        out = list(gen)
+        gen.close()
+        return out
+
+    out = tmp_path / "noop.mp4"
+    editor.apply_plan(synth_video, out, EditPlan(), log=lambda *_: None)
+    assert frames(out) == frames(synth_video)     # bit-identical frames == stream copy
+
+
+def test_a_recompress_plan_still_re_encodes_despite_no_filters(noisy_video, tmp_path):
+    """recompress produces no vf/af but must NOT take the copy fast-path -- its whole job
+    is throwing bits away."""
+    plain = tmp_path / "p.mp4"
+    small = tmp_path / "s.mp4"
+    editor.apply_plan(noisy_video, plain, EditPlan(), log=lambda *_: None)         # copy
+    editor.apply_plan(noisy_video, small, EditPlan(style=UGCStyle(recompress=True)),
+                      log=lambda *_: None)                                          # re-encode
+    assert small.stat().st_size < plain.stat().st_size
+
+
 def test_apply_plan_actually_changes_the_pixels(synth_video, tmp_path):
     """A no-op filtergraph would pass every geometry assertion above."""
     import imageio_ffmpeg
