@@ -471,6 +471,48 @@ def test_verify_passes_a_clean_timeline(textured_3shot):
     assert r.retry_hint is None
 
 
+def test_shot_boundary_checks_run_on_the_pre_caption_clip(textured_3shot, monkeypatch):
+    """Burned-in per-word captions change every ~0.5s and a frame-diff cut detector reads
+    each change as a cut, so cut alignment and continuity run on `cuts_clip` (the pre-caption
+    timeline) while product/caption/vlm still judge the shipped `clip`."""
+    from schemas import QACheck
+    ok = QACheck(name="ok", passed=True)
+    seen = {}
+
+    def spy_cut(clip, board, **kw):
+        seen["cut"] = clip
+        return ok
+
+    def spy_cont(clip, board, **kw):
+        seen["cont"] = clip
+        return [ok]
+
+    monkeypatch.setattr(vv, "check_cut_alignment", spy_cut)
+    monkeypatch.setattr(vv, "check_continuity", spy_cont)
+    vv.verify(textured_3shot, _board(1.0, 1.0, 1.0), cuts_clip="/pre/timeline.mp4",
+              log=lambda *_: None)
+    assert seen["cut"] == "/pre/timeline.mp4" and seen["cont"] == "/pre/timeline.mp4"
+
+
+def test_shot_boundary_checks_default_to_the_shipped_clip(textured_3shot, monkeypatch):
+    from schemas import QACheck
+    ok = QACheck(name="ok", passed=True)
+    seen = {}
+
+    def spy_cut(clip, board, **kw):
+        seen["cut"] = clip
+        return ok
+
+    def spy_cont(clip, board, **kw):
+        seen["cont"] = clip
+        return [ok]
+
+    monkeypatch.setattr(vv, "check_cut_alignment", spy_cut)
+    monkeypatch.setattr(vv, "check_continuity", spy_cont)
+    vv.verify(textured_3shot, _board(1.0, 1.0, 1.0), log=lambda *_: None)
+    assert seen["cut"] == textured_3shot and seen["cont"] == textured_3shot
+
+
 def test_verify_fails_closed_on_an_inconclusive_check(textured_3shot, tmp_path):
     """A shot promised a hero product and there is no cutout to check it against. Strict
     mode calls that a failure, because it is a thing we did not verify."""

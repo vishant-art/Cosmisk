@@ -266,8 +266,10 @@ def _hero_board():
 def _fake_product_shot(record):
     from PIL import Image
 
-    def _f(scene, out, *, primary="flux", refs=None, aspect="9:16", log=print, **kw):
-        record.append({"scene": scene, "primary": primary, "refs": refs})
+    def _f(scene, out, *, primary="flux", refs=None, negative=None, aspect="9:16",
+           log=print, **kw):
+        record.append({"scene": scene, "primary": primary, "refs": refs,
+                       "negative": negative})
         Image.new("RGB", (64, 64), "tan").save(out)
         return {"provider": "product", "model": "bria", "path": str(out), "cost_usd": 0.04}
     return _f
@@ -282,9 +284,10 @@ def test_gen_key_distinguishes_a_seeded_render():
 
 def test_a_hero_shot_is_i2v_seeded_from_a_person_free_product_still(
         tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
-    """The product-in-video fix: a hero-product shot is i2v-seeded from a Bria product-shot
-    still (product in a people-free scene), so the product actually appears in the render
-    and no person reaches a reference (no ref2v content-filter rejection)."""
+    """The product-in-video fix: a hero-product shot is i2v-seeded from a product-ONLY still,
+    so the product actually appears in the render and no person reaches a reference (no ref2v
+    content-filter rejection). The still is FLUX-regenerated with the person hard-excluded in
+    prompt AND negative, so an apparel model in the source photo is not carried into the ad."""
     import image_providers
     from schemas import QACheck
     seeded = []
@@ -292,11 +295,14 @@ def test_a_hero_shot_is_i2v_seeded_from_a_person_free_product_still(
     monkeypatch.setattr(vv, "verify_shot", lambda *a, **k: [QACheck(name="ok", passed=True)])
 
     sequencer.render_storyboard(_hero_board(), kit=brand_kit, run_dir=tmp_path,
-                                cutout_path=product_cutout, log=lambda *_: None)
+                                cutout_path=product_cutout, product_desc="a linen tote bag",
+                                log=lambda *_: None)
 
     assert len(seeded) == 1, "one product seed for the one hero shot"
-    assert seeded[0]["primary"] == "product" and seeded[0]["refs"] == [product_cutout]
-    assert "No people" in seeded[0]["scene"]                 # person-free by construction
+    assert seeded[0]["primary"] == "flux" and seeded[0]["refs"] == [product_cutout]
+    assert "a linen tote bag" in seeded[0]["scene"]          # anchored to the real item
+    assert "ON ITS OWN" in seeded[0]["scene"]                # product-only by construction
+    assert "person" in seeded[0]["negative"] and "model" in seeded[0]["negative"]
     assert any(c["image"] for c in fake_render.calls), "hero shot must be i2v-seeded"
     assert not any(c["refs"] for c in fake_render.calls), "no person-frame ref2v"
     assert (tmp_path / "product_seeds").exists()

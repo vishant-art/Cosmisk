@@ -499,19 +499,27 @@ def vlm_critique(client, clip, *, led=None) -> QACheck:
 
 def verify(clip, board: Storyboard, script: Script | str | None = None, *,
            client=None, cutout_path=None, shot_paths=None, transcribe=None,
-           strict: bool = True, led=None, work_dir=None, log=print) -> QAReport:
+           strict: bool = True, led=None, work_dir=None, cuts_clip=None,
+           log=print) -> QAReport:
     """Run every applicable check and return a fail-closed verdict.
 
     `strict` (the default) fails the gate on an INCONCLUSIVE check. A shot that promised
     a hero product and could not be checked has not been checked, and shipping it is a
     decision, not an oversight. Pass `strict=False` to make that decision explicitly.
+
+    `cuts_clip` is the clip the SHOT-BOUNDARY checks (cut alignment, continuity) run on.
+    Pass the PRE-caption timeline here: burned-in per-word captions change every ~0.5s and
+    a frame-difference cut detector reads each change as a cut, so running cut alignment on
+    the captioned final falsely reports many extra cuts. The product/caption/vlm checks
+    still run on `clip` (the shipped artifact). Defaults to `clip` when not given.
     """
     checks: list[QACheck] = []
+    cuts_clip = cuts_clip or clip
 
     if shot_paths:
         checks += check_shot_durations(shot_paths, board)
-    checks.append(check_cut_alignment(clip, board))
-    checks += check_continuity(clip, board)
+    checks.append(check_cut_alignment(cuts_clip, board))
+    checks += check_continuity(cuts_clip, board)
     checks += check_product_presence(clip, board, cutout_path)
 
     if script is not None:

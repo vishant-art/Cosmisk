@@ -113,6 +113,23 @@ def _write_pickings(run_dir, cohort, products, *, grounded, product_source):
     return payload
 
 
+def _picked_product_desc(run_dir):
+    """The title of the product this run drew on (from pickings.json), or None.
+
+    Anchors the i2v product seed to what the item ACTUALLY is, so the seed isolates the
+    product instead of whatever else the source photo happened to contain (e.g. a model).
+    """
+    pk = Path(run_dir) / "pickings.json"
+    if not pk.exists():
+        return None
+    try:
+        prods = json.loads(pk.read_text("utf-8")).get("products") or []
+    except (json.JSONDecodeError, OSError):
+        return None
+    title = (prods[0].get("title") if prods else None) or None
+    return title.strip() if isinstance(title, str) and title.strip() else None
+
+
 def _teardown_winner(assets, *, client, run_dir, led, log=print):
     """Tear down the best winner that has a playable MP4. Returns a CreativeTemplate
     or None.
@@ -361,6 +378,7 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
     script = _run_script(run_dir)
     cut = run_dir / "product_cutout.png"
     cutout = str(cut) if cut.exists() else None
+    product_desc = _picked_product_desc(run_dir)   # anchors the seed to the real item (9.6)
     led = Ledger(run_dir)
 
     if single_pass:
@@ -372,7 +390,7 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
         client = _client()
         timeline, board, rlog = sequencer.render_storyboard(
             board, kit=kit, run_dir=run_dir, script=script, style=style,
-            cutout_path=cutout, aspect=aspect, resolution=resolution,
+            cutout_path=cutout, product_desc=product_desc, aspect=aspect, resolution=resolution,
             replan=lambda shot, reason: story_brain.replan_shot(
                 client, kit, shot, reason=reason)[0],
             strict=strict, led=led, log=log)
@@ -540,11 +558,18 @@ def qa_video(*, run_id: str, clip=None, cutout=None, shot_paths=None, strict: bo
         cut = run_dir / "product_cutout.png"
         cutout = str(cut) if cut.exists() else None
 
+    # Shot-boundary checks (cut alignment, continuity) run on the PRE-caption assembled
+    # timeline, not `clip`: burned-in per-word captions change every ~0.5s and a frame-diff
+    # cut detector reads each change as a scene cut, which false-fails the gate on the
+    # captioned final. `timeline.mp4` is the silent, caption-free assembly the run keeps.
+    pre_caption = run_dir / "timeline.mp4"
+    cuts_clip = str(pre_caption) if pre_caption.exists() and Path(clip).name != "timeline.mp4" else None
+
     led = Ledger(run_dir)
     report = verifier_video.verify(
         clip, board, _run_script(run_dir), client=(_client() if run_vlm else None),
         cutout_path=cutout, shot_paths=shot_paths, strict=strict, led=led,
-        work_dir=run_dir / "qa", log=log)
+        work_dir=run_dir / "qa", cuts_clip=cuts_clip, log=log)
     (run_dir / "qa_report.json").write_text(report.model_dump_json(indent=2),
                                             encoding="utf-8")
     led.finalize()
