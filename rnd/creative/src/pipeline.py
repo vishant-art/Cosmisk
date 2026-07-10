@@ -24,6 +24,7 @@ import brand_brain  # noqa: E402
 import campaign_select as cs  # noqa: E402
 import captions as captions_mod  # noqa: E402
 import meta_creatives  # noqa: E402
+import shopify_products  # noqa: E402
 import compositor  # noqa: E402
 import config  # noqa: E402
 import editor  # noqa: E402
@@ -83,6 +84,35 @@ def _meta_cohort(account, *, preset, top_n, run_dir, token=None, bottom_n=5,
     return imgs, assets
 
 
+def _shopify_products(run_dir, *, top_n=3, log=print):
+    """Bestseller product image(s) from Shopify (Phase 9.6). Graceful when no creds:
+    returns [] and logs, never blocks the run."""
+    return shopify_products.fetch_bestsellers(
+        config.SHOPIFY_TOKEN, config.SHOPIFY_STORE,
+        out_dir=Path(run_dir) / "products", top_n=top_n,
+        api_version=config.SHOPIFY_API_VERSION, log=log)
+
+
+def _write_pickings(run_dir, cohort, products, *, grounded, product_source):
+    """Write pickings.json: the Meta winners AND the Shopify products this run drew on.
+
+    This is the "show me what you picked" artifact the old runs implied with their
+    winners/ dir, and the seed of the T11 attribution join (variant/creative -> outcome).
+    """
+    winners = [{"ad_id": a.ad_id, "ad_name": a.ad_name, "roas": a.roas}
+               for a in (cohort or []) if a.cohort == "winner"]
+    losers = [{"ad_id": a.ad_id, "ad_name": a.ad_name, "roas": a.roas}
+              for a in (cohort or []) if a.cohort == "loser"]
+    prods = [{"shopify_id": p.product_id, "title": p.title, "revenue": p.revenue,
+              "units": p.units, "image_src": p.image_src, "local_path": p.local_path}
+             for p in (products or [])]
+    payload = {"grounded": grounded, "product_source": product_source,
+               "winners": winners, "losers": losers, "products": prods}
+    (Path(run_dir) / "pickings.json").write_text(json.dumps(payload, indent=2),
+                                                 encoding="utf-8")
+    return payload
+
+
 def _teardown_winner(assets, *, client, run_dir, led, log=print):
     """Tear down the best winner that has a playable MP4. Returns a CreativeTemplate
     or None.
@@ -126,7 +156,7 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
         qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
         meta_account=None, ground_from_meta=True, meta_preset="last_30d",
         top_creatives=5, bottom_creatives=5, min_spend=100.0, style=None,
-        no_logo=False, log=print) -> RunManifest:
+        no_logo=False, use_shopify=False, log=print) -> RunManifest:
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -147,6 +177,23 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     # Grounding is ON by default now. The vision pass is the only place the brain ever
     # looks at what actually converted for this account, and it used to be off.
     ground_images = winner_refs if (ground_from_meta and winner_refs) else None
+
+    # Product image (Phase 9.6): an explicit --product wins; otherwise source the store's
+    # bestseller from Shopify. Real product from the store, not a fabricated one.
+    products = []
+    product_source = "supplied" if product_image else "none"
+    if not product_image and use_shopify:
+        products = _shopify_products(run_dir, log=log)
+        top = next((p for p in products if p.local_path), None)
+        if top:
+            product_image = top.local_path
+            product_source = "shopify"
+            log(f"[shopify] product for this ad: {top.title!r} ({top.local_path})")
+
+    # Record BOTH pickings, like the old runs did (winners/ + products/), plus the join
+    # record. Written always, even ungrounded, so a run always says what it picked.
+    _write_pickings(run_dir, cohort, products, grounded=bool(winner_refs),
+                    product_source=product_source)
 
     client = _client()
     log("[2/4] generating brand kit...")

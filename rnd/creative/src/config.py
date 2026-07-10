@@ -46,6 +46,13 @@ FAL_KEY = os.getenv("FAL_KEY")                        # FLUX.2 + Bria + Seedance
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
 META_AD_ACCOUNT = os.getenv("META_AD_ACCOUNT")        # e.g. act_1234567890
 
+# Shopify product source (Phase 9.6). With both set, a run sources the product image from
+# the store's bestseller instead of fabricating one, and degrades gracefully to "no
+# product" when unset -- same posture as Meta grounding.
+SHOPIFY_STORE = os.getenv("SHOPIFY_STORE")            # e.g. my-shop.myshopify.com
+SHOPIFY_TOKEN = os.getenv("SHOPIFY_TOKEN")            # Admin API access token
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2024-10")
+
 # --- model IDs (verified June 2026; see vendor research doc) ------------------
 # Brain (text -> BrandKit/concepts) and the VLM critic go through OpenRouter.
 TEXT_MODEL = "google/gemini-2.5-flash"

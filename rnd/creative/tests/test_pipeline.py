@@ -297,6 +297,57 @@ def test_a_silent_timeline_is_still_an_ad(monkeypatch, tmp_path, brand_kit, synt
     assert any("timeline stays silent" in ln for ln in logs)
 
 
+def test_shopify_sources_the_product_and_writes_pickings(monkeypatch, tmp_path,
+                                                         envelope_path, brand_kit, concepts):
+    """Phase 9.6: --shopify sources the product image from the store's bestseller, feeds it
+    into the existing product_image input, and records the pick in pickings.json."""
+    import shopify_products
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    prod_png = tmp_path / "store_product.png"
+    _png(prod_png, size=(512, 512), color="tan")
+    pick = shopify_products.ShopifyProduct(
+        product_id="99", title="Bestseller Box", revenue=1200.0, units=8,
+        image_src="https://cdn/box.png", local_path=str(prod_png))
+    monkeypatch.setattr(shopify_products, "fetch_bestsellers",
+                        lambda *a, **k: [pick])
+
+    cut_calls = []
+    monkeypatch.setattr(image_providers, "cutout",
+                        lambda src, out, **k: (cut_calls.append(src),
+                                               _png(out, size=(512, 512)),
+                                               {"provider": "birefnet", "model": "m",
+                                                "path": str(out), "cost_usd": 0.0})[2])
+
+    pipeline.run(data_path=envelope_path, run_id="shop1", mode="auto", images=1,
+                 use_shopify=True, log=lambda *_: None)
+
+    # the Shopify product image was routed into the cutout (the existing product_image path)
+    assert cut_calls == [str(prod_png)]
+    picks = json.loads((tmp_path / "shop1" / "pickings.json").read_text("utf-8"))
+    assert picks["product_source"] == "shopify"
+    assert picks["products"][0]["shopify_id"] == "99"
+    assert picks["products"][0]["title"] == "Bestseller Box"
+
+
+def test_pickings_are_written_even_with_no_shopify_and_no_winners(monkeypatch, tmp_path,
+                                                                  envelope_path, brand_kit,
+                                                                  concepts):
+    """A run always says what it picked, even when it picked nothing: product_source=none,
+    empty winners. That honesty is the point of the pickings record."""
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    _patch_all(monkeypatch, brand_kit, concepts, [])
+
+    pipeline.run(data_path=envelope_path, run_id="shop2", mode="review", images=1,
+                 log=lambda *_: None)
+
+    picks = json.loads((tmp_path / "shop2" / "pickings.json").read_text("utf-8"))
+    assert picks == {"grounded": False, "product_source": "none",
+                     "winners": [], "losers": [], "products": []}
+
+
 def test_make_variants_cuts_a_finished_timeline_for_free(monkeypatch, tmp_path,
                                                          synth_video):
     """The $0 edit path (T10): one rendered clip, aesthetic-graded N ways, no model call."""

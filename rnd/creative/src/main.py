@@ -77,6 +77,10 @@ def main() -> None:
                     help="ugc = amateur capture aesthetic (default); studio = the old "
                          "premium editorial look, for product/catalogue work")
     ap.add_argument("--product", help="path to a product image -> Bria product-shot scenes")
+    ap.add_argument("--shopify", action="store_true",
+                    help="source the product image from the store's Shopify bestseller "
+                         "(needs SHOPIFY_STORE + SHOPIFY_TOKEN; degrades gracefully if unset). "
+                         "Ignored when --product is given")
     ap.add_argument("--ref", action="append", default=[],
                     help="explicit reference image path(s) for generation; repeatable")
     ap.add_argument("--resume", help="run_id to resume (generate ads from edited kit)")
@@ -210,7 +214,8 @@ def main() -> None:
                  refs=refs, product_image=args.product, meta_account=meta_account,
                  ground_from_meta=not args.no_ground, meta_preset=args.meta_preset,
                  top_creatives=args.top_creatives, bottom_creatives=args.bottom_creatives,
-                 min_spend=args.min_spend, style=style, no_logo=args.no_logo)
+                 min_spend=args.min_spend, style=style, no_logo=args.no_logo,
+                 use_shopify=args.shopify)
 
 
 if __name__ == "__main__":
