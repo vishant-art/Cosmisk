@@ -550,18 +550,20 @@ Confirmed against the code, **not changing it**, per instruction:
 
 **Change (`sequencer.render_storyboard`):** before rendering shot *i*, if an accepted clip for that shot already exists **and its inputs are unchanged** (same shot spec hash, same style, same refs), reuse it. Key the cache on a hash of `(shot.model_dump(), style, aspect, resolution, render_mode-relevant refs)`. A repair or a shot-spec change busts the entry; a plain re-run reuses. This makes re-running a partially-failed render cheap instead of full-price.
 
-### 9.4 Output only what cost real money
+### 9.3 No duplicate re-renders ✅ SHIPPED (`c934da9`)
 
-**Why it matters:** the run dir is full of `_raw`/`_cut`/`_overlay.png`/`_capframes/`/`_qa.wav` intermediates that look like duplicate videos and confuse "what did I pay for". The 3 files per shot are one paid Seedance call at three processing stages.
+Each Seedance render is content-addressed by `(prompt, refs, duration, resolution, aspect, attempt)` and cached under `<run>/renders/gen_<key>.mp4`. A plain re-run of the same storyboard reuses the cache and re-pays **$0**. `attempt` is in the key on purpose: a retry re-rolls the same prompt for stochasticity, so it must render fresh, not replay the failed clip — but a clean shot renders at attempt 0 both runs (same key → reuse), and a repaired shot replays its exact ladder at $0 because every attempt's render is cached. A test caught this: without `attempt` in the key, a retry reused the frozen render and needed an extra reprompt rung.
 
-**Change:** route all intermediates to a `<run>/.work/` scratch subdir (or the system scratch), and promote to the run root **only paid artifacts**: the final per-shot clip, the final `timeline.mp4` (with sound), paid stills (brand kit is JSON, product image, composited ads), and the pickings (9.5). Delete `.work/` on success unless `--keep-intermediates`. Touch points: `sequencer` (raw/cut), `editor` (overlay png, caption frames, sfx temp), `teardown` (qa wav), `pipeline`.
+### 9.4 Output only what cost real money ✅ SHIPPED (`c934da9`)
 
-### 9.5 Output BOTH pickings, like the old runs did
+The `$0` ffmpeg intermediates (per-shot trims/edits, sequential last-frames, voiceover/sfx merge outputs) go to a `<run>/.work/` scratch dir that `render_story` deletes on success. Kept: the paid raws (`renders/`), the paid `voiceover.mp3`, the finished ad (`video_captioned.mp4` / `timeline_final.mp4`), and the stills/pickings. The finished ad is promoted out of scratch if a late step (skipped captions) left it there. `keep_work=True` preserves scratch for debugging.
+
+### 9.5 Output BOTH pickings, like the old runs did ✅ SHIPPED (`1cad25a`)
 
 The old `full_demo`/`quick_demo` runs wrote a `winners/` dir (downloaded Meta winner stills). Keep that, and add the Shopify side, plus a single record:
 - `<run>/winners/winner_NN.png` — the ROAS-ranked Meta winners actually pulled (already produced by `_meta_cohort`, currently only when grounded).
 - `<run>/products/product_NN.png` — the Shopify product image(s) picked (9.6).
-- `<run>/pickings.json` — `{winners: [{ad_id, ad_name, roas, cohort}], products: [{shopify_id, title, image_src}], grounded: bool, product_source: "shopify"|"generated"|"none"}`. This is the "show me what you picked" artifact, and it is the seed of the T11 attribution join.
+- `<run>/pickings.json` — `{grounded, product_source, winners:[{ad_id,ad_name,roas}], losers:[...], products:[{shopify_id,title,revenue,image_src,local_path}]}`. Written by `pipeline._write_pickings` on every run, even ungrounded. The "show me what you picked" artifact and the seed of the T11 attribution join.
 
 ### 9.6 Shopify product source ✅ BUILT (offline; live path blocked on creds)
 
