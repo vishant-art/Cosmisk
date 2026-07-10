@@ -383,6 +383,91 @@ def crossfade(video_a, video_b, video_out, *, duration: float = 0.35,
     return str(out)
 
 
+def trim(video_in, video_out, *, start: float = 0.0, duration: float, log=print) -> str:
+    """Cut `duration` seconds starting at `start`. Output seeking, so it is frame-accurate.
+
+    The renderer will not produce a clip shorter than four seconds (config.
+    VIDEO_ALLOWED_DURATIONS). A two-second shot is therefore generated long and trimmed
+    here. Input seeking (`-ss` before `-i`) would be faster and would land on the nearest
+    keyframe, which is not where the shot ends.
+    """
+    video_in, video_out = Path(video_in), Path(video_out)
+    meta = probe(video_in)
+    if start + duration > meta["duration"] + 0.05:
+        raise EditError(f"cannot trim {duration:g}s from {start:g}s of a "
+                        f"{meta['duration']:.2f}s clip")
+    video_out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [_ffmpeg(), "-y", "-i", str(video_in), "-ss", f"{start:g}", "-t", f"{duration:g}",
+           "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+    cmd += (["-c:a", "copy"] if meta["has_audio"] else ["-an"])
+    _run(cmd + [str(video_out)])
+    log(f"[editor] trimmed {duration:g}s from {video_in.name} -> {video_out.name}")
+    return str(video_out)
+
+
+def last_frame(video_in, image_out) -> str:
+    """The final frame, as a PNG. This is the continuity reference shot N+1 is conditioned
+    on in `sequential` render mode, and the only thing that reaches Seedance's
+    reference-to-video endpoint."""
+    import imageio_ffmpeg               # lazy
+    from PIL import Image               # lazy
+
+    gen = imageio_ffmpeg.read_frames(str(video_in), pix_fmt="rgb24")
+    meta = next(gen)
+    w, h = meta["size"]
+    last = None
+    for raw in gen:
+        last = raw
+    if last is None:
+        raise EditError(f"{video_in} has no frames")
+
+    import numpy as np
+    out = Path(image_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(np.frombuffer(last, dtype=np.uint8).reshape(h, w, 3)).save(out)
+    return str(out)
+
+
+def concat(clips: list, video_out, *, keep_audio: bool = False, log=print) -> str:
+    """Join clips end to end. Video only by default.
+
+    Audio is dropped on purpose. One voiceover runs across the whole timeline and is muxed
+    once at the end (T3); splicing per-shot native audio at every cut produces exactly the
+    seams the cuts were meant to hide. Pass `keep_audio=True` only when every clip has a
+    track and you mean to keep them.
+
+    The concat demuxer will not resample. Mismatched geometry is an error here rather than
+    a garbled frame later.
+    """
+    if not clips:
+        raise ValueError("concat called with no clips")
+    paths = [Path(c) for c in clips]
+    metas = [probe(p) for p in paths]
+    first = (metas[0]["width"], metas[0]["height"])
+    for p, m in zip(paths, metas):
+        if (m["width"], m["height"]) != first:
+            raise EditError(f"{p.name} is {m['width']}x{m['height']}, expected "
+                            f"{first[0]}x{first[1]}; concat will not resample")
+    if keep_audio and not all(m["has_audio"] for m in metas):
+        raise EditError("keep_audio=True but some clips have no audio track")
+
+    video_out = Path(video_out)
+    video_out.parent.mkdir(parents=True, exist_ok=True)
+    listing = video_out.with_name(video_out.stem + "_concat.txt")
+    listing.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in paths),
+                       encoding="utf-8")
+
+    cmd = [_ffmpeg(), "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+           "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+    cmd += (["-c:a", "aac"] if keep_audio else ["-an"])
+    _run(cmd + [str(video_out)])
+    listing.unlink(missing_ok=True)
+
+    total = sum(m["duration"] for m in metas)
+    log(f"[editor] concatenated {len(paths)} clip(s), {total:.1f}s -> {video_out.name}")
+    return str(video_out)
+
+
 def add_copy_overlay(video_in, video_out, copy, kit, *, fmt: str = "9:16",
                      logo_path: str | None = None) -> str:
     """Overlay the ad copy (headline/subhead/CTA + optional logo) onto `video_in`.

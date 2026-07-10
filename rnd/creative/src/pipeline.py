@@ -31,6 +31,7 @@ import image_providers  # noqa: E402
 import layout as layout_mod  # noqa: E402
 import logo as logo_mod  # noqa: E402
 import prompt_builder  # noqa: E402
+import sequencer  # noqa: E402
 import story_brain  # noqa: E402
 import storyboard as sb_mod  # noqa: E402
 import teardown  # noqa: E402
@@ -282,7 +283,109 @@ def _run_script(run_dir: Path) -> Script | None:
 
 # Preference order for "the clip that ships": the most post-processed one wins.
 _FINAL_CLIP_NAMES = ("video_captioned.mp4", "video_voiceover.mp4",
-                     "video_overlay.mp4", "video.mp4")
+                     "video_overlay.mp4", "timeline.mp4", "video.mp4")
+
+
+def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
+                 single_pass: bool = False, strict: bool = True, finish: bool = True,
+                 log=print):
+    """Render a planned storyboard into a timeline (T7). Costs real money.
+
+    Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
+    (T9.5), edits each one (T7.5), concatenates, then verifies the assembled timeline
+    against the plan (T9). The clip that ships is the clip that gets verified.
+    """
+    run_dir = config.OUTPUT_DIR / run_id
+    board = Storyboard.model_validate_json(
+        (run_dir / "storyboard.json").read_text("utf-8"))
+    kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
+    script = _run_script(run_dir)
+    cut = run_dir / "product_cutout.png"
+    cutout = str(cut) if cut.exists() else None
+    led = Ledger(run_dir)
+
+    if single_pass:
+        timeline = sequencer.render_single_pass(board, kit=kit, run_dir=run_dir,
+                                                style=style, aspect=aspect,
+                                                resolution=resolution, led=led, log=log)
+        rlog = None
+    else:
+        client = _client()
+        timeline, board, rlog = sequencer.render_storyboard(
+            board, kit=kit, run_dir=run_dir, script=script, style=style,
+            cutout_path=cutout, aspect=aspect, resolution=resolution,
+            replan=lambda shot, reason: story_brain.replan_shot(
+                client, kit, shot, reason=reason)[0],
+            strict=strict, led=led, log=log)
+        (run_dir / "storyboard_rendered.json").write_text(
+            board.model_dump_json(indent=2), encoding="utf-8")
+        (run_dir / "repair_log.json").write_text(rlog.model_dump_json(indent=2),
+                                                 encoding="utf-8")
+
+    if finish and script is not None:
+        timeline = finish_timeline(timeline, board, script, kit, run_dir,
+                                   client=_client(), led=led, log=log)
+
+    billed, used = sequencer.billed_seconds(board)
+    led.finalize()
+    log(f"[render] {timeline} ({used:g}s of ad, {billed:g}s billed, "
+        f"est ${led.total:.2f})")
+    return timeline, board, rlog
+
+
+def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, run_dir, *,
+                    client=None, sfx: bool = True, voiceover: bool = True,
+                    captions: bool = True, led=None, log=print) -> str:
+    """Voiceover, SFX and captions over the ASSEMBLED timeline, not per shot.
+
+    One voiceover across the whole ad, muxed once. Splicing per-shot audio at every cut
+    produces exactly the seams the cuts were meant to hide, and per-shot captions cannot
+    know where a sentence crosses a boundary.
+
+    Order matters: the VO lands first so the SFX have something to mix against, and the
+    captions go last because they are checked against the audio that ships.
+    """
+    run_dir = Path(run_dir)
+    out = timeline
+
+    if voiceover:
+        try:
+            spoken = script.spoken()
+            vo = video_providers.generate_voiceover(spoken, run_dir / "voiceover.mp3",
+                                                    log=log)
+            if led:
+                led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"],
+                           chars=len(spoken))
+            merged = video_providers.merge_audio_onto_video(
+                out, vo["path"], run_dir / "timeline_voiceover.mp4",
+                seconds=board.duration_s, log=log)
+            if led:
+                led.record("audio_merge", merged["provider"], merged["model"],
+                           merged["cost_usd"])
+            out = merged["path"]
+        except Exception as e:  # noqa: BLE001 -- a silent ad is still an ad
+            log(f"[finish] voiceover failed ({e!s:.100}); the timeline stays silent")
+            voiceover = False
+
+    if sfx:
+        try:
+            cues = editor.sfx_cues_for(board)
+            out = editor.add_sfx(out, run_dir / "timeline_sfx.mp4", cues, log=log)
+        except Exception as e:  # noqa: BLE001
+            log(f"[finish] sfx failed ({e!s:.100}); continuing without them")
+
+    if captions and voiceover:
+        try:
+            out = editor.caption_clip(out, run_dir / "video_captioned.mp4",
+                                      script.spoken(), run_dir / "voiceover.mp3",
+                                      kit=kit, led=led, log=log)[0]
+        except captions_mod.CaptionDriftError as e:
+            log(f"[captions] REFUSED by the drift gate: {e!s:.140}")
+        except Exception as e:  # noqa: BLE001
+            log(f"[captions] burn failed ({e!s:.100}); shipping uncaptioned")
+
+    log(f"[finish] {Path(out).name}")
+    return str(out)
 
 
 def qa_video(*, run_id: str, clip=None, cutout=None, shot_paths=None, strict: bool = True,

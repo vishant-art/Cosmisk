@@ -85,10 +85,19 @@ STORYBOARD_JSON = {"shots": [
 ]}
 
 
+REPLACEMENT_SHOT_JSON = {
+    "purpose": "demo", "duration_s": 4.0, "camera": "close_up",
+    "subject": "a different framing of the same demo", "product_visible": "hero",
+    "motion": "hands enter frame", "dialogue": None,
+}
+
+
 def _router(system_content: str) -> str:
     # route on a token unique to each system prompt.
     if "VOICEOVER" in system_content:
         return json.dumps({"script": "Discover timeless craftsmanship. Shop the new collection."})
+    if "REPLACEMENT shot" in system_content:
+        return json.dumps(REPLACEMENT_SHOT_JSON)
     if "shot list" in system_content:
         return json.dumps(STORYBOARD_JSON)
     if "SPOKEN script" in system_content:

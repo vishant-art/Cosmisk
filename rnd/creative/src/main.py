@@ -86,6 +86,14 @@ def main() -> None:
                          "Renders nothing; the sequence IS the creative")
     ap.add_argument("--seconds", type=int, default=config.STORY_DEFAULT_SECONDS,
                     help="target length of the storyboard, in seconds")
+    # sequenced render (T7). COSTS REAL MONEY: one Seedance clip per shot.
+    ap.add_argument("--render", action="store_true",
+                    help="render a planned storyboard into a timeline (needs --resume). "
+                         "Costs $$: the renderer's floor is 4s, so a 2s shot bills 4s")
+    ap.add_argument("--single-pass", action="store_true",
+                    help="render the whole ad as ONE clip instead of shot by shot. Loses "
+                         "per-shot repair and continuity; only sensible on a model that "
+                         "holds a multi-shot structure by itself (UGC-D1 v2b)")
     # temporal QA gate (T9). Free unless --qa-vlm.
     ap.add_argument("--qa", action="store_true",
                     help="verify a run's finished clip against its storyboard + script "
@@ -122,6 +130,15 @@ def main() -> None:
             ap.error("--storyboard needs --resume <run_id> (it reads that run's "
                      "brand_kit.json and template.json)")
         pipeline.plan_story(run_id=args.resume, data_path=args.data, seconds=args.seconds)
+        return
+
+    if args.render:
+        if not args.resume:
+            ap.error("--render needs --resume <run_id> (it reads that run's "
+                     "storyboard.json and brand_kit.json). Plan one with --storyboard.")
+        pipeline.render_story(run_id=args.resume, style=style, aspect=args.video_aspect,
+                              resolution=args.resolution, single_pass=args.single_pass,
+                              finish=not args.no_captions)
         return
 
     if args.qa:

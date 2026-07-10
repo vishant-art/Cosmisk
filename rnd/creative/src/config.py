@@ -59,7 +59,24 @@ IMAGE_CUTOUT_MODEL = "fal-ai/birefnet/v2"            # background removal (produ
 VIDEO_I2V = "bytedance/seedance-2.0/image-to-video"
 VIDEO_REF2V = "bytedance/seedance-2.0/reference-to-video"
 VIDEO_T2V = "bytedance/seedance-2.0/text-to-video"
-VIDEO_DURATION_DEFAULT = 10           # seconds (Seedance accepts ~4-15)
+VIDEO_DURATION_DEFAULT = 10           # seconds
+
+# Seedance accepts a DISCRETE set of durations, not a range. 7, 9, 11, 13 and 14 are
+# rejected by the API. Verified against fal's model page, July 2026.
+VIDEO_ALLOWED_DURATIONS = (4, 5, 6, 8, 10, 12, 15)
+VIDEO_MIN_CLIP_SECONDS = 4            # the renderer's floor
+
+# THE PACING/BILLING CONFLICT. Short-form pacing wants shots of 1.2-4.0s
+# (STORY_TYPICAL_SHOT_MAX). The renderer will not produce a clip shorter than 4s. So a
+# 2-second shot is GENERATED at 4 seconds, BILLED at 4 seconds, and trimmed to 2. Cutting
+# every two seconds costs double.
+#
+# This is a property of the renderer, not of the storyboard, and the storyboard must not
+# be bent to accommodate it: pacing is a creative decision and billing is not. The
+# sequencer snaps up, trims down, and records both numbers in the ledger so the waste is
+# visible rather than absorbed. It also puts a real number on UGC-D1: a single-pass
+# 30-second model would not merely be more convenient, it would be cheaper per second of
+# finished ad than shot-by-shot rendering at this floor.
 
 # Per-clip ceiling a Storyboard shot may request. NOT a hard-coded 8: Seedance 2.5
 # announces native 30s clips, and welding today's cap into the shot planner would

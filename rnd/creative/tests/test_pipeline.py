@@ -208,6 +208,95 @@ def test_qa_video_verifies_the_clip_that_ships(monkeypatch, tmp_path, synth_vide
     assert report.verdict in ("pass", "fail")
 
 
+def _sine_wav(path, seconds=3):
+    import subprocess
+
+    import imageio_ffmpeg
+    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-f", "lavfi", "-i",
+                    f"sine=frequency=220:duration={seconds}", "-ar", "44100", "-ac", "1",
+                    str(path)], capture_output=True, check=True)
+    return str(path)
+
+
+def test_finish_timeline_muxes_vo_then_sfx_then_captions(monkeypatch, tmp_path,
+                                                         brand_kit, synth_video):
+    """One voiceover across the WHOLE timeline, muxed once. Splicing per-shot audio at
+    every cut produces exactly the seams the cuts were meant to hide."""
+    import shutil
+
+    import video_providers
+    from schemas import Script, ScriptBeat, Shot, Storyboard
+
+    run = tmp_path / "f1"
+    run.mkdir()
+    shutil.copy(synth_video, run / "timeline.mp4")
+    script = Script(beats=[ScriptBeat(purpose="hook", text="one two three"),
+                           ScriptBeat(purpose="cta", text="shop now")])
+    board = Storyboard(target_seconds=3.0, shots=[
+        Shot(purpose=p, duration_s=1.5, camera="selfie", subject="s",
+             product_visible="absent") for p in ("hook", "cta")])
+
+    spoken = {}
+
+    def fake_tts(text, out, **kw):
+        spoken["text"] = text
+        return {"provider": "tts", "model": "m", "path": _sine_wav(out, 3),
+                "cost_usd": 0.02}
+
+    def fake_merge(video, audio, out, **kw):
+        import subprocess
+
+        import imageio_ffmpeg
+        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-i", str(video),
+                        "-i", str(audio), "-map", "0:v", "-map", "1:a", "-shortest",
+                        "-c:v", "copy", "-c:a", "aac", str(out)],
+                       capture_output=True, check=True)
+        return {"provider": "mux", "model": "m", "path": str(out), "cost_usd": 0.004}
+
+    def fake_asr(audio, **kw):
+        words = spoken["text"].split()
+        step = 2.5 / len(words)
+        return ([{"text": w, "start": i * step, "end": i * step + step * 0.8}
+                 for i, w in enumerate(words)], 0.0002)
+
+    monkeypatch.setattr(video_providers, "generate_voiceover", fake_tts)
+    monkeypatch.setattr(video_providers, "merge_audio_onto_video", fake_merge)
+    monkeypatch.setattr(video_providers, "transcribe_words", fake_asr)
+
+    out = pipeline.finish_timeline(run / "timeline.mp4", board, script, brand_kit, run,
+                                   log=lambda *_: None)
+    assert Path(out).name == "video_captioned.mp4"
+    assert spoken["text"] == "one two three shop now"    # the Script's spoken() text
+    import editor
+    assert editor.probe(out)["has_audio"] is True
+
+
+def test_a_silent_timeline_is_still_an_ad(monkeypatch, tmp_path, brand_kit, synth_video):
+    """A TTS outage must not lose the render we already paid for."""
+    import shutil
+
+    import video_providers
+    from schemas import Script, ScriptBeat, Shot, Storyboard
+
+    run = tmp_path / "f2"
+    run.mkdir()
+    shutil.copy(synth_video, run / "timeline.mp4")
+
+    def boom(*a, **k):
+        raise RuntimeError("fal is down")
+    monkeypatch.setattr(video_providers, "generate_voiceover", boom)
+
+    script = Script(beats=[ScriptBeat(purpose="hook", text="hi")])
+    board = Storyboard(target_seconds=3.0, shots=[
+        Shot(purpose="hook", duration_s=3.0, camera="selfie", subject="s",
+             product_visible="absent")])
+    logs = []
+    out = pipeline.finish_timeline(run / "timeline.mp4", board, script, brand_kit, run,
+                                   log=logs.append)
+    assert Path(out).exists()
+    assert any("timeline stays silent" in ln for ln in logs)
+
+
 def test_qa_video_needs_a_storyboard(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     (tmp_path / "q2").mkdir()

@@ -309,7 +309,7 @@ storyboard.py   ARITHMETIC. fit_durations, validate, build. Consumes nothing.
 
 ---
 
-### T7. Sequenced Render
+### T7. Sequenced Render ✅ SHIPPED (Phase 7)
 
 **Inspiration:** UGCify segment planning; Creatify AdFlow variant scaling.
 **Concept:** *shot-list rendering with continuity references*.
@@ -324,7 +324,9 @@ Either way: one voiceover across the whole timeline, muxed once at the end, not 
 
 **Expected impact.** This is what makes the output a video ad rather than an animated still. **Confidence:** high on capability, medium on wall-clock (six Seedance renders is minutes, see §8).
 
-**Files:** `pipeline.py`, `video_providers.py`, new `sequencer.py`, `config.py` (`VIDEO_MAX_CLIP_SECONDS`).
+**Files:** new `sequencer.py`, `editor.trim` / `concat` / `last_frame`, `prompt_builder.build_shot_prompt`, `pipeline.render_story` / `finish_timeline`, `main.py --render`.
+
+**As shipped, v2a: N clips plus concat.** The single-pass path (`render_single_pass`) exists as the `UGC-D1` v2b seam and refuses a board longer than `VIDEO_MAX_CLIP_SECONDS` rather than silently truncating the ad. Raise the cap when the model does (`OQ2`).
 
 ---
 
@@ -799,6 +801,49 @@ This is the third time in this project that the obvious metric was wrong and onl
 ### Fail-closed, all the way down
 
 An `inconclusive` per-shot check triggers a repair in strict mode: a shot we could not verify is a shot we did not verify, and a re-render is the cheapest way to try again. A shot that fails every rung and cannot be dropped raises `RecoveryExhausted` rather than shipping. A global `RECOVERY_MAX_TOTAL_RENDERS` ceiling means a systematically broken renderer costs a bounded amount rather than `N shots × 4 rungs` of real Seedance spend.
+
+## 7septies. Phase 7 build: the sequenced render (shipped)
+
+`T7`, the last seam. Everything downstream was built against a `render(shot, index, attempt, hint) -> path` callable that did not exist. `sequencer.py` supplies it and the whole roadmap connects.
+
+`rnd/creative` 319 → **352 passing** (+33, 0 broken). Verified end to end offline, with only Seedance, TTS, the fal muxer and Whisper faked:
+
+```
+teardown -> script -> storyboard -> render each shot (repair) -> edit each shot
+         -> concat -> voiceover -> SFX on the cuts -> word-timed captions -> QA: pass
+```
+
+### The pacing/billing conflict, which is the real finding of T7
+
+Seedance accepts a **discrete** set of durations: `{4, 5, 6, 8, 10, 12, 15}`. Not a range. 7, 9, 11, 13 and 14 are rejected outright, so `int(round(3.4))` is a runtime error and `max(4, ...)` is not enough either.
+
+The floor is four seconds. Short-form pacing wants shots of one to four. **Cutting every two seconds costs double.** A 20-second, five-shot ad bills 24 seconds of video: 1.20x. A 6-second ad cut into three 2-second shots bills 12 seconds: 2.00x.
+
+We do not bend the storyboard to fit the renderer. Pacing is a creative decision and billing is not. `snap_duration` rounds up to a value the API accepts, `editor.trim` cuts back to the plan, and the ledger records `billed_s` and `used_s` on every row so the waste is visible rather than absorbed.
+
+This also puts a number on `UGC-D1`. A single-pass 30-second model would not merely be more convenient. At this floor it is **cheaper per second of finished ad** than shot-by-shot rendering.
+
+### The `reference-to-video` branch finally has a caller
+
+`video_providers._seedance` has dispatched to `VIDEO_REF2V` whenever `refs` were supplied, since the first commit, and nothing had ever reached it. In `sequential` mode the sequencer passes the previous shot's final frame (plus the product cutout when there is one), which is exactly what that endpoint is for.
+
+### The bug that only running the whole chain could find
+
+The storyboard's `demo` shot declares `product_visible: "hero"`. With no cutout supplied, `verify_shot` returns **inconclusive**, strict mode treats that as a failure, and the ladder spent three real Seedance renders on retry, reprompt and replan.
+
+**No re-render can fix a missing input.** An inconclusive-because-the-render-was-bad and an inconclusive-because-we-lack-an-input are different states, and only the first is worth paying to retry.
+
+`QACheck.repairable` now distinguishes them. An unrepairable check still **fails the gate**, because fail-closed is not negotiable, but it stops the board immediately with an actionable message instead of billing four renders to prove the same point. `test_a_defect_no_re_render_can_fix_stops_the_board_immediately` asserts exactly one render happened.
+
+Two checks are unrepairable: a hero shot with no cutout, and a shipped clip with no audio track.
+
+### Three smaller decisions
+
+**Native audio is off on every shot render.** The concat drops audio anyway (one voiceover runs across the whole timeline, muxed once at the end), and Seedance rejects a clip outright when its auto-generated audio trips a content filter, which is a strange way to lose a shot whose audio you did not want.
+
+**`editor.concat` drops audio and says so.** Splicing per-shot native audio at every cut produces exactly the seams the cuts were meant to hide. `keep_audio=True` requires every clip to have a track.
+
+**`editor.trim` uses output seeking.** Input seeking (`-ss` before `-i`) is faster and lands on the nearest keyframe, which is not where the shot ends.
 
 ### 7.5 Implementation notes worth keeping
 

@@ -173,6 +173,7 @@ def check_caption_audio(clip, script: str, *, transcribe=None, work_dir=None,
     work_dir = Path(work_dir) if work_dir else clip.parent
     if not editor.probe(clip)["has_audio"]:
         return QACheck(name="caption_audio", passed=False, inconclusive=True,
+                       repairable=False,
                        detail="the shipped clip has no audio track to verify against")
 
     if transcribe is None:
@@ -182,6 +183,7 @@ def check_caption_audio(clip, script: str, *, transcribe=None, work_dir=None,
     wav = teardown.extract_audio(clip, work_dir / f"{clip.stem}_qa.wav")
     if not wav:
         return QACheck(name="caption_audio", passed=False, inconclusive=True,
+                       repairable=False,
                        detail="could not demux audio from the shipped clip")
 
     words, cost = transcribe(wav)
@@ -270,8 +272,12 @@ def verify_shot(clip, shot: Shot, index: int, *, cutout_path=None,
     if shot.product_visible == "hero":
         if not cutout_path or not Path(cutout_path).exists():
             checks.append(QACheck(
-                name="product_presence", passed=False, inconclusive=True, shot_index=index,
-                detail="shot promises a hero product but there is no cutout to match"))
+                name="product_presence", passed=False, inconclusive=True,
+                repairable=False, shot_index=index,
+                detail="shot promises a hero product but there is no cutout to match it "
+                       "against. Re-rendering cannot fix a missing input: supply a product "
+                       "image, replan the shot with product_visible != 'hero', or run "
+                       "lenient."))
         else:
             import numpy as np
             frames = [f for _t, f in teardown.sample_frames(
@@ -396,7 +402,7 @@ def check_product_presence(clip, board: Storyboard, cutout_path=None) -> list[QA
                         detail="no shot promised a hero product")]
     if not cutout_path or not Path(cutout_path).exists():
         return [QACheck(name="product_presence", passed=False, inconclusive=True,
-                        shot_index=i,
+                        repairable=False, shot_index=i,
                         detail=f"shot {i} promises a hero product but there is no cutout "
                                f"to match it against")
                 for i in wanted]

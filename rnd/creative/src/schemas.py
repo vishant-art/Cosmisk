@@ -477,6 +477,14 @@ class QACheck(BaseModel):
     # inconclusive result fails the gate, because fail-closed means "we could not prove
     # this is good", not "we found nothing wrong while looking the other way".
     inconclusive: bool = False
+    # T9.5: could a re-render plausibly change this verdict?
+    #
+    # False when the check could not run because an INPUT is missing, not because the
+    # render was bad: a shot that promises a hero product with no cutout to match it
+    # against will report the same thing forever. Re-rendering it is not a repair, it is
+    # paying Seedance to tell you the same thing four times. Such a check still fails the
+    # gate; it just must not drive the ladder.
+    repairable: bool = True
     # T9.5: which shot to repair. None = the check is about the timeline as a whole.
     shot_index: int | None = None
 

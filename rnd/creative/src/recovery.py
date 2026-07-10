@@ -62,17 +62,22 @@ def blast_radius(board: Storyboard, index: int) -> list[int]:
     return [index]
 
 
+def _blocking(checks: list[QACheck], *, strict: bool) -> list[QACheck]:
+    """Every check that stops this shot from shipping."""
+    return [c for c in checks
+            if (not c.passed and not c.inconclusive) or (strict and c.inconclusive)]
+
+
 def _first_failure(checks: list[QACheck], *, strict: bool) -> QACheck | None:
     """The check a repair should answer. Hard failures first; inconclusive only in strict
-    mode, and only after every hard failure has been addressed."""
-    for c in checks:
-        if not c.passed and not c.inconclusive:
-            return c
-    if strict:
-        for c in checks:
-            if c.inconclusive:
-                return c
-    return None
+    mode, and only after every hard failure has been addressed.
+
+    Unrepairable checks are skipped: re-rendering cannot change them, so they must not
+    drive the ladder. `render_board` refuses the whole board on them instead.
+    """
+    blocking = [c for c in _blocking(checks, strict=strict) if c.repairable]
+    hard = [c for c in blocking if not c.inconclusive]
+    return hard[0] if hard else (blocking[0] if blocking else None)
 
 
 def render_board(board: Storyboard, *, render, verify, script: Script | None = None,
@@ -106,7 +111,18 @@ def render_board(board: Storyboard, *, render, verify, script: Script | None = N
         clips[i] = render(shot, i, attempt, hints.get(i))
         rlog.renders += 1
 
-        failure = _first_failure(verify(clips[i], shot, i), strict=strict)
+        checks = verify(clips[i], shot, i)
+
+        # A defect no re-render can fix stops the board here, before the ladder spends
+        # money proving the point four times. Still fail-closed: we refuse to ship.
+        stuck = [c for c in _blocking(checks, strict=strict) if not c.repairable]
+        if stuck:
+            rlog.exhausted.append(i)
+            raise RecoveryExhausted(
+                f"shot {i} ({shot.purpose}) has a defect no re-render can fix: "
+                f"{stuck[0].detail}")
+
+        failure = _first_failure(checks, strict=strict)
         if failure is None:
             if attempt > 0:
                 # Record which rung actually fixed it. Otherwise the log tells you what

@@ -293,6 +293,71 @@ def test_an_inconclusive_check_triggers_repair_in_strict_mode():
     assert [s.action for s in rlog.steps] == ["retry"]
 
 
+def test_a_defect_no_re_render_can_fix_stops_the_board_immediately():
+    """A shot promising a hero product with no cutout to match will report the same thing
+    forever. Retrying it is paying Seedance to tell you the same thing four times.
+
+    Found by running the real chain: the ladder burned three renders on it.
+    """
+    calls = []
+
+    def render(shot, index, attempt, hint):
+        calls.append(attempt)
+        return "c.mp4"
+
+    def verify(path, shot, index):
+        return [QACheck(name="product_presence", passed=False, inconclusive=True,
+                        repairable=False, detail="no cutout to match it against")]
+
+    with pytest.raises(recovery.RecoveryExhausted, match="no re-render can fix"):
+        recovery.render_board(_board("hook", "cta"), render=render, verify=verify,
+                              log=lambda *_: None)
+    assert calls == [0], "it must not spend a second render proving the point"
+
+
+def test_an_unrepairable_check_is_ignored_in_lenient_mode():
+    """Lenient mode is an explicit decision to ship something we could not verify."""
+    def render(shot, index, attempt, hint):
+        return "c.mp4"
+
+    def verify(path, shot, index):
+        return [QACheck(name="product_presence", passed=False, inconclusive=True,
+                        repairable=False, detail="no cutout")]
+
+    clips, _b, rlog = recovery.render_board(_board("hook", "cta"), render=render,
+                                            verify=verify, strict=False,
+                                            log=lambda *_: None)
+    assert len(clips) == 2 and rlog.steps == []
+
+
+def test_a_repairable_inconclusive_check_still_drives_the_ladder():
+    """Flat frames make motion inconclusive, but a re-render could produce a shot with
+    contrast in it. That one IS worth retrying."""
+    calls = []
+
+    def render(shot, index, attempt, hint):
+        calls.append(attempt)
+        return "c.mp4"
+
+    def verify(path, shot, index):
+        if len(calls) == 1:
+            return [QACheck(name="shot_motion", passed=False, inconclusive=True,
+                            detail="a frame is too flat to correlate")]
+        return _ok()
+
+    _clips, _b, rlog = recovery.render_board(_board("hook", "cta"), render=render,
+                                             verify=verify, log=lambda *_: None)
+    assert [s.action for s in rlog.steps] == ["retry"]
+
+
+def test_a_hard_failure_outranks_an_unrepairable_one():
+    """Both block. Only one can be repaired, and the hard one is the reason to re-render."""
+    checks = [QACheck(name="product_presence", passed=False, inconclusive=True,
+                      repairable=False, detail="no cutout"),
+              QACheck(name="shot_motion", passed=False, detail="nothing moves")]
+    assert recovery._first_failure(checks, strict=True).detail == "nothing moves"
+
+
 def test_lenient_mode_lets_an_inconclusive_check_through():
     def render(shot, index, attempt, hint):
         return "c.mp4"
