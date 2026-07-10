@@ -506,16 +506,6 @@ class LayoutSpec(BaseModel):
     def box(self, role: str) -> LayoutBox | None:
         return next((b for b in self.boxes if b.role == role), None)
 
-    def copy_bbox(self) -> tuple[float, float, float, float]:
-        """Bounding box (x,y,w,h) covering the text elements -- the saliency target."""
-        txt = [b for b in self.boxes if b.role in ("headline", "subhead", "cta", "legal")]
-        if not txt:
-            return (0.0, 0.0, 1.0, 1.0)
-        x0 = min(b.x for b in txt)
-        y0 = min(b.y for b in txt)
-        x1 = max(b.x + b.w for b in txt)
-        y1 = max(b.y + b.h for b in txt)
-        return (x0, y0, x1 - x0, y1 - y0)
 
 
 class CompositedAd(BaseModel):

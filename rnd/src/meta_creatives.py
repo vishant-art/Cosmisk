@@ -319,10 +319,6 @@ def _one_asset(token, account, ad_id, ad_name, roas, out_dir, i, want_video, *,
                          video_path=video_path, cohort=cohort, metrics=metrics)
 
 
-# Retained for callers that predate the cohort split.
-_one_winner = _one_asset
-
-
 def fetch_creative_cohort(token: str, account: str, *, preset: str = "last_30d",
                           top_n: int = 5, bottom_n: int = 5, min_spend: float = 100.0,
                           out_dir, want_video: bool = True,

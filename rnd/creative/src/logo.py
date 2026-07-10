@@ -12,11 +12,9 @@ import prompt_builder  # noqa: E402
 from schemas import BrandKit  # noqa: E402
 
 
-def generate_logo(kit: BrandKit, out_path, *, provider="flux", size="2K",
-                  pro=False, log=print) -> dict:
+def generate_logo(kit: BrandKit, out_path, *, provider="flux", pro=False, log=print) -> dict:
     prompt = prompt_builder.build_logo_prompt(kit)
     res = image_providers.generate_with_fallback(
-        prompt, out_path, primary=provider, refs=None, aspect="1:1",
-        size=size, pro=pro, log=log)
+        prompt, out_path, primary=provider, refs=None, aspect="1:1", pro=pro, log=log)
     kit.logo.asset_path = res["path"]    # mutate the kit so downstream ads reference it
     return res

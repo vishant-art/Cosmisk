@@ -131,13 +131,6 @@ def plan_cues(words: list[CaptionWord], *, words_per_cue=None, max_gap_s=None,
     return cues
 
 
-def cue_at(cues: list[CaptionCue], t: float) -> CaptionCue | None:
-    for c in cues:
-        if c.start <= t < c.end:
-            return c
-    return None
-
-
 def state_at(cues: list[CaptionCue], t: float) -> tuple[int, int] | None:
     """(cue_index, active_word_index) at time `t`, or None when nothing is on screen.
 

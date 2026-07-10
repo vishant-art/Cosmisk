@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 
 SRC_DIR = Path(__file__).resolve().parent           # rnd/creative/src
 CREATIVE_DIR = SRC_DIR.parent                        # rnd/creative
-DATA_DIR = CREATIVE_DIR / "data"
 OUTPUT_DIR = CREATIVE_DIR / "output"
 RND_DATA_DIR = CREATIVE_DIR.parent / "data"          # rnd/data (existing mock + real samples)
 DEFAULT_DATA = RND_DATA_DIR / "mock_meta_ads.json"
@@ -51,7 +50,7 @@ META_AD_ACCOUNT = os.getenv("META_AD_ACCOUNT")        # e.g. act_1234567890
 # product" when unset -- same posture as Meta grounding.
 SHOPIFY_STORE = os.getenv("SHOPIFY_STORE")            # e.g. my-shop.myshopify.com
 SHOPIFY_TOKEN = os.getenv("SHOPIFY_TOKEN")            # Admin API access token
-SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2024-10")
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2026-07")
 
 # --- model IDs (verified June 2026; see vendor research doc) ------------------
 # Brain (text -> BrandKit/concepts) and the VLM critic go through OpenRouter.
@@ -145,13 +144,8 @@ CAPTION_MAX_CUE_S = 2.0        # no cue lingers longer than this, even mid-phras
 CAPTION_TAIL_S = 0.35          # how long the final cue holds after the last word ends
 CAPTION_FPS = 24               # caption overlay framerate (independent of the clip's)
 
-# Caption text sits ABOVE the bottom safe zone (9:16 reserves 0.20 for platform UI).
-CAPTION_BAND_Y = 0.60          # top of the caption band, relative to height
-CAPTION_BAND_H = 0.16
-CAPTION_MAX_FONT_PT = 96
-CAPTION_COLOR = "#FFFFFF"
-CAPTION_ACTIVE_COLOR = "#FFD400"   # overridden by the brand kit's accent when present
-CAPTION_STROKE_FRAC = 0.10     # outline width as a fraction of font px
+# Caption geometry/colours live on schemas.CaptionStyle (above the 0.20 bottom safe zone,
+# white body + brand-accent highlight). They are not duplicated here.
 
 # Fail-closed caption/audio agreement. We ASR our OWN voiceover, so drift this large
 # means something is genuinely wrong (wrong audio file, wrong language, TTS failure),

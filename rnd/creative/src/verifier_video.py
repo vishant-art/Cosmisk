@@ -94,7 +94,7 @@ def _gradmag(a):
     return np.sqrt(gx * gx + gy * gy)
 
 
-def masked_ncc(frame, template, mask, *, stride: int = 1) -> float:
+def masked_ncc(frame, template, mask) -> float:
     """Best zero-mean normalized cross-correlation of `template` in `frame`, in [0, 1],
     computed only over the pixels `mask` selects.
 
@@ -115,8 +115,8 @@ def masked_ncc(frame, template, mask, *, stride: int = 1) -> float:
         return 0.0
 
     best = 0.0
-    for y in range(0, H - h + 1, stride):
-        for x in range(0, W - w + 1, stride):
+    for y in range(0, H - h + 1):
+        for x in range(0, W - w + 1):
             win = frame[y:y + h, x:x + w][m]
             wm = win - win.mean()
             denom = float(np.sqrt((wm * wm).sum())) * tn
@@ -279,7 +279,6 @@ def verify_shot(clip, shot: Shot, index: int, *, cutout_path=None,
                        "image, replan the shot with product_visible != 'hero', or run "
                        "lenient."))
         else:
-            import numpy as np
             frames = [f for _t, f in teardown.sample_frames(
                 clip, sample_fps=config.QA_PRODUCT_SAMPLE_FPS, grid=128)]
             best = max((product_score(f, cutout_path) for f in frames), default=0.0)
