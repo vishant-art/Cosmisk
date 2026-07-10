@@ -1,4 +1,7 @@
-"""The brain turns the summary into a validated kit + concepts (fake LLM client)."""
+"""The brain turns the summary into a validated kit + concepts (fake LLM client).
+
+Includes the T5 seam: concepts conditioned on a real ad's measured structure.
+"""
 from __future__ import annotations
 
 import sys
@@ -75,3 +78,78 @@ def test_concepts_fallback_when_empty(brand_kit):
     assert len(out) == 2          # synthesises placeholders rather than returning nothing
     assert out[0].ad_copy.headline   # even placeholders carry valid copy
     assert out[0].ad_copy.cta_label
+
+
+# --- T5: the seam ---------------------------------------------------------------
+
+class _Capturing:
+    """Captures the messages sent, so we can assert what the brain was actually told."""
+    def __init__(self):
+        self.seen = []
+        outer = self
+
+        class _C:
+            @staticmethod
+            def create(**kw):
+                outer.seen.append(kw["messages"])
+
+                class R:
+                    choices = [type("X", (), {"message": type("M", (), {
+                        "content": '{"concepts": []}'})})]
+                return R()
+        self.chat = type("Chat", (), {"completions": _C()})()
+
+    @property
+    def system(self):
+        return self.seen[0][0]["content"]
+
+    @property
+    def user(self):
+        return self.seen[0][1]["content"]
+
+
+def _template(**kw):
+    from schemas import CreativeTemplate
+    base = dict(ad_id="ad_9", cohort="winner", shot_count=6, duration_s=18.0,
+                avg_shot_length_s=3.0, time_to_first_cut_s=1.4,
+                hook_type="pattern_interrupt", ad_format="ugc_testimonial",
+                spoken_hook="I genuinely did not expect", words_per_minute=168.0)
+    return CreativeTemplate(**{**base, **kw})
+
+
+def test_concepts_are_ungrounded_without_a_template(brand_kit):
+    """The behaviour we are leaving behind: the brain decides the hook, the headline,
+    the CTA and the scene having never seen a winning ad."""
+    c = _Capturing()
+    brand_brain.generate_concepts(c, brand_kit, "ctx", 2)
+    assert "STRUCTURE OF A REAL" not in c.user
+    assert "structure" not in c.system.lower()
+
+
+def test_template_reaches_the_concept_prompt(brand_kit):
+    c = _Capturing()
+    brand_brain.generate_concepts(c, brand_kit, "ctx", 2, template=_template())
+    assert "STRUCTURE OF A REAL WINNER" in c.user
+    assert "pattern_interrupt" in c.user
+    assert "I genuinely did not expect" in c.user
+    assert "6 shots" in c.user
+    assert "Reuse what carried the result" in c.system
+
+
+def test_loser_template_inverts_the_instruction(brand_kit):
+    c = _Capturing()
+    brand_brain.generate_concepts(c, brand_kit, "ctx", 2,
+                                  template=_template(cohort="loser"))
+    assert "STRUCTURE OF A REAL LOSER" in c.user
+    assert "do the opposite" in c.system
+
+
+def test_template_brief_never_states_an_unmeasured_field(brand_kit):
+    """A template whose ASR failed must not silently hand the brain a plausible pace."""
+    c = _Capturing()
+    brand_brain.generate_concepts(c, brand_kit, "ctx", 2,
+                                  template=_template(words_per_minute=None,
+                                                     spoken_hook=None))
+    assert "words/min" not in c.user
+    assert "first words spoken" not in c.user
+    assert "pattern_interrupt" in c.user      # what WAS measured still arrives

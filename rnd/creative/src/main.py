@@ -32,6 +32,13 @@ def _new_run_id() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
 
+_DEFAULT_VIDEO_PROMPT = {
+    "ugc": ("Filmed on a phone, handheld with small natural movement. Ordinary room, "
+            "soft daylight from a window. Unstyled and lived-in, like a customer shot it."),
+    "studio": "Cinematic product hero shot, slow push-in, on-brand.",
+}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Creative Studio CLI experiment")
     ap.add_argument("--data", default=str(config.DEFAULT_DATA),
@@ -53,11 +60,22 @@ def main() -> None:
                     help="background regenerations allowed before a concept is rejected")
     ap.add_argument("--vlm", action="store_true", help="run the VLM critic in the QA gate")
     # condition generation on REAL assets (Meta winners / a product image / explicit refs)
-    ap.add_argument("--meta-account", help="act_<id>: pull winning running-ad images as refs")
-    ap.add_argument("--meta-preset", default="last_30d", help="Meta date_preset for winners")
+    ap.add_argument("--meta-account", help="act_<id>: pull the creative cohort as refs")
+    ap.add_argument("--meta-preset", default="last_30d", help="Meta date_preset for the cohort")
     ap.add_argument("--top-creatives", type=int, default=5, help="how many winners to pull")
-    ap.add_argument("--ground", action="store_true",
-                    help="ground the brand kit in the pulled winners (vision pass)")
+    ap.add_argument("--bottom-creatives", type=int, default=5,
+                    help="how many LOSERS to pull; a winner-only corpus cannot support "
+                         "an effect estimate (roadmap UGC-D5)")
+    ap.add_argument("--min-spend", type=float, default=100.0,
+                    help="spend floor for cohort eligibility; below it a low-ROAS ad is "
+                         "not a loser, it is an ad that never got a chance")
+    ap.add_argument("--no-ground", action="store_true",
+                    help="do NOT ground the brand kit in the pulled winners. Grounding is "
+                         "on by default: the vision pass is the only place the brain looks "
+                         "at what actually converted for this account")
+    ap.add_argument("--style", default="ugc", choices=["ugc", "studio"],
+                    help="ugc = amateur capture aesthetic (default); studio = the old "
+                         "premium editorial look, for product/catalogue work")
     ap.add_argument("--product", help="path to a product image -> Bria product-shot scenes")
     ap.add_argument("--ref", action="append", default=[],
                     help="explicit reference image path(s) for generation; repeatable")
@@ -75,10 +93,16 @@ def main() -> None:
     args = ap.parse_args()
 
     formats = [f.strip() for f in args.formats.split(",") if f.strip()]
+    from schemas import UGCStyle  # noqa: E402
+    style = UGCStyle.model_validate(
+        config.UGC_STYLE_DEFAULT if args.style == "ugc" else config.STUDIO_STYLE)
 
     if args.video:
         run_id = args.resume or _new_run_id()
-        prompt = args.video_prompt or "Cinematic product hero shot, slow push-in, on-brand."
+        # The old default asked, in as many words, for an advertisement: "Cinematic
+        # product hero shot, slow push-in, on-brand." No winning Reel has a slow
+        # cinematic push-in. That one string literal was the whole gap.
+        prompt = args.video_prompt or _DEFAULT_VIDEO_PROMPT[args.style]
         # for a voiceover we need the brand kit (+ an LLM client) from the run dir
         kit, client = None, None
         if args.voiceover:
@@ -99,7 +123,7 @@ def main() -> None:
         pipeline.resume(run_id=args.resume, data_path=args.data, images=args.images,
                         image_provider=args.image_provider, formats=formats,
                         qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro,
-                        refs=refs, product_image=args.product)
+                        refs=refs, product_image=args.product, style=style)
         return
 
     pipeline.run(data_path=args.data, run_id=_new_run_id(), strategy=args.select,
@@ -107,8 +131,9 @@ def main() -> None:
                  image_provider=args.image_provider, formats=formats,
                  qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro,
                  refs=refs, product_image=args.product, meta_account=args.meta_account,
-                 ground_from_meta=args.ground, meta_preset=args.meta_preset,
-                 top_creatives=args.top_creatives, no_logo=args.no_logo)
+                 ground_from_meta=not args.no_ground, meta_preset=args.meta_preset,
+                 top_creatives=args.top_creatives, bottom_creatives=args.bottom_creatives,
+                 min_spend=args.min_spend, style=style, no_logo=args.no_logo)
 
 
 if __name__ == "__main__":

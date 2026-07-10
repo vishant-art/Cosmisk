@@ -568,7 +568,22 @@ Live verification is a separate, manual, billed run: `python -m src.main --meta-
 
 ### 7.4 Invariants to hold
 
-Per `CLAUDE.md`: default suite green, `madge --circular` 0 cycles (Node side untouched by Phase 1). The rnd suite is currently 93 tests; Phase 1 should add roughly 6 and break none.
+Per `CLAUDE.md`: default suite green, `madge --circular` 0 cycles (Node side untouched by Phase 1).
+
+**Phase 1 result:** `rnd/creative` 93 → **131 passing** (38 added, 0 broken). `rnd` 36 passing, 5 skipped.
+
+Two existing tests were amended rather than weakened, and both amendments record a deliberate contract change:
+
+- `test_pipeline._patch_all` had a `generate_concepts` stub whose signature predates the T5 seam.
+- `test_meta_creatives.test_fetch_winner_video_source_then_thumb` asserted `local_path.endswith(".mp4")`. The MP4 now lands in `video_path`, and `local_path` holds the still. **That conflation was the bug**: it is precisely what allowed the downstream `kind == "image"` filter to discard winner videos unopened.
+
+### 7.5 Implementation notes worth keeping
+
+**The frame differ must run on RGB, not luma.** The first implementation averaged the channels before diffing and detected zero cuts on a three-shot test clip. Red `(220,30,30)` and green `(30,200,60)` have channel means of 93.3 and 96.7: a 3-unit brightness change across a hard cut. On RGB the same cut is 130 units. Any luma-first shot detector goes blind exactly when hue moves and brightness does not, which describes most colour-graded ad footage. The synthesized fixture caught this on the first run, which is the argument for a fixture with a ground truth rather than a real MP4 and an eyeball.
+
+**Absent is not zero.** `metrics_of` returns `None`, not `0.0`, when a video engagement field is missing from an insights row. An image ad has no three-second video views; recording that as a zero thumb-stop rate is a false claim that silently poisons every average taken over the corpus later. "We did not observe this" and "nobody stopped" are different facts and the type system should keep them apart.
+
+**`ASR_PER_MINUTE = 0.000544` is UNVERIFIED.** It comes from a third-party comparison, not fal's own pricing page. It is small enough that a 10x error is still noise beside one Seedance clip, which is exactly the reasoning that lets a bad constant survive for a year. Confirm it before any live run at volume.
 
 ---
 

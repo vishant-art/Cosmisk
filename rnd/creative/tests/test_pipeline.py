@@ -29,7 +29,7 @@ def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
     monkeypatch.setattr(brand_brain, "generate_brand_kit",
                         lambda c, s, ground_images=None: (brand_kit, 0.0))
     monkeypatch.setattr(brand_brain, "generate_concepts",
-                        lambda c, k, s, n: (concepts[:n], 0.0))
+                        lambda c, k, s, n, template=None: (concepts[:n], 0.0))
 
     def fake_logo(kit, out_path, **kw):
         _png(out_path, size=(400, 400), color="red")
@@ -230,7 +230,7 @@ def test_meta_account_pulls_winner_refs(monkeypatch, tmp_path, envelope_path,
     _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
 
     import meta_creatives
-    monkeypatch.setattr(meta_creatives, "fetch_winning_creatives",
+    monkeypatch.setattr(meta_creatives, "fetch_creative_cohort",
                         lambda *a, **k: [
                             meta_creatives.CreativeAsset("a1", "Win", 6.0, "image", "/w1.png"),
                             meta_creatives.CreativeAsset("a2", "Win2", 5.0, "video", None)])
@@ -238,3 +238,44 @@ def test_meta_account_pulls_winner_refs(monkeypatch, tmp_path, envelope_path,
     pipeline.run(data_path=envelope_path, run_id="r8", mode="auto", images=1,
                  meta_account="act_1", log=lambda *_: None)
     assert bg_calls[0]["refs"] == ["/w1.png"]            # only the usable image winner
+
+
+def test_losers_never_condition_the_background(monkeypatch, tmp_path, envelope_path,
+                                               brand_kit, concepts):
+    """The cohort carries losers so the teardown can learn from the contrast. Their
+    pixels must never reach FLUX: we want to generate what won, not what lost."""
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setenv("META_ACCESS_TOKEN", "tok")
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    import meta_creatives
+    win = meta_creatives.CreativeAsset("a1", "Win", 6.0, "image", "/w1.png",
+                                       cohort="winner")
+    lose = meta_creatives.CreativeAsset("a2", "Lose", 0.3, "image", "/l1.png",
+                                        cohort="loser")
+    monkeypatch.setattr(meta_creatives, "fetch_creative_cohort", lambda *a, **k: [win, lose])
+
+    pipeline.run(data_path=envelope_path, run_id="r9", mode="auto", images=1,
+                 meta_account="act_1", log=lambda *_: None)
+    assert bg_calls[0]["refs"] == ["/w1.png"]
+    assert "/l1.png" not in (bg_calls[0]["refs"] or [])
+
+
+def test_teardown_runs_only_when_a_winner_has_video(monkeypatch, tmp_path, envelope_path,
+                                                    brand_kit, concepts):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setenv("META_ACCESS_TOKEN", "tok")
+    bg_calls = []
+    _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
+
+    import meta_creatives
+    import teardown as td
+    calls = []
+    monkeypatch.setattr(meta_creatives, "fetch_creative_cohort", lambda *a, **k: [
+        meta_creatives.CreativeAsset("a1", "Win", 6.0, "image", "/w1.png", cohort="winner")])
+    monkeypatch.setattr(td, "analyze", lambda *a, **k: calls.append(a) or None)
+
+    pipeline.run(data_path=envelope_path, run_id="r10", mode="auto", images=1,
+                 meta_account="act_1", log=lambda *_: None)
+    assert calls == [], "no winner had an MP4; teardown must not be attempted"

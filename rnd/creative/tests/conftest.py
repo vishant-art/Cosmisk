@@ -93,6 +93,45 @@ def copyset() -> CopySet:
                    cta_label="Shop now", legal="*T&C apply", angle="hero-product")
 
 
+# --- a synthesized MP4 with cuts at KNOWN timestamps --------------------------
+# Written at test time with the ffmpeg binary imageio-ffmpeg already bundles. Nothing
+# is checked into git, so nothing can be silently gitignored, and shot detection gets
+# a ground truth to assert against instead of a vibe. Silent by construction: the ASR
+# path must degrade to None rather than invent a hook.
+
+SYNTH_FPS = 10
+SYNTH_SHOT_SECONDS = 1.0
+SYNTH_COLORS = [(220, 30, 30), (30, 200, 60), (40, 60, 230)]   # cuts at t=1.0, t=2.0
+
+
+@pytest.fixture
+def synth_video(tmp_path) -> str:
+    """3 solid-colour shots x 1.0s @ 10fps. Cuts at 1.0s and 2.0s. No audio track."""
+    import imageio_ffmpeg
+    import numpy as np
+
+    size = (64, 64)
+    out = tmp_path / "synth.mp4"
+    writer = imageio_ffmpeg.write_frames(str(out), size, fps=SYNTH_FPS, macro_block_size=1)
+    writer.send(None)
+    for color in SYNTH_COLORS:
+        frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
+        frame[:, :] = color
+        for _ in range(int(SYNTH_FPS * SYNTH_SHOT_SECONDS)):
+            writer.send(frame.tobytes())
+    writer.close()
+    return str(out)
+
+
+@pytest.fixture
+def fake_words() -> list[dict]:
+    """Word-level ASR output, as fal Whisper returns it once normalized."""
+    raw = [("I", 0.0), ("genuinely", 0.2), ("did", 0.5), ("not", 0.7), ("expect", 0.9),
+           ("this", 1.2), ("to", 1.4), ("work", 1.6), ("so", 2.0), ("shop", 2.3),
+           ("now", 2.6)]
+    return [{"text": t, "start": s, "end": s + 0.18} for t, s in raw]
+
+
 @pytest.fixture
 def envelope_path(tmp_path) -> str:
     """A tiny Meta-style envelope written to disk (3 campaigns, distinct ROAS)."""

@@ -111,6 +111,30 @@ def generate_voiceover(text: str, out_path, *, voice=None, log=print) -> dict:
             "path": str(out), "cost_usd": ledger.tts_cost(len(text))}
 
 
+def transcribe_words(audio_path, *, log=print) -> tuple[list[dict], float]:
+    """Word-level ASR via fal Whisper. Returns ([{text,start,end}], cost_usd).
+
+    `chunk_level="word"` is the whole reason this exists: segment-level timestamps
+    cannot drive caption burn-in (T3) or measure a spoken hook against a cut boundary
+    (T4). Same FAL_KEY, no new vendor.
+    """
+    import fal_client                   # lazy
+    res = fal_client.subscribe(
+        config.ASR_MODEL,
+        arguments={"audio_url": fal_client.upload_file(str(audio_path)),
+                   "chunk_level": config.ASR_CHUNK_LEVEL},
+        with_logs=False)
+    words = []
+    for ch in res.get("chunks") or []:
+        ts = ch.get("timestamp") or [None, None]
+        if ts[0] is None:
+            continue
+        words.append({"text": str(ch.get("text", "")).strip(),
+                      "start": float(ts[0]), "end": float(ts[1] or ts[0])})
+    seconds = words[-1]["end"] if words else 0.0
+    return words, ledger.asr_cost(seconds)
+
+
 def merge_audio_onto_video(video_path, audio_path, out_path, *, seconds=0, log=print) -> dict:
     """Lay an audio track onto a video without re-rendering frames (fal ffmpeg muxer)."""
     import fal_client                   # lazy

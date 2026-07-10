@@ -117,7 +117,12 @@ def test_fetch_winner_video_source_then_thumb(monkeypatch, tmp_path):
     monkeypatch.setattr(mc, "get_video",
                         lambda tok, vid: {"source": "https://cdn/v.mp4", "permalink_url": "p"})
     a = mc.fetch_winning_creatives("tok", "act_1", top_n=1, out_dir=tmp_path)[0]
-    assert a.kind == "video" and a.has_source is True and a.local_path.endswith(".mp4")
+    # The MP4 now lands in `video_path`, not `local_path`. They serve different consumers:
+    # a still conditions FLUX, the MP4 is the teardown's only input. Conflating them is
+    # what let a `kind == "image"` filter downstream discard winner videos unopened.
+    assert a.kind == "video" and a.has_source is True
+    assert a.video_path.endswith(".mp4")
+    assert a.local_path is None            # this ad had no still, and none was invented
 
     monkeypatch.setattr(mc, "get_video",
                         lambda tok, vid: {"thumbnails": {"data": [{"uri": "https://cdn/t.png",

@@ -64,10 +64,21 @@ def video_cost(bucket: str, width: int, height: int, seconds: float, *,
 TTS_PER_1K_CHARS = 0.10               # MiniMax Speech-02 HD ($/1K characters)
 AUDIO_MERGE_PER_S = 0.0002            # fal ffmpeg merge-audio-video ($/second)
 
+# fal Whisper v3. UNVERIFIED against fal's own pricing page (a third-party comparison
+# quotes ~$0.00544 per 10-minute clip). Confirm before any live run at volume; the
+# figure is small enough that a 10x error is still noise next to one Seedance clip,
+# which is exactly the kind of reasoning that lets a bad constant survive. Verify it.
+ASR_PER_MINUTE = 0.000544
+
 
 def tts_cost(chars: int) -> float:
     """USD for a TTS voiceover by character count."""
     return round(max(0, chars) / 1000 * TTS_PER_1K_CHARS, 6)
+
+
+def asr_cost(seconds: float) -> float:
+    """USD to transcribe `seconds` of audio at word-level granularity."""
+    return round(max(0.0, seconds) / 60.0 * ASR_PER_MINUTE, 6)
 
 
 def merge_cost(seconds: float) -> float:

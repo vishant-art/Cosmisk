@@ -29,10 +29,11 @@ import image_providers  # noqa: E402
 import layout as layout_mod  # noqa: E402
 import logo as logo_mod  # noqa: E402
 import prompt_builder  # noqa: E402
+import teardown  # noqa: E402
 import verifier  # noqa: E402
 import video_providers  # noqa: E402
 from ledger import Ledger  # noqa: E402
-from schemas import AssetRecord, BrandKit, RunManifest  # noqa: E402
+from schemas import AssetRecord, BrandKit, CreativeTemplate, RunManifest  # noqa: E402
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
 
@@ -41,23 +42,54 @@ def _slug(fmt: str) -> str:
     return fmt.replace(":", "x")
 
 
-def _meta_winner_refs(account, *, preset, top_n, run_dir, token=None, log=print) -> list[str]:
-    """Pull the account's winning RUNNING-ad images via the Meta API (downloaded
-    immediately, URLs expire) to use as brand/reference conditioning. Returns local
-    image paths; empty + a log line if no token (never blocks a run)."""
+def _meta_cohort(account, *, preset, top_n, run_dir, token=None, bottom_n=5,
+                 min_spend=100.0, log=print):
+    """Pull BOTH tails of the account's ROAS distribution (UGC-D5).
+
+    Returns (ref_images, assets). `ref_images` are WINNER stills only, because those
+    condition generation and we do not want to condition on a loser's pixels. `assets`
+    carries the whole cohort, including losers and including MP4s, because the teardown
+    learns from the contrast.
+
+    Never blocks a run: no token, or a Meta hiccup, yields ([], []) and a log line.
+    """
     token = token or os.getenv("META_ACCESS_TOKEN")
     if not token:
-        log("[meta] META_ACCESS_TOKEN not set; skipping winner fetch")
-        return []
+        log("[meta] META_ACCESS_TOKEN not set; skipping cohort fetch")
+        return [], []
     try:
-        assets = meta_creatives.fetch_winning_creatives(
-            token, account, preset=preset, top_n=top_n, out_dir=Path(run_dir) / "winners")
+        assets = meta_creatives.fetch_creative_cohort(
+            token, account, preset=preset, top_n=top_n, bottom_n=bottom_n,
+            min_spend=min_spend, out_dir=Path(run_dir) / "winners", log=log)
     except Exception as e:  # noqa: BLE001 -- never let Meta hiccups break a run
-        log(f"[meta] winner fetch failed ({e!s:.120}); proceeding without refs")
-        return []
-    imgs = [a.local_path for a in assets if a.kind == "image" and a.local_path]
-    log(f"[meta] pulled {len(imgs)} winning image ref(s) from {account}")
-    return imgs
+        log(f"[meta] cohort fetch failed ({e!s:.120}); proceeding without refs")
+        return [], []
+    # Winner stills condition FLUX. Loser stills deliberately do not.
+    imgs = [a.local_path for a in assets if a.cohort == "winner" and a.local_path]
+    log(f"[meta] {len(imgs)} winning image ref(s) from {account}")
+    return imgs, assets
+
+
+def _teardown_winner(assets, *, client, run_dir, led, log=print):
+    """Tear down the best winner that has a playable MP4. Returns a CreativeTemplate
+    or None.
+
+    The MP4s were already being downloaded here and then dropped on the floor by a
+    `kind == "image"` filter that never opened them. This is the fix, and it costs one
+    Whisper call plus one vision call.
+    """
+    with_video = [a for a in assets if a.cohort == "winner" and a.video_path]
+    if not with_video:
+        log("[teardown] no winner has a playable MP4; concepts will be ungrounded")
+        return None
+    best = max(with_video, key=lambda a: a.roas)
+    try:
+        return teardown.analyze(best.video_path, ad_id=best.ad_id, ad_name=best.ad_name,
+                                cohort=best.cohort, metrics=best.metrics, client=client,
+                                led=led, work_dir=Path(run_dir) / "teardown", log=log)
+    except Exception as e:  # noqa: BLE001 -- a teardown must never break a run
+        log(f"[teardown] failed for {best.ad_id} ({e!s:.120}); concepts will be ungrounded")
+        return None
 
 
 def _client() -> OpenAI:
@@ -79,8 +111,9 @@ def _write_kit(run_dir: Path, kit: BrandKit) -> None:
 def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
         mode="auto", images=4, image_provider="flux", formats=None,
         qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
-        meta_account=None, ground_from_meta=False, meta_preset="last_30d",
-        top_creatives=5, no_logo=False, log=print) -> RunManifest:
+        meta_account=None, ground_from_meta=True, meta_preset="last_30d",
+        top_creatives=5, bottom_creatives=5, min_spend=100.0, style=None,
+        no_logo=False, log=print) -> RunManifest:
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -91,11 +124,15 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     summary = cs.summarize(ds, subset)
     log(f"[1/4] {ds.account_name}: {len(subset)} campaigns via '{strategy}'")
 
-    # Pull real winning creatives from Meta to condition generation (optional).
-    winner_refs = (_meta_winner_refs(meta_account, preset=meta_preset, top_n=top_creatives,
-                                     run_dir=run_dir, log=log) if meta_account else [])
+    # Pull the real creative cohort from Meta (both tails) to ground generation.
+    winner_refs, cohort = (_meta_cohort(meta_account, preset=meta_preset,
+                                        top_n=top_creatives, bottom_n=bottom_creatives,
+                                        min_spend=min_spend, run_dir=run_dir, log=log)
+                           if meta_account else ([], []))
     if refs is None and winner_refs:
         refs = winner_refs                       # condition backgrounds on real winners
+    # Grounding is ON by default now. The vision pass is the only place the brain ever
+    # looks at what actually converted for this account, and it used to be off.
     ground_images = winner_refs if (ground_from_meta and winner_refs) else None
 
     client = _client()
@@ -103,6 +140,13 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     kit, kit_cost = brand_brain.generate_brand_kit(client, summary, ground_images=ground_images)
     led.record("brandkit", "openrouter", config.TEXT_MODEL, kit_cost)
     _write_kit(run_dir, kit)
+
+    # Structural teardown of the top winner's MP4 -> the template that conditions concepts.
+    template = _teardown_winner(cohort, client=client, run_dir=run_dir, led=led,
+                                log=log) if cohort else None
+    if template:
+        (run_dir / "template.json").write_text(template.model_dump_json(indent=2),
+                                               encoding="utf-8")
 
     manifest = RunManifest(
         run_id=run_id, account_name=ds.account_name, select_strategy=strategy,
@@ -130,7 +174,8 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
 
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
-                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image, log=log)
+                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
+                  template=template, style=style, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -142,12 +187,16 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
 
 def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
            formats=None, qa_retries=1, run_vlm=False, pro=False, refs=None,
-           product_image=None, log=print) -> RunManifest:
+           product_image=None, style=None, log=print) -> RunManifest:
     """Generate ads from a (possibly user-edited) brand_kit.json in output/<run>."""
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
     led = Ledger(run_dir)
+    # Reuse the run's teardown rather than re-downloading and re-analyzing the winner.
+    tpl_file = run_dir / "template.json"
+    template = (CreativeTemplate.model_validate_json(tpl_file.read_text("utf-8"))
+                if tpl_file.exists() else None)
     ds = cs.load_dataset(data_path)
     summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
 
@@ -165,7 +214,8 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     client = _client()
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
-                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image, log=log)
+                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
+                  template=template, style=style, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -237,16 +287,20 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
 
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                   image_provider, formats, qa_retries, run_vlm, pro, refs=None,
-                  product_image=None, log=print) -> None:
+                  product_image=None, template=None, style=None, log=print) -> None:
     """For each concept: a text-free background (QA-gated, regenerated on fail) ->
     per-format layout -> Pillow composite -> verify. The base format is the gate;
     other formats are outpainted from the accepted background, then composited.
 
     Conditioning: `product_image` -> Bria product-shot (real product into the scene,
     after a BiRefNet cutout); else `refs` (e.g. real winning creatives) -> FLUX.2 flex
-    reference images; else a blind text-only background."""
+    reference images; else a blind text-only background.
+
+    `template` grounds the CONCEPTS in the measured structure of a real winner (T5);
+    `style` grounds the pixels in a UGC capture aesthetic (T1)."""
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
-    concepts, concepts_cost = brand_brain.generate_concepts(client, kit, summary, images)
+    concepts, concepts_cost = brand_brain.generate_concepts(client, kit, summary, images,
+                                                            template=template)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     negative = prompt_builder.build_negative_prompt()
     base_fmt = formats[0]
@@ -277,7 +331,7 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
         for attempt in range(qa_retries + 1):
             # Background is TEXT-FREE: negative prompt suppresses text/logo. `bg_refs`
             # condition the scene on the real product / winning creatives (or None).
-            prompt = prompt_builder.build_image_prompt(concept, kit, base_fmt)
+            prompt = prompt_builder.build_image_prompt(concept, kit, base_fmt, style=style)
             res = image_providers.generate_with_fallback(
                 prompt, bg, primary=bg_primary, refs=bg_refs, aspect=base_fmt,
                 negative=negative, pro=pro, log=log)

@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config  # noqa: E402
 import ledger  # noqa: E402
-from schemas import AdConcept, BrandKit, CopySet  # noqa: E402
+from schemas import AdConcept, BrandKit, CopySet, CreativeTemplate  # noqa: E402
 
 _KIT_SYSTEM = (
     "You are an elite brand strategist and art director. From the ad-account summary, "
@@ -59,6 +59,23 @@ _CONCEPTS_SYSTEM = (
     "- legal: optional fine print (e.g. *T&C apply), or null.\n"
     "Keep the concepts visually varied but unmistakably the same brand."
 )
+
+# Appended to _CONCEPTS_SYSTEM when a CreativeTemplate is supplied (T5). This is the
+# seam: it is what turns "copy what the winners LOOK like" into "reuse what they DO".
+_STRUCTURE_SYSTEM = (
+    "\n\nYou will also be given the measured STRUCTURE of a real ad from this account, "
+    "together with how it performed. Treat it as evidence about this audience, not as "
+    "a thing to copy. Reuse what carried the result -- the hook category, the pacing, "
+    "the order in which the argument is made. Change the surface: the angle, the scene, "
+    "the words. If the structure came from a LOSER, do the opposite of what it did.\n"
+    "Set each concept's `angle` to name the structural choice you inherited."
+)
+
+
+def _structure_block(template: CreativeTemplate | None) -> str:
+    """The template's brief, or nothing. Never a placeholder: a fabricated structure
+    would be indistinguishable from a measured one at the point of use."""
+    return f"\n\n{template.to_brief()}" if template else ""
 
 
 def _fallback_copy(kit: BrandKit, i: int) -> CopySet:
@@ -130,12 +147,26 @@ def generate_brand_kit(client, summary: str, ground_images: list[str] | None = N
     return BrandKit.model_validate(data), cost
 
 
-def generate_concepts(client, kit: BrandKit, summary: str, n: int) -> tuple[list[AdConcept], float]:
+def generate_concepts(client, kit: BrandKit, summary: str, n: int,
+                      template: CreativeTemplate | None = None
+                      ) -> tuple[list[AdConcept], float]:
+    """Propose n ad concepts, optionally grounded in the measured structure of a real
+    ad from this account (T5).
+
+    `template` is the seam. Before it existed, this function decided the hook, the
+    headline, the CTA and the scene having never once seen a winning ad: it received
+    a brand kit and a summary string, text only. That is the difference between
+    generating an advertisement and generating content that happens to be one.
+    """
+    system = _CONCEPTS_SYSTEM.replace("{n}", str(n))
+    if template:
+        system += _STRUCTURE_SYSTEM
     user = (
         f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
-        f"ACCOUNT CONTEXT:\n{summary}\n\nPropose exactly {n} concepts."
+        f"ACCOUNT CONTEXT:\n{summary}"
+        f"{_structure_block(template)}\n\nPropose exactly {n} concepts."
     )
-    data, cost = _chat_json(client, _CONCEPTS_SYSTEM.replace("{n}", str(n)), user)
+    data, cost = _chat_json(client, system, user)
     concepts = [AdConcept.model_validate(c) for c in data.get("concepts", [])]
     if not concepts:
         concepts = [AdConcept(title=f"Concept {i+1}", scene=kit.visual_style,

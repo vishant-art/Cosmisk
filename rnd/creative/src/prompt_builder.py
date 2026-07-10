@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from schemas import AdConcept, BrandKit  # noqa: E402
+from schemas import AdConcept, BrandKit, UGCStyle  # noqa: E402
 
 
 # Suppression list for models with a real negative_prompt (SDXL); also appended as a
@@ -28,21 +28,52 @@ def build_negative_prompt() -> str:
     return _NEGATIVE
 
 
-def build_image_prompt(concept: AdConcept, kit: BrandKit, aspect: str = "4:5") -> str:
+# The old craft clause. It asks, in as many words, for an advertisement: premium,
+# editorial, art-directed, motivated lighting. That is precisely the look that reads
+# as "ad" in a feed. Kept for product/catalogue work via STUDIO_STYLE.
+_STUDIO_CRAFT = (
+    "ONE clear hero subject, intentional composition with depth and a focal point; real, "
+    "tactile materials and authentic texture; motivated, directional lighting; premium "
+    "editorial craft. "
+)
+
+# The UGC craft clause. Amateur capture, on purpose. Note what is NOT here: no grain,
+# no compression, no shake. Those are UGCStyle `post:` fields applied deterministically
+# by the editor (T7.5). Asking a diffusion model to paint grain gets you painted grain,
+# which cannot then be removed.
+_UGC_CRAFT = (
+    "Looks like a real photo a customer took, not an advertisement. Ordinary, lived-in "
+    "surroundings with a little honest mess; nothing styled or staged; natural skin and "
+    "real surfaces. "
+)
+
+
+def build_image_prompt(concept: AdConcept, kit: BrandKit, aspect: str = "4:5",
+                       style: UGCStyle | None = None) -> str:
+    """Assemble the text-free background prompt.
+
+    `style` carries only its PROMPT half into the prompt (UGCStyle.to_prompt). The
+    post-processing half is a guarantee the editor keeps, and naming it here would
+    turn a guarantee back into a wish.
+    """
     dos = "; ".join(kit.dos) if kit.dos else "—"
     donts = "; ".join(kit.donts) if kit.donts else "—"
     # NOTE: the positive prompt deliberately never mentions logo / text / copy / negative
     # space -- that priming is what made models render them. Suppression lives in the
     # negative prompt (build_negative_prompt), not here.
+    craft = _STUDIO_CRAFT
+    capture = ""
+    if style is not None:
+        craft = _UGC_CRAFT
+        fragment = style.to_prompt()
+        capture = f"{fragment}. " if fragment else ""
     return (
         f"{concept.scene}\n\n"
-        f"Art-directed advertising photograph for {kit.brand_name}. "
+        f"Photograph for {kit.brand_name}. {capture}"
         f"Visual style: {kit.visual_style}. Mood: {kit.tone}. "
         f"Color-grade deliberately to the brand palette (use it intentionally, not as flat "
         f"blocks): {kit.palette_str()}. "
-        f"ONE clear hero subject, intentional composition with depth and a focal point; real, "
-        f"tactile materials and authentic texture; motivated, directional lighting; premium "
-        f"editorial craft. "
+        f"{craft}"
         f"Do: {dos}. Don't: {donts}. "
         f"Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche "
         f"gradients, no clutter or random props, no over-blurred bokeh, nothing posed or "
