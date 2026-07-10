@@ -517,6 +517,76 @@ The loop is half-closed. Exactly two things are missing:
 
 ---
 
+## Phase 9 — Live activation (SCOPED, not yet built)
+
+Everything above is built and green in mock tests. The first live run (`output/2026-07-10_220944`, ~$5.15, no finished video) exposed that the pipeline is not wired for how a real operator actually runs it. This phase closes that gap. **Ordering: winners + no-dup + lean-output + both-pickings first; Shopify last and separately** (per instruction: stop before Shopify code).
+
+### 9.0 Precondition, not code: the Meta token is dead
+
+`META_ACCESS_TOKEN` is present in `.env` (len 202) but **invalid** — the Graph API returns *"The session has been invalidated because the user changed their password or Facebook has changed the session."* `META_APP_ID`/`META_APP_SECRET` are present, so a fresh token can be minted. Until it is, **no run can ground on winners**, and the first job of the pipeline is to say so loudly rather than proceed silently (9.1). The old `full_demo`/`quick_demo` runs grounded because their token was fresh.
+
+**Action for the operator:** refresh `META_ACCESS_TOKEN` (Graph API Explorer or the app's OAuth). Add the ad account as `META_AD_ACCOUNT=act_<id>` to `.env` (there is no account-id var today; the old runs passed it on the CLI).
+
+### 9.1 Make runs actually pick from winners — and fail LOUD
+
+**Why they didn't:** two independent reasons. (a) The live run invoked `main.py` with no `--meta-account`, so `pipeline.run` took the `meta_account=None` branch and never called `_meta_cohort`. (b) Even with an account, the token is invalid, and `_meta_cohort` **catches the failure and returns `([], [])` with a one-line log**, so an ungrounded run looks identical to a grounded one. That silence is why "why aren't you picking winners" was invisible.
+
+**Changes (all `rnd`, no code freeze):**
+- `main.py` / `pipeline.run`: default the account from `config.META_AD_ACCOUNT` (env) when `--meta-account` is absent, so grounding is the default, not an opt-in flag. Grounding is already on by default (`--no-ground` to disable); the account resolution is the missing half.
+- `_meta_cohort` (`pipeline.py:44`): on a token/permission failure, **fail loud** — a clear `[meta] GROUNDING FAILED: <reason>` banner and a flag in the manifest (`grounded: false, reason: ...`), not a swallowed one-liner. A run that silently degrades to ungrounded is worse than one that stops, because the operator pays for generation believing it was grounded.
+- Distinguish "no account configured" (fine, ungrounded by choice) from "account configured but fetch failed" (loud).
+
+### 9.2 Clarification (no change): what "ad images in context" actually means
+
+Confirmed against the code, **not changing it**, per instruction:
+- **Static path** DOES take winner ad images into context: winner stills become FLUX **reference images** for the background (`bg_refs`) *and* feed the brand-kit **vision grounding** pass (`ground_images`). See `pipeline.py:_generate_ads`, `brand_brain.generate_brand_kit`.
+- **Winner video** IS looked at — the teardown (frame-diff + word-level ASR + a closed-set VLM classification on a keyframe contact sheet) extracts *structure* (`CreativeTemplate`), which conditions `generate_concepts`/`generate_script`.
+- **Video generation** does **not** feed winner pixels as direct Seedance references. The winner's influence on the rendered video is indirect: via the grounded brand kit and the extracted template. This is the behaviour to leave alone.
+- None of it ran in the live test, because there was no account and the token is dead (9.0).
+
+### 9.3 No duplicate re-renders
+
+**Why it happened:** a fresh `--render` re-renders every shot; there is no cross-run reuse. The two live attempts regenerated identical hook/proof clips, ~$2.42 wasted on ~$4.84 of video.
+
+**Change (`sequencer.render_storyboard`):** before rendering shot *i*, if an accepted clip for that shot already exists **and its inputs are unchanged** (same shot spec hash, same style, same refs), reuse it. Key the cache on a hash of `(shot.model_dump(), style, aspect, resolution, render_mode-relevant refs)`. A repair or a shot-spec change busts the entry; a plain re-run reuses. This makes re-running a partially-failed render cheap instead of full-price.
+
+### 9.4 Output only what cost real money
+
+**Why it matters:** the run dir is full of `_raw`/`_cut`/`_overlay.png`/`_capframes/`/`_qa.wav` intermediates that look like duplicate videos and confuse "what did I pay for". The 3 files per shot are one paid Seedance call at three processing stages.
+
+**Change:** route all intermediates to a `<run>/.work/` scratch subdir (or the system scratch), and promote to the run root **only paid artifacts**: the final per-shot clip, the final `timeline.mp4` (with sound), paid stills (brand kit is JSON, product image, composited ads), and the pickings (9.5). Delete `.work/` on success unless `--keep-intermediates`. Touch points: `sequencer` (raw/cut), `editor` (overlay png, caption frames, sfx temp), `teardown` (qa wav), `pipeline`.
+
+### 9.5 Output BOTH pickings, like the old runs did
+
+The old `full_demo`/`quick_demo` runs wrote a `winners/` dir (downloaded Meta winner stills). Keep that, and add the Shopify side, plus a single record:
+- `<run>/winners/winner_NN.png` — the ROAS-ranked Meta winners actually pulled (already produced by `_meta_cohort`, currently only when grounded).
+- `<run>/products/product_NN.png` — the Shopify product image(s) picked (9.6).
+- `<run>/pickings.json` — `{winners: [{ad_id, ad_name, roas, cohort}], products: [{shopify_id, title, image_src}], grounded: bool, product_source: "shopify"|"generated"|"none"}`. This is the "show me what you picked" artifact, and it is the seed of the T11 attribution join.
+
+### 9.6 Shopify product source ⛔ STOP — scope only, no code yet
+
+**The problem it solves:** the live run had to *fabricate* a product with FLUX ($0.05) because nothing supplied a real one. The real product is in the store.
+
+**What exists** (from a read-only audit, `apps/`):
+- Two Shopify integrations. **Python** `apps/connectors/connectors/shopify/` — `ShopifyConnector.fetch_assets` ranks products by revenue and **downloads the featured image** (`GET products/{id}.json?fields=id,title,image` → `image.src` → local PNG). **TS** `apps/api/src/services/shopify-client.ts:getProducts()` pulls `images[].src` + variants/prices/inventory.
+- **Both are dormant/blocked:** the Python asset path (`get_assets`) is called only in tests; the ai-layer bridge explicitly excludes Shopify (`connector_source.py: EXCLUDED_PLATFORMS = {"shopify"}`); the TS catalog is OAuth-gated (`503 SHOPIFY_NOT_CONFIGURED`, `shopifyApiKey/Secret` empty); the TS ad-engine that reads product images is orphaned.
+- Limits to design around: only the **featured** image per product (no gallery), no description.
+
+**Proposed shape (to build in a later, separate step):**
+- A thin `rnd`-side reader that, given a shop domain + token, calls the same `products/{id}.json?fields=id,title,image` Python connector logic (reuse, don't reinvent) and returns `(product_image_path, {shopify_id, title, image_src})`.
+- Feed that path into the creative pipeline's existing `product_image` input (today a CLI/API arg → Bria cutout). No new generation path: the product still routes through `image_providers.cutout`.
+- The picked product is recorded in `pickings.json` and copied to `<run>/products/` (9.5).
+- **Blocked on:** Shopify OAuth/token being available in `.env` (like the Meta token, currently absent). Note `apps/` code is under the **code freeze**; the `rnd` reader can borrow the Python connector's request shape without editing `apps/`.
+
+**Explicitly deferred:** no Shopify-fetch code is written until this scope is approved. This section is the stopping point.
+
+### 9.7 Sequencing
+
+1. 9.1 winners-loud + account-from-env, 2. 9.3 no-dup, 3. 9.4 lean output, 4. 9.5 pickings record — all `rnd`, no external creds beyond a fresh Meta token. Commit each.
+2. 9.6 Shopify reader — **only after approval**, needs Shopify creds, borrows the `apps/connectors` request shape.
+
+---
+
 ## 6. What we will deliberately not build
 
 | Not building | Why |
