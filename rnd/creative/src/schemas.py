@@ -10,12 +10,12 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from taxonomy import (  # noqa: E402
     AdFormat, BeatPurpose, CameraStyle, FramingStyle, HookType, LightingStyle,
-    ProductVisibility, ShotCamera,
+    ProductVisibility, ShotCamera, VariantAxis,
 )
 
 
@@ -211,6 +211,68 @@ class Storyboard(BaseModel):
     def covers(self, script: Script) -> set[str]:
         """Beats with no shot to render them. Empty set means the storyboard is whole."""
         return script.purposes() - self.purposes()
+
+
+# --- T10: structural variants ----------------------------------------------------
+
+# Which axes need a re-render, and which are free post-processing on footage we already
+# paid for. "Vary the edit, not the render" (T7.5): one Seedance render, cut N ways.
+_AXIS_KIND: dict[str, str] = {
+    "hook_type": "structural",     # a different opening changes what is on screen
+    "caption_style": "edit",       # same footage, different burn
+    "aesthetic": "edit",           # same footage, different grade
+}
+
+
+class Variant(BaseModel):
+    """One member of a matched set: identical to its siblings except on one axis.
+
+    `variant_id` is durable, because it is the key that joins this creative to the ad Meta
+    eventually runs (its meta_ad_id) and therefore to the performance that answers "did
+    this axis value win". A random uuid would sever that join; a slug of (base, axis,
+    value) preserves it.
+    """
+    variant_id: str
+    base_id: str
+    axis: VariantAxis
+    value: str
+    kind: Literal["edit", "structural"]
+
+    @model_validator(mode="after")
+    def _kind_matches_axis(self):
+        expected = _AXIS_KIND[self.axis]
+        if self.kind != expected:
+            raise ValueError(f"axis {self.axis!r} is {expected}, not {self.kind!r}")
+        return self
+
+
+class VariantSet(BaseModel):
+    """A controlled experiment: N creatives that differ on exactly ONE axis (T10).
+
+    This is not a bag of ideas. It is the independent variable of an A/B/n test, and the
+    invariants below are what make a later performance difference *attributable*. Vary two
+    axes and you cannot say which one moved the number; ship two identical values and one
+    of them teaches nothing. Both are rejected here rather than discovered in the data.
+    """
+    base_id: str
+    axis: VariantAxis
+    variants: list[Variant] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _one_axis_distinct_values(self):
+        for v in self.variants:
+            if v.axis != self.axis:
+                raise ValueError(
+                    f"a variant set varies ONE axis ({self.axis!r}); found {v.axis!r}. "
+                    f"A difference across two axes is attributable to neither.")
+            if v.base_id != self.base_id:
+                raise ValueError(f"variant {v.variant_id!r} has base {v.base_id!r}, "
+                                 f"not {self.base_id!r}")
+        values = [v.value for v in self.variants]
+        if len(set(values)) != len(values):
+            raise ValueError("variant values must be distinct; two identical variants "
+                             "are one datapoint wearing two labels")
+        return self
 
 
 # --- T9.5: shot recovery ---------------------------------------------------------

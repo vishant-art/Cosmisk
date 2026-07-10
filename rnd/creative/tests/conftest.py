@@ -96,6 +96,9 @@ def _router(system_content: str) -> str:
     # route on a token unique to each system prompt.
     if "VOICEOVER" in system_content:
         return json.dumps({"script": "Discover timeless craftsmanship. Shop the new collection."})
+    if "OPENING LINE" in system_content:            # revary_hook (T10)
+        approach = system_content.split("APPROACH (")[1].split(")")[0]
+        return json.dumps({"text": f"A fresh {approach} opening that stops you cold."})
     if "REPLACEMENT shot" in system_content:
         return json.dumps(REPLACEMENT_SHOT_JSON)
     if "shot list" in system_content:

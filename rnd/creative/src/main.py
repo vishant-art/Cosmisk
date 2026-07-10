@@ -94,6 +94,14 @@ def main() -> None:
                     help="render the whole ad as ONE clip instead of shot by shot. Loses "
                          "per-shot repair and continuity; only sensible on a model that "
                          "holds a multi-shot structure by itself (UGC-D1 v2b)")
+    # structural variants (T10): hold everything fixed, vary one axis.
+    ap.add_argument("--variants", choices=["hook_type", "caption_style", "aesthetic"],
+                    help="produce a matched variant set for a run (needs --resume). "
+                         "caption_style/aesthetic cut the finished timeline for $0; "
+                         "hook_type writes matched scripts to render separately")
+    ap.add_argument("--variant-values", default="",
+                    help="comma list of axis values, e.g. "
+                         "pattern_interrupt,bold_claim,question")
     # temporal QA gate (T9). Free unless --qa-vlm.
     ap.add_argument("--qa", action="store_true",
                     help="verify a run's finished clip against its storyboard + script "
@@ -130,6 +138,16 @@ def main() -> None:
             ap.error("--storyboard needs --resume <run_id> (it reads that run's "
                      "brand_kit.json and template.json)")
         pipeline.plan_story(run_id=args.resume, data_path=args.data, seconds=args.seconds)
+        return
+
+    if args.variants:
+        if not args.resume:
+            ap.error("--variants needs --resume <run_id>")
+        vals = [v.strip() for v in args.variant_values.split(",") if v.strip()]
+        if len(vals) < 2:
+            ap.error("--variants needs --variant-values with at least two comma-separated "
+                     "values to compare")
+        pipeline.make_variants(run_id=args.resume, axis=args.variants, values=vals)
         return
 
     if args.render:

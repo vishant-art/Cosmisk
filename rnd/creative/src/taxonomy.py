@@ -94,6 +94,18 @@ QaIssue = Literal[
     "frozen_frame",        # a shot that never moves
 ]
 
+# --- structural variants (T10) -------------------------------------------------
+# The ONE thing a variant set is allowed to vary. Closed, because the whole value of a
+# variant set is that a performance difference between its members is attributable to a
+# single named cause. Vary two axes and you have learned nothing; vary an unnamed one and
+# you cannot aggregate it across accounts (the T11 dataset). This set is the experiment's
+# independent variable, enumerated.
+VariantAxis = Literal[
+    "hook_type",       # structural: regenerate the hook beat, hold the rest. Re-renders.
+    "caption_style",   # edit: re-burn captions on the same footage. $0 marginal model cost.
+    "aesthetic",       # edit: re-grade the same footage. $0 marginal model cost.
+]
+
 # --- CTA detection lexicon -----------------------------------------------------
 # `cta_start_s` is MEASURED: the timestamp of the first spoken phrase matching this
 # lexicon. If nothing matches, the field is None. We never guess a CTA moment.

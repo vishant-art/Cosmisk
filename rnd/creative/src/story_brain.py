@@ -218,6 +218,60 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
     raise sb_mod.StoryboardError("unreachable")
 
 
+# --- structural variants (T10) ------------------------------------------------------
+
+# What each hook type means, in prose the model can act on. The closed set is in taxonomy;
+# these are its instructions. Kept here because they are prompt copy, not data.
+_HOOK_GUIDANCE = {
+    "pattern_interrupt": "something visually or tonally jarring that stops the scroll",
+    "question": "open by asking the viewer a direct question",
+    "bold_claim": "a strong assertion stated flat, no hedging",
+    "pov": "a 'POV: you just...' framing, present tense",
+    "authority_stat": "lead with a specific number, a credential, or a study",
+    "visual_only": "a line that describes what is shown rather than making an argument",
+    "controversy": "a contrarian or mildly forbidden take",
+    "social_proof": "everyone is doing this / reviews / a crowd",
+    "narrative": "begin a story already in motion",
+    "direct_address": "speak straight to camera using 'you'",
+}
+
+_REHOOK_SYSTEM = (
+    "You rewrite the OPENING LINE of a short video ad. You are given the current hook and "
+    "the rest of the script, which does NOT change. Rewrite ONLY the hook, using a "
+    "specific approach:\n"
+    "APPROACH ({hook_type}): {guidance}.\n"
+    "The new hook must earn the next two seconds on its own: a real sentence a person would "
+    "say out loud, no brand name, no 'Introducing', no 'Are you tired of'. It must lead "
+    "naturally into the line that follows it. Return STRICT JSON: {\"text\": str}."
+)
+
+
+def revary_hook(client, kit: BrandKit, script: Script, hook_type: str, *,
+                template: CreativeTemplate | None = None) -> tuple[Script, float]:
+    """Regenerate ONLY the hook beat, in a specified hook style. Everything else is held
+    byte-identical (T10).
+
+    This is the structural-variant primitive. To learn whether a pattern-interrupt hook
+    beats a bold-claim hook for this audience, you need two ads that are identical except
+    for the hook. This produces exactly that: the returned script shares every beat after
+    the first with the input, and differs only in the opening line.
+    """
+    ht = taxonomy.coerce(taxonomy.HookType, hook_type, field="hook_type")
+    system = (_REHOOK_SYSTEM.replace("{hook_type}", ht)
+              .replace("{guidance}", _HOOK_GUIDANCE[ht]))
+    rest = "\n".join(f"  [{b.purpose}] {b.text}" for b in script.beats[1:])
+    user = (f"BRAND: {kit.brand_name}. TONE: {kit.tone}.\n"
+            f"CURRENT HOOK: {script.beats[0].text}\n"
+            f"THE REST OF THE SCRIPT (unchanged):\n{rest}"
+            f"{_structure_block(template)}")
+    data, cost = brain.chat_json(client, system, user)
+    text = (data.get("text") or "").strip()
+    if not text:
+        raise ValueError(f"rehook for {ht!r} returned no text")
+    new_hook = ScriptBeat(purpose="hook", text=text)
+    return Script(beats=[new_hook, *script.beats[1:]]), cost
+
+
 # --- shot repair (T9.5, rung 3) -----------------------------------------------------
 
 _REPLAN_SYSTEM = (

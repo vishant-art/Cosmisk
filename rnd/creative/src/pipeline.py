@@ -34,6 +34,7 @@ import prompt_builder  # noqa: E402
 import sequencer  # noqa: E402
 import story_brain  # noqa: E402
 import storyboard as sb_mod  # noqa: E402
+import variants  # noqa: E402
 import teardown  # noqa: E402
 import verifier  # noqa: E402
 import verifier_video  # noqa: E402
@@ -386,6 +387,62 @@ def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, 
 
     log(f"[finish] {Path(out).name}")
     return str(out)
+
+
+def make_variants(*, run_id: str, axis: str, values: list, base_clip=None, log=print):
+    """Produce a matched variant set for a run (T10).
+
+    Edit axes (`caption_style`, `aesthetic`) cut the run's finished timeline N ways for
+    zero marginal model cost and write the clips. The `hook_type` axis regenerates N
+    matched scripts and writes them for the operator to render (each is a full render, so
+    the pipeline does not spend that money implicitly).
+
+    Writes the experiment record either way: that is the point of T10, the clean tag that
+    lets performance be attributed back to (axis, value) later.
+    """
+    run_dir = config.OUTPUT_DIR / run_id
+    led = Ledger(run_dir)
+    vdir = run_dir / "variants"
+
+    if axis == "hook_type":
+        script = _run_script(run_dir)
+        if script is None:
+            raise FileNotFoundError(f"{run_dir}/script.json not found; run --storyboard")
+        kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
+        tpl_file = run_dir / "template.json"
+        template = (CreativeTemplate.model_validate_json(tpl_file.read_text("utf-8"))
+                    if tpl_file.exists() else None)
+        vset, scripts, cost = variants.hook_variant_set(
+            _client(), kit, script, values, base_id=run_id, template=template)
+        led.record("variant_scripts", "openrouter", config.TEXT_MODEL, cost)
+        vdir.mkdir(parents=True, exist_ok=True)
+        artifacts = {}
+        for vid, s in scripts.items():
+            p = vdir / f"{vid}.script.json"
+            p.write_text(s.model_dump_json(indent=2), encoding="utf-8")
+            artifacts[vid] = str(p)
+        record = variants.write_record(run_dir, vset, artifacts,
+                                       extra={"note": "render each with --resume/--render"})
+    else:
+        clip = base_clip or next(
+            (run_dir / n for n in _FINAL_CLIP_NAMES if (run_dir / n).exists()), None)
+        if clip is None:
+            raise FileNotFoundError(f"no rendered clip in {run_dir}; run --render first")
+        if axis == "caption_style":
+            script = _run_script(run_dir)
+            text = script.spoken() if script else ""
+            vset, artifacts = variants.caption_variant_set(
+                clip, text, values, base_id=run_id, out_dir=vdir, led=led, log=log)
+        elif axis == "aesthetic":
+            vset, artifacts = variants.aesthetic_variant_set(
+                clip, values, base_id=run_id, out_dir=vdir, log=log)
+        else:
+            raise ValueError(f"unknown variant axis {axis!r}")
+        record = variants.write_record(run_dir, vset, artifacts)
+
+    led.finalize()
+    log(f"[variants] {len(vset.variants)} {axis} variant(s) -> {record}")
+    return vset, record
 
 
 def qa_video(*, run_id: str, clip=None, cutout=None, shot_paths=None, strict: bool = True,

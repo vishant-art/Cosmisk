@@ -297,6 +297,54 @@ def test_a_silent_timeline_is_still_an_ad(monkeypatch, tmp_path, brand_kit, synt
     assert any("timeline stays silent" in ln for ln in logs)
 
 
+def test_make_variants_cuts_a_finished_timeline_for_free(monkeypatch, tmp_path,
+                                                         synth_video):
+    """The $0 edit path (T10): one rendered clip, aesthetic-graded N ways, no model call."""
+    import shutil
+
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "v1"
+    run.mkdir()
+    shutil.copy(synth_video, run / "timeline.mp4")
+
+    vset, record = pipeline.make_variants(run_id="v1", axis="aesthetic",
+                                          values=["clean", "film_grain", "warm_clip"],
+                                          log=lambda *_: None)
+    assert vset.axis == "aesthetic" and len(vset.variants) == 3
+    loaded = json.loads(Path(record).read_text("utf-8"))
+    assert all(Path(p).exists() for p in loaded["artifacts"].values())
+
+
+def test_make_variants_hook_writes_matched_scripts(monkeypatch, tmp_path, brand_kit):
+    """The structural path: N scripts that differ only in the hook, written for the
+    operator to render separately (each is a full render, not spent implicitly)."""
+    import story_brain
+
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "v2"
+    run.mkdir()
+    (run / "brand_kit.json").write_text(brand_kit.model_dump_json(), encoding="utf-8")
+    base = {"beats": [{"purpose": "hook", "text": "base hook"},
+                      {"purpose": "cta", "text": "shop now"}]}
+    (run / "script.json").write_text(json.dumps(base), encoding="utf-8")
+
+    monkeypatch.setattr(story_brain, "revary_hook",
+                        lambda c, k, s, ht, **kw: (
+                            s.model_copy(update={"beats": [
+                                s.beats[0].model_copy(update={"text": f"{ht} hook"}),
+                                *s.beats[1:]]}), 0.001))
+    monkeypatch.setattr(pipeline, "_client", lambda: object())
+
+    vset, record = pipeline.make_variants(run_id="v2", axis="hook_type",
+                                          values=["question", "bold_claim"],
+                                          log=lambda *_: None)
+    assert vset.axis == "hook_type"
+    loaded = json.loads(Path(record).read_text("utf-8"))
+    assert "render each" in loaded["meta"]["note"]
+    for p in loaded["artifacts"].values():
+        assert Path(p).exists() and p.endswith(".script.json")
+
+
 def test_qa_video_needs_a_storyboard(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     (tmp_path / "q2").mkdir()

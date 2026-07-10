@@ -460,7 +460,7 @@ Name the mode on `Storyboard`. Default to independent until T9's continuity chec
 
 ---
 
-### T10. Structural Variants
+### T10. Structural Variants ✅ SHIPPED (Phase 8)
 
 **Inspiration:** Creatify (Ad Clone across 9:16, 16:9, 1:1 simultaneously; AdFlow's 2x variant scaling).
 **Concept:** *hold structure, vary one axis*.
@@ -472,6 +472,10 @@ Name the mode on `Storyboard`. Default to independent until T9's continuity chec
 **Vary the edit, not the render** (per `T7.5`). The cheapest variant axis is the edit: one Seedance render, cut three ways, is three creatives at $0 marginal model cost. Reserve re-rendering for variants that genuinely change what is on screen.
 
 **Expected impact.** Compounding, and near zero in the short term. **Confidence:** high, long horizon.
+
+**Files:** new `variants.py`, `schemas.Variant` / `VariantSet`, `story_brain.revary_hook`, `taxonomy.VariantAxis`, `pipeline.make_variants`, `main.py --variants`.
+
+**Correction to an earlier claim.** A previous phase said T10 was "blocked on OQ1". It is not, and the distinction matters. OQ1 (do accounts have the conversion volume to draw a causal conclusion) gates T11's *inference*. T10 is the *generator* of the clean dataset inference would read. You build T10 first, precisely so that the data you later analyse is a controlled experiment rather than observational winner-mining, which is the selection-on-outcome problem of `UGC-D5` one level up.
 
 ---
 
@@ -844,6 +848,24 @@ Two checks are unrepairable: a hero shot with no cutout, and a shipped clip with
 **`editor.concat` drops audio and says so.** Splicing per-shot native audio at every cut produces exactly the seams the cuts were meant to hide. `keep_audio=True` requires every clip to have a track.
 
 **`editor.trim` uses output seeking.** Input seeking (`-ss` before `-i`) is faster and lands on the nearest keyframe, which is not where the shot ends.
+
+## 7octies. Phase 8 build: structural variants (shipped)
+
+`T10`. `rnd/creative` 352 → **376 passing** (+24, 0 broken).
+
+**A variant set is an experiment, and the schema enforces it.** `VariantSet` rejects a set that varies two axes (a difference would be attributable to neither) and a set with two identical values (one datapoint wearing two labels). This is the same discipline as T4's provenance rule and T6's coverage rule: the invariant that makes the output *usable* is checked in code, not left to convention. `Variant.kind` is derived from the axis, never passed, so an edit axis cannot be mislabelled structural.
+
+**Every variant carries the tag that joins it to an outcome.** `variant_id` is a slug of `(base, axis, value)`, not a uuid, because it is the key a published ad's `meta_ad_id` gets stamped onto later. That join is the entire point of T10: it is what turns N ads that shipped into N *attributable* numbers, which is the dataset T11 reads. `write_record` persists `variant_id → artifact` alongside the set.
+
+**Two kinds of axis, and the cheap one is realized for real.**
+
+- **`hook_type` (structural).** `story_brain.revary_hook` regenerates ONLY the hook beat, holding every later beat byte-identical. To learn whether a pattern-interrupt hook beats a bold-claim hook for this audience you need two ads identical except for the hook, and that is exactly what a hook variant set is. Each variant is a full re-render, so the pipeline writes the matched scripts and leaves the spending to the operator rather than firing N renders implicitly.
+
+- **`caption_style` and `aesthetic` (edit, `$0` marginal model cost).** "One Seedance render, cut N ways" (T7.5), made concrete. Caption variants re-burn the SAME finished timeline with N styles after a **single shared ASR** (`test_caption_variants_share_a_single_asr` asserts the transcription runs once, not once per variant). Aesthetic variants re-grade it. Neither calls a generative model.
+
+**Why edit variants are timing-preserving only.** Both edit axes leave the clip's duration untouched, which is what makes them safe to apply to a *finished* timeline whose voiceover and captions are already baked in. A pacing (speed) axis would desync all of that, so it is deferred to the render path rather than smuggled into the `$0` edit path. `caption_variant_set` refuses a silent base clip for the same reason: captions are timed to the audio that ships.
+
+**Found by running the whole chain, again.** The caption-variant integration path tripped the caption drift gate, because the reference text (`script.spoken()`) and the ASR transcript have to agree, and a truncated stub did not. In production the voiceover is generated from `script.spoken()`, so they match by construction; the gate firing on a mismatch is the correct behaviour, not a bug. It is the same fail-closed gate from T3 doing its job one layer up.
 
 ### 7.5 Implementation notes worth keeping
 
