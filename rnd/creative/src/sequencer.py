@@ -65,7 +65,8 @@ def snap_duration(seconds: float) -> int:
         f"Split the shot, or raise config.VIDEO_MAX_CLIP_SECONDS if the model changed.")
 
 
-def _gen_key(prompt: str, refs, want: int, resolution: str, aspect: str, attempt: int) -> str:
+def _gen_key(prompt: str, refs, want: int, resolution: str, aspect: str, attempt: int,
+             seed=None) -> str:
     """A short hash of everything that determines the Seedance output. Same inputs -> same
     key -> reuse the cached render.
 
@@ -78,8 +79,39 @@ def _gen_key(prompt: str, refs, want: int, resolution: str, aspect: str, attempt
     `refs` are reduced to basenames so a re-run's deterministic ref paths hash stably.
     """
     ref_key = [Path(r).name for r in (refs or [])]
-    payload = f"{prompt}\n{ref_key}\n{want}\n{resolution}\n{aspect}\n{attempt}"
+    seed_key = Path(seed).name if seed else ""
+    payload = f"{prompt}\n{ref_key}\n{seed_key}\n{want}\n{resolution}\n{aspect}\n{attempt}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _product_seed(shot, index: int, cutout_path, run_dir, *, kit, aspect, led, log) -> str:
+    """A person-FREE product-in-scene still to i2v-seed a hero shot (the product-in-video fix).
+
+    Independent-mode t2v never puts the product on screen, and sequential ref2v is rejected
+    by fal's content filter because the continuity reference contains the creator (a person).
+    This sidesteps both: Bria product-shot drops the real product cutout into a clean,
+    people-free scene, and that still seeds the Seedance i2v -- so the product actually
+    appears in the video AND can be verified, with no person in any reference.
+
+    Cached by (scene, cutout, aspect): a re-run does not re-pay for the seed.
+    """
+    import image_providers                     # lazy: keeps fal_client out of the import path
+    seeds = Path(run_dir) / "product_seeds"
+    seeds.mkdir(parents=True, exist_ok=True)
+    scene = (f"The product presented as the hero of the frame on a clean surface. "
+             f"{kit.visual_style}. Warm natural light, tasteful minimal setting. "
+             f"No people, no hands, no text.")
+    key = hashlib.sha1(f"{scene}\n{Path(cutout_path).name}\n{aspect}".encode()).hexdigest()[:12]
+    out = seeds / f"seed_{index:02d}_{key}.png"     # KEPT: paid product still, shown in output
+    if not out.exists():
+        res = image_providers.generate_with_fallback(
+            scene, out, primary="product", refs=[str(cutout_path)], aspect=aspect, log=log)
+        if led is not None:
+            led.record("product_seed", res["provider"], res["model"], res["cost_usd"],
+                       shot=index)
+        log(f"[seq] shot {index} product seed from {Path(cutout_path).name} "
+            f"(est ${res['cost_usd']:.2f})")
+    return str(out)
 
 
 def _playable(path) -> bool:
@@ -119,7 +151,7 @@ def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
     # render if it already exists -- a plain re-run of the same storyboard costs $0 in
     # video instead of re-paying. A repair (different hint) or a spec change yields a
     # different key and re-renders, as it should.
-    key = _gen_key(prompt, refs, want, resolution, aspect, attempt)
+    key = _gen_key(prompt, refs, want, resolution, aspect, attempt, seed)
     raw = renders / f"gen_{key}.mp4"          # KEPT: this is the paid artifact + reuse cache
 
     if raw.exists() and _playable(raw):
@@ -173,17 +205,22 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
         for k in [k for k in accepted if k >= index]:
             accepted.pop(k)
 
-        refs = None
-        if board.render_mode == "sequential" and index > 0 and (index - 1) in accepted:
+        refs, seed = None, None
+        has_cutout = cutout_path and Path(cutout_path).exists()
+        if shot.product_visible == "hero" and has_cutout:
+            # i2v-seed the product into the shot (people-free reference; no ref2v rejection).
+            seed = _product_seed(shot, index, cutout_path, run_dir, kit=kit, aspect=aspect,
+                                 led=led, log=log)
+        elif board.render_mode == "sequential" and index > 0 and (index - 1) in accepted:
             frame = editor.last_frame(accepted[index - 1],
                                       run_dir / ".work" / f"shot_{index - 1:02d}_last.png")
             refs = [frame]
-            if cutout_path and Path(cutout_path).exists():
+            if has_cutout:
                 refs.append(str(cutout_path))
 
         return render_shot(shot, index, attempt, hint, kit=kit, run_dir=run_dir,
                            style=style, aspect=aspect, resolution=resolution,
-                           refs=refs, led=led, log=log)
+                           refs=refs, seed=seed, led=led, log=log)
 
     def _verify(path, shot, index):
         checks = verifier_video.verify_shot(path, shot, index, cutout_path=cutout_path)

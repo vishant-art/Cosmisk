@@ -256,6 +256,80 @@ def test_a_retry_still_re_rolls_despite_the_cache(tmp_path, brand_kit, monkeypat
     assert [s.action for s in rlog.steps] == ["retry"]
 
 
+def _hero_board():
+    return Storyboard(target_seconds=5.0, render_mode="independent", shots=[
+        _shot("hook", 2.0, name="hook_0"),
+        Shot(purpose="demo", duration_s=3.0, camera="macro", subject="the product",
+             product_visible="hero", motion="a slow push in")])
+
+
+def _fake_product_shot(record):
+    from PIL import Image
+
+    def _f(scene, out, *, primary="flux", refs=None, aspect="9:16", log=print, **kw):
+        record.append({"scene": scene, "primary": primary, "refs": refs})
+        Image.new("RGB", (64, 64), "tan").save(out)
+        return {"provider": "product", "model": "bria", "path": str(out), "cost_usd": 0.04}
+    return _f
+
+
+def test_gen_key_distinguishes_a_seeded_render():
+    """A seed is part of what determines the output, so it must be in the cache key."""
+    unseeded = sequencer._gen_key("p", None, 4, "720p", "9:16", 0, seed=None)
+    seeded = sequencer._gen_key("p", None, 4, "720p", "9:16", 0, seed="/x/seed.png")
+    assert unseeded != seeded
+
+
+def test_a_hero_shot_is_i2v_seeded_from_a_person_free_product_still(
+        tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
+    """The product-in-video fix: a hero-product shot is i2v-seeded from a Bria product-shot
+    still (product in a people-free scene), so the product actually appears in the render
+    and no person reaches a reference (no ref2v content-filter rejection)."""
+    import image_providers
+    from schemas import QACheck
+    seeded = []
+    monkeypatch.setattr(image_providers, "generate_with_fallback", _fake_product_shot(seeded))
+    monkeypatch.setattr(vv, "verify_shot", lambda *a, **k: [QACheck(name="ok", passed=True)])
+
+    sequencer.render_storyboard(_hero_board(), kit=brand_kit, run_dir=tmp_path,
+                                cutout_path=product_cutout, log=lambda *_: None)
+
+    assert len(seeded) == 1, "one product seed for the one hero shot"
+    assert seeded[0]["primary"] == "product" and seeded[0]["refs"] == [product_cutout]
+    assert "No people" in seeded[0]["scene"]                 # person-free by construction
+    assert any(c["image"] for c in fake_render.calls), "hero shot must be i2v-seeded"
+    assert not any(c["refs"] for c in fake_render.calls), "no person-frame ref2v"
+    assert (tmp_path / "product_seeds").exists()
+
+
+def test_a_shot_that_does_not_feature_the_product_is_not_seeded(
+        tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
+    import image_providers
+    called = []
+    monkeypatch.setattr(image_providers, "generate_with_fallback",
+                        lambda *a, **k: called.append(1))
+    sequencer.render_storyboard(_board(("hook", 2.0), ("cta", 2.0)), kit=brand_kit,
+                                run_dir=tmp_path, cutout_path=product_cutout,
+                                log=lambda *_: None)
+    assert called == [], "no product seed for absent/background-product shots"
+    assert all(c["image"] is None for c in fake_render.calls)
+
+
+def test_the_product_seed_is_cached_across_reruns(
+        tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
+    import image_providers
+    from schemas import QACheck
+    seeded = []
+    monkeypatch.setattr(image_providers, "generate_with_fallback", _fake_product_shot(seeded))
+    monkeypatch.setattr(vv, "verify_shot", lambda *a, **k: [QACheck(name="ok", passed=True)])
+    board = _hero_board()
+    sequencer.render_storyboard(board, kit=brand_kit, run_dir=tmp_path,
+                                cutout_path=product_cutout, log=lambda *_: None)
+    sequencer.render_storyboard(board, kit=brand_kit, run_dir=tmp_path,
+                                cutout_path=product_cutout, log=lambda *_: None)
+    assert len(seeded) == 1, "the product seed must be reused on a re-run, not re-paid"
+
+
 def test_intermediates_go_to_scratch_paid_renders_are_kept(tmp_path, brand_kit, fake_render):
     """Phase 9.4: only the paid raws (renders/) and the timeline stay; the $0 per-shot
     cuts/edits live in .work."""
