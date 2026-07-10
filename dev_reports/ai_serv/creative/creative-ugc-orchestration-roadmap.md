@@ -328,28 +328,33 @@ Either way: one voiceover across the whole timeline, muxed once at the end, not 
 
 ---
 
-### T7.5. Deterministic Editor 🟡 STARTED (Phase 2: captions)
+### T7.5. Deterministic Editor ✅ SHIPPED (Phase 4)
 
 **Inspiration:** every competitor, none of whom market it. This is where they actually spend their effort.
 **Concept:** *the compositor, on the time axis*. Per `UGC-D8`.
 
-> `editor.py` now exists and ships caption burn-in. `probe()` and `_run()` are the shared
-> ffmpeg surface every remaining operation below will use. `video_post.add_copy_overlay`
-> has not yet been absorbed.
-
 **What.** A module between the renderer and QA. Every operation below is ffmpeg or PIL. None of them ask a model for anything.
 
-| Effect | Implementation | Model cost |
-|---|---|---|
-| Zoom punch-in | ffmpeg `zoompan` | $0 |
-| Speed ramp | `setpts` + `atempo` | $0 |
-| Freeze frame | `tpad` / frame loop | $0 |
-| Whip transition | `xfade` + directional blur | $0 |
-| Caption animation | the T3 per-word PNG sequence, with a scale keyframe | $0 |
-| Emoji popup | PIL composite, timed | $0 |
-| Product highlight | mask from `image_providers.cutout`, which we already generate | $0 |
-| Punch / whoosh | licensed SFX pack, `amix`, keyed to cut boundaries we placed | $0 |
-| `UGCStyle.post` (grain, micro-shake, exposure clip, recompress) | filter chain | $0 |
+| Effect | Implementation | Model cost | Status |
+|---|---|---|---|
+| Zoom punch-in | `crop` + `scale` on a `t`-expression | $0 | ✅ |
+| Speed ramp | `setpts` + chained `atempo` | $0 | ✅ |
+| Freeze frame | frame-indexed `trim` + `loop` + `concat` | $0 | ✅ |
+| Transition | `xfade`, closed set of names | $0 | ✅ |
+| Caption animation | the T3 per-word PNG sequence | $0 | ✅ (Phase 2) |
+| Punch / whoosh / click | **synthesized** via `lavfi`, `amix` at exact cut offsets | $0 | ✅ |
+| `UGCStyle.post` (grain, micro-shake, exposure clip, recompress) | filter chain + encoder | $0 | ✅ |
+| Copy/logo overlay | absorbed from `video_post.py` (now deleted) | $0 | ✅ |
+| Emoji popup | PIL composite, timed | $0 | ⛔ deferred |
+| Product highlight | mask from `image_providers.cutout` | $0 | ⛔ deferred |
+
+**Two deliberate deferrals, with reasons rather than a shrug.**
+
+*Emoji popup* is not an ffmpeg problem, it is a font problem. The bundled DejaVu Sans has no colour emoji glyphs, and shipping Noto Color Emoji is a licensing and binary-size decision, not a filtergraph.
+
+*Product highlight* needs to know **where** the product is in the frame. That is localization, which is the same capability T9's product-presence check needs. Build it once, for the gate, and the highlight falls out of it. Building it twice, first for decoration, would be the wrong order.
+
+**No licensed SFX pack.** A punch is a 170Hz sine with a fast decay. A whoosh is highpassed pink noise faded both ends. A click is a very short high sine. Three `lavfi` graphs, no rights holder, no binary in the repo, and byte-identical on every run, which makes them testable. `sfx.synthesize()` becomes `sfx.load()` if a real pack is ever licensed, and nothing else in the editor changes.
 
 **Why.** Three reasons, in ascending order of importance.
 
@@ -655,6 +660,49 @@ The irony worth recording: the first version of `test_awkward_targets_still_land
 **`plan_story` renders nothing.** It reads the run's `brand_kit.json` and `template.json`, writes `script.json` and `storyboard.json`, and prints a shot list. Per `OQ3`, that shot list is a deliverable on its own: something a human creator could shoot. The renderer has moved down the stack and become a detail.
 
 **One seam closed for free.** `video_smoke` now prefers `script.json`'s `spoken()` text over `generate_vo_script`. The same string feeds the TTS and the caption drift gate, so the voiceover and the captions cannot disagree about what was said.
+
+## 7quater. Phase 4 build: the deterministic editor (shipped)
+
+`T7.5`. `video_post.py` is deleted; it was always an editor operation.
+
+| Change | Files |
+|---|---|
+| `sfx.py` — synthesize punch / whoosh / click via `lavfi` | new |
+| `EditPlan`, `SfxCue` | `schemas.py` |
+| `build_video_filters`, `build_audio_filters`, `encode_args` (**pure**) | `editor.py` |
+| `apply_plan`, `add_sfx`, `freeze_frame`, `crossfade`, `add_copy_overlay` | `editor.py` |
+| `plan_for_shot`, `sfx_cues_for` — the storyboard drives the edit | `editor.py` |
+| `video_post.py`, `test_video_post.py` | deleted |
+
+**Tests:** `rnd/creative` 201 → **242 passing** (+41, 0 broken).
+
+**Filtergraph construction is a pure function.** `build_video_filters(plan, meta)` takes a plan and a geometry dict and returns a list of strings. Every branch is exhaustively testable without a video file. Execution is one ffmpeg pass, with one integration test per operation proving the graph actually runs. Same split as `layout.py`/`compositor.py`, a third time.
+
+**Applying a plan is a single pass.** A pass per effect would re-encode four times and lose a generation of quality on each.
+
+**The storyboard tells the editor where to punch.** `plan_for_shot` maps `Shot.purpose` to a zoom: hard push on the `hook`, still on the `proof`, extra push when `product_visible == "hero"`. `sfx_cues_for` puts a punch on the hook and a whoosh on every cut, at exact offsets, **because we placed the cuts**. Nothing has to detect where the boundaries are. That is the dividend T9 was promised, arriving early.
+
+This is also why T6 had to come before T7.5. An editor with no beats can only apply a global look; an editor with beats can direct.
+
+### Three bugs, and one that nearly shipped
+
+**Time-indexed `trim` selects zero frames.** `trim=1.0:1.1` on a 10fps clip selects *nothing*: trim's boundaries are inclusive-exclusive over presentation timestamps and the frame at exactly `1.0` falls through. The freeze-frame graph therefore produced a clip **with no freeze in it**, while ffmpeg exited 0 and printed nothing.
+
+The prototype that "verified" this graph only checked the exit code. The test that caught it asserted `duration ≈ 4.0 ± 0.35`, which was itself nearly too loose to notice. The fix is frame-indexed trims, and the test now counts frames: `out_frames == in_frames + hold_frames`, exactly, at four different freeze points. A tolerance is a place for a bug to hide.
+
+**`loop=loop=N` emits N+1 frames.** So a hold of H frames asks for `N = H-1`. Off by one, silently, in a way a duration tolerance would have absorbed.
+
+**An unescaped comma inside `min()`** is read by ffmpeg as a filter separator. The graph either fails to parse or silently becomes a *different graph*. `test_punch_escapes_the_comma_inside_min` pins it.
+
+**`amix` with no audio track drops the effects without an error.** A silent clip needs an `anullsrc` bed first, or the SFX vanish and ffmpeg reports success.
+
+### Two design notes
+
+**`recompress` is an encoder setting, not a filter.** Social-upload artifacting *is* the encoder throwing bits away. Painting a simulation of compression with a filter would produce a picture of an artifact rather than an artifact. It maps to CRF 34, and the test asserts it on the output file size against a *textured* fixture, because a solid-colour clip compresses to nothing at any CRF and would have proved nothing.
+
+**`micro_shake` is deterministic, not random.** Two sines at incommensurate frequencies. Nobody can see the difference between this and noise, and a reproducible clip is a testable clip.
+
+**`freeze_frame` refuses to drop audio silently.** Extending the video without stretching the audio desyncs everything downstream. It raises unless you pass `allow_audio_drop=True`. A sub-two-frame hold also raises: that is not a freeze.
 
 ### 7.5 Implementation notes worth keeping
 

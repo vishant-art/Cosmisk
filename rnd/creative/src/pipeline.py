@@ -313,8 +313,7 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
 
     if copy is not None and kit is not None:           # burn copy/logo onto the clip
         try:
-            import video_post
-            final = video_post.add_copy_overlay(
+            final = editor.add_copy_overlay(
                 res["path"], run_dir / "video_overlay.mp4", copy, kit,
                 fmt=aspect, logo_path=logo_path)
             res["path"] = final

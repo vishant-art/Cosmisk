@@ -270,6 +270,35 @@ class CaptionStyle(BaseModel):
         return cls(**kw)
 
 
+# --- T7.5: the deterministic editor --------------------------------------------
+
+class SfxCue(BaseModel):
+    """One sound effect at one moment. Synthesized, not licensed (see sfx.py)."""
+    at_s: float = Field(ge=0)
+    kind: Literal["punch", "whoosh", "click"]
+    gain_db: float = -8.0
+
+
+class EditPlan(BaseModel):
+    """What the editor does to one clip. Every field is an ffmpeg guarantee.
+
+    Nothing here is a wish. `UGCStyle.prompt` fields went to the image model and may or
+    may not have been honoured; `UGCStyle.post` fields land HERE and are applied exactly.
+    That is the whole reason the two halves are separate types (T1).
+    """
+    style: UGCStyle | None = None
+    punch_to: float = Field(default=1.0, ge=1.0, le=2.0)   # final zoom; 1.0 = static
+    speed: float = Field(default=1.0, gt=0.25, le=4.0)
+    sfx: list[SfxCue] = Field(default_factory=list)
+
+    @property
+    def is_noop(self) -> bool:
+        s = self.style
+        return (self.punch_to == 1.0 and self.speed == 1.0 and not self.sfx
+                and (s is None or (s.micro_shake == 0 and s.grain == 0
+                                   and s.exposure_clip == 0 and not s.recompress)))
+
+
 # --- T4: creative teardown -----------------------------------------------------
 
 class ShotBoundary(BaseModel):

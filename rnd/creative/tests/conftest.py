@@ -156,6 +156,36 @@ def synth_video(tmp_path) -> str:
 
 
 @pytest.fixture
+def other_video(tmp_path) -> str:
+    """A second clip with the SAME geometry as synth_video, for transitions."""
+    import imageio_ffmpeg
+    import numpy as np
+    out = tmp_path / "other.mp4"
+    w = imageio_ffmpeg.write_frames(str(out), (64, 64), fps=SYNTH_FPS, macro_block_size=1)
+    w.send(None)
+    for _ in range(int(SYNTH_FPS * 3)):
+        w.send(np.full((64, 64, 3), 180, dtype=np.uint8).tobytes())
+    w.close()
+    return str(out)
+
+
+@pytest.fixture
+def noisy_video(tmp_path) -> str:
+    """Textured frames. A solid-colour clip compresses to almost nothing at any CRF, so
+    it cannot show whether `recompress` actually threw bits away."""
+    import imageio_ffmpeg
+    import numpy as np
+    out = tmp_path / "noisy.mp4"
+    rng = np.random.default_rng(0)
+    w = imageio_ffmpeg.write_frames(str(out), (96, 96), fps=SYNTH_FPS, macro_block_size=1)
+    w.send(None)
+    for _ in range(int(SYNTH_FPS * 2)):
+        w.send(rng.integers(0, 255, (96, 96, 3), dtype=np.uint8).tobytes())
+    w.close()
+    return str(out)
+
+
+@pytest.fixture
 def fake_words() -> list[dict]:
     """Word-level ASR output, as fal Whisper returns it once normalized."""
     raw = [("I", 0.0), ("genuinely", 0.2), ("did", 0.5), ("not", 0.7), ("expect", 0.9),
