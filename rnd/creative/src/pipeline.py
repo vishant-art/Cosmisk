@@ -31,11 +31,15 @@ import image_providers  # noqa: E402
 import layout as layout_mod  # noqa: E402
 import logo as logo_mod  # noqa: E402
 import prompt_builder  # noqa: E402
+import story_brain  # noqa: E402
+import storyboard as sb_mod  # noqa: E402
 import teardown  # noqa: E402
 import verifier  # noqa: E402
 import video_providers  # noqa: E402
 from ledger import Ledger  # noqa: E402
-from schemas import AssetRecord, BrandKit, CreativeTemplate, RunManifest  # noqa: E402
+from schemas import (  # noqa: E402
+    AssetRecord, BrandKit, CreativeTemplate, RunManifest, Script,
+)
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
 
@@ -226,6 +230,55 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     return manifest
 
 
+def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
+               ) -> tuple[Script, "sb_mod.Storyboard"]:
+    """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
+
+    Standalone-valuable: a shot list a human creator could shoot is a deliverable even
+    if we never render a frame (OQ3). The renderer moves down the stack and becomes a
+    detail; the sequence IS the creative.
+
+    Reuses the run's teardown (template.json) so the argument is grounded in the
+    structure of a real winner rather than invented from a brand kit.
+    """
+    seconds = config.STORY_DEFAULT_SECONDS if seconds is None else seconds
+    run_dir = config.OUTPUT_DIR / run_id
+    kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
+    led = Ledger(run_dir)
+
+    tpl_file = run_dir / "template.json"
+    template = (CreativeTemplate.model_validate_json(tpl_file.read_text("utf-8"))
+                if tpl_file.exists() else None)
+    if template is None:
+        log("[story] no teardown for this run; the script will be ungrounded")
+
+    ds = cs.load_dataset(data_path)
+    summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
+
+    script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
+                                                 summary=summary, seconds=seconds,
+                                                 template=template)
+    led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
+    (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
+
+    board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
+                                                    template=template, log=log)
+    led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
+    (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
+
+    led.finalize()
+    log(f"[story] {len(script.beats)} beats -> {len(board.shots)} shots, "
+        f"{board.duration_s:.1f}s (est ${led.total:.3f}) -> {run_dir}")
+    log(sb_mod.as_shot_list(board))
+    return script, board
+
+
+def _run_script(run_dir: Path) -> Script | None:
+    """The run's Script artifact, if plan_story has been run."""
+    f = run_dir / "script.json"
+    return Script.model_validate_json(f.read_text("utf-8")) if f.exists() else None
+
+
 def video_smoke(*, run_id: str, prompt: str, image=None,
                 duration=config.VIDEO_DURATION_DEFAULT, resolution="720p", aspect="9:16",
                 copy=None, kit=None, logo_path=None, generate_audio=True,
@@ -272,9 +325,18 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
     script = vo = None
     if voiceover and kit is not None and client is not None:   # script -> TTS -> mux
         try:
-            hook = copy.headline if copy else prompt
-            cta = copy.cta_label if copy else ""
-            script, vo_cost = brand_brain.generate_vo_script(client, kit, hook, cta, duration)
+            # Prefer the run's Script artifact (T6). Its `spoken()` text is the exact
+            # ground truth the caption drift gate checks against, so the voiceover and
+            # the captions cannot disagree about what was said.
+            planned = _run_script(run_dir)
+            if planned is not None:
+                script, vo_cost = planned.spoken(), 0.0
+                log(f"[video] using script.json ({len(planned.beats)} beats)")
+            else:
+                hook = copy.headline if copy else prompt
+                cta = copy.cta_label if copy else ""
+                script, vo_cost = story_brain.generate_vo_script(client, kit, hook, cta,
+                                                                 duration)
             led.record("vo_script", "openrouter", config.TEXT_MODEL, vo_cost)
             vo = video_providers.generate_voiceover(script, run_dir / "voiceover.mp3", log=log)
             led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"], chars=len(script))
@@ -320,7 +382,7 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
     `template` grounds the CONCEPTS in the measured structure of a real winner (T5);
     `style` grounds the pixels in a UGC capture aesthetic (T1)."""
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
-    concepts, concepts_cost = brand_brain.generate_concepts(client, kit, summary, images,
+    concepts, concepts_cost = story_brain.generate_concepts(client, kit, summary, images,
                                                             template=template)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     negative = prompt_builder.build_negative_prompt()

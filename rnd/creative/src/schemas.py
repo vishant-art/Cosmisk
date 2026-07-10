@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from taxonomy import (  # noqa: E402
-    AdFormat, CameraStyle, FramingStyle, HookType, LightingStyle,
+    AdFormat, BeatPurpose, CameraStyle, FramingStyle, HookType, LightingStyle,
+    ProductVisibility, ShotCamera,
 )
 
 
@@ -127,6 +128,89 @@ class UGCStyle(BaseModel):
         parts = [bits.get(self.camera or ""), lig.get(self.lighting or ""),
                  frm.get(self.framing or "")]
         return ", ".join(p for p in parts if p)
+
+
+# --- T6: the script is the creative; the video is a rendering of it ------------
+
+class ScriptBeat(BaseModel):
+    """One unit of the argument. `purpose` is what it is FOR; `text` is what is said."""
+    purpose: BeatPurpose
+    text: str
+
+    @field_validator("text")
+    @classmethod
+    def _nonempty(cls, v: str) -> str:
+        v = _collapse(v)
+        if not v:
+            raise ValueError("a beat with no words is not a beat")
+        return v
+
+
+class Script(BaseModel):
+    """The spoken argument, ordered. This, not the image, is the creative.
+
+    A static ad's artifact is a composed frame. A UGC ad's artifact is a sequence, and
+    the sequence is decided here, before a single pixel is rendered. The renderer moves
+    down the stack and becomes a detail.
+    """
+    beats: list[ScriptBeat] = Field(min_length=1)
+
+    def spoken(self) -> str:
+        """The voiceover text. Also the ground truth the caption drift gate checks
+        against (T3), which is why it is joined once, here, and not reassembled later."""
+        return " ".join(b.text for b in self.beats)
+
+    def purposes(self) -> set[str]:
+        return {b.purpose for b in self.beats}
+
+    @field_validator("beats")
+    @classmethod
+    def _opens_on_a_hook(cls, v: list[ScriptBeat]) -> list[ScriptBeat]:
+        # Universally true of short-form: the first two seconds earn the next two.
+        if v and v[0].purpose != "hook":
+            raise ValueError(f"a script must open on a hook, not {v[0].purpose!r}")
+        return v
+
+
+class Shot(BaseModel):
+    """One clip in the storyboard. `purpose` is a foreign key to the ScriptBeat it
+    renders, which is what makes shot-level repair possible (T9.5): you can only
+    regenerate a shot in isolation if you know what it was for."""
+    purpose: BeatPurpose
+    duration_s: float = Field(gt=0)
+    camera: ShotCamera
+    subject: str                       # free-text visual brief, like AdConcept.scene
+    product_visible: ProductVisibility
+    motion: str = ""
+    dialogue: str | None = None
+
+
+class Storyboard(BaseModel):
+    """A shot list that sums to the target and covers every beat.
+
+    Portable across renderers by construction. Nothing here knows that Seedance 2.0
+    caps a clip at ~15s or that Seedance 2.5 promises 30s native; the cap is a config
+    constant applied when the durations are fitted. If a 30-second single-pass model
+    lands, the same Storyboard renders as one call instead of six and nothing above
+    the renderer changes. See UGC-D1.
+    """
+    shots: list[Shot] = Field(min_length=1)
+    target_seconds: float
+    # T9.5 blast radius. Sequential render gives shot-to-shot continuity via ref2v but
+    # makes a repair cascade forward; independent keeps repairs local. Default to local
+    # until the continuity check in T9 is trustworthy enough to justify the cascade.
+    render_mode: Literal["independent", "sequential"] = "independent"
+
+    @property
+    def duration_s(self) -> float:
+        return round(sum(s.duration_s for s in self.shots), 3)
+
+    def purposes(self) -> set[str]:
+        return {s.purpose for s in self.shots}
+
+    def covers(self, script: Script) -> set[str]:
+        """Beats with no shot to render them. Empty set means the storyboard is whole."""
+        return script.purposes() - self.purposes()
 
 
 # --- T3: burned-in per-word captions (an editor operation, UGC-D8) -------------

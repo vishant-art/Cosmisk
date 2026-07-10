@@ -13,6 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import brand_brain  # noqa: E402
+import story_brain  # noqa: E402
 import config  # noqa: E402
 import image_providers  # noqa: E402
 import logo as logo_mod  # noqa: E402
@@ -28,7 +29,7 @@ def _png(path, size=(1080, 1350), color="white"):
 def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
     monkeypatch.setattr(brand_brain, "generate_brand_kit",
                         lambda c, s, ground_images=None: (brand_kit, 0.0))
-    monkeypatch.setattr(brand_brain, "generate_concepts",
+    monkeypatch.setattr(story_brain, "generate_concepts",
                         lambda c, k, s, n, template=None: (concepts[:n], 0.0))
 
     def fake_logo(kit, out_path, **kw):
@@ -143,7 +144,7 @@ def test_qa_reject_excludes_concept(monkeypatch, tmp_path, envelope_path,
 
 
 def test_video_smoke_native_audio_and_voiceover(monkeypatch, tmp_path, brand_kit, copyset):
-    import video_providers, brand_brain, schemas
+    import video_providers, story_brain, schemas
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     (tmp_path / "vid").mkdir()
     (tmp_path / "vid" / "concept_01_bg.png").write_bytes(b"BG")
@@ -155,7 +156,7 @@ def test_video_smoke_native_audio_and_voiceover(monkeypatch, tmp_path, brand_kit
         return {"provider": "seedance", "model": "m", "path": str(out_path), "cost_usd": 1.5}
 
     monkeypatch.setattr(video_providers, "generate_with_fallback", fake_vid)
-    monkeypatch.setattr(brand_brain, "generate_vo_script",
+    monkeypatch.setattr(story_brain, "generate_vo_script",
                         lambda c, k, hook, cta, sec: ("Shop the new collection now.", 0.001))
     monkeypatch.setattr(video_providers, "generate_voiceover",
                         lambda text, out, **kw: (Path(out).write_bytes(b"A"),
@@ -182,6 +183,7 @@ def _stub_voiceover_chain(monkeypatch, tmp_path, script="Shop the new collection
     editor's ffmpeg pass has something to burn onto."""
     import shutil
 
+    import story_brain
     import video_providers
     src = tmp_path / "src.mp4"
 
@@ -190,7 +192,7 @@ def _stub_voiceover_chain(monkeypatch, tmp_path, script="Shop the new collection
         return {"provider": "seedance", "model": "m", "path": str(out_path), "cost_usd": 1.5}
 
     monkeypatch.setattr(video_providers, "generate_with_fallback", fake_vid)
-    monkeypatch.setattr(brand_brain, "generate_vo_script", lambda *a, **k: (script, 0.001))
+    monkeypatch.setattr(story_brain, "generate_vo_script", lambda *a, **k: (script, 0.001))
     monkeypatch.setattr(video_providers, "generate_voiceover",
                         lambda text, out, **kw: (Path(out).write_bytes(b"A"),
                                                  {"provider": "minimax-tts", "model": "m",

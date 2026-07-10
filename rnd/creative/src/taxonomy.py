@@ -54,6 +54,30 @@ CameraStyle = Literal["handheld", "selfie", "tripod", "overhead"]
 LightingStyle = Literal["window", "overhead", "golden_hour", "ring_light"]
 FramingStyle = Literal["imperfect", "centered", "rule_of_thirds"]
 
+# --- script + storyboard (T6) -------------------------------------------------
+# What a beat is FOR. Closed, because Shot.purpose is a foreign key to it: free-text
+# purpose degenerates into the model writing "build trust" on every shot, at which
+# point it is decoration and cannot drive shot-level recovery (T9.5).
+BeatPurpose = Literal[
+    "hook",        # the first 2 seconds. Earns the next 2.
+    "problem",     # name the pain
+    "agitate",     # make the pain concrete
+    "demo",        # the product, working
+    "proof",       # evidence: before/after, review, number
+    "objection",   # pre-empt the reason not to buy
+    "cta",         # the ask
+]
+
+# How a single shot is framed. Distinct from UGCStyle.camera, which is the CAPTURE
+# aesthetic of the whole piece; this is the framing of one shot within it.
+ShotCamera = Literal[
+    "selfie", "handheld_wide", "close_up", "macro",
+    "over_shoulder", "overhead", "pov",
+]
+
+# Whether the product is on screen, and how hard it is being sold in that shot.
+ProductVisibility = Literal["hero", "background", "absent"]
+
 # --- CTA detection lexicon -----------------------------------------------------
 # `cta_start_s` is MEASURED: the timestamp of the first spoken phrase matching this
 # lexicon. If nothing matches, the field is None. We never guess a CTA moment.

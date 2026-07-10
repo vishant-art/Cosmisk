@@ -80,6 +80,12 @@ def main() -> None:
     ap.add_argument("--ref", action="append", default=[],
                     help="explicit reference image path(s) for generation; repeatable")
     ap.add_argument("--resume", help="run_id to resume (generate ads from edited kit)")
+    # script + storyboard (T6). No pixels: a shot list a human could shoot.
+    ap.add_argument("--storyboard", action="store_true",
+                    help="plan a Script + Storyboard for an existing run (needs --resume). "
+                         "Renders nothing; the sequence IS the creative")
+    ap.add_argument("--seconds", type=int, default=config.STORY_DEFAULT_SECONDS,
+                    help="target length of the storyboard, in seconds")
     # video smoke (gated)
     ap.add_argument("--video", action="store_true", help="run one video clip (costs $$)")
     ap.add_argument("--video-prompt", default="")
@@ -100,6 +106,13 @@ def main() -> None:
     from schemas import UGCStyle  # noqa: E402
     style = UGCStyle.model_validate(
         config.UGC_STYLE_DEFAULT if args.style == "ugc" else config.STUDIO_STYLE)
+
+    if args.storyboard:
+        if not args.resume:
+            ap.error("--storyboard needs --resume <run_id> (it reads that run's "
+                     "brand_kit.json and template.json)")
+        pipeline.plan_story(run_id=args.resume, data_path=args.data, seconds=args.seconds)
+        return
 
     if args.video:
         run_id = args.resume or _new_run_id()

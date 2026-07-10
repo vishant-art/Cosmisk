@@ -92,6 +92,16 @@ TEARDOWN_SAMPLE_FPS = 8            # temporal subsample; cuts survive, cost drop
 TEARDOWN_GRID = 48                 # strided-down frame edge (px) for the diff metric
 TEARDOWN_MAX_KEYFRAMES = 9         # contact-sheet tiles handed to the VLM (3x3)
 
+# --- script + storyboard (T6) --------------------------------------------------
+# Shot lengths are a PACING convention, not a model limit. Cutting every couple of
+# seconds is what the audience expects; VIDEO_MAX_CLIP_SECONDS is a separate, moving
+# ceiling imposed by whichever renderer is current. Keep the two ideas apart, or a
+# 30-second-native model arrives and the shot planner still thinks in 8s slices.
+STORY_DEFAULT_SECONDS = 20
+STORY_MIN_SHOT_SECONDS = 1.2
+STORY_TYPICAL_SHOT_MAX = 4.0    # what a director should aim for, not what a model allows
+STORY_MAX_SHOTS = 12
+
 # --- captions (T3, an editor operation per UGC-D8) ----------------------------
 # Burned-in per-word captions are the single strongest signal that a clip is creator
 # content rather than an ad. They are also the architecture's own thesis applied to

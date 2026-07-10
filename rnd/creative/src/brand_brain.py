@@ -1,17 +1,26 @@
-"""The brain: turn the selected-campaign summary into a structured BrandKit and a
-set of ad concepts. Text generation goes through OpenRouter (already wired and
-paid), returned as strict JSON and validated against the schemas.
+"""The brand brain: identity, and only identity.
+
+Turns the selected-campaign summary (optionally grounded in real winning-ad images)
+into a validated BrandKit. Text generation goes through OpenRouter via `brain.chat_json`,
+returned as strict JSON and validated against the schemas.
+
+Split from the argument-making half in T6. The boundary is deliberate and it is not
+planner/strategist/copywriter, which is an org chart. It is:
+
+    brand_brain  -- IDENTITY.  Does not consume a CreativeTemplate.
+    story_brain  -- ARGUMENT.  Concepts, script, storyboard, voiceover. Consumes it.
+
+If you are about to add a function here that takes a `template=` argument, it belongs
+in story_brain.
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config  # noqa: E402
-import ledger  # noqa: E402
-from schemas import AdConcept, BrandKit, CopySet, CreativeTemplate  # noqa: E402
+import brain  # noqa: E402
+from schemas import BrandKit  # noqa: E402
 
 _KIT_SYSTEM = (
     "You are an elite brand strategist and art director. From the ad-account summary, "
@@ -39,136 +48,17 @@ _KIT_SYSTEM = (
     "Every hex is a real 6-digit hex. Keep lists to 3-5 items."
 )
 
-_CONCEPTS_SYSTEM = (
-    "You are a senior advertising art director. Given a brand kit and what's working in the "
-    "account, propose {n} image-ad concepts that are distinct, intuitive, and scroll-stopping "
-    "-- each a DIFFERENT strategic angle (e.g. hero-product, in-use lifestyle, problem/solution, "
-    "social proof, bold visual metaphor, pattern interrupt). Return STRICT JSON only:\n"
-    '{"concepts": [{"title": str, "scene": str, "ad_copy": '
-    '{"headline": str, "cta_label": str, "angle": str, "subhead": str|null, "legal": str|null}}]}\n'
-    "Each `scene` is a vivid, art-directed brief for ONE still: a concrete hero subject, a "
-    "specific setting, intentional composition and camera angle, motivated lighting, and a clear "
-    "mood -- the kind of frame that stops a feed. Avoid generic stock setups (smiling person at "
-    "a laptop, plain product-on-white, soulless corporate scenes). The scene must contain NO text "
-    "and NO logo -- describe only the visual (copy and logo are composited later).\n"
-    "`ad_copy` is the words placed over the scene afterwards, NOT drawn by the image model:\n"
-    "- headline: <=6 words, specific and on-voice, the single hook. No clickbait, no hedging.\n"
-    "- cta_label: 1-3 words, an action (Shop now, Get yours, Book a call).\n"
-    "- angle: the strategic reason this creative exists (the angle name above).\n"
-    "- subhead: optional one short supporting line, or null.\n"
-    "- legal: optional fine print (e.g. *T&C apply), or null.\n"
-    "Keep the concepts visually varied but unmistakably the same brand."
-)
-
-# Appended to _CONCEPTS_SYSTEM when a CreativeTemplate is supplied (T5). This is the
-# seam: it is what turns "copy what the winners LOOK like" into "reuse what they DO".
-_STRUCTURE_SYSTEM = (
-    "\n\nYou will also be given the measured STRUCTURE of a real ad from this account, "
-    "together with how it performed. Treat it as evidence about this audience, not as "
-    "a thing to copy. Reuse what carried the result -- the hook category, the pacing, "
-    "the order in which the argument is made. Change the surface: the angle, the scene, "
-    "the words. If the structure came from a LOSER, do the opposite of what it did.\n"
-    "Set each concept's `angle` to name the structural choice you inherited."
-)
-
-
-def _structure_block(template: CreativeTemplate | None) -> str:
-    """The template's brief, or nothing. Never a placeholder: a fabricated structure
-    would be indistinguishable from a measured one at the point of use."""
-    return f"\n\n{template.to_brief()}" if template else ""
-
-
-def _fallback_copy(kit: BrandKit, i: int) -> CopySet:
-    """A valid, on-brand placeholder so a missing concept never blocks a run."""
-    return CopySet(headline=kit.tagline, cta_label="Shop now", angle=f"placeholder {i + 1}")
-
-
-_VO_SYSTEM = (
-    "You are an advertising copywriter writing a SHORT spoken VOICEOVER script for a "
-    "{sec}-second video ad. Natural spoken-word, one or two sentences, ~{words} words MAX "
-    "(it must fit the time when read aloud), on-brand for the given tone, ending on the call "
-    "to action. No stage directions, no narrator labels. Return STRICT JSON: {\"script\": str}."
-)
-
-
-def generate_vo_script(client, kit: BrandKit, hook: str, cta: str = "",
-                       seconds: int = 10) -> tuple[str, float]:
-    """Write a short, time-fit voiceover script for a video ad. Falls back to the
-    hook text if the model returns nothing usable."""
-    words = max(6, int(seconds * 2.4))            # ~145 words/min spoken
-    system = _VO_SYSTEM.replace("{sec}", str(seconds)).replace("{words}", str(words))
-    user = (f"BRAND: {kit.brand_name} -- tone: {kit.tone}. "
-            f"HOOK: {hook}. CALL TO ACTION: {cta or 'shop now'}.")
-    try:
-        data, cost = _chat_json(client, system, user)
-        script = (data.get("script") or "").strip()
-    except Exception:                              # noqa: BLE001 -- never block the video
-        script, cost = "", 0.0
-    return (script or f"{hook}. {cta}".strip(" .") + ".", cost)
-
-
-def _chat_json(client, system: str, user: str) -> tuple[dict, float]:
-    """One OpenRouter call constrained to a JSON object; tolerant of stray fences.
-    Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost."""
-    resp = client.chat.completions.create(
-        model=config.TEXT_MODEL,
-        temperature=config.TEXT_TEMPERATURE,
-        response_format={"type": "json_object"},
-        extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
-        messages=[{"role": "system", "content": system},
-                  {"role": "user", "content": user}],
-    )
-    text = (resp.choices[0].message.content or "").strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text[text.find("{"):text.rfind("}") + 1]
-    return json.loads(text), ledger.response_cost(resp)
-
-
-def _vision_user(summary: str, image_paths: list[str], instruction: str):
-    """A multimodal user message: the summary text plus real winning-ad images so the
-    brain grounds the kit in what actually converts (palette/style/product)."""
-    import base64
-    from pathlib import Path as _P
-    parts = [{"type": "text", "text": f"{instruction}\n\n{summary}"}]
-    for p in (image_paths or [])[:6]:
-        data = base64.b64encode(_P(p).read_bytes()).decode()
-        parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}"}})
-    return parts
-
 
 def generate_brand_kit(client, summary: str, ground_images: list[str] | None = None
                        ) -> tuple[BrandKit, float]:
-    user = summary if not ground_images else _vision_user(
+    """Design the brand identity, grounded in the account's real winners when we have them.
+
+    `ground_images` are the winning ads' pixels. This vision pass is the only place the
+    brain looks at what actually converted for this account, and it is on by default.
+    """
+    user = summary if not ground_images else brain.vision_user(
         summary, ground_images,
         "Ground the brand identity in these REAL winning ads from this account -- infer the "
         "actual palette, visual style, and product look from them, not just the numbers.")
-    data, cost = _chat_json(client, _KIT_SYSTEM, user)
+    data, cost = brain.chat_json(client, _KIT_SYSTEM, user)
     return BrandKit.model_validate(data), cost
-
-
-def generate_concepts(client, kit: BrandKit, summary: str, n: int,
-                      template: CreativeTemplate | None = None
-                      ) -> tuple[list[AdConcept], float]:
-    """Propose n ad concepts, optionally grounded in the measured structure of a real
-    ad from this account (T5).
-
-    `template` is the seam. Before it existed, this function decided the hook, the
-    headline, the CTA and the scene having never once seen a winning ad: it received
-    a brand kit and a summary string, text only. That is the difference between
-    generating an advertisement and generating content that happens to be one.
-    """
-    system = _CONCEPTS_SYSTEM.replace("{n}", str(n))
-    if template:
-        system += _STRUCTURE_SYSTEM
-    user = (
-        f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
-        f"ACCOUNT CONTEXT:\n{summary}"
-        f"{_structure_block(template)}\n\nPropose exactly {n} concepts."
-    )
-    data, cost = _chat_json(client, system, user)
-    concepts = [AdConcept.model_validate(c) for c in data.get("concepts", [])]
-    if not concepts:
-        concepts = [AdConcept(title=f"Concept {i+1}", scene=kit.visual_style,
-                              ad_copy=_fallback_copy(kit, i)) for i in range(n)]
-    return concepts[:n], cost

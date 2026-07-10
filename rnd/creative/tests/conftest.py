@@ -63,13 +63,45 @@ CONCEPTS_JSON = {"concepts": [
 ]}
 
 
+SCRIPT_JSON = {"beats": [
+    {"purpose": "hook", "text": "I genuinely thought this was a scam."},
+    {"purpose": "problem", "text": "My hallway was always dark."},
+    {"purpose": "demo", "text": "You just twist it and it warms up."},
+    {"purpose": "proof", "text": "Three weeks in and I have not touched the switch."},
+    {"purpose": "cta", "text": "Shop the new collection."},
+]}
+
+STORYBOARD_JSON = {"shots": [
+    {"purpose": "hook", "duration_s": 2, "camera": "selfie", "subject": "woman to camera",
+     "product_visible": "absent", "motion": "walks in", "dialogue": "I genuinely thought this was a scam."},
+    {"purpose": "problem", "duration_s": 3, "camera": "handheld_wide", "subject": "dark hallway",
+     "product_visible": "absent", "motion": "pan", "dialogue": "My hallway was always dark."},
+    {"purpose": "demo", "duration_s": 4, "camera": "macro", "subject": "hands twisting the lamp",
+     "product_visible": "hero", "motion": "twist", "dialogue": "You just twist it and it warms up."},
+    {"purpose": "proof", "duration_s": 3, "camera": "close_up", "subject": "her face, lit warm",
+     "product_visible": "background", "motion": "smile", "dialogue": "Three weeks in."},
+    {"purpose": "cta", "duration_s": 2, "camera": "selfie", "subject": "product held up",
+     "product_visible": "hero", "motion": "hold", "dialogue": "Shop the new collection."},
+]}
+
+
 def _router(system_content: str) -> str:
     # route on a token unique to each system prompt.
     if "VOICEOVER" in system_content:
         return json.dumps({"script": "Discover timeless craftsmanship. Shop the new collection."})
+    if "shot list" in system_content:
+        return json.dumps(STORYBOARD_JSON)
+    if "SPOKEN script" in system_content:
+        return json.dumps(SCRIPT_JSON)
     if "brand_name" in system_content:
         return json.dumps(KIT_JSON)
     return json.dumps(CONCEPTS_JSON)
+
+
+@pytest.fixture
+def script():
+    from schemas import Script
+    return Script.model_validate(SCRIPT_JSON)
 
 
 @pytest.fixture

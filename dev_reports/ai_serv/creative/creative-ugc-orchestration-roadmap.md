@@ -256,7 +256,7 @@ Thread `CreativeTemplate` from `pipeline.run` → `_generate_ads` → `generate_
 
 ---
 
-### T6. Script and Storyboard as first-class artifacts
+### T6. Script and Storyboard as first-class artifacts ✅ SHIPPED (Phase 3)
 
 **Inspiration:** Creatify (script is the primary artifact, generated before any video), Topview (storyboard is regenerable per frame), AdFlow Co-Pilot (scene-by-scene copy before building).
 **Concept:** *the script is the creative; the video is a rendering of it*.
@@ -296,9 +296,16 @@ Constraints: `sum(shot.duration_s)` equals the target, each `duration_s <= confi
 
 **Files:** `schemas.py`, new `storyboard.py`, `brand_brain.py` (`generate_script`).
 
-**On splitting `brand_brain`.** It will eventually hold planner, strategist, copywriter and storyboarder responsibilities and should be split. **Not yet.** It is 7.8KB and three functions; splitting it into four modules before those functions exist is four modules for three functions. This repo's own history is barrel-submodule refactors of god files performed *after* they became god files, which is the right order. Split as part of T6, when `generate_script` and `generate_storyboard` actually land.
+**On splitting `brand_brain`.** Done, as part of T6, and cut where it was always going to be cut. Planner / strategist / copywriter / storyboarder is an org chart, and org charts make poor module boundaries. The boundary that matters is **what consumes a `CreativeTemplate` and what does not**:
 
-Also reconsider the cut lines when we do. Planner / strategist / copywriter / storyboarder is an org chart, and org charts make poor module boundaries. The boundary that matters in this system is **what consumes a `CreativeTemplate` and what does not.**
+```
+brain.py        shared LLM transport (chat_json, vision_user)
+brand_brain.py  IDENTITY.  generate_brand_kit. Does not consume a CreativeTemplate.
+story_brain.py  ARGUMENT.  concepts, script, storyboard, voiceover. Consumes it.
+storyboard.py   ARITHMETIC. fit_durations, validate, build. Consumes nothing.
+```
+
+`test_brand_brain_does_not_consume_a_creative_template` asserts the boundary by inspecting signatures rather than documenting it in prose. If a function here grows a `template=` argument, the test fails and tells you where it belongs.
 
 ---
 
@@ -615,6 +622,39 @@ Two defects the tests caught:
 **Captions shared the voiceover's `except` block.** A caption failure was logged as `voiceover failed`, and a firing drift gate was indistinguishable from a broken TTS. Worse, the first version of the pipeline test *passed* because `transcribe_words` raised, was swallowed, and the assertion on the pre-caption path still held. Captions now have their own handler and their own log line, and `test_a_caption_failure_is_not_reported_as_a_voiceover_failure` locks it down. A test that passes because the thing under test never ran is worse than a failing one.
 
 **Geometry check at real dimensions:** at 1080×1920 the caption band renders at y 0.604–0.662, clear of the 0.80 bottom safe zone that Reels reserves for platform UI. A full-res cue frame is 22.7KB, so a 15-second overlay sequence is roughly 8MB of mostly-transparent PNG.
+
+## 7ter. Phase 3 build: script + storyboard (shipped)
+
+`T6`, plus the `brand_brain` split it was always going to force.
+
+| Change | Files |
+|---|---|
+| `BeatPurpose` / `ShotCamera` / `ProductVisibility` closed sets | `taxonomy.py` |
+| `ScriptBeat` / `Script` / `Shot` / `Storyboard` | `schemas.py` |
+| `storyboard.py` — `fit_durations`, `validate`, `build`, `as_shot_list` | new |
+| `brain.py` — shared LLM transport | new |
+| `story_brain.py` — concepts, script, storyboard, voiceover | new |
+| `brand_brain.py` — identity only | trimmed |
+| `pipeline.plan_story()`, `video_smoke` prefers `script.json` | `pipeline.py` |
+| `--storyboard --seconds N` | `main.py` |
+
+**Tests:** `rnd/creative` 167 → **201 passing** (+34, 0 broken).
+
+**The split between what the model decides and what arithmetic decides.** The model proposes shots with `duration_s` *hints*. `fit_durations` rescales them to hit the target exactly. That is safe to do deterministically because **it changes no content**. Coverage is not: if a beat has no shot, we retry once with the exact violation as a hint and then raise. Inventing the missing shot would put a fabricated beat next to written ones with nothing to tell them apart, which is `product_first_appears_s = 2.1` in a different costume.
+
+**Durations are fitted in integer tenths, not floats.** "Sums to 20.0s" has to be *true*, not nearly true. Float proportional scaling leaves a residue that either drifts the ad's length or gets dumped on whichever shot happens to be last. The fitter water-fills the remainder a tenth at a time, growing the shortest shots and shrinking the longest. A randomized property test runs 2,000 cases across every shot count, cap, floor and adversarial hint set (zeros, negatives, a 100 next to a 0.1) and asserts sum-equals-target and in-bounds. Zero violations.
+
+The irony worth recording: the first version of `test_awkward_targets_still_land_exactly` failed, because `3.4 - 3.3 <= 0.1` is `False` in float. An assertion *about* exact arithmetic, broken *by* inexact arithmetic. It now compares in tenths, like the code does.
+
+**`Shot.purpose` is a foreign key, not a label.** It points at the `ScriptBeat` the shot renders, drawn from the same closed set. That buys two things: the storyboard becomes verifiable (`Storyboard.covers(script)` returns the uncovered beats, and an empty set is the invariant), and shot-level recovery becomes possible in T9.5, because you can only regenerate a shot in isolation if you know what it was for.
+
+**Structural invariants, enforced not suggested.** A `Script` must open on a `hook` (validated on the model itself: the first two seconds earn the next two). A `Storyboard` must open on a hook shot, and close on a CTA shot *if* the script has a CTA beat. No shot exceeds `VIDEO_MAX_CLIP_SECONDS`.
+
+**`STORY_TYPICAL_SHOT_MAX` is deliberately not `VIDEO_MAX_CLIP_SECONDS`.** Shot length is a pacing convention (~1.2–4.0s, what the audience expects); the clip cap is a moving ceiling imposed by whichever renderer is current. Keeping them as separate constants is what stops a 30-second-native model from arriving to find a shot planner that still thinks in 8-second slices. This is `UGC-D1` made concrete.
+
+**`plan_story` renders nothing.** It reads the run's `brand_kit.json` and `template.json`, writes `script.json` and `storyboard.json`, and prints a shot list. Per `OQ3`, that shot list is a deliverable on its own: something a human creator could shoot. The renderer has moved down the stack and become a detail.
+
+**One seam closed for free.** `video_smoke` now prefers `script.json`'s `spoken()` text over `generate_vo_script`. The same string feeds the TTS and the caption drift gate, so the voiceover and the captions cannot disagree about what was said.
 
 ### 7.5 Implementation notes worth keeping
 

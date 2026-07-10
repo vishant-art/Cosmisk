@@ -1,155 +1,64 @@
-"""The brain turns the summary into a validated kit + concepts (fake LLM client).
+"""The brand brain turns the summary into a validated BrandKit (fake LLM client).
 
-Includes the T5 seam: concepts conditioned on a real ad's measured structure.
+Identity only. Concepts, script, storyboard and voiceover moved to story_brain in T6:
+everything that consumes a CreativeTemplate lives there. If a test here needs a
+`template=`, it is in the wrong file.
 """
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import brain  # noqa: E402
 import brand_brain  # noqa: E402
 
 
-def test_generate_brand_kit(fake_client):
+def test_brand_kit_parses_and_validates(fake_client):
     kit, cost = brand_brain.generate_brand_kit(fake_client, "ACCOUNT: Test")
     assert kit.brand_name == "Lumen"
-    assert len(kit.palette) == 3
-    assert cost == 0.0                       # fake client returns no usage.cost
+    assert kit.palette[0].css() == "#0FB5AE"
+    assert kit.logo.brief
+    assert cost == 0.0                     # the fake response carries no usage block
 
 
-def test_generate_concepts_count(fake_client, brand_kit):
-    out, cost = brand_brain.generate_concepts(fake_client, brand_kit, "ctx", 3)
-    assert len(out) == 3
-    assert out[0].title == "Morning Glow"
-    assert cost == 0.0
+def test_vision_user_embeds_winner_images(tmp_path):
+    w = tmp_path / "w1.png"
+    Image.new("RGB", (8, 8), "red").save(w)
+    parts = brain.vision_user("ACCOUNT: X", [str(w)], "ground it")
+    assert parts[0]["type"] == "text" and "ground it" in parts[0]["text"]
+    assert parts[1]["type"] == "image_url"
+    assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
-def test_generate_concepts_carry_copy(fake_client, brand_kit):
-    out, _ = brand_brain.generate_concepts(fake_client, brand_kit, "ctx", 2)
-    assert out[0].ad_copy.headline           # first-class copy, not buried in prose
-    assert out[0].ad_copy.cta_label
-    assert out[0].ad_copy.angle
+def test_vision_user_caps_at_six_images(tmp_path):
+    paths = []
+    for i in range(9):
+        p = tmp_path / f"w{i}.png"
+        Image.new("RGB", (4, 4), "blue").save(p)
+        paths.append(str(p))
+    parts = brain.vision_user("X", paths, "ground it")
+    assert len(parts) == 1 + 6             # one text part + six images
 
 
-def test_grounding_builds_multimodal_message_and_still_parses(fake_client, tmp_path):
-    from PIL import Image
-    w = tmp_path / "winner.png"
-    Image.new("RGB", (8, 8), "white").save(w)
-    # vision message is a list of parts (text + image), and the kit still validates
-    parts = brand_brain._vision_user("ACCOUNT: X", [str(w)], "ground it")
-    assert parts[0]["type"] == "text"
-    assert any(p["type"] == "image_url" for p in parts)
+def test_grounded_kit_still_validates(fake_client, tmp_path):
+    w = tmp_path / "w1.png"
+    Image.new("RGB", (8, 8), "red").save(w)
     kit, _ = brand_brain.generate_brand_kit(fake_client, "ACCOUNT: X", ground_images=[str(w)])
     assert kit.brand_name == "Lumen"
 
 
-def test_generate_vo_script(fake_client, brand_kit):
-    script, cost = brand_brain.generate_vo_script(fake_client, brand_kit,
-                                                  "Timeless craftsmanship", "Shop now", 10)
-    assert "collection" in script.lower()          # from the fake VO router branch
-    assert cost == 0.0
-
-
-def test_generate_vo_script_falls_back_to_hook(brand_kit):
-    class _Bad:
-        class _C:
-            @staticmethod
-            def create(**kw):
-                raise RuntimeError("llm down")
-        chat = type("Chat", (), {"completions": _C()})()
-    script, _ = brand_brain.generate_vo_script(_Bad(), brand_kit, "Heritage weaves", "Buy", 8)
-    assert "Heritage weaves" in script             # graceful fallback to the hook
-
-
-class _OneShot:
-    """Minimal client returning a fixed JSON string (no concepts)."""
-    class _C:
-        @staticmethod
-        def create(**kw):
-            class R:
-                choices = [type("X", (), {"message": type("M", (), {"content": '{"concepts": []}'})})]
-            return R()
-    chat = type("Chat", (), {"completions": _C()})()
-
-
-def test_concepts_fallback_when_empty(brand_kit):
-    out, _ = brand_brain.generate_concepts(_OneShot(), brand_kit, "ctx", 2)
-    assert len(out) == 2          # synthesises placeholders rather than returning nothing
-    assert out[0].ad_copy.headline   # even placeholders carry valid copy
-    assert out[0].ad_copy.cta_label
-
-
-# --- T5: the seam ---------------------------------------------------------------
-
-class _Capturing:
-    """Captures the messages sent, so we can assert what the brain was actually told."""
-    def __init__(self):
-        self.seen = []
-        outer = self
-
-        class _C:
-            @staticmethod
-            def create(**kw):
-                outer.seen.append(kw["messages"])
-
-                class R:
-                    choices = [type("X", (), {"message": type("M", (), {
-                        "content": '{"concepts": []}'})})]
-                return R()
-        self.chat = type("Chat", (), {"completions": _C()})()
-
-    @property
-    def system(self):
-        return self.seen[0][0]["content"]
-
-    @property
-    def user(self):
-        return self.seen[0][1]["content"]
-
-
-def _template(**kw):
-    from schemas import CreativeTemplate
-    base = dict(ad_id="ad_9", cohort="winner", shot_count=6, duration_s=18.0,
-                avg_shot_length_s=3.0, time_to_first_cut_s=1.4,
-                hook_type="pattern_interrupt", ad_format="ugc_testimonial",
-                spoken_hook="I genuinely did not expect", words_per_minute=168.0)
-    return CreativeTemplate(**{**base, **kw})
-
-
-def test_concepts_are_ungrounded_without_a_template(brand_kit):
-    """The behaviour we are leaving behind: the brain decides the hook, the headline,
-    the CTA and the scene having never seen a winning ad."""
-    c = _Capturing()
-    brand_brain.generate_concepts(c, brand_kit, "ctx", 2)
-    assert "STRUCTURE OF A REAL" not in c.user
-    assert "structure" not in c.system.lower()
-
-
-def test_template_reaches_the_concept_prompt(brand_kit):
-    c = _Capturing()
-    brand_brain.generate_concepts(c, brand_kit, "ctx", 2, template=_template())
-    assert "STRUCTURE OF A REAL WINNER" in c.user
-    assert "pattern_interrupt" in c.user
-    assert "I genuinely did not expect" in c.user
-    assert "6 shots" in c.user
-    assert "Reuse what carried the result" in c.system
-
-
-def test_loser_template_inverts_the_instruction(brand_kit):
-    c = _Capturing()
-    brand_brain.generate_concepts(c, brand_kit, "ctx", 2,
-                                  template=_template(cohort="loser"))
-    assert "STRUCTURE OF A REAL LOSER" in c.user
-    assert "do the opposite" in c.system
-
-
-def test_template_brief_never_states_an_unmeasured_field(brand_kit):
-    """A template whose ASR failed must not silently hand the brain a plausible pace."""
-    c = _Capturing()
-    brand_brain.generate_concepts(c, brand_kit, "ctx", 2,
-                                  template=_template(words_per_minute=None,
-                                                     spoken_hook=None))
-    assert "words/min" not in c.user
-    assert "first words spoken" not in c.user
-    assert "pattern_interrupt" in c.user      # what WAS measured still arrives
+def test_brand_brain_does_not_consume_a_creative_template():
+    """The module boundary, asserted rather than merely documented. brand_brain is
+    IDENTITY; anything that takes a measured structure and turns it into an argument
+    belongs in story_brain. Checks signatures, not prose."""
+    import inspect
+    public = [f for n, f in vars(brand_brain).items()
+              if inspect.isfunction(f) and not n.startswith("_")
+              and f.__module__ == "brand_brain"]
+    assert public, "expected at least generate_brand_kit"
+    for fn in public:
+        params = inspect.signature(fn).parameters
+        assert "template" not in params, f"{fn.__name__} consumes a template; move it"
