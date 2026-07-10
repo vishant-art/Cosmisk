@@ -21,7 +21,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DEFAULT_API_VERSION = "2024-10"
+# Shopify releases a version each quarter (YYYY-MM: -01/-04/-07/-10), supported ~12 months.
+# 2026-07 is the current stable as of this writing; bump quarterly. NOTE: the frozen
+# apps/connectors config still pins the stale "2024-10" -- a maintainer should bump it too.
+DEFAULT_API_VERSION = "2026-07"
 
 
 @dataclass
