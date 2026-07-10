@@ -32,6 +32,7 @@ video_providers since the beginning and has never been called by anything.
 """
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -64,6 +65,30 @@ def snap_duration(seconds: float) -> int:
         f"Split the shot, or raise config.VIDEO_MAX_CLIP_SECONDS if the model changed.")
 
 
+def _gen_key(prompt: str, refs, want: int, resolution: str, aspect: str, attempt: int) -> str:
+    """A short hash of everything that determines the Seedance output. Same inputs -> same
+    key -> reuse the cached render.
+
+    `attempt` is IN the key on purpose. A retry (rung 0) re-rolls the SAME prompt to exploit
+    the model's stochasticity, so it must NOT reuse the previous attempt's render -- a
+    different attempt gives a different key and renders fresh. Across separate RUNS this
+    still gives full reuse: a clean shot renders at attempt 0 both times (same key), and a
+    repaired shot replays its exact ladder at $0 because every attempt's render is cached.
+
+    `refs` are reduced to basenames so a re-run's deterministic ref paths hash stably.
+    """
+    ref_key = [Path(r).name for r in (refs or [])]
+    payload = f"{prompt}\n{ref_key}\n{want}\n{resolution}\n{aspect}\n{attempt}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _playable(path) -> bool:
+    try:
+        return editor.probe(path)["duration"] > 0
+    except Exception:  # noqa: BLE001 -- a truncated/corrupt cache entry is not a hit
+        return False
+
+
 def billed_seconds(board: Storyboard) -> tuple[float, float]:
     """(seconds we pay for, seconds of finished ad). The gap is the four-second floor."""
     return float(sum(snap_duration(s.duration_s) for s in board.shots)), board.duration_s
@@ -81,26 +106,42 @@ def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
     did not want the audio from.
     """
     run_dir = Path(run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)   # render_shot is public; do not assume a caller made it
+    work = run_dir / ".work"
+    renders = run_dir / "renders"
+    for d in (run_dir, work, renders):
+        d.mkdir(parents=True, exist_ok=True)   # render_shot is public; don't assume a caller made these
+
     prompt = prompt_builder.build_shot_prompt(shot, kit, style=style, hint=hint)
     want = snap_duration(shot.duration_s)
 
-    raw = run_dir / f"shot_{index:02d}_a{attempt}_raw.mp4"
-    res = providers.generate_with_fallback(
-        prompt, raw, image=seed, refs=refs, aspect=aspect, duration=want,
-        resolution=resolution, generate_audio=False, log=log)
-    if led is not None:
-        led.record("shot_video", res["provider"], res["model"], res["cost_usd"],
-                   shot=index, attempt=attempt, billed_s=want,
-                   used_s=shot.duration_s, mode=("ref2v" if refs else
-                                                 "i2v" if seed else "t2v"))
-    log(f"[seq] shot {index} ({shot.purpose}) rendered {want}s, keeping "
-        f"{shot.duration_s:g}s (est ${res['cost_usd']:.2f})")
+    # Content-addressed render cache (Phase 9.3): the Seedance output is fully determined
+    # by the prompt, the references, and the clip params. Key on those and reuse the raw
+    # render if it already exists -- a plain re-run of the same storyboard costs $0 in
+    # video instead of re-paying. A repair (different hint) or a spec change yields a
+    # different key and re-renders, as it should.
+    key = _gen_key(prompt, refs, want, resolution, aspect, attempt)
+    raw = renders / f"gen_{key}.mp4"          # KEPT: this is the paid artifact + reuse cache
 
-    trimmed = run_dir / f"shot_{index:02d}_a{attempt}_cut.mp4"
-    editor.trim(res["path"], trimmed, duration=shot.duration_s, log=lambda *_: None)
+    if raw.exists() and _playable(raw):
+        log(f"[seq] shot {index} ({shot.purpose}) REUSED cached render {key} ($0)")
+    else:
+        res = providers.generate_with_fallback(
+            prompt, raw, image=seed, refs=refs, aspect=aspect, duration=want,
+            resolution=resolution, generate_audio=False, log=log)
+        if led is not None:
+            led.record("shot_video", res["provider"], res["model"], res["cost_usd"],
+                       shot=index, attempt=attempt, billed_s=want, used_s=shot.duration_s,
+                       cache_key=key,
+                       mode=("ref2v" if refs else "i2v" if seed else "t2v"))
+        log(f"[seq] shot {index} ({shot.purpose}) rendered {want}s, keeping "
+            f"{shot.duration_s:g}s (est ${res['cost_usd']:.2f}, cache {key})")
 
-    edited = run_dir / f"shot_{index:02d}_a{attempt}.mp4"
+    # Trim + edit are $0 ffmpeg. They rerun freely off the cached raw and land in the
+    # scratch dir (Phase 9.4): only the paid raw and the final timeline survive a run.
+    trimmed = work / f"shot_{index:02d}_a{attempt}_cut.mp4"
+    editor.trim(str(raw), trimmed, duration=shot.duration_s, log=lambda *_: None)
+
+    edited = work / f"shot_{index:02d}_a{attempt}.mp4"
     editor.apply_plan(trimmed, edited, editor.plan_for_shot(shot, style),
                       log=lambda *_: None)
     return str(edited)
@@ -118,7 +159,7 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
     the shot being repaired and, in sequential mode, everything after it.
     """
     run_dir = Path(run_dir)
-    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / ".work").mkdir(parents=True, exist_ok=True)
     accepted: dict[int, str] = {}
 
     billed, used = billed_seconds(board)
@@ -135,7 +176,7 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
         refs = None
         if board.render_mode == "sequential" and index > 0 and (index - 1) in accepted:
             frame = editor.last_frame(accepted[index - 1],
-                                      run_dir / f"shot_{index - 1:02d}_last.png")
+                                      run_dir / ".work" / f"shot_{index - 1:02d}_last.png")
             refs = [frame]
             if cutout_path and Path(cutout_path).exists():
                 refs.append(str(cutout_path))
@@ -181,7 +222,8 @@ def render_single_pass(board: Storyboard, *, kit: BrandKit, run_dir,
     want = snap_duration(board.duration_s)
 
     run_dir = Path(run_dir)
-    raw = run_dir / "single_raw.mp4"
+    (run_dir / "renders").mkdir(parents=True, exist_ok=True)
+    raw = run_dir / "renders" / "single_raw.mp4"      # KEPT: the paid render
     res = providers.generate_with_fallback(prompt, raw, image=seed, aspect=aspect,
                                            duration=want, resolution=resolution,
                                            generate_audio=False, log=log)

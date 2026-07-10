@@ -222,6 +222,53 @@ def test_a_storyboard_becomes_a_timeline_that_passes_qa(tmp_path, brand_kit, fak
     assert report.approved, report.retry_hint
 
 
+def test_a_rerun_reuses_the_cached_renders_for_free(tmp_path, brand_kit, fake_render):
+    """Phase 9.3: re-running the same storyboard must not re-pay Seedance. The live run
+    wasted ~$2.42 regenerating identical shots across two --render invocations."""
+    board = _board(("hook", 2.0), ("demo", 3.0), ("cta", 2.0))
+    sequencer.render_storyboard(board, kit=brand_kit, run_dir=tmp_path, log=lambda *_: None)
+    first = len(fake_render.calls)
+    assert first == 3
+
+    sequencer.render_storyboard(board, kit=brand_kit, run_dir=tmp_path, log=lambda *_: None)
+    assert len(fake_render.calls) == first, "a re-run must reuse the cache, not re-render"
+    assert list((tmp_path / "renders").glob("gen_*.mp4")), "paid raws kept for reuse"
+
+
+def test_a_retry_still_re_rolls_despite_the_cache(tmp_path, brand_kit, monkeypatch):
+    """The cache must not defeat the stochastic-retry rung: a retry re-rolls the SAME
+    prompt and must render fresh, not replay the failed clip."""
+    fake = _FakeSeedance()
+    calls = {"n": 0}
+
+    def flaky(prompt, out_path, **kw):
+        fake.frozen_for = {"demo_1"} if ("demo_1" in prompt and calls["n"] == 0) else set()
+        if "demo_1" in prompt and calls["n"] == 0:
+            calls["n"] += 1
+        return fake(prompt, out_path, **kw)
+
+    monkeypatch.setattr(video_providers, "generate_with_fallback", flaky)
+    _timeline, _out, rlog = sequencer.render_storyboard(
+        _board(("hook", 2.0), ("demo", 3.0), ("cta", 2.0)), kit=brand_kit,
+        run_dir=tmp_path, log=lambda *_: None)
+    # hook, demo a0 (frozen), demo a1 (fresh re-roll, moves), cta = 4 real renders
+    assert rlog.renders == 4
+    assert [s.action for s in rlog.steps] == ["retry"]
+
+
+def test_intermediates_go_to_scratch_paid_renders_are_kept(tmp_path, brand_kit, fake_render):
+    """Phase 9.4: only the paid raws (renders/) and the timeline stay; the $0 per-shot
+    cuts/edits live in .work."""
+    board = _board(("hook", 2.0), ("cta", 2.0))
+    timeline, _out, _rlog = sequencer.render_storyboard(
+        board, kit=brand_kit, run_dir=tmp_path, log=lambda *_: None)
+    assert list((tmp_path / "renders").glob("gen_*.mp4"))          # paid, kept
+    assert not list(tmp_path.glob("shot_*_cut.mp4"))               # not in the run root
+    assert not list(tmp_path.glob("shot_*_a*.mp4"))
+    assert list((tmp_path / ".work").glob("shot_*"))               # scratch holds them
+    assert Path(timeline).name == "timeline.mp4"
+
+
 def test_the_cuts_land_where_the_storyboard_put_them(tmp_path, brand_kit, fake_render):
     board = _board(("hook", 2.0), ("demo", 3.0), ("cta", 2.0))
     timeline, out, _rlog = sequencer.render_storyboard(board, kit=brand_kit,

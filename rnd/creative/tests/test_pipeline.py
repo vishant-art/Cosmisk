@@ -396,6 +396,53 @@ def test_make_variants_hook_writes_matched_scripts(monkeypatch, tmp_path, brand_
         assert Path(p).exists() and p.endswith(".script.json")
 
 
+def test_render_story_keeps_only_paid_artifacts(monkeypatch, tmp_path, brand_kit):
+    """Phase 9.3+9.4 end to end: paid raws cached under renders/, the $0 per-shot
+    intermediates cleaned from .work, and a re-run re-pays nothing."""
+    import imageio_ffmpeg
+    import numpy as np
+
+    import video_providers
+    from schemas import Shot, Storyboard
+
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(pipeline, "_client", lambda: object())
+    run = tmp_path / "r"
+    run.mkdir()
+    (run / "brand_kit.json").write_text(brand_kit.model_dump_json(), encoding="utf-8")
+    board = Storyboard(target_seconds=4.0, shots=[
+        Shot(purpose=p, duration_s=2.0, camera="selfie", subject=f"{p} scene",
+             product_visible="absent", motion="a pan") for p in ("hook", "cta")])
+    (run / "storyboard.json").write_text(board.model_dump_json(), encoding="utf-8")
+
+    calls = []
+
+    def fake(prompt, out, *, image=None, refs=None, aspect="9:16", duration=10,
+             resolution="720p", fast=False, generate_audio=True, log=print):
+        calls.append(prompt)
+        w = imageio_ffmpeg.write_frames(str(out), (96, 96), fps=10, macro_block_size=1)
+        w.send(None)
+        base = np.random.default_rng(abs(hash(prompt)) % 50).integers(
+            0, 255, (96, 96, 3), dtype=np.uint8)
+        for i in range(int(duration * 10)):
+            w.send(np.roll(base, i * 3, axis=1).tobytes())
+        w.close()
+        return {"provider": "seedance", "model": "fake", "path": str(out),
+                "cost_usd": 0.014 * duration}
+    monkeypatch.setattr(video_providers, "generate_with_fallback", fake)
+
+    pipeline.render_story(run_id="r", finish=False, log=lambda *_: None)
+
+    assert not (run / ".work").exists(), ".work scratch must be cleaned"
+    assert list((run / "renders").glob("gen_*.mp4")), "paid raws kept for reuse"
+    assert (run / "timeline.mp4").exists()
+    assert not list(run.glob("*_cut.mp4")) and not list(run.glob("shot_*_a*.mp4"))
+
+    n = len(calls)
+    pipeline.render_story(run_id="r", finish=False, log=lambda *_: None)
+    assert len(calls) == n, "a re-run must reuse the render cache, not re-pay Seedance"
+
+
 def test_qa_video_needs_a_storyboard(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     (tmp_path / "q2").mkdir()

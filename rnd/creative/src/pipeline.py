@@ -338,9 +338,16 @@ _FINAL_CLIP_NAMES = ("video_captioned.mp4", "video_voiceover.mp4",
                      "video_overlay.mp4", "timeline.mp4", "video.mp4")
 
 
+def _clean_work(run_dir):
+    """Remove the scratch dir of $0 intermediates (Phase 9.4). The paid render cache lives
+    in renders/, not here, so a re-run still reuses it."""
+    import shutil
+    shutil.rmtree(Path(run_dir) / ".work", ignore_errors=True)
+
+
 def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
                  single_pass: bool = False, strict: bool = True, finish: bool = True,
-                 log=print):
+                 keep_work: bool = False, log=print):
     """Render a planned storyboard into a timeline (T7). Costs real money.
 
     Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
@@ -378,6 +385,9 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
         timeline = finish_timeline(timeline, board, script, kit, run_dir,
                                    client=_client(), led=led, log=log)
 
+    if not keep_work:
+        _clean_work(run_dir)          # keep only paid artifacts + the finished ad (9.4)
+
     billed, used = sequencer.billed_seconds(board)
     led.finalize()
     log(f"[render] {timeline} ({used:g}s of ad, {billed:g}s billed, "
@@ -398,18 +408,20 @@ def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, 
     captions go last because they are checked against the audio that ships.
     """
     run_dir = Path(run_dir)
+    work = run_dir / ".work"
+    work.mkdir(parents=True, exist_ok=True)
     out = timeline
 
     if voiceover:
         try:
             spoken = script.spoken()
             vo = video_providers.generate_voiceover(spoken, run_dir / "voiceover.mp3",
-                                                    log=log)
+                                                    log=log)   # KEPT: paid TTS
             if led:
                 led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"],
                            chars=len(spoken))
             merged = video_providers.merge_audio_onto_video(
-                out, vo["path"], run_dir / "timeline_voiceover.mp4",
+                out, vo["path"], work / "timeline_voiceover.mp4",
                 seconds=board.duration_s, log=log)
             if led:
                 led.record("audio_merge", merged["provider"], merged["model"],
@@ -422,19 +434,28 @@ def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, 
     if sfx:
         try:
             cues = editor.sfx_cues_for(board)
-            out = editor.add_sfx(out, run_dir / "timeline_sfx.mp4", cues, log=log)
+            out = editor.add_sfx(out, work / "timeline_sfx.mp4", cues, log=log)
         except Exception as e:  # noqa: BLE001
             log(f"[finish] sfx failed ({e!s:.100}); continuing without them")
 
     if captions and voiceover:
         try:
-            out = editor.caption_clip(out, run_dir / "video_captioned.mp4",
+            out = editor.caption_clip(out, run_dir / "video_captioned.mp4",   # KEPT: deliverable
                                       script.spoken(), run_dir / "voiceover.mp3",
                                       kit=kit, led=led, log=log)[0]
         except captions_mod.CaptionDriftError as e:
             log(f"[captions] REFUSED by the drift gate: {e!s:.140}")
         except Exception as e:  # noqa: BLE001
             log(f"[captions] burn failed ({e!s:.100}); shipping uncaptioned")
+
+    # Promote the deliverable out of scratch if the last step landed there (e.g. captions
+    # skipped/failed, so `out` is the .work voiceover/sfx clip). The final ad must survive
+    # the .work cleanup (Phase 9.4).
+    if Path(out).resolve().parent.name == ".work":
+        import shutil
+        final = run_dir / "timeline_final.mp4"
+        shutil.copy(out, final)
+        out = str(final)
 
     log(f"[finish] {Path(out).name}")
     return str(out)
