@@ -563,7 +563,20 @@ The old `full_demo`/`quick_demo` runs wrote a `winners/` dir (downloaded Meta wi
 - `<run>/products/product_NN.png` — the Shopify product image(s) picked (9.6).
 - `<run>/pickings.json` — `{winners: [{ad_id, ad_name, roas, cohort}], products: [{shopify_id, title, image_src}], grounded: bool, product_source: "shopify"|"generated"|"none"}`. This is the "show me what you picked" artifact, and it is the seed of the T11 attribution join.
 
-### 9.6 Shopify product source ⛔ STOP — scope only, no code yet
+### 9.6 Shopify product source ✅ BUILT (offline; live path blocked on creds)
+
+Shipped in `1cad25a`: `rnd/src/shopify_products.py` ranks the store's products by revenue
+(bestsellers, the Shopify analogue of Meta ROAS winners), downloads each featured image
+(`products/{id}.json?fields=id,title,image` → `image.src`), mirroring the async
+`apps/connectors` client's request shape (read-only; `apps/` untouched, code freeze).
+`pipeline.run(use_shopify=True)` / `main.py --shopify` set `product_image` to the top
+bestseller, routed through the existing Bria cutout — no new generation path. Graceful
+(empty + log) when creds are unset, same posture as Meta grounding. `pickings.json` records
+both the Meta winners and the Shopify products (9.5). 10 connector + 2 wiring tests, all
+offline and $0. **Blocked on live use** by absent Shopify creds (`SHOPIFY_STORE`/`SHOPIFY_TOKEN`);
+add them to `.env` to activate. Original scope preserved below.
+
+**SCOPE (as originally written) —**
 
 **The problem it solves:** the live run had to *fabricate* a product with FLUX ($0.05) because nothing supplied a real one. The real product is in the store.
 
