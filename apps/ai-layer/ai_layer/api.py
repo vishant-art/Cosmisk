@@ -57,6 +57,12 @@ def caller_token(x_meta_token: str | None = Header(None, alias="X-Meta-Token")) 
     return x_meta_token or config.META_ACCESS_TOKEN
 
 
+def caller_brand(x_brand_id: str | None = Header(None, alias="X-Brand-Id")) -> str | None:
+    """Optional tenant brand id (structural multi-tenancy). When absent, repositories
+    default brand_id = account_id. Full per-brand credential resolution lands with #34."""
+    return x_brand_id
+
+
 def _need_token(token: str | None) -> str:
     if not token:
         raise HTTPException(status_code=400,
@@ -173,9 +179,9 @@ def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
     messages, session_id, mode, cached = _chat_messages(req, token)
     client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
-    before = cost_ledger.total_usd(account=req.account_id)
-    answer = chat.complete(client, messages, stream=False, account=req.account_id)
-    cost = round(cost_ledger.total_usd(account=req.account_id) - before, 6)
+    # per-call cost comes straight from the completion (concurrency-safe; not a global-SUM delta)
+    answer, cost = chat.complete(client, messages, stream=False, account=req.account_id)
+    cost = round(cost, 6)
     return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL,
                         cost_usd=cost, session_id=session_id, context_mode=mode, cached=cached)
 
@@ -211,10 +217,9 @@ def complete_endpoint(req: CompleteRequest):
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
     messages = ([{"role": "system", "content": req.system}] if req.system else []) + list(req.messages)
     client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
-    before = cost_ledger.total_usd(account=req.account)
-    text = chat.raw_complete(client, messages, max_tokens=req.max_tokens,
-                             temperature=req.temperature, account=req.account, op=req.operation)
-    cost = round(cost_ledger.total_usd(account=req.account) - before, 6)
+    text, cost = chat.raw_complete(client, messages, max_tokens=req.max_tokens,
+                                   temperature=req.temperature, account=req.account, op=req.operation)
+    cost = round(cost, 6)
     return CompleteResponse(text=text, model=chat.MODEL, cost_usd=cost)
 
 
@@ -224,8 +229,12 @@ def ingest(account_id: str, preset: str = Query("last_30d"), token: str | None =
 
 
 @app.get("/cost", response_model=CostResponse, dependencies=[Depends(require_api_key)])
-def cost(account_id: str | None = Query(None)):
-    return CostResponse(account_id=account_id, total_usd=cost_ledger.total_usd(account=account_id))
+def cost(account_id: str | None = Query(None), brand: str | None = Depends(caller_brand)):
+    # scoped by design: no unscoped global default in the HTTP path (cross-tenant leak).
+    if account_id is None and brand is None:
+        raise HTTPException(status_code=400, detail="account_id (or X-Brand-Id) required")
+    return CostResponse(account_id=account_id,
+                        total_usd=cost_ledger.total_usd(account=account_id))
 
 
 @app.get("/blended/{account_id}", response_model=BlendedResponse,

@@ -219,7 +219,7 @@ def build_context(ds: mt.Dataset, max_campaigns: int | None = MAX_CAMPAIGNS,
     return "\n".join(lines)
 
 
-def complete(client: OpenAI, messages, stream: bool = False, account: str | None = None) -> str:
+def complete(client: OpenAI, messages, stream: bool = False, account: str | None = None) -> tuple[str, float]:
     """One model call with the shared config (model, temperature, reasoning effort).
     Single source of truth so the REPL, API, and tests exercise identical settings.
     When stream=True, prints tokens as they arrive and returns the full text.
@@ -229,8 +229,8 @@ def complete(client: OpenAI, messages, stream: bool = False, account: str | None
         resp = client.chat.completions.create(
             model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
             messages=messages, extra_body=extra)
-        _record_cost(getattr(resp, "usage", None), account)
-        return resp.choices[0].message.content
+        cost = _record_cost(getattr(resp, "usage", None), account)
+        return resp.choices[0].message.content, cost
     out, usage = [], None
     s = client.chat.completions.create(
         model=MODEL, temperature=TEMPERATURE, max_tokens=MAX_TOKENS, messages=messages,
@@ -242,8 +242,8 @@ def complete(client: OpenAI, messages, stream: bool = False, account: str | None
         if getattr(chunk, "usage", None):
             usage = chunk.usage
     print()
-    _record_cost(usage, account)
-    return "".join(out)
+    cost = _record_cost(usage, account)
+    return "".join(out), cost
 
 
 def stream_answer(client: OpenAI, messages, account: str | None = None):
@@ -265,16 +265,16 @@ def stream_answer(client: OpenAI, messages, account: str | None = None):
 
 def raw_complete(client: OpenAI, messages, max_tokens: int = MAX_TOKENS,
                  temperature: float = TEMPERATURE, account: str | None = None,
-                 op: str = "complete") -> str:
+                 op: str = "complete") -> tuple[str, float]:
     """Generic non-RAG completion over arbitrary messages, recorded to the ledger.
     Backs the /complete endpoint (the TS tabs route their LLM work through this so
     all OpenRouter/Gemini usage + cost lives in one place)."""
     resp = client.chat.completions.create(
         model=MODEL, temperature=temperature, max_tokens=max_tokens, messages=messages)
     if not getattr(resp, "choices", None):
-        return ""
-    _record_cost(getattr(resp, "usage", None), account, op=op)
-    return resp.choices[0].message.content or ""
+        return "", 0.0
+    cost = _record_cost(getattr(resp, "usage", None), account, op=op)
+    return (resp.choices[0].message.content or ""), cost
 
 
 def _usage_extra(usage, key):
@@ -288,13 +288,13 @@ def _usage_extra(usage, key):
     return v
 
 
-def _record_cost(usage, account=None, op="chat"):
-    """Log this call's token usage + cost to the Python-side ledger.
+def _record_cost(usage, account=None, op="chat") -> float:
+    """Log this call's token usage + cost to the Python-side ledger and return the cost.
 
     Prefer OpenRouter's authoritative `usage.cost` (reflects prompt-cache discounts);
     fall back to the static estimate if the provider omits it."""
     if not usage:
-        return
+        return 0.0
     real = _usage_extra(usage, "cost")
     details = _usage_extra(usage, "cost_details")
     discount = None
@@ -302,7 +302,7 @@ def _record_cost(usage, account=None, op="chat"):
         discount = details.get("cache_discount")
     elif details is not None:
         discount = getattr(details, "cache_discount", None)
-    cost_ledger.record(
+    return cost_ledger.record(
         MODEL,
         getattr(usage, "prompt_tokens", 0),
         getattr(usage, "completion_tokens", 0),
@@ -376,7 +376,7 @@ def main():
         messages.append({"role": "user", "content": q})
         print("\nbot > ", end="", flush=True)
         try:
-            ans = complete(client, messages, stream=STREAM)
+            ans, _ = complete(client, messages, stream=STREAM)
         except Exception as e:  # noqa: BLE001 -- surface any API error, keep the REPL alive
             print(f"\n  [api error] {e}\n")
             messages.pop()

@@ -82,13 +82,27 @@ python -m pytest                                   # offline tests
 $env:RUN_LIVE_LLM=1; python -m pytest               # also live LLM tests
 ```
 
+## Database (Neon Postgres, `ai_layer` schema)
+
+The facts store and cost ledger live in a dedicated `ai_layer` schema on the shared Neon
+Postgres (SQLite/JSONL are retired). The service is **stateless** — no volume. Two env vars
+are **required**: `DATABASE_URL` (pooled PgBouncer endpoint, runtime) and
+`MIGRATION_DATABASE_URL` (direct/unpooled endpoint, DDL only) — the same split as the TS api.
+
+- Access goes through `ai_layer.db` (`engine`, `models`, `repository`); `store.py` and
+  `cost_ledger.py` are thin shims over it. All tables are `brand_id`-keyed (multi-tenant).
+- Migrations are managed by Alembic and applied **manually**, never on container boot:
+  `python -m ai_layer.db.migrate` (uses `MIGRATION_DATABASE_URL`).
+- Tests run against a dedicated Neon **test branch** (built from `PG*`/`PG*_POOL` env vars)
+  with per-test transactional rollback — see `tests/conftest.py`.
+
 ## Cost ledger
 
-Every LLM call records `(model, tokens, cost_usd)` to `data/cost_ledger.jsonl` via
-`ai_layer.cost_ledger`. `chat` prints the running total on exit. Prices in
-`cost_ledger.PRICING` are approximate OpenRouter 2026 figures — verify before relying
-on absolute USD. This is the ai-layer's own cost tracking (the chosen alternative to
-routing through the TS `llmGateway`).
+Every LLM call records `(model, tokens, cost_usd)` to the `ai_layer.cost_ledger` table via
+`ai_layer.cost_ledger` (delegating to the repository). `chat` prints the running total on
+exit. Prices in `cost_ledger.PRICING` are approximate OpenRouter 2026 figures — verify before
+relying on absolute USD. This table owns **AI-layer-originated** cost (chat + insights +
+creative roll-up); it is not total tenant LLM spend (TS `createMessage` cost stays TS-side).
 
 ## What changed vs `rnd/src`
 

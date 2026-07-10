@@ -24,12 +24,15 @@ RUN if [ "$INSTALL_GOOGLE" = "1" ]; then \
         pip install ./apps/connectors ./apps/ai-layer; \
     fi
 
-# Ephemeral working data (store.sqlite, cost ledger, creative output) — see #29
-# for the durable-storage plan. Railway volume mount point when I3 lands.
+# Scratch dir for transient creative output only. The facts store and cost ledger are
+# durable in Neon (ai_layer schema) — the service is STATELESS, no volume required (#29).
 RUN mkdir -p /app/data
 
 EXPOSE 8000
 # Config via env: OPENROUTER_API_KEY, META_ACCESS_TOKEN (or per-request X-Meta-Token),
-# AI_LAYER_API_KEY (caller auth), AI_LAYER_STORE_PATH (defaults to ./data/store.sqlite),
+# AI_LAYER_API_KEY (caller auth), DATABASE_URL + MIGRATION_DATABASE_URL (REQUIRED — Neon
+# pooled + direct; the facts store and cost ledger live in the ai_layer schema, no SQLite),
 # connector creds per apps/connectors/.env.example, CONNECTOR_CACHE_TTL_S (default 3600).
-CMD ["uvicorn", "ai_layer.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Apply migrations out-of-band before/at deploy: `python -m ai_layer.db.migrate` (never on boot).
+# Shell form so ${PORT} expands: Railway (and most PaaS) inject $PORT; fall back to 8000 locally.
+CMD uvicorn ai_layer.api:app --host 0.0.0.0 --port ${PORT:-8000}

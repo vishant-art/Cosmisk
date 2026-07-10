@@ -157,10 +157,12 @@ import { environment } from '../../../environments/environment';
                   <lucide-icon name="check-circle-2" [size]="24" class="text-green-500"></lucide-icon>
                 } @else if (metaOAuth.connectionStatus() === 'loading') {
                   <span class="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></span>
-                } @else {
+                } @else if (metaOAuth.oauthEnabled) {
                   <button (click)="connectMeta()" class="px-4 py-1.5 bg-accent text-white text-xs font-body font-semibold rounded-full hover:bg-accent/90">
                     Connect
                   </button>
+                } @else {
+                  <span class="text-xs text-gray-400 font-body">Finalizing…</span>
                 }
               </div>
             </div>

@@ -1,7 +1,10 @@
+import { META_APP_ID, META_OAUTH_ENABLED } from './env-config';
+
 export const environment = {
   production: false,
   API_BASE_URL: '/api',
-  META_APP_ID: '675224542133938',
+  META_APP_ID,
+  META_OAUTH_ENABLED,
 
   AUTH_LOGIN: 'auth/login',
   AUTH_SIGNUP: 'auth/signup',

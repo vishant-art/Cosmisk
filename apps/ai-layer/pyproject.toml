@@ -15,6 +15,10 @@ dependencies = [
     "pillow>=10.1",          # deterministic compositor (copy/logo/scrim)
     "fal-client>=0.5",       # the only generation provider (FLUX.2 + Bria + Seedance)
     "imageio-ffmpeg>=0.5",   # bundled static ffmpeg for the video copy overlay
+    # Neon Postgres data layer (facts store + cost ledger + creative jobs; see #29):
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
 ]
 
 [project.optional-dependencies]
@@ -25,4 +29,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["ai_layer", "ai_layer.creative"]
+packages = ["ai_layer", "ai_layer.creative", "ai_layer.db", "ai_layer.migrations"]
+
+[tool.setuptools.package-data]
+# Ship the Alembic migration assets inside the wheel/image so `python -m
+# ai_layer.db.migrate` works from a pip-installed package (not just the source tree).
+"ai_layer.migrations" = ["*.mako", "versions/*.py"]

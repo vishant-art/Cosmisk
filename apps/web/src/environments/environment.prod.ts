@@ -1,7 +1,10 @@
+import { API_BASE_URL, META_APP_ID, META_OAUTH_ENABLED } from './env-config';
+
 export const environment = {
   production: true,
-  API_BASE_URL: 'https://api.cosmisk.com',
-  META_APP_ID: '675224542133938',
+  API_BASE_URL,
+  META_APP_ID,
+  META_OAUTH_ENABLED,
 
   AUTH_LOGIN: 'auth/login',
   AUTH_SIGNUP: 'auth/signup',

@@ -14,8 +14,8 @@ from ai_layer import api, config, meta_transform as mt, store
 
 
 @pytest.fixture(autouse=True)
-def temp_db(tmp_path, monkeypatch):
-    monkeypatch.setattr(config, "STORE_DB_PATH", tmp_path / "store.sqlite")
+def _use_db(db_session):
+    """Route store/cost -> repository -> the rolled-back test-branch transaction."""
     yield
 
 
@@ -90,6 +90,26 @@ def test_cost_endpoint(client, monkeypatch):
     assert r.status_code == 200 and "total_usd" in r.json()
 
 
+def test_cost_endpoint_requires_scope(client, monkeypatch):
+    """A bare /cost (no account/brand) is rejected — no cross-tenant global default."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    assert client.get("/cost").status_code == 400
+    assert client.get("/cost?account_id=act_1").status_code == 200
+
+
+def test_chat_cost_from_return_not_delta(client, monkeypatch):
+    """Per-call cost comes from the completion's return value, not a global-SUM delta,
+    so a concurrent ledger write cannot inflate it."""
+    from ai_layer.db import repository as repo
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+    seed()  # so _dataset uses the store (no live fetch)
+    monkeypatch.setattr(api.chat, "complete", lambda *a, **k: ("canned", 0.0042))
+    repo.record_cost("google/gemini-2.5-flash", 0, 0, account="act_1", cost_usd_actual=9.99)
+    r = client.post("/chat", json={"account_id": "act_1", "message": "hi", "source": "store"})
+    assert r.status_code == 200 and r.json()["cost_usd"] == 0.0042
+
+
 # ---- live (opt-in) ----
 
 live = pytest.mark.skipif(
@@ -106,7 +126,7 @@ def test_chat_session_cache_builds_context_once(client, monkeypatch):
     context_cache.clear()
     seed()
 
-    monkeypatch.setattr(api.chat, "complete", lambda *a, **k: "canned answer")
+    monkeypatch.setattr(api.chat, "complete", lambda *a, **k: ("canned answer", 0.0))
     calls = {"n": 0}
     real_build = chat.build_context
 
@@ -142,7 +162,7 @@ def test_complete_endpoint_generic(client, monkeypatch):
     def fake_raw(client_, messages, **kw):
         captured["messages"] = messages
         captured["op"] = kw.get("op")
-        return "GENERATED TEXT"
+        return "GENERATED TEXT", 0.0
 
     monkeypatch.setattr(chat, "raw_complete", fake_raw)
     r = client.post("/complete", json={

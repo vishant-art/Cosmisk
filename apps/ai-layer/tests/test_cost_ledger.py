@@ -1,21 +1,25 @@
 """Tests for the cost ledger -- estimate fallback vs OpenRouter's real cost."""
 from __future__ import annotations
 
-import json
-
 import pytest
 
-from ai_layer import config, cost_ledger
+from ai_layer import cost_ledger
 
 
 @pytest.fixture(autouse=True)
-def temp_ledger(tmp_path, monkeypatch):
-    monkeypatch.setattr(cost_ledger, "LEDGER_PATH", tmp_path / "ledger.jsonl")
+def _use_db(db_session):
+    """Route cost_ledger.py -> repository -> the rolled-back test-branch transaction."""
     yield
 
 
 def _entries():
-    return [json.loads(l) for l in cost_ledger.LEDGER_PATH.read_text().splitlines() if l.strip()]
+    from sqlalchemy import select
+    from ai_layer.db import engine, models as m
+    with engine.get_session() as s:
+        return [{"model": r.model, "op": r.op, "account": r.account_id,
+                 "cost_usd": r.cost_usd, "priced": r.priced,
+                 "cache_discount_usd": r.cache_discount_usd}
+                for r in s.execute(select(m.CostLedgerEntry)).scalars().all()]
 
 
 def test_estimate_used_when_no_actual():

@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import pytest
 
-from ai_layer import config, meta_transform as mt, store
+from ai_layer import meta_transform as mt, store
 
 
 @pytest.fixture(autouse=True)
-def temp_db(tmp_path, monkeypatch):
-    """Point the store at a throwaway DB so tests never touch the real one."""
-    monkeypatch.setattr(config, "STORE_DB_PATH", tmp_path / "store.sqlite")
+def _use_db(db_session):
+    """Route store.py -> repository -> the rolled-back test-branch transaction."""
     yield
 
 

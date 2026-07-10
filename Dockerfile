@@ -1,19 +1,3 @@
-# ---- Frontend Build Stage ----
-FROM node:22-alpine AS frontend-builder
-
-WORKDIR /app
-
-# Install frontend workspace dependencies
-COPY package.json package-lock.json* ./
-COPY apps/web/package.json ./apps/web/
-COPY packages/types/package.json ./packages/types/
-RUN npm install --no-audit --no-fund
-
-# Copy frontend source and build
-COPY apps/web/ ./apps/web/
-COPY packages/types/ ./packages/types/
-RUN npm run build -w @cosmisk/web -- --configuration production
-
 # ---- Backend Build Stage ----
 FROM node:22-alpine AS builder
 
@@ -44,8 +28,8 @@ RUN npm ci --omit=dev && apk del python3 make g++ && apk add --no-cache libstdc+
 # Backend
 COPY --from=builder /app/dist/ ./dist/
 
-# Frontend (served by Fastify in production)
-COPY --from=frontend-builder /app/apps/web/dist/cosmisk/browser/ ./public/
+# Frontend is served by Vercel in the split deploy; no ./public/ is copied.
+# The SPA-serving block in src/index.ts is guarded by existsSync() and no-ops.
 
 # Data directory for SQLite
 RUN mkdir -p ./data
