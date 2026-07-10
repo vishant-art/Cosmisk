@@ -168,13 +168,109 @@ def test_video_smoke_native_audio_and_voiceover(monkeypatch, tmp_path, brand_kit
                                                   "path": str(out), "cost_usd": 0.002})[2])
 
     rec = pipeline.video_smoke(run_id="vid", prompt="hero shot", duration=10,
-                               voiceover=True, kit=brand_kit, client=object(),
-                               log=lambda *_: None)
+                               voiceover=True, captions=False, kit=brand_kit,
+                               client=object(), log=lambda *_: None)
     assert calls["generate_audio"] is True               # native audio on by default
     assert merged.get("done") is True                    # voiceover muxed on
     assert rec.path.endswith("video_voiceover.mp4")      # final = the VO'd clip
     rows = (tmp_path / "vid" / "ledger.jsonl").read_text("utf-8")
     assert "voiceover" in rows and "audio_merge" in rows
+
+
+def _stub_voiceover_chain(monkeypatch, tmp_path, script="Shop the new collection now."):
+    """Stub Seedance + TTS + the fal muxer. The muxer hands back a REAL clip so the
+    editor's ffmpeg pass has something to burn onto."""
+    import shutil
+
+    import video_providers
+    src = tmp_path / "src.mp4"
+
+    def fake_vid(prompt, out_path, **kw):
+        shutil.copy(src, out_path)
+        return {"provider": "seedance", "model": "m", "path": str(out_path), "cost_usd": 1.5}
+
+    monkeypatch.setattr(video_providers, "generate_with_fallback", fake_vid)
+    monkeypatch.setattr(brand_brain, "generate_vo_script", lambda *a, **k: (script, 0.001))
+    monkeypatch.setattr(video_providers, "generate_voiceover",
+                        lambda text, out, **kw: (Path(out).write_bytes(b"A"),
+                                                 {"provider": "minimax-tts", "model": "m",
+                                                  "path": str(out), "cost_usd": 0.003})[1])
+    monkeypatch.setattr(video_providers, "merge_audio_onto_video",
+                        lambda v, a, out, **kw: (shutil.copy(v, out),
+                                                 {"provider": "fal-ffmpeg", "model": "m",
+                                                  "path": str(out), "cost_usd": 0.002})[1])
+    return src
+
+
+def test_captions_are_burned_over_the_voiceover(monkeypatch, tmp_path, brand_kit,
+                                                synth_video):
+    """The end-to-end T3 path with real ffmpeg: script -> TTS -> mux -> word-timed burn."""
+    import shutil
+
+    import video_providers
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    src = _stub_voiceover_chain(monkeypatch, tmp_path, "hello there friend")
+    shutil.copy(synth_video, src)
+
+    monkeypatch.setattr(video_providers, "transcribe_words", lambda audio, **kw: (
+        [{"text": w, "start": i * 0.4, "end": i * 0.4 + 0.3}
+         for i, w in enumerate("hello there friend".split())], 0.0001))
+
+    rec = pipeline.video_smoke(run_id="cap", prompt="p", duration=3, voiceover=True,
+                               kit=brand_kit, client=object(), log=lambda *_: None)
+
+    assert rec.path.endswith("video_captioned.mp4")
+    assert Path(rec.path).exists()
+    rows = (tmp_path / "cap" / "ledger.jsonl").read_text("utf-8")
+    assert '"op": "asr"' in rows                     # the Whisper call is billed
+
+
+def test_drift_gate_ships_the_clip_uncaptioned_rather_than_wrong(monkeypatch, tmp_path,
+                                                                 brand_kit, synth_video):
+    """Fail-closed. A clip whose captions contradict its audio is worse than one with
+    no captions, so the gate degrades to the muxed clip instead of raising."""
+    import shutil
+
+    import video_providers
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    src = _stub_voiceover_chain(monkeypatch, tmp_path, "shop the new collection")
+    shutil.copy(synth_video, src)
+
+    monkeypatch.setattr(video_providers, "transcribe_words", lambda audio, **kw: (
+        [{"text": w, "start": i * 0.4, "end": i * 0.4 + 0.3}
+         for i, w in enumerate("entirely unrelated audio track".split())], 0.0001))
+
+    logs = []
+    rec = pipeline.video_smoke(run_id="drift", prompt="p", duration=3, voiceover=True,
+                               kit=brand_kit, client=object(), log=logs.append)
+
+    assert rec.path.endswith("video_voiceover.mp4")          # captions never burned
+    assert not (tmp_path / "drift" / "video_captioned.mp4").exists()
+    assert any("REFUSED by the drift gate" in ln for ln in logs)
+
+
+def test_a_caption_failure_is_not_reported_as_a_voiceover_failure(monkeypatch, tmp_path,
+                                                                  brand_kit, synth_video):
+    """These used to share one except block, which made the drift gate invisible and
+    blamed the TTS for an ffmpeg problem."""
+    import shutil
+
+    import video_providers
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    src = _stub_voiceover_chain(monkeypatch, tmp_path)
+    shutil.copy(synth_video, src)
+
+    def _boom(*a, **k):
+        raise RuntimeError("fal is down")
+    monkeypatch.setattr(video_providers, "transcribe_words", _boom)
+
+    logs = []
+    rec = pipeline.video_smoke(run_id="cfail", prompt="p", duration=3, voiceover=True,
+                               kit=brand_kit, client=object(), log=logs.append)
+
+    assert rec.path.endswith("video_voiceover.mp4")          # the VO survived
+    assert any("[captions] burn failed" in ln for ln in logs)
+    assert not any("voiceover failed" in ln for ln in logs)
 
 
 def test_no_logo_skips_logo(monkeypatch, tmp_path, envelope_path, brand_kit, concepts):

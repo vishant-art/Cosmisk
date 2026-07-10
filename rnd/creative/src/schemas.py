@@ -129,6 +129,63 @@ class UGCStyle(BaseModel):
         return ", ".join(p for p in parts if p)
 
 
+# --- T3: burned-in per-word captions (an editor operation, UGC-D8) -------------
+
+class CaptionWord(BaseModel):
+    """One spoken word with its MEASURED span. Timing always comes from ASR; the text
+    comes from our script when the two agree, because we know how the brand is spelled
+    and Whisper does not."""
+    text: str
+    start: float
+    end: float
+
+
+class CaptionCue(BaseModel):
+    """A group of 1-3 words shown together, with one word highlighted as it is spoken.
+
+    `end` is the moment the cue leaves the screen, which is the NEXT cue's start rather
+    than the last word's end. Captions that vanish between phrases flicker.
+    """
+    words: list[CaptionWord]
+    start: float
+    end: float
+
+    @property
+    def text(self) -> str:
+        return " ".join(w.text for w in self.words)
+
+    def active_index(self, t: float) -> int:
+        """Which word is being spoken at time `t`. Between words the previous word stays
+        lit rather than the caption going dark, which is what a reader expects."""
+        idx = 0
+        for i, w in enumerate(self.words):
+            if t >= w.start:
+                idx = i
+        return idx
+
+
+class CaptionStyle(BaseModel):
+    """How captions are drawn. All of it deterministic: this is the compositor's job,
+    not the video model's."""
+    band_y: float = 0.60
+    band_h: float = 0.16
+    max_font_pt: int = 96
+    color: str = "#FFFFFF"
+    active_color: str = "#FFD400"
+    stroke_frac: float = 0.10
+
+    @classmethod
+    def from_kit(cls, kit: "BrandKit | None" = None, **kw) -> "CaptionStyle":
+        """Legibility is fixed (white on a black stroke, over unknown footage); only the
+        highlight colour is the brand's. A brand-coloured caption body would fail
+        contrast over half the frames it lands on."""
+        if kit is not None:
+            accent = next((c.css() for c in kit.palette if c.role == "accent"), None)
+            if accent:
+                kw.setdefault("active_color", accent)
+        return cls(**kw)
+
+
 # --- T4: creative teardown -----------------------------------------------------
 
 class ShotBoundary(BaseModel):

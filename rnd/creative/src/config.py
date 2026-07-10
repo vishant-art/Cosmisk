@@ -92,6 +92,32 @@ TEARDOWN_SAMPLE_FPS = 8            # temporal subsample; cuts survive, cost drop
 TEARDOWN_GRID = 48                 # strided-down frame edge (px) for the diff metric
 TEARDOWN_MAX_KEYFRAMES = 9         # contact-sheet tiles handed to the VLM (3x3)
 
+# --- captions (T3, an editor operation per UGC-D8) ----------------------------
+# Burned-in per-word captions are the single strongest signal that a clip is creator
+# content rather than an ad. They are also the architecture's own thesis applied to
+# the time axis: the model never renders the text, the compositor does, deterministically,
+# and it is verified. A caption must match the audio to the word, and no video model
+# will ever do that.
+CAPTION_WORDS_PER_CUE = 3      # TikTok-native: 1-3 words on screen at a time
+CAPTION_MAX_GAP_S = 0.6        # a silence longer than this breaks the cue (sentence end)
+CAPTION_MAX_CUE_S = 2.0        # no cue lingers longer than this, even mid-phrase
+CAPTION_TAIL_S = 0.35          # how long the final cue holds after the last word ends
+CAPTION_FPS = 24               # caption overlay framerate (independent of the clip's)
+
+# Caption text sits ABOVE the bottom safe zone (9:16 reserves 0.20 for platform UI).
+CAPTION_BAND_Y = 0.60          # top of the caption band, relative to height
+CAPTION_BAND_H = 0.16
+CAPTION_MAX_FONT_PT = 96
+CAPTION_COLOR = "#FFFFFF"
+CAPTION_ACTIVE_COLOR = "#FFD400"   # overridden by the brand kit's accent when present
+CAPTION_STROKE_FRAC = 0.10     # outline width as a fraction of font px
+
+# Fail-closed caption/audio agreement. We ASR our OWN voiceover, so drift this large
+# means something is genuinely wrong (wrong audio file, wrong language, TTS failure),
+# not that Whisper had an off day. A caption that says something other than the audio
+# is worse than no caption. See verify_agreement().
+CAPTION_MAX_DRIFT = 0.35
+
 # --- UGCStyle presets (T1) ----------------------------------------------------
 # The `prompt:` half are wishes the model may ignore. The `post:` half are ffmpeg/PIL
 # guarantees applied by the editor (T7.5). Presets live here, not in env, matching the

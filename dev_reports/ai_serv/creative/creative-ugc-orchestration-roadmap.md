@@ -181,7 +181,7 @@ Dropped from the original sketch: `focus: minor breathing`. Lens breathing canno
 
 ---
 
-### T3. Word-Timed Caption Burn-In
+### T3. Word-Timed Caption Burn-In ✅ SHIPPED (Phase 2)
 
 **Inspiration:** TikTok-native caption convention; Creatify and Topview both auto-caption.
 **Concept:** *kinetic captions via forced alignment*.
@@ -194,9 +194,19 @@ We know the script (we wrote it) but not the timing. Whisper on our own TTS outp
 
 **Expected impact.** **Highest visual delta per dollar in the document.** **Basis:** structural, not measured. Every competitor ships captions; no winning short-form ad omits them. **Confidence:** high.
 
-**Files:** new `captions.py`; `video_post.py` (timed overlay); `video_providers.py` (`transcribe_words()`); `config.py` (`ASR_MODEL = "fal-ai/whisper"`); `ledger.py` (ASR cost bucket).
+**Files:** `captions.py` (plan + draw), `editor.py` (burn), `schemas.py` (`CaptionWord/Cue/Style`), `config.py`, `pipeline.video_smoke`, `main.py --no-captions`.
 
 **Cost:** one Whisper call per clip. Negligible against a Seedance render.
+
+**As shipped**, three decisions worth recording:
+
+*Text from the script, timing from ASR.* Whisper knows **when** a word was said. It does not know how the brand is spelled. When the two transcripts agree token-for-token (after case and punctuation normalization) we display our own tokens. On any disagreement we display what was actually **said**, because a caption contradicting the audio is the one thing worse than an ugly caption.
+
+*Drift is a fail-closed gate, not a warning.* We are transcribing audio we synthesized from a script we wrote. Drift above `CAPTION_MAX_DRIFT` means the wrong file, the wrong language, or a broken TTS. `captions.verify_agreement` raises, `video_smoke` catches it, logs `[captions] REFUSED by the drift gate`, and ships the clip **uncaptioned**. This is the first piece of T9 to exist, and it is a string comparison, not a judgment.
+
+*White body, brand accent only on the active word.* Legibility over unknown footage is not negotiable. Every word is stroked in black, which is what real creator captions do and what makes white text survive an arbitrary background. A brand-coloured caption body would fail contrast on half the frames it lands on.
+
+Rendering is per **state**, not per frame: a cue plus its active-word index is the cache key, so a 15-second voiceover encodes ~40 PNGs rather than ~360. A cue holds the screen until the *next* cue starts rather than until its own last word ends, because captions that blink off between phrases read as broken.
 
 ---
 
@@ -311,10 +321,14 @@ Either way: one voiceover across the whole timeline, muxed once at the end, not 
 
 ---
 
-### T7.5. Deterministic Editor
+### T7.5. Deterministic Editor 🟡 STARTED (Phase 2: captions)
 
 **Inspiration:** every competitor, none of whom market it. This is where they actually spend their effort.
 **Concept:** *the compositor, on the time axis*. Per `UGC-D8`.
+
+> `editor.py` now exists and ships caption burn-in. `probe()` and `_run()` are the shared
+> ffmpeg surface every remaining operation below will use. `video_post.add_copy_overlay`
+> has not yet been absorbed.
 
 **What.** A module between the renderer and QA. Every operation below is ffmpeg or PIL. None of them ask a model for anything.
 
@@ -576,6 +590,31 @@ Two existing tests were amended rather than weakened, and both amendments record
 
 - `test_pipeline._patch_all` had a `generate_concepts` stub whose signature predates the T5 seam.
 - `test_meta_creatives.test_fetch_winner_video_source_then_thumb` asserted `local_path.endswith(".mp4")`. The MP4 now lands in `video_path`, and `local_path` holds the still. **That conflation was the bug**: it is precisely what allowed the downstream `kind == "image"` filter to discard winner videos unopened.
+
+## 7bis. Phase 2 build: captions (shipped)
+
+`T3`, landing inside `editor.py` per `UGC-D8` rather than beside it.
+
+| Change | Files |
+|---|---|
+| `captions.py` — align, drift gate, cue grouping, PNG rendering | new |
+| `editor.py` — `probe`, `burn_captions`, `caption_clip` | new |
+| `CaptionWord` / `CaptionCue` / `CaptionStyle` | `schemas.py` |
+| caption constants + `CAPTION_MAX_DRIFT` | `config.py` |
+| `video_smoke(captions=True)`, own error handling | `pipeline.py` |
+| `--no-captions` | `main.py` |
+
+**Tests:** `rnd/creative` 131 → **167 passing** (+36, 0 broken).
+
+The editor tests run **real ffmpeg** against the synthesized fixture clip. No network, no key, no generated frame, and the burn is asserted end to end: output geometry, output duration, frame-level difference from the source, and cleanup. That is the payoff of `UGC-D8`. A deterministic post-process can be tested; a generative one can only be looked at.
+
+Two defects the tests caught:
+
+**`eof_action=repeat` on the overlay filter.** The caption PNG sequence is shorter than the clip whenever speech ends before the video does. ffmpeg's default truncates the **video** to the length of the overlay, so a 3-second ad with a 1.5-second voiceover silently ships as 1.5 seconds. `test_captions_survive_past_the_end_of_speech` pins it.
+
+**Captions shared the voiceover's `except` block.** A caption failure was logged as `voiceover failed`, and a firing drift gate was indistinguishable from a broken TTS. Worse, the first version of the pipeline test *passed* because `transcribe_words` raised, was swallowed, and the assertion on the pre-caption path still held. Captions now have their own handler and their own log line, and `test_a_caption_failure_is_not_reported_as_a_voiceover_failure` locks it down. A test that passes because the thing under test never ran is worse than a failing one.
+
+**Geometry check at real dimensions:** at 1080×1920 the caption band renders at y 0.604–0.662, clear of the 0.80 bottom safe zone that Reels reserves for platform UI. A full-res cue frame is 22.7KB, so a 15-second overlay sequence is roughly 8MB of mostly-transparent PNG.
 
 ### 7.5 Implementation notes worth keeping
 

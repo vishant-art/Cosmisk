@@ -22,9 +22,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))  # rnd/src (Meta layer)
 import brand_brain  # noqa: E402
 import campaign_select as cs  # noqa: E402
+import captions as captions_mod  # noqa: E402
 import meta_creatives  # noqa: E402
 import compositor  # noqa: E402
 import config  # noqa: E402
+import editor  # noqa: E402
 import image_providers  # noqa: E402
 import layout as layout_mod  # noqa: E402
 import logo as logo_mod  # noqa: E402
@@ -227,12 +229,15 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
 def video_smoke(*, run_id: str, prompt: str, image=None,
                 duration=config.VIDEO_DURATION_DEFAULT, resolution="720p", aspect="9:16",
                 copy=None, kit=None, logo_path=None, generate_audio=True,
-                voiceover=False, client=None, log=print) -> AssetRecord:
+                voiceover=False, captions=True, client=None, log=print) -> AssetRecord:
     """Explicit, budget-gated single-clip smoke (Seedance i2v -> t2v fallback).
     Seeds from a TEXT-FREE background of this run so the clip matches the static ad.
     - `generate_audio` (default True): Seedance synced native audio (free).
     - `copy` (+ `kit`): burns the headline/CTA lower-third onto the clip.
-    - `voiceover` (+ `client`, `kit`): brain writes a script -> fal TTS -> muxed on."""
+    - `voiceover` (+ `client`, `kit`): brain writes a script -> fal TTS -> muxed on.
+    - `captions` (default True, requires `voiceover`): word-level ASR over the
+      voiceover we just generated -> burned-in per-word captions (T3). Costs one
+      Whisper call, which is a rounding error beside the Seedance render."""
     run_dir = config.OUTPUT_DIR / run_id
     led = Ledger(run_dir)
     seed = image
@@ -257,13 +262,14 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
         try:
             import video_post
             final = video_post.add_copy_overlay(
-                res["path"], run_dir / "video_captioned.mp4", copy, kit,
+                res["path"], run_dir / "video_overlay.mp4", copy, kit,
                 fmt=aspect, logo_path=logo_path)
             res["path"] = final
             log(f"[video] copy overlay -> {final}")
         except Exception as e:  # noqa: BLE001 -- overlay is best-effort
             log(f"[video] copy overlay failed ({e!s:.100}); keeping raw clip")
 
+    script = vo = None
     if voiceover and kit is not None and client is not None:   # script -> TTS -> mux
         try:
             hook = copy.headline if copy else prompt
@@ -279,7 +285,22 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
             res["path"] = merged["path"]
             log(f"[video] voiceover ({len(script)} chars) muxed -> {merged['path']}")
         except Exception as e:  # noqa: BLE001 -- voiceover is best-effort
+            script = vo = None
             log(f"[video] voiceover failed ({e!s:.100}); keeping clip without VO")
+
+    # Burned-in per-word captions (T3). Its own error handling: a caption failure is
+    # not a voiceover failure, and folding the two makes the drift gate invisible.
+    if captions and script and vo:
+        try:
+            res["path"] = editor.caption_clip(
+                res["path"], run_dir / "video_captioned.mp4", script, vo["path"],
+                kit=kit, led=led, log=log)[0]
+        except captions_mod.CaptionDriftError as e:
+            # The gate did its job. Shipping a clip whose captions contradict its audio
+            # is worse than shipping one with no captions at all.
+            log(f"[captions] REFUSED by the drift gate: {e!s:.140}")
+        except Exception as e:  # noqa: BLE001 -- burn-in is best-effort
+            log(f"[captions] burn failed ({e!s:.100}); shipping uncaptioned")
 
     led.finalize()
     return AssetRecord(kind="video", **_asset(res))

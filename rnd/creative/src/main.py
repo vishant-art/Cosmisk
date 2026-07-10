@@ -90,6 +90,10 @@ def main() -> None:
                     help="disable Seedance native audio (on by default)")
     ap.add_argument("--voiceover", action="store_true",
                     help="add an AI voiceover (brain script -> fal TTS -> muxed)")
+    ap.add_argument("--no-captions", action="store_true",
+                    help="do NOT burn per-word captions over the voiceover. Captions are "
+                         "on by default with --voiceover: they are the strongest single "
+                         "signal that a clip is creator content rather than an ad")
     args = ap.parse_args()
 
     formats = [f.strip() for f in args.formats.split(",") if f.strip()]
@@ -114,7 +118,7 @@ def main() -> None:
         pipeline.video_smoke(run_id=run_id, prompt=prompt, duration=args.duration,
                              resolution=args.resolution, aspect=args.video_aspect,
                              generate_audio=not args.no_audio, voiceover=args.voiceover,
-                             kit=kit, client=client)
+                             captions=not args.no_captions, kit=kit, client=client)
         return
 
     refs = args.ref or None
