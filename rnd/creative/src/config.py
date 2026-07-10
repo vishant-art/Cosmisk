@@ -128,6 +128,46 @@ CAPTION_STROKE_FRAC = 0.10     # outline width as a fraction of font px
 # is worse than no caption. See verify_agreement().
 CAPTION_MAX_DRIFT = 0.35
 
+# --- temporal QA gate (T9) ----------------------------------------------------
+# Four of five checks are arithmetic. That is the whole differentiator: every competitor
+# puts a human here, because verifying a temporal artifact is unsolved. It is only
+# tractable for us because the editor PLACED the cuts, wrote the captions, and knows
+# the shot durations. We are not detecting our own work; we are asserting it.
+QA_SHOT_DURATION_TOL_S = 0.15    # a rendered shot may drift this far from the plan
+QA_CUT_TOL_S = 0.30              # a detected cut may land this far from a planned one
+
+# Continuity across a cut, as the zero-mean normalized CORRELATION of the frames either
+# side. Not a perceptual hash: dHash cannot do this job. Measured on realistic footage,
+# a duplicate shot re-graded brighter scored 0.141 and an unrelated scene scored 0.141
+# on the same dHash scale. The classes overlap completely, at every hash size.
+# Correlation is affine-intensity invariant by construction, which is exactly the
+# invariance the question needs.
+#
+# Measured (luminance correlation, realistic smooth footage):
+#   identical frame          1.000    duplicate, shot never advanced
+#   duplicate re-graded -60  0.999
+#   continuous, small change 0.968
+#   continuous, 6px pan      0.903
+#   continuous, 12px pan     0.806
+#   unrelated scene          0.226 - 0.702
+QA_STALL_CORR = 0.98        # at or above: nothing changed across the cut
+QA_CONTINUITY_MIN_CORR = 0.75   # below, in SEQUENTIAL mode: the model lost the thread
+# A flat frame has zero variance, so correlation is undefined. Below this the continuity
+# comparison is INCONCLUSIVE, not failed: two different solid-colour scenes are a
+# legitimate cut that no correlation can see.
+QA_MIN_FRAME_STD = 2.0
+
+# Masked normalized cross-correlation of the product cutout against sampled frames.
+# Correlates GRADIENT MAGNITUDE, not luminance: a smooth product template correlates
+# with any smooth background (measured 0.90 for an absent product), while its edge
+# structure does not. Masked by the cutout's alpha so the transparent surround, which
+# is background by definition, contributes nothing.
+# Measured with this metric: product present = 0.61, absent = 0.18, unrelated = 0.18.
+QA_PRODUCT_MIN_SCORE = 0.35
+QA_PRODUCT_FRAME_WIDTH = 96      # frames are downscaled before matching
+QA_PRODUCT_SCALES = (0.30, 0.42, 0.55)   # template width as a fraction of the frame
+QA_PRODUCT_SAMPLE_FPS = 2
+
 # --- UGCStyle presets (T1) ----------------------------------------------------
 # The `prompt:` half are wishes the model may ignore. The `post:` half are ffmpeg/PIL
 # guarantees applied by the editor (T7.5). Presets live here, not in env, matching the

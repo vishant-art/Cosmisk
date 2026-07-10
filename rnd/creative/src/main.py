@@ -86,6 +86,16 @@ def main() -> None:
                          "Renders nothing; the sequence IS the creative")
     ap.add_argument("--seconds", type=int, default=config.STORY_DEFAULT_SECONDS,
                     help="target length of the storyboard, in seconds")
+    # temporal QA gate (T9). Free unless --qa-vlm.
+    ap.add_argument("--qa", action="store_true",
+                    help="verify a run's finished clip against its storyboard + script "
+                         "(needs --resume). Four of five checks are arithmetic and free")
+    ap.add_argument("--qa-clip", help="verify this clip instead of the run's final one")
+    ap.add_argument("--qa-vlm", action="store_true",
+                    help="also run the vision critic on a keyframe contact sheet (costs $)")
+    ap.add_argument("--qa-lenient", action="store_true",
+                    help="ship on an INCONCLUSIVE check instead of failing. An explicit "
+                         "decision to release something we could not verify")
     # video smoke (gated)
     ap.add_argument("--video", action="store_true", help="run one video clip (costs $$)")
     ap.add_argument("--video-prompt", default="")
@@ -113,6 +123,16 @@ def main() -> None:
                      "brand_kit.json and template.json)")
         pipeline.plan_story(run_id=args.resume, data_path=args.data, seconds=args.seconds)
         return
+
+    if args.qa:
+        if not args.resume:
+            ap.error("--qa needs --resume <run_id> (it reads that run's storyboard.json)")
+        report = pipeline.qa_video(run_id=args.resume, clip=args.qa_clip,
+                                   strict=not args.qa_lenient, run_vlm=args.qa_vlm)
+        for c in report.checks:
+            mark = "OK  " if c.passed else ("?   " if c.inconclusive else "FAIL")
+            print(f"  {mark} {c.name:<18} {c.detail}")
+        raise SystemExit(0 if report.approved else 1)
 
     if args.video:
         run_id = args.resume or _new_run_id()

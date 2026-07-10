@@ -78,6 +78,22 @@ ShotCamera = Literal[
 # Whether the product is on screen, and how hard it is being sold in that shot.
 ProductVisibility = Literal["hero", "background", "absent"]
 
+# --- temporal QA (T9) ----------------------------------------------------------
+# What a vision critic is permitted to complain about. Closed, for the same reason the
+# teardown's sets are closed: an open vocabulary produces "the pacing feels slightly
+# off in the middle third", which is unfalsifiable and cannot gate anything.
+QaIssue = Literal[
+    "none",
+    "text_garbled",        # the model drew letters despite the negative prompt
+    "product_missing",     # the shot promised a product and there isn't one
+    "face_distorted",
+    "extra_limb",          # the classic generative tell
+    "caption_overlap",     # captions collide with burned-in copy or the safe zone
+    "unreadable_caption",
+    "continuity_break",    # shot N+1 does not follow from shot N
+    "frozen_frame",        # a shot that never moves
+]
+
 # --- CTA detection lexicon -----------------------------------------------------
 # `cta_start_s` is MEASURED: the timestamp of the first spoken phrase matching this
 # lexicon. If nothing matches, the field is None. We never guess a CTA moment.

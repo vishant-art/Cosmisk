@@ -48,9 +48,15 @@ from schemas import CreativeTemplate, ShotBoundary, UGCStyle  # noqa: E402
 def _read_small(path: Path, *, sample_fps: int, grid: int):
     """Yield (t_seconds, small_rgb_float_array) for a temporally subsampled clip.
 
-    Reads at native size and strides down in-process rather than passing `-vf scale`,
+    Reads at native size and downsamples in-process rather than passing `-vf scale`,
     because imageio_ffmpeg's reported frame size is the INPUT stream's and a mismatch
-    silently corrupts the reshape. Striding is exact and costs nothing.
+    silently corrupts the reshape.
+
+    Downsampling is a BLOCK MEAN, not a stride. Striding samples one pixel per block,
+    so it preserves grain and aliases under camera shake: a 2px handheld drift lands on
+    entirely different pixels and the frame differ reads it as a cut. Measured on a clip
+    with heavy grain, striding reported a cut on EVERY sampled frame; block-mean reported
+    the two real ones. Downloaded ad creative is compressed, and compression is grain.
     """
     import imageio_ffmpeg
     import numpy as np
@@ -60,14 +66,24 @@ def _read_small(path: Path, *, sample_fps: int, grid: int):
     w, h = meta["size"]
     fps = float(meta.get("fps") or 24.0)
     step = max(1, int(round(fps / max(1, sample_fps))))
-    sy, sx = max(1, h // grid), max(1, w // grid)
+
+    gh, gw = max(1, min(grid, h)), max(1, min(grid, w))
+    bh, bw = h // gh, w // gw               # block size; 1 when the frame is already small
 
     for i, raw in enumerate(reader):
         if i % step:
             continue
-        frame = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 3)
-        small = frame[::sy, ::sx, :].astype(np.float32)
+        frame = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, 3).astype(np.float32)
+        small = frame[:gh * bh, :gw * bw].reshape(gh, bh, gw, bw, 3).mean(axis=(1, 3))
         yield (i / fps), small
+
+
+def sample_frames(path, *, sample_fps=None, grid=None):
+    """Public: yield (t_seconds, small_rgb_array). Used by the temporal QA gate (T9)."""
+    yield from _read_small(Path(path),
+                           sample_fps=config.TEARDOWN_SAMPLE_FPS if sample_fps is None
+                           else sample_fps,
+                           grid=config.TEARDOWN_GRID if grid is None else grid)
 
 
 def detect_shots(path, *, threshold=None, min_shot_s=None, sample_fps=None, grid=None):

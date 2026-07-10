@@ -35,10 +35,11 @@ import story_brain  # noqa: E402
 import storyboard as sb_mod  # noqa: E402
 import teardown  # noqa: E402
 import verifier  # noqa: E402
+import verifier_video  # noqa: E402
 import video_providers  # noqa: E402
 from ledger import Ledger  # noqa: E402
 from schemas import (  # noqa: E402
-    AssetRecord, BrandKit, CreativeTemplate, RunManifest, Script,
+    AssetRecord, BrandKit, CreativeTemplate, QAReport, RunManifest, Script, Storyboard,
 )
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
@@ -277,6 +278,48 @@ def _run_script(run_dir: Path) -> Script | None:
     """The run's Script artifact, if plan_story has been run."""
     f = run_dir / "script.json"
     return Script.model_validate_json(f.read_text("utf-8")) if f.exists() else None
+
+
+# Preference order for "the clip that ships": the most post-processed one wins.
+_FINAL_CLIP_NAMES = ("video_captioned.mp4", "video_voiceover.mp4",
+                     "video_overlay.mp4", "video.mp4")
+
+
+def qa_video(*, run_id: str, clip=None, cutout=None, shot_paths=None, strict: bool = True,
+             run_vlm: bool = False, log=print) -> QAReport:
+    """Run the temporal QA gate over a run's finished clip (T9).
+
+    Verifies the artifact that SHIPS, chosen as the most post-processed clip in the run
+    dir. Verifying an earlier intermediate would miss every defect the editor introduced,
+    which is most of the ones worth catching.
+    """
+    run_dir = config.OUTPUT_DIR / run_id
+    board_file = run_dir / "storyboard.json"
+    if not board_file.exists():
+        raise FileNotFoundError(f"{board_file} not found; run --storyboard first")
+    board = Storyboard.model_validate_json(board_file.read_text("utf-8"))
+
+    if clip is None:
+        clip = next((run_dir / n for n in _FINAL_CLIP_NAMES if (run_dir / n).exists()), None)
+    if clip is None:
+        raise FileNotFoundError(f"no rendered clip in {run_dir}")
+
+    if cutout is None:
+        cut = run_dir / "product_cutout.png"
+        cutout = str(cut) if cut.exists() else None
+
+    led = Ledger(run_dir)
+    report = verifier_video.verify(
+        clip, board, _run_script(run_dir), client=(_client() if run_vlm else None),
+        cutout_path=cutout, shot_paths=shot_paths, strict=strict, led=led,
+        work_dir=run_dir / "qa", log=log)
+    (run_dir / "qa_report.json").write_text(report.model_dump_json(indent=2),
+                                            encoding="utf-8")
+    led.finalize()
+    log(f"[qa] {Path(clip).name}: {report.verdict} -> {run_dir / 'qa_report.json'}")
+    if report.retry_hint:
+        log(f"[qa] {report.retry_hint}")
+    return report
 
 
 def video_smoke(*, run_id: str, prompt: str, image=None,

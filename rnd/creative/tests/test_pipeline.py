@@ -9,6 +9,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -176,6 +177,42 @@ def test_video_smoke_native_audio_and_voiceover(monkeypatch, tmp_path, brand_kit
     assert rec.path.endswith("video_voiceover.mp4")      # final = the VO'd clip
     rows = (tmp_path / "vid" / "ledger.jsonl").read_text("utf-8")
     assert "voiceover" in rows and "audio_merge" in rows
+
+
+def test_qa_video_verifies_the_clip_that_ships(monkeypatch, tmp_path, synth_video):
+    """The most post-processed clip wins. Verifying an earlier intermediate would miss
+    every defect the editor introduced, which is most of the ones worth catching."""
+    import shutil
+
+    import verifier_video
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "q1"
+    run.mkdir()
+    shutil.copy(synth_video, run / "video.mp4")
+    shutil.copy(synth_video, run / "video_captioned.mp4")
+
+    board = {"target_seconds": 3.0, "render_mode": "independent", "shots": [
+        {"purpose": p, "duration_s": 1.0, "camera": "selfie", "subject": "s",
+         "product_visible": "absent", "motion": "", "dialogue": None}
+        for p in ("hook", "demo", "cta")]}
+    (run / "storyboard.json").write_text(json.dumps(board), encoding="utf-8")
+
+    seen = {}
+    real = verifier_video.verify
+    monkeypatch.setattr(verifier_video, "verify",
+                        lambda clip, *a, **k: seen.update(clip=str(clip)) or real(clip, *a, **k))
+
+    report = pipeline.qa_video(run_id="q1", strict=False, log=lambda *_: None)
+    assert seen["clip"].endswith("video_captioned.mp4")
+    assert (run / "qa_report.json").exists()
+    assert report.verdict in ("pass", "fail")
+
+
+def test_qa_video_needs_a_storyboard(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    (tmp_path / "q2").mkdir()
+    with pytest.raises(FileNotFoundError, match="storyboard"):
+        pipeline.qa_video(run_id="q2", log=lambda *_: None)
 
 
 def _stub_voiceover_chain(monkeypatch, tmp_path, script="Shop the new collection now."):

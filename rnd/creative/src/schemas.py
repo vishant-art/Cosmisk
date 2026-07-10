@@ -441,6 +441,12 @@ class QACheck(BaseModel):
     passed: bool
     detail: str = ""
     cost_usd: float = 0.0            # nonzero only for the VLM critic (an LLM call)
+    # T9: a check that could not run is NOT a check that passed. In strict mode an
+    # inconclusive result fails the gate, because fail-closed means "we could not prove
+    # this is good", not "we found nothing wrong while looking the other way".
+    inconclusive: bool = False
+    # T9.5: which shot to repair. None = the check is about the timeline as a whole.
+    shot_index: int | None = None
 
 
 class QAReport(BaseModel):
@@ -453,6 +459,16 @@ class QAReport(BaseModel):
     @property
     def approved(self) -> bool:
         return self.verdict == "pass"
+
+    def failures(self) -> list[QACheck]:
+        return [c for c in self.checks if not c.passed]
+
+    def inconclusive(self) -> list[QACheck]:
+        return [c for c in self.checks if c.inconclusive]
+
+    def failed_shots(self) -> list[int]:
+        """Shots a repair pass should target (T9.5). Sorted, deduplicated."""
+        return sorted({c.shot_index for c in self.failures() if c.shot_index is not None})
 
 
 class AssetRecord(BaseModel):

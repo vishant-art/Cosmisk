@@ -389,26 +389,31 @@ It is where the native feel actually lives. The renderer produces plausible foot
 
 ---
 
-### T9. Temporal QA Gate
+### T9. Temporal QA Gate ✅ SHIPPED (Phase 5)
 
 **Inspiration:** nobody. Everyone else ships a human here.
 **Concept:** *fail-closed verification over a temporal artifact*.
 
-**What.** `verifier.verify` today opens a PNG with PIL, runs safe-zone geometry and WCAG contrast, then sends one still to the VLM critic. The video analogue, in descending order of how mechanical it is:
+**What.** `verifier.verify` opens a PNG with PIL, runs safe-zone geometry and WCAG contrast, then sends one still to the VLM critic. `verifier_video.verify` is that, over time:
 
 | Check | Method | Mechanical? |
 |---|---|---|
-| Caption/audio agreement | ASR the final mux, diff against the script we wrote | Yes, string comparison |
-| Shot-length adherence | Compare rendered durations against `Storyboard` | Yes |
-| Cut continuity | Perceptual hash distance across each cut boundary; flag jumps | Yes |
-| Product presence | Template-match the `image_providers.cutout` output against sampled frames | Mostly |
+| Caption/audio agreement | ASR the **shipped** mux, diff against the script we wrote | Yes, string comparison |
+| Shot-length adherence | Probe each rendered clip against `Storyboard` | Yes |
+| Cut alignment | Detected cuts vs the boundaries we placed | Yes |
+| Cut continuity | Frame **correlation** across each boundary, both directions | Yes |
+| Product presence | Masked NCC of `image_providers.cutout` on gradient magnitude | Mostly |
 | Everything else | VLM critic on a **contact sheet of keyframes**, not the video | No |
 
-Four of five are arithmetic. That is the entire point, and it is why this is a wedge rather than a feature: it is expensive to build and cheap to run, and the alternative everyone else chose is a human.
+Five of six are arithmetic. That is the entire point, and it is why this is a wedge rather than a feature: expensive to build, cheap to run, and the alternative everyone else chose is a human.
 
-**Expected impact.** Strategic. It is the only item here that a competitor could not ship next quarter. **Confidence:** medium on feasibility of the product-presence check; high on the other four.
+It is only tractable because the editor **placed** the cuts, wrote the captions and knows the shot durations. We are not detecting our own work; we are asserting it. T6 and T7.5 had to land first.
 
-**Files:** `verifier.py`, new `verifier_video.py`, `captions.py` (shared ASR).
+**`inconclusive` is a distinct state from `pass`.** A check that could not run has not run. In strict mode (the default) it fails the gate, because fail-closed means "we could not prove this is good", not "we found nothing wrong while looking the other way". `--qa-lenient` makes shipping-unverified an explicit decision.
+
+**Expected impact.** Strategic. The only item here a competitor could not ship next quarter.
+
+**Files:** new `verifier_video.py`, `pipeline.qa_video`, `main.py --qa`.
 
 ---
 
@@ -703,6 +708,53 @@ The prototype that "verified" this graph only checked the exit code. The test th
 **`micro_shake` is deterministic, not random.** Two sines at incommensurate frequencies. Nobody can see the difference between this and noise, and a reproducible clip is a testable clip.
 
 **`freeze_frame` refuses to drop audio silently.** Extending the video without stretching the audio desyncs everything downstream. It raises unless you pass `allow_audio_drop=True`. A sub-two-frame hold also raises: that is not a freeze.
+
+## 7quinquies. Phase 5 build: the temporal QA gate (shipped)
+
+`T9`. `rnd/creative` 242 → **281 passing** (+39, 0 broken).
+
+| Change | Files |
+|---|---|
+| `QaIssue` closed set | `taxonomy.py` |
+| `QACheck.inconclusive`, `QACheck.shot_index`, `QAReport.failed_shots()` | `schemas.py` |
+| `frame_corr`, `frame_std`, `masked_ncc`, `product_score`, five checks, `verify` | new `verifier_video.py` |
+| block-mean downsampling | `teardown._read_small` |
+| `qa_video`, `--qa / --qa-vlm / --qa-lenient` | `pipeline.py`, `main.py` |
+
+### The roadmap was wrong about the continuity check, and the tests proved it
+
+This document said "cut continuity: perceptual hash distance across each cut boundary; flag jumps. **Yes, mechanical.**" That was a plausible-sounding claim, written without measuring anything, and it is false.
+
+Measured on realistic footage, on a 64-bit dHash:
+
+| pair | dHash distance | luminance correlation |
+|---|---|---|
+| duplicate, identical | 0 | 1.000 |
+| duplicate, re-graded −60 | 1 | 0.999 |
+| duplicate, re-graded +80 | **9** | 0.934 |
+| continuous, small change | 1 | 0.968 |
+| continuous, 12px pan | 13 | 0.806 |
+| **unrelated scene** | **9** | 0.697 |
+
+A duplicated shot and a completely unrelated scene both scored **9/64**. The classes overlap at every hash size (8, 12, 16 tested). dHash keeps the *sign* of each gradient and throws away the magnitude, which is the wrong invariance for "is this the same footage?"
+
+**Zero-mean normalized correlation is affine-intensity invariant by construction**: `corr(a, k·a + c) == 1` for `k > 0`. That is exactly the invariance the question needs. It separates cleanly, and dHash is deleted rather than left in as an unused utility.
+
+Two thresholds and an honest band between them: `corr ≥ 0.98` is a stalled or duplicated shot (either render mode); `corr < 0.75` in **sequential** mode means the model ignored the continuity reference. In `independent` mode a big jump across a cut is the intended effect, and flagging it would be flagging the storyboard for doing its job.
+
+**Stated limitation, not hidden:** a duplicate deliberately re-graded +80 clips its highlights, stops being an affine transform, and correlates at 0.934, under the stall threshold. A duplicated *render* is byte-similar and is caught. `test_a_heavily_regraded_duplicate_slips_through_and_we_say_so` records the gap.
+
+### Three more bugs the tests caught
+
+**The gate rejected its own pipeline's output.** `teardown._read_small` *strided* the frame (sampled one pixel per block) rather than averaging. Grain survives striding, and a 2px micro-shake aliases onto entirely different pixels. With heavy grain the cut detector reported a cut on **every sampled frame**. Block-mean averaging fixes it. This was never only a QA bug: downloaded ad creative is compressed, and compression is grain, so the *teardown* was reading spurious cuts out of real winners too.
+
+**`frame_corr` returned −1.0 for two flat frames.** A uniform frame's centered vector is not exactly zero in float32; the residual rounding noise has a norm around 1e-4, so `if norm == 0` never fired and the correlation was computed on the noise, at full confidence. A legitimate cut between two solid-colour scenes would have read as "unrelated" and failed in sequential mode. Fixed with float64 and a tolerance. Comparing a float against zero is the bug; comparing it against a tolerance is the fix.
+
+**Product presence with luminance NCC scored 0.90 for a product that was not there.** A smooth product template correlates with any smooth background. Correlating **gradient magnitude** instead, masked by the cutout's alpha, took the absent case to 0.18 while the present case held at 0.61. The signal is the product's *edge structure*, which is what survives compositing and what a smooth background lacks.
+
+### On fixtures
+
+Two of these bugs were hidden, and one was manufactured, by testing on per-pixel white noise. Noise is a pathological input for any difference-based metric: it flattered dHash into looking like it worked, and it made micro-shake look like a catastrophic defect. Every continuity fixture is now smooth gradients and soft blobs, which is what real footage is. **The fixture is part of the claim.**
 
 ### 7.5 Implementation notes worth keeping
 
