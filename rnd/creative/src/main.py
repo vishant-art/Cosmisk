@@ -198,11 +198,16 @@ def main() -> None:
                         refs=refs, product_image=args.product, style=style)
         return
 
+    # Grounding is the default (Phase 9.1): fall back to the env-configured account so a
+    # normal run attempts winner grounding without needing --meta-account. If the account
+    # is unset or the token is down, _meta_cohort degrades gracefully to UNGROUNDED.
+    meta_account = args.meta_account or config.META_AD_ACCOUNT
+
     pipeline.run(data_path=args.data, run_id=_new_run_id(), strategy=args.select,
                  n_campaigns=args.n_campaigns, mode=args.mode, images=args.images,
                  image_provider=args.image_provider, formats=formats,
                  qa_retries=args.qa_retries, run_vlm=args.vlm, pro=args.pro,
-                 refs=refs, product_image=args.product, meta_account=args.meta_account,
+                 refs=refs, product_image=args.product, meta_account=meta_account,
                  ground_from_meta=not args.no_ground, meta_preset=args.meta_preset,
                  top_creatives=args.top_creatives, bottom_creatives=args.bottom_creatives,
                  min_spend=args.min_spend, style=style, no_logo=args.no_logo)

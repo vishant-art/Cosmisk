@@ -62,16 +62,20 @@ def _meta_cohort(account, *, preset, top_n, run_dir, token=None, bottom_n=5,
 
     Never blocks a run: no token, or a Meta hiccup, yields ([], []) and a log line.
     """
-    token = token or os.getenv("META_ACCESS_TOKEN")
+    token = token or config.META_ACCESS_TOKEN or os.getenv("META_ACCESS_TOKEN")
     if not token:
-        log("[meta] META_ACCESS_TOKEN not set; skipping cohort fetch")
+        log("[meta] GROUNDING UNAVAILABLE: META_ACCESS_TOKEN not set; "
+            "proceeding UNGROUNDED (kit + concepts from campaign data only)")
         return [], []
     try:
         assets = meta_creatives.fetch_creative_cohort(
             token, account, preset=preset, top_n=top_n, bottom_n=bottom_n,
             min_spend=min_spend, out_dir=Path(run_dir) / "winners", log=log)
     except Exception as e:  # noqa: BLE001 -- never let Meta hiccups break a run
-        log(f"[meta] cohort fetch failed ({e!s:.120}); proceeding without refs")
+        # Graceful, but LOUD. A run that silently degrades to ungrounded is worse than
+        # one that says so: the operator pays for generation believing it was grounded.
+        log(f"[meta] GROUNDING UNAVAILABLE: cohort fetch failed for {account} "
+            f"({e!s:.140}); proceeding UNGROUNDED")
         return [], []
     # Winner stills condition FLUX. Loser stills deliberately do not.
     imgs = [a.local_path for a in assets if a.cohort == "winner" and a.local_path]

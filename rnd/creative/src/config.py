@@ -39,6 +39,13 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 FAL_KEY = os.getenv("FAL_KEY")                        # FLUX.2 + Bria + Seedance (fal-client)
 
+# Meta grounding (Phase 9.1). META_ACCESS_TOKEN pulls the winner cohort; META_AD_ACCOUNT
+# is the act_<id> to pull it from. When the account is set, a normal run attempts
+# grounding by default (no --meta-account flag needed) and degrades gracefully to
+# UNGROUNDED if the token is missing/expired -- the fetch never blocks a run.
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+META_AD_ACCOUNT = os.getenv("META_AD_ACCOUNT")        # e.g. act_1234567890
+
 # --- model IDs (verified June 2026; see vendor research doc) ------------------
 # Brain (text -> BrandKit/concepts) and the VLM critic go through OpenRouter.
 TEXT_MODEL = "google/gemini-2.5-flash"
