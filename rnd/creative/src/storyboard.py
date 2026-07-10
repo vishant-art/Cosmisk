@@ -130,6 +130,58 @@ def build(shots: list[Shot], script: Script, *, target: float,
     return sb
 
 
+# --- dropping a shot (T9.5, rung 4) ----------------------------------------------
+
+def can_drop(sb: Storyboard, index: int, script: Script | None = None) -> tuple[bool, str]:
+    """May shot `index` be removed? Returns (allowed, reason).
+
+    The T6 invariants decide this, not the repair loop. A storyboard opens on a hook and
+    closes on a CTA, and every script beat must be rendered by at least one shot. So a
+    shot may only be dropped when ANOTHER shot already serves its purpose. Dropping the
+    only `proof` shot does not produce a shorter ad, it produces an ad with no proof in
+    it, and shipping that is worse than shipping a bad proof shot.
+    """
+    if len(sb.shots) <= 1:
+        raise_reason = "a storyboard needs at least one shot"
+        return False, raise_reason
+    if index == 0:
+        return False, "shot 0 renders the hook; a storyboard opens on the hook"
+    if index == len(sb.shots) - 1 and sb.shots[index].purpose == "cta":
+        return False, "the last shot renders the CTA; a storyboard closes on the CTA"
+
+    purpose = sb.shots[index].purpose
+    others = [s for i, s in enumerate(sb.shots) if i != index and s.purpose == purpose]
+    if not others:
+        needed = script is None or purpose in script.purposes()
+        if needed:
+            return False, (f"shot {index} is the only one rendering the {purpose!r} beat; "
+                           f"dropping it removes the beat, not the defect")
+    return True, ""
+
+
+def drop_shot(sb: Storyboard, index: int, script: Script | None = None,
+              *, max_clip: float | None = None) -> Storyboard:
+    """Remove a shot and give its seconds to the survivors, keeping the target exact.
+
+    Redistribution reuses `fit_durations`, so the remaining shots keep their relative
+    weights and the ad still lands on `target_seconds` to the tenth. Raises rather than
+    dropping a beat.
+    """
+    ok, why = can_drop(sb, index, script)
+    if not ok:
+        raise StoryboardError(why)
+
+    survivors = [s for i, s in enumerate(sb.shots) if i != index]
+    fitted = fit_durations([s.duration_s for s in survivors],
+                           target=sb.target_seconds, max_clip=max_clip)
+    out = Storyboard(
+        shots=[s.model_copy(update={"duration_s": d}) for s, d in zip(survivors, fitted)],
+        target_seconds=sb.target_seconds, render_mode=sb.render_mode)
+    if script is not None:
+        validate(out, script, max_clip=max_clip)
+    return out
+
+
 # --- reporting ------------------------------------------------------------------
 
 def as_shot_list(sb: Storyboard) -> str:

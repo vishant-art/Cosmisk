@@ -180,6 +180,102 @@ def test_a_heavily_regraded_duplicate_slips_through_and_we_say_so():
     assert vv.frame_corr(a, brighter) < config.QA_STALL_CORR
 
 
+# --- per-shot checks (what the T9.5 ladder triggers on) -----------------------------
+
+def test_a_frozen_shot_is_caught(tmp_path):
+    """A video model handed a still seed will sometimes return the seed, held. It does
+    not error. It returns a perfectly good clip in which nothing happens."""
+    clip = _write(tmp_path / "frozen.mp4", _hold(_smooth(1), 1.5), size=(192, 192))
+    c = vv.check_shot_motion(clip)
+    assert not c.passed and not c.inconclusive
+    assert "returned its seed, held" in c.detail
+
+
+def test_a_moving_shot_passes(tmp_path):
+    base = _smooth(1)
+    frames = [np.roll(base, i * 3, axis=1) for i in range(15)]
+    clip = _write(tmp_path / "moving.mp4", frames, size=(192, 192))
+    assert vv.check_shot_motion(clip).passed
+
+
+def test_even_a_very_slow_pan_counts_as_motion(tmp_path):
+    """1px per frame. Adjacent frames correlate at 0.998, which is why motion is measured
+    against the shot's FIRST frame: an adjacent-frame test calls all real video frozen."""
+    base = _smooth(1)
+    frames = [np.roll(base, i, axis=1) for i in range(20)]
+    clip = _write(tmp_path / "slow.mp4", frames, size=(192, 192))
+    assert vv.check_shot_motion(clip).passed
+
+
+def test_our_own_micro_shake_does_not_rescue_a_frozen_shot(tmp_path):
+    """Cosmetic shake is not motion. If the editor's own UGCStyle could hide a stalled
+    render, the gate would be certifying its own decoration."""
+    import editor
+    from schemas import EditPlan, UGCStyle
+    frozen = _write(tmp_path / "f.mp4", _hold(_smooth(1), 2.0), size=(192, 192))
+    shaken = tmp_path / "shaken.mp4"
+    editor.apply_plan(frozen, shaken, EditPlan(style=UGCStyle(micro_shake=2)),
+                      log=lambda *_: None)
+    assert not vv.check_shot_motion(shaken).passed
+
+
+def test_a_punch_in_on_a_still_is_still_a_still(tmp_path):
+    import editor
+    from schemas import EditPlan
+    frozen = _write(tmp_path / "f2.mp4", _hold(_smooth(1), 2.0), size=(192, 192))
+    punched = tmp_path / "punched.mp4"
+    editor.apply_plan(frozen, punched, EditPlan(punch_to=1.08), log=lambda *_: None)
+    assert not vv.check_shot_motion(punched).passed
+
+
+def test_motion_on_a_flat_shot_is_inconclusive(synth_video):
+    """synth_video's shots are solid colours: no variance to correlate."""
+    flat = np.full((96, 96, 3), 128, np.uint8)
+    import imageio_ffmpeg
+    p = Path(synth_video).with_name("flat.mp4")
+    w = imageio_ffmpeg.write_frames(str(p), (96, 96), fps=FPS, macro_block_size=1)
+    w.send(None)
+    for _ in range(15):
+        w.send(flat.tobytes())
+    w.close()
+    c = vv.check_shot_motion(str(p))
+    assert c.inconclusive and "too flat" in c.detail
+
+
+def test_verify_shot_checks_duration_motion_and_product(tmp_path, product_cutout):
+    from schemas import Shot
+    base = _scene(True, product_cutout)
+    frames = [np.roll(base, i, axis=1) for i in range(20)]     # 2.0s, moving
+    clip = _write(tmp_path / "shot.mp4", frames)
+    shot = Shot(purpose="demo", duration_s=2.0, camera="macro", subject="s",
+                product_visible="hero")
+    checks = vv.verify_shot(clip, shot, 1, cutout_path=product_cutout)
+    assert {c.name for c in checks} == {"shot_duration", "shot_motion", "product_presence"}
+    assert all(c.passed for c in checks), [c.detail for c in checks]
+    assert all(c.shot_index == 1 for c in checks)
+
+
+def test_verify_shot_is_inconclusive_about_a_hero_product_with_no_cutout(tmp_path):
+    from schemas import Shot
+    base = _smooth(1)
+    frames = [np.roll(base, i * 3, axis=1) for i in range(20)]
+    clip = _write(tmp_path / "s.mp4", frames, size=(192, 192))
+    shot = Shot(purpose="demo", duration_s=2.0, camera="macro", subject="s",
+                product_visible="hero")
+    prod = [c for c in vv.verify_shot(clip, shot, 0) if c.name == "product_presence"]
+    assert prod[0].inconclusive and not prod[0].passed
+
+
+def test_verify_shot_skips_the_product_check_when_none_was_promised(tmp_path):
+    from schemas import Shot
+    base = _smooth(1)
+    frames = [np.roll(base, i * 3, axis=1) for i in range(20)]
+    clip = _write(tmp_path / "s2.mp4", frames, size=(192, 192))
+    shot = Shot(purpose="hook", duration_s=2.0, camera="selfie", subject="s",
+                product_visible="absent")
+    assert {c.name for c in vv.verify_shot(clip, shot, 0)} == {"shot_duration", "shot_motion"}
+
+
 # --- product presence -------------------------------------------------------------
 
 def test_product_is_found_when_it_is_there(product_cutout):

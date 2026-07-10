@@ -213,6 +213,38 @@ class Storyboard(BaseModel):
         return script.purposes() - self.purposes()
 
 
+# --- T9.5: shot recovery ---------------------------------------------------------
+
+RepairAction = Literal["retry", "reprompt", "replan", "drop"]
+
+
+class RepairStep(BaseModel):
+    """One rung of the ladder, attempted. Kept whether or not it worked.
+
+    NOTE, deliberate deviation from the roadmap, which proposed a `Shot.repair_attempts`
+    counter. Repairs are a RUNTIME fact. Putting the count on `Shot` would make
+    storyboard.json differ depending on how many times a render happened to fail, and
+    the plan would stop being reproducible. The plan is what we meant; the log is what
+    happened. They are different artifacts and they are stored separately.
+    """
+    shot_index: int
+    attempt: int
+    action: RepairAction
+    reason: str                      # the QA detail that triggered this rung
+    resolved: bool = False
+
+
+class RepairLog(BaseModel):
+    steps: list[RepairStep] = Field(default_factory=list)
+    dropped: list[int] = Field(default_factory=list)   # indices in the ORIGINAL board
+    renders: int = 0
+    exhausted: list[int] = Field(default_factory=list)  # shots the ladder could not fix
+
+    @property
+    def clean(self) -> bool:
+        return not self.exhausted
+
+
 # --- T3: burned-in per-word captions (an editor operation, UGC-D8) -------------
 
 class CaptionWord(BaseModel):

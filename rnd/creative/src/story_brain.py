@@ -218,6 +218,52 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
     raise sb_mod.StoryboardError("unreachable")
 
 
+# --- shot repair (T9.5, rung 3) -----------------------------------------------------
+
+_REPLAN_SYSTEM = (
+    "You are a director whose shot failed a quality check. Design a REPLACEMENT shot "
+    "that renders the SAME script beat a different way. Return STRICT JSON, one object:\n"
+    '{"purpose": str, "duration_s": number, "camera": str, "subject": str, '
+    '"product_visible": str, "motion": str, "dialogue": str|null}\n'
+    "`purpose` MUST equal the failed shot's purpose. That is not negotiable: the beat "
+    "still has to be rendered, and a shot serving a different beat is not a repair.\n"
+    f"`camera` MUST be one of: {_CAMERAS}.\n"
+    f"`product_visible` MUST be one of: {_PRODUCT}.\n"
+    "Keep `duration_s` and `dialogue` as they were. Change the VISUAL approach: a "
+    "different subject, framing or motion that avoids whatever the check objected to. "
+    "Do not simply reword the old subject."
+)
+
+
+class ShotRepairError(RuntimeError):
+    """The replacement shot was not a repair."""
+
+
+def replan_shot(client, kit: BrandKit, shot: Shot, *, reason: str,
+                template: CreativeTemplate | None = None) -> tuple[Shot, float]:
+    """Rung 3: a DIFFERENT shot serving the same beat.
+
+    The purpose is a foreign key to a ScriptBeat (T6), and it is what makes this rung
+    possible at all: you can only regenerate a shot in isolation if you know what it was
+    for. A replacement that changes the purpose is rejected, because it silently drops
+    the beat and the coverage invariant would only notice much later.
+    """
+    user = (f"BRAND: {kit.brand_name}. TONE: {kit.tone}.\n"
+            f"THE FAILED SHOT:\n{shot.model_dump_json(indent=2)}\n\n"
+            f"WHY IT FAILED: {reason}"
+            f"{_structure_block(template)}")
+    data, cost = brain.chat_json(client, _REPLAN_SYSTEM, user)
+    try:
+        replacement = Shot.model_validate({**data, "duration_s": shot.duration_s})
+    except Exception as e:  # noqa: BLE001
+        raise ShotRepairError(f"replacement shot is invalid: {e!s:.160}") from e
+    if replacement.purpose != shot.purpose:
+        raise ShotRepairError(
+            f"replacement serves the {replacement.purpose!r} beat, not {shot.purpose!r}. "
+            f"That drops a beat instead of repairing a shot.")
+    return replacement, cost
+
+
 # --- voiceover --------------------------------------------------------------------
 
 _VO_SYSTEM = (

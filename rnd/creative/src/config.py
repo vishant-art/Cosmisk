@@ -152,6 +152,17 @@ QA_CUT_TOL_S = 0.30              # a detected cut may land this far from a plann
 #   unrelated scene          0.226 - 0.702
 QA_STALL_CORR = 0.98        # at or above: nothing changed across the cut
 QA_CONTINUITY_MIN_CORR = 0.75   # below, in SEQUENTIAL mode: the model lost the thread
+
+# A frozen shot is a DIFFERENT question, measured against the shot's FIRST frame rather
+# than against each frame's predecessor. Consecutive frames of any real footage correlate
+# above 0.98 (a 1px/frame pan measures 0.998 adjacent), so an adjacent-frame test calls
+# all real video frozen. Against the first frame the classes separate:
+#   frozen                     1.0000
+#   frozen + our micro_shake   0.9972   cosmetic shake must not rescue a stalled render
+#   frozen + our punch-in      1.0000   a punch-in on a still is still a still
+#   slow pan, 1px/frame        0.7852
+#   pan, 3px/frame             0.3841
+QA_FROZEN_CORR = 0.99
 # A flat frame has zero variance, so correlation is undefined. Below this the continuity
 # comparison is INCONCLUSIVE, not failed: two different solid-colour scenes are a
 # legitimate cut that no correlation can see.
@@ -167,6 +178,22 @@ QA_PRODUCT_MIN_SCORE = 0.35
 QA_PRODUCT_FRAME_WIDTH = 96      # frames are downscaled before matching
 QA_PRODUCT_SCALES = (0.30, 0.42, 0.55)   # template width as a fraction of the frame
 QA_PRODUCT_SAMPLE_FPS = 2
+
+# --- shot recovery (T9.5) ------------------------------------------------------
+# Escalate, do not loop. A model that produced a bad shot from a prompt will usually
+# produce another bad shot from the same prompt, so retrying more than once is paying
+# twice for the same mistake.
+#
+#   0 retry     the same prompt (models are stochastic; once is worth it)
+#   1 reprompt  the same shot, prompt seeded with the QA hint
+#   2 replan    a DIFFERENT shot serving the same beat purpose
+#   3 drop      remove the shot, redistribute its seconds across the neighbours
+#
+# Rung 3 is what stops one bad beat from burning the budget.
+RECOVERY_LADDER = ("retry", "reprompt", "replan", "drop")
+# A global ceiling across the whole board, so a systematically broken renderer costs a
+# bounded amount rather than N * ladder_depth.
+RECOVERY_MAX_TOTAL_RENDERS = 40
 
 # --- UGCStyle presets (T1) ----------------------------------------------------
 # The `prompt:` half are wishes the model may ignore. The `post:` half are ffmpeg/PIL

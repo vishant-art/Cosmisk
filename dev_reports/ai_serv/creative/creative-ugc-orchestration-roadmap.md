@@ -417,7 +417,7 @@ It is only tractable because the editor **placed** the cuts, wrote the captions 
 
 ---
 
-### T9.5. Shot Recovery
+### T9.5. Shot Recovery ✅ SHIPPED (Phase 6)
 
 **Inspiration:** ours. `_make_concept` already does this for stills.
 **Concept:** *escalating shot-level repair, downstream of QA*.
@@ -450,7 +450,11 @@ Name the mode on `Storyboard`. Default to independent until T9's continuity chec
 
 **Expected impact.** Converts a whole-storyboard regeneration (N renders) into a single-shot repair (1 render). **Confidence:** high.
 
-**Files:** `sequencer.py`, `verifier_video.py`, `schemas.py` (`Storyboard.render_mode`, `Shot.repair_attempts`).
+**Files:** new `recovery.py`, `verifier_video.verify_shot` / `check_shot_motion`, `storyboard.can_drop` / `drop_shot`, `story_brain.replan_shot`, `schemas.RepairStep` / `RepairLog`.
+
+**Deviation from this plan, deliberate.** It proposed a `Shot.repair_attempts` counter. Repairs are a **runtime** fact. Putting the count on `Shot` would make `storyboard.json` differ depending on how many times a render happened to fail, and the plan would stop being reproducible. The plan is what we meant; the `RepairLog` is what happened. They are separate artifacts.
+
+**The renderer is injected.** `render_board(board, render=..., verify=..., replan=...)` takes callables, so the entire control loop runs offline at `$0` and T7 supplies the real Seedance call later. What is under test is the control flow: which rung fires, in what order, what a repair invalidates, and what happens when the ladder runs out.
 
 ---
 
@@ -755,6 +759,46 @@ Two thresholds and an honest band between them: `corr ≥ 0.98` is a stalled or 
 ### On fixtures
 
 Two of these bugs were hidden, and one was manufactured, by testing on per-pixel white noise. Noise is a pathological input for any difference-based metric: it flattered dHash into looking like it worked, and it made micro-shake look like a catastrophic defect. Every continuity fixture is now smooth gradients and soft blobs, which is what real footage is. **The fixture is part of the claim.**
+
+## 7sexies. Phase 6 build: shot recovery (shipped)
+
+`T9.5`. `rnd/creative` 281 → **319 passing** (+38, 0 broken).
+
+Verified end to end against the **real** verifier over **real** clips, with only `render` faked: a renderer that returns its still seed twice is caught by `check_shot_motion`, retried, reprompted with the exact defect, and the resulting timeline then passes the full T9 gate.
+
+### Rung 4 is constrained by T6, not by the repair loop
+
+`storyboard.can_drop` refuses to remove a shot when no other shot serves its beat. Dropping the only `proof` shot does not produce a shorter ad, it produces **an ad with no proof in it**, and shipping that is worse than shipping a bad proof shot. The hook shot and the closing CTA shot can never be dropped at all. These are T6's invariants, enforced where they were defined, and the ladder simply runs out and raises rather than negotiating with them.
+
+Surviving shots absorb the dropped seconds through `fit_durations`, so the ad still lands on `target_seconds` to the tenth.
+
+### The bug the debugger found, which is also a design property
+
+After a drop, **index `i` names a different shot.** The survivor slides into the vacated slot. The loop must throw away its index-keyed `attempts` and `hints`, or that survivor inherits the dead shot's ladder position and gets dropped on its first failure.
+
+This surfaced as a test failure that *looked* like a code bug: my fake renderer keyed its failures by index, so after the drop it started failing whoever moved into slot 1. The fixture was wrong, the code was right, and the property is now pinned by `test_after_a_drop_the_shot_at_that_index_is_a_different_shot`. Fixtures that key on position lie to you about code that renumbers.
+
+### `check_shot_motion` cannot compare adjacent frames
+
+The obvious implementation asks "did anything change between consecutive frames". It calls **all real video frozen**. Consecutive frames of any real footage correlate above 0.98; a 1px-per-frame pan measures 0.998 adjacent.
+
+Measured against the shot's **first** frame instead:
+
+| clip | vs. previous frame | vs. first frame |
+|---|---|---|
+| frozen (seed returned, held) | 1.0000 | 1.0000 |
+| frozen + our `micro_shake` | 0.9946 | 0.9972 |
+| frozen + our punch-in | 1.0000 | 1.0000 |
+| slow pan, 1px/frame | 0.9979 | 0.7852 |
+| pan, 3px/frame | 0.9856 | 0.3841 |
+
+Two of those rows are load-bearing and both are correct. **Our own `micro_shake` does not rescue a frozen shot** (0.997, still above the 0.99 threshold): cosmetic shake is not motion, and a gate that accepted it would be certifying its own decoration. And **a punch-in on a still is still a still**.
+
+This is the third time in this project that the obvious metric was wrong and only measurement said so. The first was dHash for continuity. The second was luminance NCC for product presence.
+
+### Fail-closed, all the way down
+
+An `inconclusive` per-shot check triggers a repair in strict mode: a shot we could not verify is a shot we did not verify, and a re-render is the cheapest way to try again. A shot that fails every rung and cannot be dropped raises `RecoveryExhausted` rather than shipping. A global `RECOVERY_MAX_TOTAL_RENDERS` ceiling means a systematically broken renderer costs a bounded amount rather than `N shots × 4 rungs` of real Seedance spend.
 
 ### 7.5 Implementation notes worth keeping
 

@@ -240,6 +240,54 @@ def test_an_off_taxonomy_camera_is_a_failed_plan(brand_kit, script):
                                         log=lambda *_: None)
 
 
+# --- shot repair (T9.5, rung 3) -------------------------------------------------------
+
+def _replan_client(payload):
+    return _Capturing(payload=json.dumps(payload))
+
+
+_GOOD_SHOT = {"purpose": "demo", "duration_s": 9.0, "camera": "macro",
+              "subject": "a different framing of the same demo", "product_visible": "hero",
+              "motion": "twist", "dialogue": "you just twist it"}
+
+
+def _failed_shot():
+    from schemas import Shot
+    return Shot(purpose="demo", duration_s=4.0, camera="selfie", subject="old framing",
+                product_visible="hero", motion="", dialogue="you just twist it")
+
+
+def test_replan_returns_a_different_shot_for_the_same_beat(brand_kit):
+    c = _replan_client(_GOOD_SHOT)
+    out, _cost = story_brain.replan_shot(c, brand_kit, _failed_shot(),
+                                         reason="nothing moves")
+    assert out.purpose == "demo"
+    assert out.subject != "old framing"
+    assert "nothing moves" in c.user
+    assert "MUST equal the failed shot's purpose" in c.system
+
+
+def test_replan_preserves_the_planned_duration(brand_kit):
+    """The model returned 9.0s. The storyboard already fitted this shot to 4.0s and the
+    ad still has to land on its target."""
+    c = _replan_client(_GOOD_SHOT)
+    out, _ = story_brain.replan_shot(c, brand_kit, _failed_shot(), reason="x")
+    assert out.duration_s == 4.0
+
+
+def test_a_replacement_serving_a_different_beat_is_rejected(brand_kit):
+    """It silently drops the beat. T6's coverage invariant would only notice much later."""
+    c = _replan_client({**_GOOD_SHOT, "purpose": "cta"})
+    with pytest.raises(story_brain.ShotRepairError, match="drops a beat"):
+        story_brain.replan_shot(c, brand_kit, _failed_shot(), reason="x")
+
+
+def test_an_off_taxonomy_replacement_is_rejected(brand_kit):
+    c = _replan_client({**_GOOD_SHOT, "camera": "drone_orbit"})
+    with pytest.raises(story_brain.ShotRepairError, match="invalid"):
+        story_brain.replan_shot(c, brand_kit, _failed_shot(), reason="x")
+
+
 def test_storyboard_prompt_lists_the_closed_sets(brand_kit, script):
     c = _Capturing(payload=json.dumps({"shots": []}))
     with pytest.raises(sb_mod.StoryboardError):

@@ -36,7 +36,7 @@ import editor  # noqa: E402
 import ledger  # noqa: E402
 import taxonomy  # noqa: E402
 import teardown  # noqa: E402
-from schemas import QACheck, QAReport, Script, Storyboard  # noqa: E402
+from schemas import QACheck, QAReport, Script, Shot, Storyboard  # noqa: E402
 
 
 # --- frame similarity -----------------------------------------------------------
@@ -211,6 +211,77 @@ def check_shot_durations(shot_paths: list, board: Storyboard, *,
             detail=f"shot {i} ({shot.purpose}): {actual:.2f}s vs planned "
                    f"{shot.duration_s:.2f}s (tol {tol}s)"))
     return out
+
+
+def check_shot_motion(clip, *, shot_index: int | None = None) -> QACheck:
+    """Does anything move in this shot?
+
+    A video model handed a still seed will sometimes return the seed, held. It does not
+    error; it returns a perfectly good clip in which nothing happens.
+
+    Measured against the shot's FIRST frame, not against each frame's predecessor.
+    Consecutive frames of any real footage correlate above 0.98 (a 1px-per-frame pan
+    measures 0.998 adjacent), so an adjacent-frame test calls all real video frozen.
+    Against the first frame, a pan drifts to 0.79 while a held frame stays at 1.00.
+
+    Two consequences worth stating, both correct. Our own `micro_shake` scores 0.997 and
+    does NOT rescue a stalled render: cosmetic shake is not motion. Our own punch-in
+    scores 1.000 on a still, because a punch-in on a still is still a still.
+
+    A flat shot has no variance to correlate, so it is inconclusive rather than frozen.
+    """
+    frames = [f for _t, f in teardown.sample_frames(clip, grid=32)]
+    if len(frames) < 2:
+        return QACheck(name="shot_motion", passed=False, inconclusive=True,
+                       shot_index=shot_index,
+                       detail="fewer than two sampled frames; cannot see motion")
+    if any(frame_std(f) < config.QA_MIN_FRAME_STD for f in frames):
+        return QACheck(name="shot_motion", passed=False, inconclusive=True,
+                       shot_index=shot_index,
+                       detail="a frame is too flat to correlate")
+
+    drift = min(frame_corr(frames[0], f) for f in frames[1:])
+    if drift >= config.QA_FROZEN_CORR:
+        return QACheck(name="shot_motion", passed=False, shot_index=shot_index,
+                       detail=f"nothing moves: every frame correlates >= {drift:.3f} with "
+                              f"the first. The renderer returned its seed, held.")
+    return QACheck(name="shot_motion", passed=True, shot_index=shot_index,
+                   detail=f"drift from the first frame: {drift:.3f}")
+
+
+def verify_shot(clip, shot: Shot, index: int, *, cutout_path=None,
+                tol: float | None = None) -> list[QACheck]:
+    """Everything we can assert about ONE rendered shot, before it joins a timeline.
+
+    This is what the repair ladder (T9.5) triggers on. Catching a bad shot here costs
+    one re-render; catching it after the concat costs the whole timeline.
+    """
+    tol = config.QA_SHOT_DURATION_TOL_S if tol is None else tol
+    checks: list[QACheck] = []
+
+    actual = editor.probe(clip)["duration"]
+    delta = abs(actual - shot.duration_s)
+    checks.append(QACheck(
+        name="shot_duration", passed=delta <= tol, shot_index=index,
+        detail=f"{actual:.2f}s vs planned {shot.duration_s:.2f}s (tol {tol}s)"))
+
+    checks.append(check_shot_motion(clip, shot_index=index))
+
+    if shot.product_visible == "hero":
+        if not cutout_path or not Path(cutout_path).exists():
+            checks.append(QACheck(
+                name="product_presence", passed=False, inconclusive=True, shot_index=index,
+                detail="shot promises a hero product but there is no cutout to match"))
+        else:
+            import numpy as np
+            frames = [f for _t, f in teardown.sample_frames(
+                clip, sample_fps=config.QA_PRODUCT_SAMPLE_FPS, grid=128)]
+            best = max((product_score(f, cutout_path) for f in frames), default=0.0)
+            checks.append(QACheck(
+                name="product_presence", passed=best >= config.QA_PRODUCT_MIN_SCORE,
+                shot_index=index,
+                detail=f"best match {best:.2f} (min {config.QA_PRODUCT_MIN_SCORE})"))
+    return checks
 
 
 def _planned_cuts(board: Storyboard) -> list[float]:
