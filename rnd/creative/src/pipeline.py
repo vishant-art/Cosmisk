@@ -28,6 +28,7 @@ import shopify_products  # noqa: E402
 import compositor  # noqa: E402
 import config  # noqa: E402
 import editor  # noqa: E402
+import fal_billing  # noqa: E402
 import image_providers  # noqa: E402
 import layout as layout_mod  # noqa: E402
 import logo as logo_mod  # noqa: E402
@@ -364,16 +365,31 @@ def _clean_work(run_dir):
 
 def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
                  single_pass: bool = False, strict: bool = True, finish: bool = True,
-                 keep_work: bool = False, log=print):
+                 keep_work: bool = False, guard_balance: bool = True, log=print):
     """Render a planned storyboard into a timeline (T7). Costs real money.
 
     Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
     (T9.5), edits each one (T7.5), concatenates, then verifies the assembled timeline
     against the plan (T9). The clip that ships is the clip that gets verified.
+
+    When FAL_ADMIN_KEY is set, `guard_balance` fails BEFORE spending if the live fal balance
+    cannot cover the planned clips (the overdraw that locked the account once already). Pass
+    `guard_balance=False` to override. With no admin key the guard is a graceful no-op.
     """
     run_dir = config.OUTPUT_DIR / run_id
     board = Storyboard.model_validate_json(
         (run_dir / "storyboard.json").read_text("utf-8"))
+
+    if guard_balance:
+        g = fal_billing.affordable(len(board.shots))
+        if g["enabled"] and not g["ok"]:
+            raise RuntimeError(
+                f"fal balance ${g['balance']:.2f} cannot cover {len(board.shots)} planned "
+                f"clip(s) (~${g['needed']:.2f} needed, short ${g['shortfall']:.2f}). "
+                f"Top up at fal.ai/dashboard/billing or pass guard_balance=False.")
+        if g["enabled"]:
+            log(f"[render] fal balance ${g['balance']:.2f}, plan needs ~${g['needed']:.2f}")
+
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
     script = _run_script(run_dir)
     cut = run_dir / "product_cutout.png"
@@ -410,6 +426,16 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
     led.finalize()
     log(f"[render] {timeline} ({used:g}s of ad, {billed:g}s billed, "
         f"est ${led.total:.2f})")
+
+    try:                              # reconcile the estimate against fal's invoice (no-op
+        act = fal_billing.write_run_actuals(run_dir)   # without an admin key)
+        if act is not None:
+            log(f"[render] fal actual ${act['actual_usd']:.2f} vs est ${act['estimate_usd']:.2f} "
+                f"({act['delta_pct']:+.1f}%), balance ${act['balance_after_usd']:.2f} "
+                f"-> fal_actuals.json")
+    except Exception as e:            # noqa: BLE001 -- billing readback must never fail a run
+        log(f"[render] fal actuals unavailable ({e!s:.80})")
+
     return timeline, board, rlog
 
 

@@ -29,6 +29,11 @@ _SEEDANCE_PER_1K = {              # USD per 1,000 video tokens
     "seedance_fast": 0.0112,
     "seedance_4k": 0.008,
 }
+# Calibration note (fal billing-events, 2026-07): a real Seedance clip bills 87.3 units at
+# $0.014 = $1.2222; video_cost() below lands ~1% low ($1.2096) because fal counts ~909
+# tokens/frame where the formula counts 900. The gap is under rounding noise for budgeting;
+# fal_billing.SEEDANCE_CLIP_USD carries the observed figure for the balance guard, and
+# fal_billing.reconcile() replaces estimates with the invoice after a run.
 
 
 def megapixels(width: int, height: int) -> int:
@@ -62,7 +67,10 @@ def video_cost(bucket: str, width: int, height: int, seconds: float, *,
 
 
 TTS_PER_1K_CHARS = 0.10               # MiniMax Speech-02 HD ($/1K characters)
-AUDIO_MERGE_PER_S = 0.0002            # fal ffmpeg merge-audio-video ($/second)
+# fal ffmpeg merge-audio-video bills FLAT per call ($0.0002/generation, confirmed against
+# billing-events 2026-07), not per second. The old per-second basis over-counted ~5x on a
+# line item that is already noise, but accurate is accurate.
+AUDIO_MERGE_FLAT = 0.0002
 
 # fal Whisper v3. UNVERIFIED against fal's own pricing page (a third-party comparison
 # quotes ~$0.00544 per 10-minute clip). Confirm before any live run at volume; the
@@ -81,9 +89,10 @@ def asr_cost(seconds: float) -> float:
     return round(max(0.0, seconds) / 60.0 * ASR_PER_MINUTE, 6)
 
 
-def merge_cost(seconds: float) -> float:
-    """USD to mux an audio track onto a video (fal ffmpeg merge)."""
-    return round(max(0.0, seconds) * AUDIO_MERGE_PER_S, 6)
+def merge_cost(seconds: float = 0.0) -> float:
+    """USD to mux an audio track onto a video (fal ffmpeg merge). Flat per call; `seconds`
+    is accepted for call-site compatibility but does not affect the (flat) price."""
+    return AUDIO_MERGE_FLAT
 
 
 def response_cost(resp) -> float:
