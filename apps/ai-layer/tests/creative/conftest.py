@@ -10,6 +10,15 @@ import pytest
 
 from ai_layer.creative.schemas import AdConcept, BrandKit, CopySet  # noqa: E402
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _migrate_once():
+    """Creative tests are mock-based and never touch Postgres. This shadows the ai-layer root
+    conftest's DB-migration fixture (which builds a Neon TEST BRANCH URL from PG* env vars and
+    applies migrations), so the creative subtree runs with no database and no PG* creds."""
+    yield
+
+
 # --- a fake OpenAI-compatible client that routes on the system prompt ---------
 
 class _Msg:
