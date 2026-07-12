@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from ai_layer.creative import config as creative_config  # noqa: E402
 from ai_layer.creative.schemas import AdConcept, BrandKit, CopySet  # noqa: E402
 
 
@@ -23,6 +24,20 @@ def _no_live_billing(monkeypatch):
     Strip it so billing is 'unavailable' and every fal_billing call no-ops. Tests that exercise
     billing set it back explicitly."""
     monkeypatch.delenv("FAL_ADMIN_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_live_grounding(monkeypatch):
+    """Hermetic tests: config.py autoloads the repo-root .env, so SHOPIFY_* and META_* are
+    already populated. run()'s grounding is ON by default, which would make the SUITE call the
+    live Shopify store (and download product images) and the live Meta API. Null the creds on
+    the config module -- they are read at import time, so delenv alone would not help -- and
+    both sources degrade to their documented 'UNAVAILABLE' path. Tests that exercise grounding
+    set them, or patch the fetchers, explicitly."""
+    monkeypatch.setattr(creative_config, "SHOPIFY_TOKEN", None, raising=False)
+    monkeypatch.setattr(creative_config, "SHOPIFY_STORE", None, raising=False)
+    monkeypatch.setattr(creative_config, "META_ACCESS_TOKEN", None, raising=False)
+    monkeypatch.delenv("META_ACCESS_TOKEN", raising=False)
 
 
 # --- a fake OpenAI-compatible client that routes on the system prompt ---------

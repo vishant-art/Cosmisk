@@ -22,6 +22,7 @@ from openai import OpenAI
 from ai_layer.creative import brand_brain
 from ai_layer.creative import campaign_select as cs
 from ai_layer import meta_creatives
+from ai_layer import shopify_products
 from ai_layer.creative import captions as captions_mod
 from ai_layer.creative import compositor
 from ai_layer.creative import config
@@ -51,23 +52,83 @@ def _slug(fmt: str) -> str:
     return fmt.replace(":", "x")
 
 
-def _meta_winner_refs(account, *, preset, top_n, run_dir, token=None, log=print) -> list[str]:
-    """Pull the account's winning RUNNING-ad images via the Meta API (downloaded
-    immediately, URLs expire) to use as brand/reference conditioning. Returns local
-    image paths; empty + a log line if no token (never blocks a run)."""
-    token = token or os.getenv("META_ACCESS_TOKEN")
+def _meta_cohort(account, *, preset, top_n, run_dir, token=None, bottom_n=5,
+                 min_spend=100.0, log=print):
+    """Pull BOTH tails of the account's ROAS distribution (UGC-D5).
+
+    Returns (ref_images, assets). `ref_images` are WINNER stills only, because those
+    condition generation and we do not want to condition on a loser's pixels. `assets`
+    carries the whole cohort, including losers and including MP4s, because the teardown
+    learns from the contrast.
+
+    Never blocks a run: no token, or a Meta hiccup, yields ([], []) and a log line.
+    """
+    token = token or config.META_ACCESS_TOKEN or os.getenv("META_ACCESS_TOKEN")
     if not token:
-        log("[meta] META_ACCESS_TOKEN not set; skipping winner fetch")
-        return []
+        log("[meta] GROUNDING UNAVAILABLE: META_ACCESS_TOKEN not set; "
+            "proceeding UNGROUNDED (kit + concepts from campaign data only)")
+        return [], []
     try:
-        assets = meta_creatives.fetch_winning_creatives(
-            token, account, preset=preset, top_n=top_n, out_dir=Path(run_dir) / "winners")
+        assets = meta_creatives.fetch_creative_cohort(
+            token, account, preset=preset, top_n=top_n, bottom_n=bottom_n,
+            min_spend=min_spend, out_dir=Path(run_dir) / "winners", log=log)
     except Exception as e:  # noqa: BLE001 -- never let Meta hiccups break a run
-        log(f"[meta] winner fetch failed ({e!s:.120}); proceeding without refs")
-        return []
-    imgs = [a.local_path for a in assets if a.kind == "image" and a.local_path]
-    log(f"[meta] pulled {len(imgs)} winning image ref(s) from {account}")
-    return imgs
+        # Graceful, but LOUD. A run that silently degrades to ungrounded is worse than
+        # one that says so: the operator pays for generation believing it was grounded.
+        log(f"[meta] GROUNDING UNAVAILABLE: cohort fetch failed for {account} "
+            f"({e!s:.140}); proceeding UNGROUNDED")
+        return [], []
+    # Winner stills condition FLUX. Loser stills deliberately do not.
+    imgs = [a.local_path for a in assets if a.cohort == "winner" and a.local_path]
+    log(f"[meta] {len(imgs)} winning image ref(s) from {account}")
+    return imgs, assets
+
+
+def _shopify_products(run_dir, *, top_n=3, log=print):
+    """Bestseller product image(s) from Shopify. Graceful when no creds: returns [] and
+    logs, never blocks the run."""
+    return shopify_products.fetch_bestsellers(
+        config.SHOPIFY_TOKEN, config.SHOPIFY_STORE,
+        out_dir=Path(run_dir) / "products", top_n=top_n,
+        api_version=config.SHOPIFY_API_VERSION, log=log)
+
+
+def _write_pickings(run_dir, cohort, products, *, grounded, product_source):
+    """Write pickings.json: the Meta winners AND the Shopify products this run drew on.
+
+    This is the "show me what you picked" artifact, and the seed of the attribution join
+    (variant/creative -> outcome). Also what `_picked_product_desc` reads so the i2v
+    product seed knows what the item actually is.
+    """
+    winners = [{"ad_id": a.ad_id, "ad_name": a.ad_name, "roas": a.roas}
+               for a in (cohort or []) if a.cohort == "winner"]
+    losers = [{"ad_id": a.ad_id, "ad_name": a.ad_name, "roas": a.roas}
+              for a in (cohort or []) if a.cohort == "loser"]
+    prods = [{"shopify_id": p.product_id, "title": p.title, "revenue": p.revenue,
+              "units": p.units, "image_src": p.image_src, "local_path": p.local_path}
+             for p in (products or [])]
+    payload = {"grounded": grounded, "product_source": product_source,
+               "winners": winners, "losers": losers, "products": prods}
+    (Path(run_dir) / "pickings.json").write_text(json.dumps(payload, indent=2),
+                                                 encoding="utf-8")
+    return payload
+
+
+def _teardown_winner(assets, *, client, run_dir, led, log=print):
+    """Tear down the best winner that has a playable MP4. Returns a CreativeTemplate
+    or None. Costs one Whisper call plus one vision call."""
+    with_video = [a for a in assets if a.cohort == "winner" and a.video_path]
+    if not with_video:
+        log("[teardown] no winner has a playable MP4; concepts will be ungrounded")
+        return None
+    best = max(with_video, key=lambda a: a.roas)
+    try:
+        return teardown.analyze(best.video_path, ad_id=best.ad_id, ad_name=best.ad_name,
+                                cohort=best.cohort, metrics=best.metrics, client=client,
+                                led=led, work_dir=Path(run_dir) / "teardown", log=log)
+    except Exception as e:  # noqa: BLE001 -- a teardown must never break a run
+        log(f"[teardown] failed for {best.ad_id} ({e!s:.120}); concepts will be ungrounded")
+        return None
 
 
 def _client() -> OpenAI:
@@ -89,9 +150,19 @@ def _write_kit(run_dir: Path, kit: BrandKit) -> None:
 def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_campaigns=5,
         mode="auto", images=4, image_provider="flux", formats=None,
         qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
-        meta_account=None, meta_token=None, ground_from_meta=False, meta_preset="last_30d",
-        top_creatives=5, no_logo=False, summary=None, account_name=None,
+        meta_account=None, meta_token=None, ground_from_meta=True, meta_preset="last_30d",
+        top_creatives=5, bottom_creatives=5, min_spend=100.0, use_shopify=True,
+        style=None, no_logo=False, summary=None, account_name=None,
         on_stage=None, log=print) -> RunManifest:
+    """Full grounded run. Every grounding source is ON by default and each degrades
+    gracefully (and loudly) when its credentials are absent:
+
+      Meta cohort  -> both ROAS tails + the winner's MP4   (needs META_ACCESS_TOKEN)
+      teardown     -> the winner's measured structure       (needs a playable winner MP4)
+      Shopify      -> the store's bestseller product image  (needs SHOPIFY_TOKEN/STORE)
+
+    A run with no creds still produces ads; it just says, loudly, that it was UNGROUNDED.
+    """
     on_stage = on_stage or (lambda *_: None)
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
@@ -111,15 +182,39 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
         account_name = account_name or "Creative Studio"
         log(f"[1/4] {account_name}: brief-driven")
 
-    # Pull real winning creatives from Meta to condition generation (optional).
-    winner_refs = (_meta_winner_refs(meta_account, preset=meta_preset, top_n=top_creatives,
-                                     run_dir=run_dir, token=meta_token, log=log)
-                   if meta_account else [])
+    # The spoken/brief summary is reused by plan_story (T6), which may run later against
+    # this same run dir without a data_path (brief mode has none).
+    (run_dir / "summary.txt").write_text(summary, encoding="utf-8")
+
+    # Pull the real creative cohort from Meta (BOTH tails, UGC-D5) to ground generation.
+    winner_refs, cohort = (_meta_cohort(meta_account, preset=meta_preset,
+                                        top_n=top_creatives, bottom_n=bottom_creatives,
+                                        min_spend=min_spend, run_dir=run_dir,
+                                        token=meta_token, log=log)
+                           if meta_account else ([], []))
     if refs is None and winner_refs:
         refs = winner_refs                       # condition backgrounds on real winners
     if winner_refs:
         on_stage(f"Pulled {len(winner_refs)} winning creative(s) from Meta")
     ground_images = winner_refs if (ground_from_meta and winner_refs) else None
+
+    # Product image: an explicit product_image wins; otherwise source the store's
+    # bestseller from Shopify. A real product from the store, not a fabricated one.
+    products = []
+    product_source = "supplied" if product_image else "none"
+    if not product_image and use_shopify:
+        products = _shopify_products(run_dir, log=log)
+        top = next((p for p in products if p.local_path), None)
+        if top:
+            product_image = top.local_path
+            product_source = "shopify"
+            on_stage(f"Sourced the product from Shopify: {top.title}")
+            log(f"[shopify] product for this ad: {top.title!r} ({top.local_path})")
+
+    # Always written, even ungrounded, so a run always says what it picked. This is also
+    # what _picked_product_desc reads, so the i2v product seed knows what the item IS.
+    _write_pickings(run_dir, cohort, products, grounded=bool(winner_refs),
+                    product_source=product_source)
 
     client = _client()
     log("[2/4] generating brand kit...")
@@ -128,6 +223,15 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
     led.record("brandkit", "openrouter", config.TEXT_MODEL, kit_cost)
     _write_kit(run_dir, kit)
     on_stage("Brand kit decided")
+
+    # Structural teardown of the top winner's MP4 -> the template that conditions concepts
+    # (T4/T5) and, later, the script + storyboard (T6).
+    template = _teardown_winner(cohort, client=client, run_dir=run_dir, led=led,
+                                log=log) if cohort else None
+    if template:
+        (run_dir / "template.json").write_text(template.model_dump_json(indent=2),
+                                               encoding="utf-8")
+        on_stage("Tore down the winning ad's structure")
 
     manifest = RunManifest(
         run_id=run_id, account_name=account_name, select_strategy=strategy,
@@ -157,7 +261,7 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
                   run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
-                  on_stage=on_stage, log=log)
+                  template=template, style=style, on_stage=on_stage, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -169,12 +273,16 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
 
 def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
            formats=None, qa_retries=1, run_vlm=False, pro=False, refs=None,
-           product_image=None, log=print) -> RunManifest:
+           product_image=None, style=None, log=print) -> RunManifest:
     """Generate ads from a (possibly user-edited) brand_kit.json in output/<run>."""
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
     led = Ledger(run_dir)
+    # Reuse the run's teardown rather than re-downloading and re-analyzing the winner.
+    tpl_file = run_dir / "template.json"
+    template = (CreativeTemplate.model_validate_json(tpl_file.read_text("utf-8"))
+                if tpl_file.exists() else None)
     ds = cs.load_dataset(data_path)
     summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
 
@@ -192,7 +300,8 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     client = _client()
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
-                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image, log=log)
+                  run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
+                  template=template, style=style, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -268,7 +377,8 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
 
 
 def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries, run_vlm,
-                  pro, bg_primary, bg_refs, negative, base_fmt, logo_path, log):
+                  pro, bg_primary, bg_refs, negative, base_fmt, logo_path, style=None,
+                  log=print):
     """Full per-concept flow (background -> composite -> verify -> retries -> outpaint
     each format). Self-contained so concepts run concurrently in a thread pool. Returns
     (comps, reports, rejected)."""
@@ -281,7 +391,8 @@ def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries,
     for attempt in range(qa_retries + 1):
         # Background is TEXT-FREE: negative prompt suppresses text/logo. `bg_refs`
         # condition the scene on the real product / winning creatives (or None).
-        prompt = prompt_builder.build_image_prompt(concept, kit, base_fmt)
+        # `style` grounds the pixels in a capture aesthetic (T1); None = studio look.
+        prompt = prompt_builder.build_image_prompt(concept, kit, base_fmt, style=style)
         res = image_providers.generate_with_fallback(
             prompt, bg, primary=bg_primary, refs=bg_refs, aspect=base_fmt,
             negative=negative, pro=pro, log=log)
@@ -329,14 +440,19 @@ def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries,
 
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                   image_provider, formats, qa_retries, run_vlm, pro, refs=None,
-                  product_image=None, on_stage=None, log=print) -> None:
+                  product_image=None, template=None, style=None,
+                  on_stage=None, log=print) -> None:
     """Generate N concepts CONCURRENTLY (each a text-free QA-gated background ->
     per-format layout -> composite -> verify -> outpaint). Emits milestone updates via
     `on_stage`. Conditioning: product_image -> Bria product-shot; else refs -> FLUX.2
-    flex reference images; else a blind background."""
+    flex reference images; else a blind background.
+
+    `template` grounds the CONCEPTS in the measured structure of a real winner (T5);
+    `style` grounds the pixels in a capture aesthetic (T1)."""
     on_stage = on_stage or (lambda *_: None)
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
-    concepts, concepts_cost = brand_brain.generate_concepts(client, kit, summary, images)
+    concepts, concepts_cost = story_brain.generate_concepts(client, kit, summary, images,
+                                                            template=template)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     on_stage(f"Planned {len(concepts)} ad concept(s)")
     negative = prompt_builder.build_negative_prompt()
@@ -362,7 +478,8 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
         return concept, _make_concept(
             i, concept, client=client, kit=kit, run_dir=run_dir, led=led, formats=formats,
             qa_retries=qa_retries, run_vlm=run_vlm, pro=pro, bg_primary=bg_primary,
-            bg_refs=bg_refs, negative=negative, base_fmt=base_fmt, logo_path=logo_path, log=log)
+            bg_refs=bg_refs, negative=negative, base_fmt=base_fmt, logo_path=logo_path,
+            style=style, log=log)
 
     n, done = len(concepts), 0
     with ThreadPoolExecutor(max_workers=min(n, 4)) as ex:   # concepts in parallel
@@ -436,8 +553,8 @@ def _clean_work(run_dir):
     shutil.rmtree(Path(run_dir) / ".work", ignore_errors=True)
 
 
-def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
-               ) -> tuple[Script, Storyboard]:
+def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None = None,
+               seconds: int = None, log=print) -> tuple[Script, Storyboard]:
     """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
 
     Standalone-valuable: a shot list a human creator could shoot is a deliverable even
@@ -446,6 +563,10 @@ def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
 
     Reuses the run's teardown (template.json) so the argument is grounded in the
     structure of a real winner rather than invented from a brand kit.
+
+    The summary comes from (in order): the `summary` argument, the run's summary.txt
+    (written by run(), and the only source in brief mode, which has no data_path), or
+    a campaign envelope at `data_path`.
     """
     seconds = config.STORY_DEFAULT_SECONDS if seconds is None else seconds
     run_dir = config.OUTPUT_DIR / run_id
@@ -458,8 +579,16 @@ def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
     if template is None:
         log("[story] no teardown for this run; the script will be ungrounded")
 
-    ds = cs.load_dataset(data_path)
-    summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
+    if summary is None:
+        cached = run_dir / "summary.txt"
+        if cached.exists():
+            summary = cached.read_text("utf-8")
+        elif data_path:
+            ds = cs.load_dataset(data_path)
+            summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
+        else:
+            raise FileNotFoundError(
+                f"no summary for run {run_id!r}: pass summary= or data_path=, or run() first")
 
     script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
                                                  summary=summary, seconds=seconds,

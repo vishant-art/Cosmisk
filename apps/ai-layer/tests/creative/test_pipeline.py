@@ -16,6 +16,7 @@ from ai_layer.creative import config
 from ai_layer.creative import image_providers
 from ai_layer.creative import logo as logo_mod
 from ai_layer.creative import pipeline
+from ai_layer.creative import story_brain
 from ai_layer.creative import verifier
 
 
@@ -27,8 +28,9 @@ def _png(path, size=(1080, 1350), color="white"):
 def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
     monkeypatch.setattr(brand_brain, "generate_brand_kit",
                         lambda c, s, ground_images=None: (brand_kit, 0.0))
-    monkeypatch.setattr(brand_brain, "generate_concepts",
-                        lambda c, k, s, n: (concepts[:n], 0.0))
+    # Concepts now come from story_brain, which can be grounded in a teardown template.
+    monkeypatch.setattr(story_brain, "generate_concepts",
+                        lambda c, k, s, n, template=None: (concepts[:n], 0.0))
 
     def fake_logo(kit, out_path, **kw):
         _png(out_path, size=(400, 400), color="red")
@@ -223,17 +225,27 @@ def test_product_image_routes_through_product_shot(monkeypatch, tmp_path, envelo
 
 def test_meta_account_pulls_winner_refs(monkeypatch, tmp_path, envelope_path,
                                         brand_kit, concepts):
+    """Grounding is ON by default and pulls BOTH ROAS tails; only WINNER stills are used
+    as reference pixels (conditioning on a loser's pixels would be self-defeating), and
+    both tails are recorded in pickings.json."""
     monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
     monkeypatch.setenv("META_ACCESS_TOKEN", "tok")
     bg_calls = []
     _patch_all(monkeypatch, brand_kit, concepts, bg_calls)
 
     from ai_layer import meta_creatives
-    monkeypatch.setattr(meta_creatives, "fetch_winning_creatives",
+    monkeypatch.setattr(meta_creatives, "fetch_creative_cohort",
                         lambda *a, **k: [
-                            meta_creatives.CreativeAsset("a1", "Win", 6.0, "image", "/w1.png"),
-                            meta_creatives.CreativeAsset("a2", "Win2", 5.0, "video", None)])
+                            meta_creatives.CreativeAsset("a1", "Win", 6.0, "image", "/w1.png",
+                                                         cohort="winner"),
+                            meta_creatives.CreativeAsset("a2", "Lose", 0.4, "image", "/l1.png",
+                                                         cohort="loser")])
 
     pipeline.run(data_path=envelope_path, run_id="r8", mode="auto", images=1,
                  meta_account="act_1", log=lambda *_: None)
-    assert bg_calls[0]["refs"] == ["/w1.png"]            # only the usable image winner
+    assert bg_calls[0]["refs"] == ["/w1.png"]            # winners condition; losers never do
+
+    picks = json.loads((tmp_path / "r8" / "pickings.json").read_text("utf-8"))
+    assert picks["grounded"] is True
+    assert [w["ad_id"] for w in picks["winners"]] == ["a1"]
+    assert [l["ad_id"] for l in picks["losers"]] == ["a2"]

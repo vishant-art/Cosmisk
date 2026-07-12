@@ -24,21 +24,43 @@ def build_negative_prompt() -> str:
     return _NEGATIVE
 
 
-def build_image_prompt(concept: AdConcept, kit: BrandKit, aspect: str = "4:5") -> str:
+def build_image_prompt(concept: AdConcept, kit: BrandKit, aspect: str = "4:5",
+                       style: UGCStyle | None = None) -> str:
+    """Assemble the text-free background prompt.
+
+    `style` carries only its PROMPT half into the prompt (UGCStyle.to_prompt): amateur
+    capture, on purpose. The post-processing half (grain, shake, recompression) is a
+    guarantee the editor keeps, and naming it here would turn a guarantee back into a
+    wish. `style=None` keeps the art-directed studio look.
+    """
     dos = "; ".join(kit.dos) if kit.dos else "—"
     donts = "; ".join(kit.donts) if kit.donts else "—"
     # NOTE: the positive prompt deliberately never mentions logo / text / copy / negative
     # space -- that priming is what made models render them. Suppression lives in the
     # negative prompt (build_negative_prompt), not here.
+    if style is not None:
+        fragment = style.to_prompt()
+        capture = f"{fragment}. " if fragment else ""
+        return (
+            f"{concept.scene}\n\n"
+            f"Photograph for {kit.brand_name}. {capture}"
+            f"Visual style: {kit.visual_style}. Mood: {kit.tone}. "
+            f"Color-grade deliberately to the brand palette (use it intentionally, not as flat "
+            f"blocks): {kit.palette_str()}. "
+            f"{_UGC_CRAFT}"
+            f"Do: {dos}. Don't: {donts}. "
+            f"Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche "
+            f"gradients, no clutter or random props, no over-blurred bokeh, nothing posed or "
+            f"soulless-corporate. "
+            f"A clean, unembellished {aspect} composition with calm, simple surroundings."
+        )
     return (
         f"{concept.scene}\n\n"
         f"Art-directed advertising photograph for {kit.brand_name}. "
         f"Visual style: {kit.visual_style}. Mood: {kit.tone}. "
         f"Color-grade deliberately to the brand palette (use it intentionally, not as flat "
         f"blocks): {kit.palette_str()}. "
-        f"ONE clear hero subject, intentional composition with depth and a focal point; real, "
-        f"tactile materials and authentic texture; motivated, directional lighting; premium "
-        f"editorial craft. "
+        f"{_STUDIO_CRAFT}"
         f"Do: {dos}. Don't: {donts}. "
         f"Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche "
         f"gradients, no clutter or random props, no over-blurred bokeh, nothing posed or "
