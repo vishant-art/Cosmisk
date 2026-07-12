@@ -2,11 +2,8 @@
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
-
 
 from ai_layer.creative.schemas import AdConcept, BrandKit, CopySet  # noqa: E402
 
@@ -80,13 +77,57 @@ CONCEPTS_JSON = {"concepts": [
 ]}
 
 
+SCRIPT_JSON = {"beats": [
+    {"purpose": "hook", "text": "I genuinely thought this was a scam."},
+    {"purpose": "problem", "text": "My hallway was always dark."},
+    {"purpose": "demo", "text": "You just twist it and it warms up."},
+    {"purpose": "proof", "text": "Three weeks in and I have not touched the switch."},
+    {"purpose": "cta", "text": "Shop the new collection."},
+]}
+
+STORYBOARD_JSON = {"shots": [
+    {"purpose": "hook", "duration_s": 2, "camera": "selfie", "subject": "woman to camera",
+     "product_visible": "absent", "motion": "walks in", "dialogue": "I genuinely thought this was a scam."},
+    {"purpose": "problem", "duration_s": 3, "camera": "handheld_wide", "subject": "dark hallway",
+     "product_visible": "absent", "motion": "pan", "dialogue": "My hallway was always dark."},
+    {"purpose": "demo", "duration_s": 4, "camera": "macro", "subject": "hands twisting the lamp",
+     "product_visible": "hero", "motion": "twist", "dialogue": "You just twist it and it warms up."},
+    {"purpose": "proof", "duration_s": 3, "camera": "close_up", "subject": "her face, lit warm",
+     "product_visible": "background", "motion": "smile", "dialogue": "Three weeks in."},
+    {"purpose": "cta", "duration_s": 2, "camera": "selfie", "subject": "product held up",
+     "product_visible": "hero", "motion": "hold", "dialogue": "Shop the new collection."},
+]}
+
+
+REPLACEMENT_SHOT_JSON = {
+    "purpose": "demo", "duration_s": 4.0, "camera": "close_up",
+    "subject": "a different framing of the same demo", "product_visible": "hero",
+    "motion": "hands enter frame", "dialogue": None,
+}
+
+
 def _router(system_content: str) -> str:
     # route on a token unique to each system prompt.
     if "VOICEOVER" in system_content:
         return json.dumps({"script": "Discover timeless craftsmanship. Shop the new collection."})
+    if "OPENING LINE" in system_content:            # revary_hook (T10)
+        approach = system_content.split("APPROACH (")[1].split(")")[0]
+        return json.dumps({"text": f"A fresh {approach} opening that stops you cold."})
+    if "REPLACEMENT shot" in system_content:
+        return json.dumps(REPLACEMENT_SHOT_JSON)
+    if "shot list" in system_content:
+        return json.dumps(STORYBOARD_JSON)
+    if "SPOKEN script" in system_content:
+        return json.dumps(SCRIPT_JSON)
     if "brand_name" in system_content:
         return json.dumps(KIT_JSON)
     return json.dumps(CONCEPTS_JSON)
+
+
+@pytest.fixture
+def script():
+    from ai_layer.creative.schemas import Script
+    return Script.model_validate(SCRIPT_JSON)
 
 
 @pytest.fixture
@@ -108,6 +149,75 @@ def concepts() -> list[AdConcept]:
 def copyset() -> CopySet:
     return CopySet(headline="Light, made simple", subhead="For every room",
                    cta_label="Shop now", legal="*T&C apply", angle="hero-product")
+
+
+# --- a synthesized MP4 with cuts at KNOWN timestamps --------------------------
+# Written at test time with the ffmpeg binary imageio-ffmpeg already bundles. Nothing
+# is checked into git, so nothing can be silently gitignored, and shot detection gets
+# a ground truth to assert against instead of a vibe. Silent by construction: the ASR
+# path must degrade to None rather than invent a hook.
+
+SYNTH_FPS = 10
+SYNTH_SHOT_SECONDS = 1.0
+SYNTH_COLORS = [(220, 30, 30), (30, 200, 60), (40, 60, 230)]   # cuts at t=1.0, t=2.0
+
+
+@pytest.fixture
+def synth_video(tmp_path) -> str:
+    """3 solid-colour shots x 1.0s @ 10fps. Cuts at 1.0s and 2.0s. No audio track."""
+    import imageio_ffmpeg
+    import numpy as np
+
+    size = (64, 64)
+    out = tmp_path / "synth.mp4"
+    writer = imageio_ffmpeg.write_frames(str(out), size, fps=SYNTH_FPS, macro_block_size=1)
+    writer.send(None)
+    for color in SYNTH_COLORS:
+        frame = np.zeros((size[1], size[0], 3), dtype=np.uint8)
+        frame[:, :] = color
+        for _ in range(int(SYNTH_FPS * SYNTH_SHOT_SECONDS)):
+            writer.send(frame.tobytes())
+    writer.close()
+    return str(out)
+
+
+@pytest.fixture
+def other_video(tmp_path) -> str:
+    """A second clip with the SAME geometry as synth_video, for transitions."""
+    import imageio_ffmpeg
+    import numpy as np
+    out = tmp_path / "other.mp4"
+    w = imageio_ffmpeg.write_frames(str(out), (64, 64), fps=SYNTH_FPS, macro_block_size=1)
+    w.send(None)
+    for _ in range(int(SYNTH_FPS * 3)):
+        w.send(np.full((64, 64, 3), 180, dtype=np.uint8).tobytes())
+    w.close()
+    return str(out)
+
+
+@pytest.fixture
+def noisy_video(tmp_path) -> str:
+    """Textured frames. A solid-colour clip compresses to almost nothing at any CRF, so
+    it cannot show whether `recompress` actually threw bits away."""
+    import imageio_ffmpeg
+    import numpy as np
+    out = tmp_path / "noisy.mp4"
+    rng = np.random.default_rng(0)
+    w = imageio_ffmpeg.write_frames(str(out), (96, 96), fps=SYNTH_FPS, macro_block_size=1)
+    w.send(None)
+    for _ in range(int(SYNTH_FPS * 2)):
+        w.send(rng.integers(0, 255, (96, 96, 3), dtype=np.uint8).tobytes())
+    w.close()
+    return str(out)
+
+
+@pytest.fixture
+def fake_words() -> list[dict]:
+    """Word-level ASR output, as fal Whisper returns it once normalized."""
+    raw = [("I", 0.0), ("genuinely", 0.2), ("did", 0.5), ("not", 0.7), ("expect", 0.9),
+           ("this", 1.2), ("to", 1.4), ("work", 1.6), ("so", 2.0), ("shop", 2.3),
+           ("now", 2.6)]
+    return [{"text": t, "start": s, "end": s + 0.18} for t, s in raw]
 
 
 @pytest.fixture

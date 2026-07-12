@@ -7,10 +7,7 @@ them). Logo and copy are composited deterministically afterwards (compositor.py)
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-from ai_layer.creative.schemas import AdConcept, BrandKit  # noqa: E402
+from ai_layer.creative.schemas import AdConcept, BrandKit, UGCStyle  # noqa: E402
 
 
 # Suppression list for models with a real negative_prompt (SDXL); also appended as a
@@ -47,6 +44,75 @@ def build_image_prompt(concept: AdConcept, kit: BrandKit, aspect: str = "4:5") -
         f"gradients, no clutter or random props, no over-blurred bokeh, nothing posed or "
         f"soulless-corporate. "
         f"A clean, unembellished {aspect} composition with calm, simple surroundings."
+    )
+
+
+# The old craft clause. It asks, in as many words, for an advertisement: premium,
+# editorial, art-directed, motivated lighting. That is precisely the look that reads
+# as "ad" in a feed. Kept for product/catalogue work via STUDIO_STYLE.
+_STUDIO_CRAFT = (
+    "ONE clear hero subject, intentional composition with depth and a focal point; real, "
+    "tactile materials and authentic texture; motivated, directional lighting; premium "
+    "editorial craft. "
+)
+
+# The UGC craft clause. Amateur capture, on purpose. Note what is NOT here: no grain,
+# no compression, no shake. Those are UGCStyle `post:` fields applied deterministically
+# by the editor (T7.5). Asking a diffusion model to paint grain gets you painted grain,
+# which cannot then be removed.
+_UGC_CRAFT = (
+    "Looks like a real photo a customer took, not an advertisement. Ordinary, lived-in "
+    "surroundings with a little honest mess; nothing styled or staged; natural skin and "
+    "real surfaces. "
+)
+
+
+# How each ShotCamera reads to a video model. The storyboard's closed set (T6) becomes
+# prose here, exactly once, rather than the model being handed the enum name.
+_SHOT_CAMERA = {
+    "selfie": "front-facing phone selfie, held at arm's length",
+    "handheld_wide": "handheld wide shot, the whole scene in frame",
+    "close_up": "close-up",
+    "macro": "extreme macro, very shallow depth of field",
+    "over_shoulder": "over-the-shoulder shot",
+    "overhead": "shot from directly overhead, looking down",
+    "pov": "first-person point of view, as if through the subject's eyes",
+}
+
+
+def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
+                      hint: str | None = None) -> str:
+    """The prompt for ONE storyboard shot (T7).
+
+    Carries the same rule as the still prompt: never mention text, logo or copy. Captions
+    are burned on afterwards by the editor, deterministically, and priming a video model
+    with the word "text" gets you letters you then cannot remove.
+
+    `hint` is the QA verdict from the previous attempt (T9.5, rung 1). It is stated as a
+    defect to fix, not as a vague instruction to try harder.
+    """
+    camera = _SHOT_CAMERA.get(shot.camera, shot.camera.replace("_", " "))
+    capture = style.to_prompt() if style is not None else ""
+    craft = _UGC_CRAFT if style is not None else _STUDIO_CRAFT
+    motion = f"The shot moves: {shot.motion}. " if shot.motion else ""
+    product = {
+        "hero": "The product is the subject of this shot, clearly in frame and in focus. ",
+        "background": "The product is visible in the background, not the subject. ",
+        "absent": "",
+    }.get(shot.product_visible, "")
+    fix = (f"A previous attempt was rejected for this reason: {hint}. Fix exactly that. "
+           if hint else "")
+
+    return (
+        f"{shot.subject}\n\n"
+        f"{camera}. {capture + '. ' if capture else ''}"
+        f"{motion}{product}"
+        f"Filmed for {kit.brand_name}. Visual style: {kit.visual_style}. Mood: {kit.tone}. "
+        f"{craft}"
+        f"{fix}"
+        f"Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no "
+        f"cliche gradients, no clutter or random props, nothing posed or "
+        f"soulless-corporate."
     )
 
 

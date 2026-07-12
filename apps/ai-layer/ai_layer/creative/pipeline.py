@@ -22,16 +22,27 @@ from openai import OpenAI
 from ai_layer.creative import brand_brain
 from ai_layer.creative import campaign_select as cs
 from ai_layer import meta_creatives
+from ai_layer.creative import captions as captions_mod
 from ai_layer.creative import compositor
 from ai_layer.creative import config
+from ai_layer.creative import editor
+from ai_layer.creative import fal_billing
 from ai_layer.creative import image_providers
 from ai_layer.creative import layout as layout_mod
 from ai_layer.creative import logo as logo_mod
 from ai_layer.creative import prompt_builder
+from ai_layer.creative import sequencer
+from ai_layer.creative import story_brain
+from ai_layer.creative import storyboard as sb_mod
+from ai_layer.creative import teardown
+from ai_layer.creative import variants
 from ai_layer.creative import verifier
+from ai_layer.creative import verifier_video
 from ai_layer.creative import video_providers
 from ai_layer.creative.ledger import Ledger  # noqa: E402
-from ai_layer.creative.schemas import AssetRecord, BrandKit, RunManifest  # noqa: E402
+from ai_layer.creative.schemas import (  # noqa: E402
+    AssetRecord, BrandKit, CreativeTemplate, QAReport, RunManifest, Script, Storyboard,
+)
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
 
@@ -382,3 +393,329 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
 def _asset(res: dict) -> dict:
     return {"provider": res["provider"], "model": res["model"], "path": res["path"],
             "cost_usd": res.get("cost_usd", 0.0), "fell_back_from": res.get("fell_back_from")}
+
+
+# ==============================================================================
+# UGC VIDEO PIPELINE (T6-T10). Additive: the static-ad run()/resume()/video_smoke()
+# above are untouched. These orchestrate script -> storyboard -> render -> finish ->
+# variants -> temporal QA, on top of a run dir that run() already produced.
+# ==============================================================================
+
+# Preference order for "the clip that ships": the most post-processed one wins.
+_FINAL_CLIP_NAMES = ("video_captioned.mp4", "video_voiceover.mp4",
+                     "video_overlay.mp4", "timeline.mp4", "video.mp4")
+
+
+def _picked_product_desc(run_dir):
+    """The title of the product this run drew on (from pickings.json), or None.
+
+    Anchors the i2v product seed to what the item ACTUALLY is, so the seed isolates the
+    product instead of whatever else the source photo happened to contain (e.g. a model).
+    """
+    pk = Path(run_dir) / "pickings.json"
+    if not pk.exists():
+        return None
+    try:
+        prods = json.loads(pk.read_text("utf-8")).get("products") or []
+    except (json.JSONDecodeError, OSError):
+        return None
+    title = (prods[0].get("title") if prods else None) or None
+    return title.strip() if isinstance(title, str) and title.strip() else None
+
+
+def _run_script(run_dir: Path) -> Script | None:
+    """The run's Script artifact, if plan_story has been run."""
+    f = run_dir / "script.json"
+    return Script.model_validate_json(f.read_text("utf-8")) if f.exists() else None
+
+
+def _clean_work(run_dir):
+    """Remove the scratch dir of $0 intermediates (Phase 9.4). The paid render cache lives
+    in renders/, not here, so a re-run still reuses it."""
+    import shutil
+    shutil.rmtree(Path(run_dir) / ".work", ignore_errors=True)
+
+
+def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
+               ) -> tuple[Script, Storyboard]:
+    """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
+
+    Standalone-valuable: a shot list a human creator could shoot is a deliverable even
+    if we never render a frame (OQ3). The renderer moves down the stack and becomes a
+    detail; the sequence IS the creative.
+
+    Reuses the run's teardown (template.json) so the argument is grounded in the
+    structure of a real winner rather than invented from a brand kit.
+    """
+    seconds = config.STORY_DEFAULT_SECONDS if seconds is None else seconds
+    run_dir = config.OUTPUT_DIR / run_id
+    kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
+    led = Ledger(run_dir)
+
+    tpl_file = run_dir / "template.json"
+    template = (CreativeTemplate.model_validate_json(tpl_file.read_text("utf-8"))
+                if tpl_file.exists() else None)
+    if template is None:
+        log("[story] no teardown for this run; the script will be ungrounded")
+
+    ds = cs.load_dataset(data_path)
+    summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
+
+    script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
+                                                 summary=summary, seconds=seconds,
+                                                 template=template)
+    led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
+    (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
+
+    board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
+                                                    template=template, log=log)
+    led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
+    (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
+
+    led.finalize()
+    log(f"[story] {len(script.beats)} beats -> {len(board.shots)} shots, "
+        f"{board.duration_s:.1f}s (est ${led.total:.3f}) -> {run_dir}")
+    log(sb_mod.as_shot_list(board))
+    return script, board
+
+
+def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
+                 single_pass: bool = False, strict: bool = True, finish: bool = True,
+                 keep_work: bool = False, guard_balance: bool = True, log=print):
+    """Render a planned storyboard into a timeline (T7). Costs real money.
+
+    Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
+    (T9.5), edits each one (T7.5), concatenates, then verifies the assembled timeline
+    against the plan (T9). The clip that ships is the clip that gets verified.
+
+    When FAL_ADMIN_KEY is set, `guard_balance` fails BEFORE spending if the live fal balance
+    cannot cover the planned clips (the overdraw that locked the account once already). Pass
+    `guard_balance=False` to override. With no admin key the guard is a graceful no-op.
+    """
+    run_dir = config.OUTPUT_DIR / run_id
+    board = Storyboard.model_validate_json(
+        (run_dir / "storyboard.json").read_text("utf-8"))
+
+    if guard_balance:
+        g = fal_billing.affordable(len(board.shots))
+        if g["enabled"] and not g["ok"]:
+            raise RuntimeError(
+                f"fal balance ${g['balance']:.2f} cannot cover {len(board.shots)} planned "
+                f"clip(s) (~${g['needed']:.2f} needed, short ${g['shortfall']:.2f}). "
+                f"Top up at fal.ai/dashboard/billing or pass guard_balance=False.")
+        if g["enabled"]:
+            log(f"[render] fal balance ${g['balance']:.2f}, plan needs ~${g['needed']:.2f}")
+
+    kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
+    script = _run_script(run_dir)
+    cut = run_dir / "product_cutout.png"
+    cutout = str(cut) if cut.exists() else None
+    product_desc = _picked_product_desc(run_dir)   # anchors the seed to the real item (9.6)
+    led = Ledger(run_dir)
+
+    if single_pass:
+        timeline = sequencer.render_single_pass(board, kit=kit, run_dir=run_dir,
+                                                style=style, aspect=aspect,
+                                                resolution=resolution, led=led, log=log)
+        rlog = None
+    else:
+        client = _client()
+        timeline, board, rlog = sequencer.render_storyboard(
+            board, kit=kit, run_dir=run_dir, script=script, style=style,
+            cutout_path=cutout, product_desc=product_desc, aspect=aspect, resolution=resolution,
+            replan=lambda shot, reason: story_brain.replan_shot(
+                client, kit, shot, reason=reason)[0],
+            strict=strict, led=led, log=log)
+        (run_dir / "storyboard_rendered.json").write_text(
+            board.model_dump_json(indent=2), encoding="utf-8")
+        (run_dir / "repair_log.json").write_text(rlog.model_dump_json(indent=2),
+                                                 encoding="utf-8")
+
+    if finish and script is not None:
+        timeline = finish_timeline(timeline, board, script, kit, run_dir,
+                                   client=_client(), led=led, log=log)
+
+    if not keep_work:
+        _clean_work(run_dir)          # keep only paid artifacts + the finished ad (9.4)
+
+    billed, used = sequencer.billed_seconds(board)
+    led.finalize()
+    log(f"[render] {timeline} ({used:g}s of ad, {billed:g}s billed, "
+        f"est ${led.total:.2f})")
+
+    try:                              # reconcile the estimate against fal's invoice (no-op
+        act = fal_billing.write_run_actuals(run_dir)   # without an admin key)
+        if act is not None:
+            log(f"[render] fal actual ${act['actual_usd']:.2f} vs est ${act['estimate_usd']:.2f} "
+                f"({act['delta_pct']:+.1f}%), balance ${act['balance_after_usd']:.2f} "
+                f"-> fal_actuals.json")
+    except Exception as e:            # noqa: BLE001 -- billing readback must never fail a run
+        log(f"[render] fal actuals unavailable ({e!s:.80})")
+
+    return timeline, board, rlog
+
+
+def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, run_dir, *,
+                    client=None, sfx: bool = True, voiceover: bool = True,
+                    captions: bool = True, led=None, log=print) -> str:
+    """Voiceover, SFX and captions over the ASSEMBLED timeline, not per shot.
+
+    One voiceover across the whole ad, muxed once. Splicing per-shot audio at every cut
+    produces exactly the seams the cuts were meant to hide, and per-shot captions cannot
+    know where a sentence crosses a boundary.
+
+    Order matters: the VO lands first so the SFX have something to mix against, and the
+    captions go last because they are checked against the audio that ships.
+    """
+    run_dir = Path(run_dir)
+    work = run_dir / ".work"
+    work.mkdir(parents=True, exist_ok=True)
+    out = timeline
+
+    if voiceover:
+        try:
+            spoken = script.spoken()
+            vo = video_providers.generate_voiceover(spoken, run_dir / "voiceover.mp3",
+                                                    log=log)   # KEPT: paid TTS
+            if led:
+                led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"],
+                           chars=len(spoken))
+            merged = video_providers.merge_audio_onto_video(
+                out, vo["path"], work / "timeline_voiceover.mp4",
+                seconds=board.duration_s, log=log)
+            if led:
+                led.record("audio_merge", merged["provider"], merged["model"],
+                           merged["cost_usd"])
+            out = merged["path"]
+        except Exception as e:  # noqa: BLE001 -- a silent ad is still an ad
+            log(f"[finish] voiceover failed ({e!s:.100}); the timeline stays silent")
+            voiceover = False
+
+    if sfx:
+        try:
+            cues = editor.sfx_cues_for(board)
+            out = editor.add_sfx(out, work / "timeline_sfx.mp4", cues, log=log)
+        except Exception as e:  # noqa: BLE001
+            log(f"[finish] sfx failed ({e!s:.100}); continuing without them")
+
+    if captions and voiceover:
+        try:
+            out = editor.caption_clip(out, run_dir / "video_captioned.mp4",   # KEPT: deliverable
+                                      script.spoken(), run_dir / "voiceover.mp3",
+                                      kit=kit, led=led, log=log)[0]
+        except captions_mod.CaptionDriftError as e:
+            log(f"[captions] REFUSED by the drift gate: {e!s:.140}")
+        except Exception as e:  # noqa: BLE001
+            log(f"[captions] burn failed ({e!s:.100}); shipping uncaptioned")
+
+    # Promote the deliverable out of scratch if the last step landed there (e.g. captions
+    # skipped/failed, so `out` is the .work voiceover/sfx clip). The final ad must survive
+    # the .work cleanup (Phase 9.4).
+    if Path(out).resolve().parent.name == ".work":
+        import shutil
+        final = run_dir / "timeline_final.mp4"
+        shutil.copy(out, final)
+        out = str(final)
+
+    log(f"[finish] {Path(out).name}")
+    return str(out)
+
+
+def make_variants(*, run_id: str, axis: str, values: list, base_clip=None, log=print):
+    """Produce a matched variant set for a run (T10).
+
+    Edit axes (`caption_style`, `aesthetic`) cut the run's finished timeline N ways for
+    zero marginal model cost and write the clips. The `hook_type` axis regenerates N
+    matched scripts and writes them for the operator to render (each is a full render, so
+    the pipeline does not spend that money implicitly).
+
+    Writes the experiment record either way: that is the point of T10, the clean tag that
+    lets performance be attributed back to (axis, value) later.
+    """
+    run_dir = config.OUTPUT_DIR / run_id
+    led = Ledger(run_dir)
+    vdir = run_dir / "variants"
+
+    if axis == "hook_type":
+        script = _run_script(run_dir)
+        if script is None:
+            raise FileNotFoundError(f"{run_dir}/script.json not found; run --storyboard")
+        kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
+        tpl_file = run_dir / "template.json"
+        template = (CreativeTemplate.model_validate_json(tpl_file.read_text("utf-8"))
+                    if tpl_file.exists() else None)
+        vset, scripts, cost = variants.hook_variant_set(
+            _client(), kit, script, values, base_id=run_id, template=template)
+        led.record("variant_scripts", "openrouter", config.TEXT_MODEL, cost)
+        vdir.mkdir(parents=True, exist_ok=True)
+        artifacts = {}
+        for vid, s in scripts.items():
+            p = vdir / f"{vid}.script.json"
+            p.write_text(s.model_dump_json(indent=2), encoding="utf-8")
+            artifacts[vid] = str(p)
+        record = variants.write_record(run_dir, vset, artifacts,
+                                       extra={"note": "render each with --resume/--render"})
+    else:
+        clip = base_clip or next(
+            (run_dir / n for n in _FINAL_CLIP_NAMES if (run_dir / n).exists()), None)
+        if clip is None:
+            raise FileNotFoundError(f"no rendered clip in {run_dir}; run --render first")
+        if axis == "caption_style":
+            script = _run_script(run_dir)
+            text = script.spoken() if script else ""
+            vset, artifacts = variants.caption_variant_set(
+                clip, text, values, base_id=run_id, out_dir=vdir, led=led, log=log)
+        elif axis == "aesthetic":
+            vset, artifacts = variants.aesthetic_variant_set(
+                clip, values, base_id=run_id, out_dir=vdir, log=log)
+        else:
+            raise ValueError(f"unknown variant axis {axis!r}")
+        record = variants.write_record(run_dir, vset, artifacts)
+
+    led.finalize()
+    log(f"[variants] {len(vset.variants)} {axis} variant(s) -> {record}")
+    return vset, record
+
+
+def qa_video(*, run_id: str, clip=None, cutout=None, shot_paths=None, strict: bool = True,
+             run_vlm: bool = False, log=print) -> QAReport:
+    """Run the temporal QA gate over a run's finished clip (T9).
+
+    Verifies the artifact that SHIPS, chosen as the most post-processed clip in the run
+    dir. Verifying an earlier intermediate would miss every defect the editor introduced,
+    which is most of the ones worth catching.
+    """
+    run_dir = config.OUTPUT_DIR / run_id
+    board_file = run_dir / "storyboard.json"
+    if not board_file.exists():
+        raise FileNotFoundError(f"{board_file} not found; run --storyboard first")
+    board = Storyboard.model_validate_json(board_file.read_text("utf-8"))
+
+    if clip is None:
+        clip = next((run_dir / n for n in _FINAL_CLIP_NAMES if (run_dir / n).exists()), None)
+    if clip is None:
+        raise FileNotFoundError(f"no rendered clip in {run_dir}")
+
+    if cutout is None:
+        cut = run_dir / "product_cutout.png"
+        cutout = str(cut) if cut.exists() else None
+
+    # Shot-boundary checks (cut alignment, continuity) run on the PRE-caption assembled
+    # timeline, not `clip`: burned-in per-word captions change every ~0.5s and a frame-diff
+    # cut detector reads each change as a scene cut, which false-fails the gate on the
+    # captioned final. `timeline.mp4` is the silent, caption-free assembly the run keeps.
+    pre_caption = run_dir / "timeline.mp4"
+    cuts_clip = str(pre_caption) if pre_caption.exists() and Path(clip).name != "timeline.mp4" else None
+
+    led = Ledger(run_dir)
+    report = verifier_video.verify(
+        clip, board, _run_script(run_dir), client=(_client() if run_vlm else None),
+        cutout_path=cutout, shot_paths=shot_paths, strict=strict, led=led,
+        work_dir=run_dir / "qa", cuts_clip=cuts_clip, log=log)
+    (run_dir / "qa_report.json").write_text(report.model_dump_json(indent=2),
+                                            encoding="utf-8")
+    led.finalize()
+    log(f"[qa] {Path(clip).name}: {report.verdict} -> {run_dir / 'qa_report.json'}")
+    if report.retry_hint:
+        log(f"[qa] {report.retry_hint}")
+    return report
