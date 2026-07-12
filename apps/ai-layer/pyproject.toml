@@ -14,7 +14,8 @@ dependencies = [
     # Creative Studio generation pipeline (lazy-imported; needed for live runs):
     "pillow>=10.1",          # deterministic compositor (copy/logo/scrim)
     "fal-client>=0.5",       # the only generation provider (FLUX.2 + Bria + Seedance)
-    "imageio-ffmpeg>=0.5",   # bundled static ffmpeg for the video copy overlay
+    "imageio-ffmpeg>=0.5",   # bundled static ffmpeg for the video editor + copy overlay
+    "numpy>=1.26",           # temporal QA frame correlation + teardown shot-diff
     # Neon Postgres data layer (facts store + cost ledger + creative jobs; see #29):
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",

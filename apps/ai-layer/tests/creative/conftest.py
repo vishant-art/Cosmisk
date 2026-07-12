@@ -19,6 +19,15 @@ def _migrate_once():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_live_billing(monkeypatch):
+    """Hermetic tests: config.py autoloads .env, which puts FAL_ADMIN_KEY in the env and would
+    make anything calling fal_billing (the balance guard, per-run actuals) hit the live fal API.
+    Strip it so billing is 'unavailable' and every fal_billing call no-ops. Tests that exercise
+    billing set it back explicitly."""
+    monkeypatch.delenv("FAL_ADMIN_KEY", raising=False)
+
+
 # --- a fake OpenAI-compatible client that routes on the system prompt ---------
 
 class _Msg:
