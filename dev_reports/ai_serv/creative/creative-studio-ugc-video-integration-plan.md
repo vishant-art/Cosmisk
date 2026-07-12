@@ -147,6 +147,38 @@ of risk and the main reason to port in reviewable batches, not one dump.
 
 ---
 
-## 6. What I will NOT do until you say "build it"
-This is a plan. No code, no file moves, no import rewrites yet. On your go I execute Phase 0->1->2->3,
-additively, on a dedicated branch, checking in at each phase boundary with the ported tests green.
+## 6. Build progress
+
+- **Phase 0 DONE** (`550252b`): baseline green (93 creative tests); DB-decoupling shadow for the
+  creative test subtree (root conftest needs Neon PG* creds the local .env lacks).
+- **Phase 1 DONE** (`9a9f33e`): taxonomy + fal_billing + video schema contracts + config constants
+  + ledger cost fns + numpy. 102 tests.
+- **Phase 2 DONE** (`c4b68f5`): full UGC video pipeline ported (11 modules + shopify_products),
+  video orchestrators added to pipeline.py, additive merges to video_providers / prompt_builder /
+  meta_creatives (both-tails cohort API). 385 creative tests pass. Static-ad service untouched.
+
+## 7. Remaining phases
+
+- **Phase 2b -- run() grounding superset (Shopify + cohort teardown).** Merge rnd's run() grounding
+  (both-tails Meta cohort -> teardown -> template.json, Shopify bestseller sourcing -> pickings.json,
+  style/template threaded into generation) into the fork's service-adapted run(), preserving brief
+  mode + on_stage + meta_token + concurrency. Touches the LIVE static-ad path, so its own verified
+  change. Wires Shopify fully (decision: skip nothing).
+- **Phase 3 -- FastAPI endpoints.** `POST /creative/video/plan` (free storyboard preview) +
+  `POST /creative/video/generate` (paid, balance-guarded background job), reusing the existing
+  `_JOBS` store + `GET /creative/jobs/{id}`. Bring the 4 creative service tests under the DB shadow.
+- **Phase S -- Neon persistence + Cloudflare R2 (un-deferred 2026-07-12 per request).** Python-only:
+  - **R2:** new `ai_layer/storage.py` using the S3-compatible API (boto3). Uploads finished run
+    artifacts (final MP4, stills, storyboard/script JSON) to an R2 bucket and returns durable URLs.
+    Env-driven (R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET / R2_PUBLIC_BASE),
+    no-ops to the local static mount when unset (same posture as fal_billing).
+  - **Neon:** persist a run + its outputs via the ai-layer's existing SQLAlchemy/Alembic layer
+    (`ai_layer/db`, where cost_ledger already lives). New additive tables (studio_runs, studio_outputs)
+    + one Alembic migration. Rows carry the R2 URLs + per-run cost (estimate + fal actual).
+- **Phase 4 -- ops.** Dockerfile confirm (imageio-ffmpeg bundled; boto3 added to deps). Add
+  FAL_ADMIN_KEY + R2_* to the Railway service env. Leave rnd/creative in place until a live smoke passes.
+
+## 8. Constraint recap (unchanged)
+Python only. No apps/api / TypeScript. No Watchdog wiring. Frugal (free plan step + balance guard).
+Fail-closed QA. All LLM traffic via brain transports. Live verification still blocked (fal balance
+exhausted + Meta API suspended) -> mock suite is the acceptance gate until both return.
