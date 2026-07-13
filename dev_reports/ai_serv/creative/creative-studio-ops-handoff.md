@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 1 | Add `FAL_ADMIN_KEY` to the ai-layer service | Railway → ai-layer → Variables | Not blocking, but the cost guard is OFF without it |
 | 2 | Point `CREATIVE_OUTPUT_DIR` at a persistent volume | Railway → ai-layer | **Yes** — assets are lost on every redeploy otherwise |
-| 3 | **Apply Alembic migration `0002`** (new `creative_variants` table) | Railway (one-off / deploy hook) | **Yes** — the learning loop silently never persists otherwise |
+| 3 | **Apply Alembic migrations `0002` + `0003`** (new `creative_variants`, `creative_teardowns`) | Railway (one-off / deploy hook) | **Yes** — the learning loop silently never persists otherwise |
 | 4 | Add the `PG*` / `PG*_POOL` test-branch vars to CI | CI env | Yes, for CI — the ai-layer suite can't collect without them |
 | 5 | Top up the fal.ai balance | fal.ai dashboard | **Yes** — balance is negative; all video renders refuse |
 | 6 | Get the Meta API reinstated | Meta | Yes, for grounding |
@@ -87,21 +87,28 @@ Two things live here, and the second one is new:
 `ai_layer/db/repository.py` (`save_job` / `load_job`). That table is already in
 `0001_initial_ai_layer_schema.py` — nothing to add.
 
-**(b) `creative_variants` — NEW, added by migration `0002_creative_variants.py`.** This table is
-the creative studio's performance feedback loop: one row per shipped variant, carrying the
-`meta_ad_id` it became and the realized `thumb_stop_rate` / impressions harvested back from Meta.
-It is what lets the next generation learn from the last one. It is **additive** — no existing
-table is touched.
+**(b) `creative_variants` — NEW (migration `0002`).** The performance feedback loop: one row per
+shipped variant, carrying the `meta_ad_id` it became and the realized `thumb_stop_rate` /
+impressions harvested back from Meta. This is what lets the next generation learn from the last.
+
+**(c) `creative_teardowns` — NEW (migration `0003`).** The account's structural memory: one row
+per torn-down real ad, **both winners and losers**. A teardown costs an ASR call plus a vision
+call and is immutable, so caching it here means we never pay to analyse the same ad twice, and
+the library compounds across runs. Today the analysis dies with the run directory and every run
+re-analyses the same winner.
+
+Both are **additive** — no existing table is touched.
 
 So this is no longer a formality. **Please run Alembic to head** on the Neon prod branch:
 
 ```bash
-python -m ai_layer.db.migrate            # applies head (0001 -> 0002); idempotent
+python -m ai_layer.db.migrate            # applies head (0001 -> 0002 -> 0003); idempotent
 ```
 
 Verify:
 ```sql
-select count(*) from ai_layer.creative_variants;   -- should return 0, not "relation does not exist"
+select count(*) from ai_layer.creative_variants;   -- 0, not "relation does not exist"
+select count(*) from ai_layer.creative_teardowns;  -- 0, not "relation does not exist"
 ```
 
 **Why this matters more than it looks.** Every DB write in the creative path is **best-effort by
@@ -110,9 +117,10 @@ the bytes are on disk). That is the right call for availability, but it means a 
 fails *silently*. Concretely, if `0002` is not applied:
 
 - jobs still generate fine, and
-- **every variant silently fails to persist**, so the loop never accumulates data, the account
-  never builds a prior, and the studio never gets better — with nothing louder than a debug log
-  to tell you.
+- **every variant and every teardown silently fails to persist**, so the loop never accumulates
+  data, the account never builds a prior or a creative graph, and the studio never gets better —
+  with nothing louder than a debug log to tell you. Worse, the teardown cache is what stops us
+  re-paying to analyse the same ads every single run.
 
 Please apply it once and, if you can, alert on write failures.
 
