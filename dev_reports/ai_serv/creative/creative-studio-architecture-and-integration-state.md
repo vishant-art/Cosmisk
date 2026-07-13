@@ -1,279 +1,368 @@
-# Creative Studio: Architecture, State in Main, and Integration Path
+# Creative Studio: Architecture and Integration State
 
-> Status: reference doc, written 2026-07-12. Explains how the creative studio works (`rnd/creative`), what already exists in the main app (`apps/`), and the concrete changes needed to make `rnd/creative` the studio the main app actually runs.
+> Status: reference doc. Rewritten 2026-07-13, after the UGC pipeline was integrated into the
+> deployed service and the three open gaps (persona, performance loop, creative graph) were built.
+> Supersedes the 2026-07-12 version, which described two diverged copies and a port that had not
+> happened yet.
 >
-> Companion docs (same folder): `creative-studio-system-architecture.md` (deep dive), `creative-studio-integration-plan.md` (the M4 port plan), `creative-studio-db-design.md` (persistence), `creative-studio-object-storage-plan.md` (storage), `creative-ugc-orchestration-roadmap.md` (the T1-T11 build log).
+> Companions (same folder): `creative-studio-ops-handoff.md` (what infra needs doing),
+> `creative-studio-gap-analysis-vs-competitors.md` (why these features and not others),
+> `creative-studio-ugc-video-integration-plan.md` (the port, now executed),
+> `creative-ugc-orchestration-roadmap.md` (the T1-T12 build log).
 
 ---
 
-## TL;DR (read this first)
+## TL;DR
 
-There are **two copies** of the creative studio in this repo, and they have diverged badly:
+**The two copies are no longer diverged.** `rnd/creative/src/` (R&D) and
+`apps/ai-layer/ai_layer/creative/` (deployed) now hold the same studio: same modules, same logic,
+same tests. They differ only in imports (flat vs package), in their persistence backend, and in
+three deployment-only files.
 
-1. **`rnd/creative/` (R&D, the good one).** A complete UGC video-ad generator: winning ad -> teardown -> script -> storyboard -> per-shot render with a repair ladder -> ffmpeg edit -> concat -> voiceover/SFX/captions -> temporal QA gate -> A/B variants. Plus a full cost system (estimate ledger + live fal billing reconciliation). 28 modules, ~400 tests. Last changed 2026-07-11.
+| | `rnd/creative/src` | `apps/ai-layer/.../creative` |
+|---|---|---|
+| Full UGC video pipeline | yes | yes |
+| Persona / prior / graph | yes | yes |
+| Store | `library.py` (JSON files) | `ai_layer.db.repository` (Neon) |
+| Only-in-this-tree | `library.py` | `service.py`, `video_post.py`, `__init__.py` |
+| Tests | 439 pass | 440 pass |
 
-2. **`apps/ai-layer/ai_layer/creative/` (deployed, the old one).** A fork taken around 2026-07-01, wired end-to-end into the product (Angular UI -> Fastify API -> Python FastAPI service -> asset byte-proxy). But it only carries the **static-ad half plus a single-clip video "smoke"**. It is missing 13 of the R&D modules, including the *entire* storyboard-driven UGC video pipeline, the cost system, and every fix made since July 1.
+`rnd/` is permanent. It is where experiments happen, and it must never fall behind the deployed
+tree, or you would be experimenting against a studio that no longer exists.
 
-So the framing of "integrate rnd into main" is **not** "build new plumbing." The plumbing (UI, API routes, a deployed Python service, a stable HTTP job contract, DB tables, an asset proxy) already exists and works. The real work is: **bring the deployed Python service up to what `rnd/creative` now is**, then close a small set of genuinely-missing pieces (durable storage, durable job store, DB persistence of full runs, multi-tenant tokens, connector de-duplication, unified cost tracking).
+**What the studio now is:** a UGC video-ad generator that grounds itself in an account's real
+ads, renders a storyboard shot by shot with a repair ladder, verifies its own output temporally,
+and — new — **learns from what it shipped**.
 
-One clarification that saves confusion: the `services/intelligence-integration.ts` "dormant brain" seam that CLAUDE.md talks about is a **separate subsystem** (strategic analysis of the Watchdog and reports). It has nothing to do with creative generation. Do not couple them.
+**What it has never done:** run live. Every test is mock-based ($0, no network). The fal balance
+is negative and the Meta API is suspended, so no real render, no real grounding, and no prior or
+graph built from real numbers. Treat everything below as code-complete and test-green, not proven.
 
 ---
 
-# Part 1: How the Creative Studio Works (`rnd/creative`)
+# Part 1: How the Studio Works
 
-## 1.1 The one founding rule
+## 1.1 The founding rule
 
-The generative model **never renders text or a logo**. Copy, captions, and the logo are placed deterministically (Pillow for images, ffmpeg for video) and then verified. Diffusion models smear text, so the studio treats "no text in the prompt" as an invariant (it does not even name "text" or "logo" in the positive prompt, since naming primes the model to draw them; the suppression happens in a negative list). fal is the only image/video provider; the language brain and the vision critic run on OpenRouter.
+The generative model **never renders text or a logo**. Copy, captions and the logo are placed
+deterministically (Pillow for stills, ffmpeg for video) and then verified. The positive prompt
+does not even *name* text or logo, because naming primes a diffusion model to draw them;
+suppression lives in a negative list. fal is the only image/video provider; the language brain and
+the vision critic run on OpenRouter.
 
 ## 1.2 Two tracks, one brain
 
-The studio has two output tracks that share one identity brain, one provider layer, one cost ledger, and one fail-closed QA philosophy:
+- **Static-ad track:** campaigns -> BrandKit -> text-free background -> Pillow composite -> static
+  QA gate -> multi-format outpaint. Entry: `pipeline.run` / `resume`.
+- **UGC-video track:** teardown -> script -> storyboard -> per-shot render + repair -> ffmpeg edit
+  -> concat -> voiceover/SFX/captions -> temporal QA gate -> variants. Entry: `plan_story` ->
+  `render_story` -> `qa_video` -> `make_variants`.
 
-- **Static-ad track** (the original): campaigns -> BrandKit -> logo -> text-free background -> Pillow composite -> static QA gate -> multi-format outpaint. Entry: `pipeline.run` / `pipeline.resume`.
-- **UGC-video track** (the newer, larger one): teardown -> script -> storyboard -> per-shot render+repair -> ffmpeg edit -> concat -> voiceover/SFX/captions -> temporal QA gate -> variants. Entry: `plan_story` -> `render_story` -> `qa_video` -> `make_variants`.
+Both share one identity brain, one provider layer, one cost ledger, and one fail-closed QA
+philosophy.
 
-This doc focuses on the video track, since that is the capability the main app does not yet have.
-
-## 1.3 End-to-end data flow (UGC video)
+## 1.3 End-to-end flow (UGC video)
 
 ```
-  Meta account (winners + losers)          Shopify store (bestseller product)
+  Meta account (BOTH ROAS tails)              Shopify store (bestseller)
             |                                          |
             v  _meta_cohort                            v  _shopify_products
-   winners/ (stills feed FLUX,          products/ (featured image -> BiRefNet
-   MP4s feed teardown), losers/         cutout -> i2v product seed)
+   winners/ + losers/  (stills condition FLUX;   products/ -> BiRefNet cutout
+    MP4s feed the teardown)                       -> i2v product seed
             |                                          |
             +---------------- pickings.json -----------+
             |
             v
-   [2] TEARDOWN a top winner MP4  ->  template.json   (CreativeTemplate: shots,
-        (frame-diff cuts, ASR hook, VLM classify)      hook, pacing, format)
+   [2] TEARDOWN every ad with an MP4, BOTH cohorts -> template.json (this run)
+        (frame-diff cuts, ASR hook, closed-set VLM)   + creative_teardowns (forever)
             |
             v
-   [1] BrandKit (identity)  ->  brand_kit.json     [3] logo.png
+   [1] BrandKit -> brand_kit.json      [1b] CreatorKit -> creator_kit.json (WHO is on camera)
             |
             v
-   [4] SCRIPT (ordered spoken beats)  ->  script.json      (opens on a hook)
+   [4] SCRIPT (ordered spoken beats) -> script.json          (must open on a hook)
+            |                          conditioned on: template + prior + graph + creator
+            v
+   [5] STORYBOARD (durations refitted) -> storyboard.json    (every beat covered)
             |
             v
-   [5] STORYBOARD (shots, durations refitted)  ->  storyboard.json
-            |                                        (every beat covered)
-            v
-   [6/7] PER-SHOT RENDER + REPAIR + EDIT  (the money stage)
-        for each shot:
-          build prompt -> snap to allowed Seedance duration
-          -> CACHE CHECK (renders/gen_<key>.mp4)
-          -> Seedance i2v/ref2v/t2v (fal)  [balance-guarded before spend]
-          -> trim to plan duration -> ffmpeg edit plan
-          -> PER-SHOT QA (verify_shot)  --fail-->  REPAIR LADDER
-                                                    (retry -> reprompt ->
-                                                     replan -> drop)
+   [6/7] PER-SHOT RENDER + REPAIR + EDIT   (the money stage; balance-guarded)
+          prompt -> snap to an allowed Seedance duration -> CACHE CHECK
+          -> Seedance i2v/ref2v/t2v -> trim -> ffmpeg edit
+          -> PER-SHOT QA --fail--> REPAIR LADDER (retry->reprompt->replan->drop)
             |
             v
-   [8] CONCAT (stream-copy, audio dropped)  ->  timeline.mp4
+   [8] CONCAT (stream-copy, audio dropped) -> timeline.mp4
             |
             v
-   [9] FINISH: voiceover (TTS) -> SFX -> captions (drift-gated)
-            ->  video_captioned.mp4   (the ad that ships)
+   [9] FINISH: voiceover (ONE take, persona voice) -> SFX -> captions (drift-gated)
+            -> video_captioned.mp4   (the ad that ships)
             |
             v
-   [10] TEMPORAL QA GATE (verify)  ->  qa_report.json
-        cut/continuity checked on pre-caption timeline.mp4;
-        product/caption/vlm checked on the shipped clip
+   [10] TEMPORAL QA GATE -> qa_report.json
+        cuts/continuity on the PRE-caption timeline; product/caption/VLM on the shipped clip
             |
             v
-   [11] VARIANTS (single-axis A/B/n)  ->  variants/
+   [11] VARIANTS (single-axis A/B/n) -> variants/ + creative_variants rows
             |
             v
-   COST RECONCILE: ledger.jsonl (estimate) vs fal invoice -> fal_actuals.json
+   [12] THE LOOP:  operator publishes -> stamps meta_ad_id -> harvest -> prior
+            |
+            +-----> conditions the NEXT run (back to [4])
+
+   COST: ledger.jsonl (estimate) reconciled against the fal invoice -> fal_actuals.json
 ```
 
-Every stage writes typed artifacts into `output/<run_id>/`. The run is resumable: each entry point reads the prior stage's JSON, so you can plan a storyboard, inspect it, then render.
+Every stage writes typed artifacts to `output/<run_id>/`. Runs are resumable: each entry point
+reads the previous stage's JSON, so you can plan a storyboard, look at it, and only then pay to
+render it.
 
-## 1.4 Stage-by-stage logic
+## 1.4 The evidence stack (the part that matters most)
 
-**[2] Teardown (`teardown.py`).** Turns a real winner's MP4 into a typed `CreativeTemplate`. The provenance rule: every field is exactly one of (a) measured from frames, (b) measured from ASR, or (c) classified from a closed set, and nothing else ships (`extra="forbid"`). Shot boundaries come from mean absolute inter-frame difference on a downsampled RGB frame (RGB, not luma, because a red-to-green cut is a large color change but a tiny luma change). The spoken hook is the words before the first cut; the CTA start is the first match against a closed CTA lexicon. Format/hook/camera/lighting are one VLM call over a 3x3 keyframe contact sheet, classified against closed taxonomies (an off-set label raises rather than being invented). It degrades honestly: a silent clip yields `spoken_hook=None`, and a teardown failure never blocks the run.
+The brain is conditioned on **three kinds of evidence, which are not equally strong**, and the
+whole design turns on keeping them apart. A model handed two blocks of evidence will otherwise
+weight them the same.
 
-**[4] Script (`story_brain.generate_script`).** Ordered `ScriptBeat`s from OpenRouter, grounded in the template's brief when present. Word budget is roughly `seconds * 2.4`. Hard invariant: a script must open on a `hook` beat.
+| Tier | What it is | Strength | Where |
+|---|---|---|---|
+| **Template** | ONE real winner, torn down: its hook, pacing, format, structure | A concrete thing to reuse. Not a claim. | `_structure_block` |
+| **Prior** | A variant set: one axis changed **on purpose**, everything else held | **Causal.** The only causal claim in the system. | `_prior_block` |
+| **Graph** | Atoms that winners use more than losers | **Correlational**, and says so in its own first line. | `_graph_block` |
 
-**[5] Storyboard (`story_brain.generate_storyboard` + `storyboard.build`).** The model proposes shots, but its durations are **not trusted**: `fit_durations` rescales them in integer tenths so they sum to the target exactly, each shot within min/max bounds. `validate` enforces coverage (every script beat maps to a shot), opens-on-hook, closes-on-CTA, and sum-equals-target. A coverage violation is a failed plan, retried once with the violation as a hint, never patched by inventing a shot. Each `Shot.purpose` is a **foreign key to a ScriptBeat**, which is what makes isolated shot repair possible later.
+They are injected in that order (`story_brain`), strongest claim first, and the weakest one
+labels itself: *"This is a CORRELATION, not a proven cause: use it to choose between equally good
+options, not to override the script."*
 
-**[6/7] Per-shot render + edit (`sequencer.py`).** For each shot: build a text-free prompt, snap the duration up to the nearest allowed Seedance value, check the content-addressed cache, call the video provider, trim back to the planned duration, apply the ffmpeg edit plan, then run the per-shot QA. Two seed modes:
-- A **hero-product shot** with a product cutout gets an image-to-video "product seed": FLUX regenerates the item on its own (flat-lay or ghost mannequin, person hard-excluded), and that still seeds Seedance i2v. This is what puts the real product on screen without feeding a person into a reference (Seedance rejects references containing people).
-- A **sequential-mode shot** gets its predecessor's last frame as a reference-to-video reference for continuity.
+**The prior refuses to overclaim** (`outcomes.py`, `config.PRIOR_*`):
+- comparisons happen only **within a variant set** (same base, one axis). Two ads from different
+  runs differ for a hundred reasons; averaging them is how you come to believe something a real
+  A/B test would have killed.
+- an arm under **1,000 impressions may not speak at all** — a proportion over 40 impressions is
+  noise with a decimal point.
+- a gap that fails a **two-proportion z-test** is reported `UNDECIDED`, never as a preference.
+- a new account gets **no prior**. "We do not know yet" is a correct answer.
 
-**[8] Concat (`editor.concat`).** Stream-copy join (all inputs are already the same codec/geometry), and audio is dropped on purpose: one voiceover runs across the whole timeline and is muxed once, so per-shot audio never gets spliced at the cuts it was meant to hide.
+**The graph refuses to be unidentifiable** (`graph.py`): it emits nothing without a **negative
+class**, however many winners it has. "Pattern interrupt appears in 60% of winners" is exactly as
+true, and exactly as meaningless, as "60% of winners ran on a Tuesday" — you cannot estimate an
+effect from a sample selected on the effect. This is why the cohort fetch pulls **both tails**,
+and why **losers are now torn down** (they used to be downloaded and never opened).
 
-**[9] Finish (`pipeline.finish_timeline`).** Order is enforced: voiceover first (so SFX have something to mix against), then SFX (a punch on the hook, a whoosh on every cut), then captions last (so they are checked against the audio that actually ships). Every step is best-effort except the caption drift gate, which fails closed.
+The label is always `thumb_stop_rate`, never ROAS. A hook can plausibly cause someone to stop
+scrolling; it cannot cause the landing page, the price, the LTV or the promo calendar. Training on
+ROAS trains on the funnel.
 
-**[10] Temporal QA gate (`verifier_video.py`).** Covered in 1.6.
+## 1.5 The creator persona (`CreatorKit`)
 
-**[11] Variants (`variants.py`).** Single-axis A/B/n discipline: a `hook_type` axis regenerates matched scripts and re-renders; `caption_style` / `aesthetic` axes recut the finished clip at zero model cost. Two axes at once are rejected (the result would be attributable to neither).
+WHO is on camera, held constant. Split by **actuator**, because the three halves are honoured by
+three different systems with three very different levels of reliability, and the schema must not
+pretend otherwise:
 
-## 1.5 The provider layer and the render cache
+| Half | Fields | Actuator | Reality |
+|---|---|---|---|
+| voice | `voice_id` | MiniMax TTS | **Guarantee.** Exact. |
+| speech | `energy`, `filler_words`, `gesture` | the script brain | Reliable wish: an LLM asked for filler words obeys. |
+| visual | `age_range`, `gender`, `appearance`, `wardrobe`, `setting` | the video model | A wish that mostly does **not** hold across independent renders. |
 
-**Images (`image_providers.py`, fal-only, all text-free).** `flux` (FLUX.2 flex, up to 10 reference images), `flux_pro`, `product` (Bria product-shot, drops a real product into a generated scene), `cutout` (BiRefNet background removal), `outpaint` (deterministic blur by default, generative fill opt-in). `generate_with_fallback` tries the primary provider and falls through on any error.
+Voice consistency turned out to be **already structural**: `finish_timeline` generates **one**
+voiceover for the whole timeline (never spliced per shot), so there is no per-shot voice to drift.
+The persona only had to choose it.
 
-**Video (`video_providers.py`, Seedance 2.0 via fal).** The endpoint is picked by inputs: references -> ref2v, a seed image -> i2v, neither -> t2v. `generate_with_fallback` progressively drops **native audio first, then the seed**, because Seedance rejects clips whose auto-generated audio trips its content filter, so audio-off matters more than keeping the seed. Voiceover is fal-hosted MiniMax Speech-02 HD; word-level ASR is fal Whisper (word spans drive both captions and teardown); the audio mux is fal ffmpeg.
+The face is the hard half. `pin_face` (**off by default, an experiment**) generates one still of
+the creator and i2v-seeds every non-hero shot from it — the only lever Seedance offers, because its
+ref2v path **rejects references containing a person** (fal's content filter; this is the wall
+`_product_seed` was built to get around). Whether it also rejects a person as an *i2v seed* is
+**unverified** — the balance is empty.
 
-**Content-addressed render cache (`sequencer._gen_key`).** A 12-char SHA1 of (prompt, reference basenames, seed basename, duration, resolution, aspect, attempt). The `attempt` is deliberately in the key so a repair re-rolls a fresh render, while a plain re-run of a clean board hits the cache at $0. Cached clips live at `renders/gen_<key>.mp4` (the paid artifact that survives scratch cleanup); trim/edit intermediates live in `.work/` and are deleted on success.
+The failure mode that matters: `generate_with_fallback` silently degrades a rejected seeded call to
+t2v, which would ship **five different faces and report success**. `render_shot` therefore shouts
+when conditioning is dropped and stamps it on the ledger row. A persona that quietly lies is worse
+than no persona.
 
-## 1.6 The repair ladder and the QA gate (why this is the hard part)
+Priority where the two seeds collide (Seedance takes one image **or** a ref list, never both):
+a hero shot keeps the **product** seed; everyone else gets the face.
 
-The core insight: a video model **almost never raises an error**. Seedance confidently returns a wrong-but-plausible clip. So failure is **detected by QA**, not caught as an exception, and recovery hangs off the per-shot gate.
+## 1.6 Repair ladder and the temporal QA gate (the hard part)
 
-**Repair ladder (`recovery.py`).** On a per-shot QA failure the ladder escalates: `retry` (same prompt, exploit stochasticity) -> `reprompt` (prompt seeded with the QA hint) -> `replan` (a different shot serving the same beat purpose) -> `drop` (redistribute the seconds). A non-repairable blocking check (for example a missing product cutout) stops the board immediately instead of paying to prove the point four times. A global render cap (`RECOVERY_MAX_TOTAL_RENDERS`) bounds the cost of a systematically broken renderer. Independent mode keeps a repair local; sequential mode re-renders the tail because each shot was conditioned on the previous one's last frame.
+A video model **almost never raises an error**. Seedance confidently returns a wrong-but-plausible
+clip. So failure is **detected by QA**, not caught as an exception.
 
-**Temporal QA gate (`verifier_video.py`).** The studio can verify its own temporal output because it *placed* the cuts and captions and knows the durations, so most checks are arithmetic, not detection. The checks:
-- **cut alignment**: detected cuts vs planned cut times (tolerance 0.30s); a count mismatch fails.
-- **continuity**: zero-mean normalized correlation across each planned cut; too-high (nothing changed, a stall/duplicate) fails in either mode, too-low (lost the thread) fails only in sequential mode.
-- **product presence**: masked correlation of gradient magnitude under the cutout's alpha, for hero-product shots (threshold 0.35); no cutout -> inconclusive and non-repairable.
-- **caption/audio drift**: ASR the final mux and compare to the script text (drift <= 0.35).
-- **shot motion**: every frame's correlation to the first frame; a frozen shot (the renderer held its seed) is caught.
-- **VLM critique**: one vision call returning issues from a closed set only.
+**Repair ladder (`recovery.py`):** `retry` (same prompt; models are stochastic) -> `reprompt`
+(prompt seeded with the QA hint) -> `replan` (a different shot serving the same beat) -> `drop`
+(redistribute the seconds). A non-repairable check (e.g. no product cutout) stops the board
+immediately rather than paying four times to be told the same thing. A global render cap bounds a
+systematically broken renderer.
 
-**Fail-closed verdict.** `failed = any(hard failure) or (strict and any(inconclusive))`. Inconclusive is not a pass: in strict mode "we could not prove this is good" fails the gate. `strict=False` is the explicit, logged decision to ship unverified. Two recent fixes live here: cut/continuity now run on the **pre-caption `timeline.mp4`** (burned-in per-word captions change every ~0.5s and a frame-diff detector reads each change as a cut), and the product seed now isolates the product so an apparel model is not carried into the ad.
+**Temporal QA gate (`verifier_video.py`).** The studio can verify its own temporal output because
+it *placed* the cuts and captions and knows the durations — so most checks are **arithmetic, not
+detection**:
 
-## 1.7 The cost system (two sources of truth)
-
-- **`ledger.py` (a-priori estimates).** fal returns no cost inline, so cost is computed from published rates and written one JSONL row per step to `ledger.jsonl`, with a `TOTAL` row on finalize. OpenRouter costs are the exception: they come back exact and are read, not estimated.
-- **`fal_billing.py` (ex-post truth).** Reads fal's actual charges through the Platform API using a separate **`FAL_ADMIN_KEY`** (the render path only ever carries `FAL_KEY`; the admin scope is isolated). It provides: `balance()`, a pre-spend `affordable(n_clips)` guard that `render_story` calls before rendering (this is the guard that prevents the overdraw that once locked the account), and `reconcile()` / `write_run_actuals()` which compare a run's estimate to the invoice over the run's time window and write `fal_actuals.json`. Everything no-ops gracefully when the admin key is absent. Observed reality: the estimate lands about 1% low per Seedance clip, and the whole two-run reconciliation matched the invoice to within a cent once a fal API quirk was handled (the `billing-events` endpoint filters on `start`/`end`, and silently ignores `start_time`/`end_time`).
-
-## 1.8 Schemas and config
-
-All state is typed pydantic contracts (`schemas.py`), flowing identity -> argument -> render -> verify: `BrandKit`, `Script`/`ScriptBeat`, `Shot`/`Storyboard`, `CreativeTemplate`, `RepairLog`, `CaptionCue`/`CaptionStyle`, `EditPlan`/`SfxCue`, `QACheck`/`QAReport`, `Variant`/`VariantSet`, `RunManifest`. Closed vocabularies live in `taxonomy.py` and `coerce` raises on off-set labels. `config.py` holds model IDs as constants (a vendor rename is a one-line edit) plus every tuned threshold, and loads the repo-root `.env` by walking up the tree.
-
-## 1.9 The shared support layer (`rnd/src`) and packaging reality
-
-The creative pipeline imports two modules from `rnd/src/` for data sourcing: `meta_creatives.py` (pulls both ROAS tails of an account, downloads winner stills to condition FLUX and winner MP4s to feed teardown) and `shopify_products.py` (ranks bestsellers by order revenue, downloads the featured image). Both follow the same posture: loud graceful degradation, never block a run.
-
-**Packaging is the friction.** `rnd/` is not an installable package: no `pyproject.toml`, no `__init__.py`, flat module names (`import config`, `import shopify_products`) made resolvable only by runtime `sys.path.insert` calls in `pipeline.py`, `campaign_select.py`, `main.py`, and every test. This works for a CLI but is exactly what integration has to undo.
-
----
-
-# Part 2: State of the Creative Studio in the Main App (`apps/`)
-
-The main app is a TypeScript/Node monorepo plus two Python services. `server/` is dead (only `node_modules`, no tracked source); the live backend is `apps/api`.
-
-| App | Role | Stack |
-|---|---|---|
-| `apps/api` | Primary backend: auth, DB, all product routes, serves the SPA | Node + TypeScript, Fastify 5, Drizzle ORM, `pg` (Neon Postgres), JWT |
-| `apps/ai-layer` | Python sidecar: RAG chat, brain insights, **and the deployed creative pipeline** | Python, FastAPI + uvicorn, SQLAlchemy + Alembic |
-| `apps/connectors` | Python library: one facade `get_snapshot()` / `get_assets()` over Meta + Shopify + Google | Python package `connectors` |
-| `apps/web` | Frontend SPA (Creative Studio, cockpit, UGC studio, etc.) | Angular, RxJS |
-
-## 2.1 The main app already ships a Creative Studio
-
-This is the surprise: creative generation is not greenfield. The full path exists and works today:
-
-```
-apps/web (Angular)                    apps/api (Fastify/TS)                 apps/ai-layer (Python/FastAPI)
-  creative-studio.service.ts  --->  /creative-studio routes           --->  /creative/generate  -> {job_id}
-  creative-cockpit / ugc-studio      creative-gen-client.ts (HTTP)          /creative/jobs/{id} (poll)
-  <video>/<img> tags          <---  /creative-studio/asset/:job/*   <---   /creative/assets/... (static mount)
-                                     (byte-proxy, no JWT on media)
-```
-
-- **Frontend** (`apps/web`): features `creative-cockpit`, `creative-engine`, `ugc-studio`, `ai-studio`, `graphic-studio`, `director-lab`; `creative-studio.service.ts` already models `StudioGeneration` with `stage`, `progress[]`, `brand_kit`, `winners[]`, `outputs[]`. This is exactly where generated video would surface.
-- **API** (`apps/api`): `routes/creative-studio.ts` exposes generate/status/asset endpoints; `services/creative-gen-client.ts` is a thin, flag-gated HTTP client (`creativeGenEnabled()` = `Boolean(config.aiLayerUrl)`); assets stream back through `GET /creative-studio/asset/:jobId/*` so `<video>`/`<img>` tags load without a JWT header.
-- **DB** (Neon, Drizzle, `apps/api/src/db/pg-schema.ts`): `studioGenerations` (with M4 columns `aiJobId`, `stage`, `progressJson`, `brandKitJson`, `winnersJson`, `costCents`), `studioOutputs` (`outputJson`, `assetUrl`, `scoreJson`), `scorePredictions`. Plus a broader creative surface (`creativeSprints`/`creativeJobs`/`creativeAssets`, `ugc_projects`/`ugc_concepts`/`ugc_scripts`, and a set of creative-intelligence tables).
-- **Deploy**: three units on the existing infra: `apps/api` (Railway, Node), `apps/web` (Vercel, Angular), `apps/ai-layer` (Railway, Python 3.12, `uvicorn`, its own Dockerfile that already bundles `apps/connectors` and already declares creative deps `pillow`, `fal-client`, `imageio-ffmpeg`).
-
-## 2.2 What the deployed Python pipeline actually does (and does not)
-
-The deployed copy at `apps/ai-layer/ai_layer/creative/` is a **fork frozen around 2026-07-01**. Its public entry points are only `run` (static multi-format ads), `resume`, and `video_smoke` (a single seeded clip). Its FastAPI `service.py` drives those via `/generate` + `/jobs/{id}`.
-
-It is **missing 13 modules** that `rnd/creative` has, which is the entire difference:
-
-| Missing in deployed | What it is |
+| Check | Fails when |
 |---|---|
-| `story_brain.py`, `storyboard.py` | script + storyboard planning (the multi-shot plan) |
-| `sequencer.py`, `recovery.py` | per-shot render orchestration + the repair ladder |
-| `editor.py`, `captions.py`, `sfx.py` | the deterministic ffmpeg editor, per-word captions, SFX |
-| `teardown.py` | winner MP4 -> CreativeTemplate |
-| `verifier_video.py` | the temporal QA gate |
-| `variants.py` | single-axis A/B/n variant sets |
-| `taxonomy.py`, `brain.py` | closed vocabularies, shared LLM transport |
-| `fal_billing.py` | the live cost/balance/reconciliation system |
+| shot duration | off plan by > 0.15s |
+| shot motion | every frame correlates >= 0.99 with the first (a frozen render) |
+| cut alignment | wrong cut count, or a cut > 0.30s off plan |
+| continuity | >= 0.98 across a cut (a stall/duplicate), or < 0.75 in sequential mode |
+| product presence | masked gradient correlation < 0.35 on a hero shot |
+| caption/audio drift | ASR of the shipped audio diverges > 0.35 from the script |
+| VLM critique | any issue from a **closed** set (incl. the new `identity_drift`) |
 
-Net: **the deployed studio produces static ads and a single smoke clip; it cannot produce the storyboard-driven, QA-gated, multi-shot UGC video ad at all.** That capability, plus the cost system and all fixes since July 1 (QA cut-alignment, product isolation), exist only in `rnd/creative` and are not deployed.
+**Fail-closed:** `failed = any(hard) or (strict and any(inconclusive))`. Inconclusive is **not** a
+pass — "we could not prove this is good" fails the gate in strict mode. `strict=False` is the
+explicit, logged decision to ship unverified.
 
-## 2.3 Honest gaps in main (independent of the fork)
+Two subtleties worth keeping: cuts/continuity run on the **pre-caption `timeline.mp4`** (burned-in
+per-word captions change every ~0.5s and a frame-diff detector reads each change as a scene cut),
+and correlation is zero-mean normalized, so a re-grade of the same footage still scores ~1.0 where
+a naive hash would call it a different frame.
 
-- **No durable object storage** anywhere in the repo. Generated assets sit on the ai-layer's local disk and are served by a byte-proxy; they vanish on redeploy. This is the one genuinely new architectural dependency and blocks any outbound client delivery (WhatsApp card, weekly HTML report).
-- **In-process job store**: the Python service tracks jobs in a `_JOBS` dict (single uvicorn worker, lost on restart), and `apps/api` polls with an 8-minute deadline. A full UGC render can exceed both.
-- **Creative run persistence to the TS schema is partial**: the additive `studioGenerations`/`studioOutputs` columns exist and a run was persisted to Neon on 2026-07-01, but the full-run mapping is not complete.
-- **Single global Meta token**: the pipeline reads one `META_ACCESS_TOKEN`; per-user `X-Meta-Token` plumbing is designed but not wired through.
-- **Connector duplication**: the creative pipeline fetches Meta creatives and Shopify products with its own code (`meta_creatives.py`, `shopify_products.py`) instead of the canonical `apps/connectors` facade (`get_assets()` / `connectors.shopify`).
-- **Split cost tracking**: creative spend records only to the Python ledger, not the TS `cost_ledger`, and is not yet behind a plan-tier daily cap.
+## 1.7 Cost: two sources of truth
+
+- **`ledger.py` (a-priori).** fal returns no cost inline, so cost is computed from published rates,
+  one JSONL row per step + a `TOTAL`. OpenRouter is the exception: exact, and read rather than
+  estimated.
+- **`fal_billing.py` (ex-post).** Reads fal's *actual* charges via the Platform API using a separate
+  **`FAL_ADMIN_KEY`** (the render path only ever carries `FAL_KEY` — admin scope is isolated).
+  Provides `balance()`, the pre-spend `affordable(n_clips)` guard `render_story` calls **before**
+  spending (this is what prevents the overdraw that once locked the account), and
+  `reconcile()`/`write_run_actuals()`. All of it no-ops gracefully without the admin key.
+
+Observed: the estimate lands ~1% low per Seedance clip. One Seedance clip is **~$1.22**, and a
+typical board is 5-6 shots, so **~$6-8 per video**. A teardown, by contrast, is ~1 cent (one ASR +
+one vision call), which is why tearing down the whole cohort is affordable — and it is cached by
+`(brand_id, ad_id)` forever, since an ad's structure does not change after it ran.
+
+## 1.8 Frugality is built into the API shape
+
+`/creative/video/plan` is **$0** (one LLM call) and returns the shot list **plus a quote**: clips,
+estimated USD, live balance, affordable yes/no. `/creative/video/generate` is the only call that
+spends, and it returns **402** with the shortfall rather than starting a board the balance cannot
+finish — a half-rendered board is the worst outcome, because the clips it *did* render are already
+paid for.
 
 ---
 
-# Part 3: What It Takes to Integrate `rnd/creative` Into Main
+# Part 2: State in the Main App
 
-The boundary is already decided and already built: a **separate Python service the Node API calls over HTTP** (the same pattern the analytics/chat layer uses). Porting to TypeScript was considered and rejected (the pipeline is Pillow + fal + ffmpeg + OpenRouter). So integration is not re-architecture; it is **bringing `apps/ai-layer/ai_layer/creative/` up to `rnd/creative`, then closing the gaps in 2.3.**
+## 2.1 It is integrated
 
-Ordered by dependency:
+`apps/ai-layer/ai_layer/creative/` now contains the **full** studio: all the UGC video modules, the
+cost system, the persona, the loop and the graph. Every top-level `def`/`class` in every `rnd`
+module exists in the deployed tree. The static-ad path was preserved byte-for-byte through the
+merge, and the live service was never broken.
 
-### Step 0: Decide the source of truth (the key decision)
-Two diverged copies is the root problem. Pick one direction and make it a rule:
-- **Recommended**: `rnd/creative` is the source of truth; `apps/ai-layer/ai_layer/creative` becomes a thin deployment wrapper (the FastAPI `service.py` + config) around the ported package. Future studio work happens in one place.
-- The alternative (keep editing the deployed copy directly and let `rnd` rot) throws away the entire UGC pipeline and the cost system. Not recommended.
+**HTTP surface** (`creative/service.py`, mounted in `api.py` behind `X-API-Key`):
 
-### Step 1: Package `rnd/creative` (unblocks everything)
-Convert the loose sys.path script collection into an importable package: add `__init__.py`, a `pyproject.toml`, and rewrite the ~7 `sys.path.insert` sites and flat imports (`import config`) into package-relative imports (`from ai_layer.creative import config`). Replace the walk-up `.env` discovery with the host service's `os.getenv` (config from Railway service variables, not a repo-root `.env`).
+```
+POST /creative/generate                    static ads; all grounding ON by default
+POST /creative/video/plan                  $0 — script + storyboard + a COST QUOTE
+POST /creative/video/generate              PAID — render + repair + finish + QA + variants
+GET  /creative/jobs/{job_id}               poll
+POST /creative/variants/{id}/published     THE JOIN — stamp the meta_ad_id (manual)
+POST /creative/learn                       harvest realized metrics, rebuild the prior
+GET  /creative/prior/{account_id}          what this account has PROVEN
+GET  /creative/graph/{account_id}          what its winners CORRELATE with
+GET  /creative/assets/...                  static mount (ephemeral — see 3.2)
+```
 
-### Step 2: Port the 13 missing modules + the recent fixes
-Bring `story_brain`, `storyboard`, `sequencer`, `recovery`, `editor`, `captions`, `sfx`, `teardown`, `verifier_video`, `variants`, `taxonomy`, `brain`, and `fal_billing` into the deployed package, along with the July fixes (QA on the pre-caption clip, product isolation) and the balance guard / reconciliation wiring in `render_story`. Bring the tests with them.
+**Everything is on by default** and each grounding source degrades **gracefully and loudly**
+without credentials (the run still ships ads; the log says `GROUNDING UNAVAILABLE ... proceeding
+UNGROUNDED`). A missing Shopify token is not an outage — it is a quality regression you will only
+see in the logs. Two deliberate exceptions: `no_logo=True` always (a standing rule), and the paid
+storyboard render stays behind the plan/quote split.
 
-### Step 3: Expose the full pipeline through the service
-The deployed `service.py` only drives `run` / `video_smoke`. Extend it so a job can run the full video path: `plan_story` -> `render_story` (-> `finish_timeline`) -> `qa_video` -> optional `make_variants`, streaming `stage`/`progress` back through the existing `/creative/jobs/{id}` contract. Keep the HTTP contract stable so `apps/api` and the Angular UI do not change: `POST /creative/generate -> {job_id}`, `GET /creative/jobs/{id}` (status/stage/progress/assets/brand_kit/winners/cost), `GET /creative/assets/{job}/{path}`.
+**Persistence (Neon, via the existing `ai_layer.db.repository`):**
 
-### Step 4: Durable object storage (the one new dependency)
-Add an object store (R2 or S3, per `creative-studio-object-storage-plan.md`), upload finished assets, and return durable URLs instead of ephemeral local-disk paths. This is a prerequisite for both surviving a redeploy and any outbound client delivery.
+| Table | Migration | Holds |
+|---|---|---|
+| `creative_jobs` | 0001 (existing) | job status/stage/assets/cost; survives a restart |
+| `creative_variants` | **0002 (new)** | the loop: `variant_id` -> `meta_ad_id` -> realized thumb-stop |
+| `creative_teardowns` | **0003 (new)** | the structural library: torn-down ads, BOTH cohorts, cached |
 
-### Step 5: Durable job store + longer renders
-Replace the in-process `_JOBS` dict with a durable job table (the ai-layer's own DB), and lift or restructure the 8-minute poll deadline in `apps/api` so a full multi-shot render (minutes per Seedance clip) can complete without the API giving up.
+Every creative DB write is **best-effort by design**: a failure is caught and never fails a run
+(the generation already happened; the bytes are on disk). That is right for availability and it has
+a sharp edge — **a missing table fails silently**, so the studio would keep generating while
+quietly never learning. See the ops handoff.
 
-### Step 6: Persist full runs to the TS schema
-Map a completed run into `studioGenerations` / `studioOutputs` (columns already designed): brand kit, winners, per-format outputs, `assetUrl`, cost. This is what makes runs show up in the cockpit history and feed the score-prediction join.
+## 2.2 The one manual step
 
-### Step 7: Multi-tenant Meta token
-Thread the per-request `X-Meta-Token` through the pipeline instead of the global `META_ACCESS_TOKEN`, so a run is scoped to the signed-in client's ad account.
+**Nothing in this codebase publishes an ad to Meta.** `meta_live` is GET-only and the token is
+read-only in practice. So the loop has a human in it, on purpose:
 
-### Step 8: De-duplicate connectors
-Point winner-conditioning and product sourcing at the canonical `apps/connectors` facade (`get_assets()` for Meta creatives, `connectors.shopify` for products) instead of `rnd/src/meta_creatives.py` and `shopify_products.py`, so token handling, FX blending, and asset-URL expiry logic live in one place.
+1. we cut variants (rows land with `meta_ad_id = NULL`);
+2. **an operator publishes the ad** and stamps the id back (`POST /creative/variants/{id}/published`);
+3. `POST /creative/learn` harvests the metrics and rebuilds the prior.
 
-### Step 9: Unify cost tracking + secrets
-Record creative spend to the TS `cost_ledger` (not only the Python ledger) and put it behind the plan-tier daily cap; keep `fal_billing`'s balance guard as the pre-spend gate. Add the genuinely-new creative secrets to the ai-layer's Railway variables: `FAL_KEY`, `FAL_ADMIN_KEY` (optional, billing reads), and if used `GEMINI_API_KEY`, `CLOUDFLARE_*`, plus the storage bucket creds. The LLM, Meta, and Shopify secrets already exist in the main app's env.
+Automating step 2 is real work (a write-scoped `ads_management` token plus an `/advideos` ->
+`/adcreatives` -> `/ads` publisher) and is untestable while Meta is suspended. Writing it now would
+mean shipping an unverifiable publisher against a token that cannot use it.
 
-## What is already done (do not redo)
-- The deploy shape (a Python FastAPI service on Railway the Node API calls). 
-- The HTTP job contract and the asset byte-proxy.
-- The Angular Creative Studio UI and its service contract.
-- The `studioGenerations` / `studioOutputs` tables and additive M4 columns.
-- The creative deps in the ai-layer image (`fal-client`, `pillow`, `imageio-ffmpeg`; bundled ffmpeg, no system ffmpeg needed).
+---
+
+# Part 3: What Is Left
+
+## 3.1 Blocked externally (nobody can act)
+
+- **fal balance is negative.** No video renders at all. Every paid render refuses up front (402).
+- **The Meta API is suspended.** No cohort grounding, no teardowns, no harvest — so the prior and
+  the graph have **never seen real data**.
+
+Consequence: **nothing is live-verified.** 440/439 passing tests are all mock-based. No real
+Seedance render, no real Meta grounding, no real prior. And `pin_face` remains an open question
+(does fal reject a person as an i2v seed, as it does in a ref2v reference?) that only a live run
+can answer.
+
+## 3.2 Infra (the teammate's doc)
+
+1. `FAL_ADMIN_KEY` — without it the balance guard and cost reconciliation silently disable.
+2. **`CREATIVE_OUTPUT_DIR` -> a persistent volume.** The highest-value item. R2 was evaluated and
+   **dropped**, so there is no object storage: without a volume every asset dies on redeploy,
+   including ones already referenced by Neon rows.
+3. **Migrations `0002` + `0003`.** Without them the loop and the graph never persist, silently.
+4. `PG*` CI vars — the non-creative ai-layer suite cannot even collect without them.
+
+## 3.3 Product work still open
+
+- **B-roll alternation.** The vocabulary exists (`ProductVisibility`, `macro`/`close_up`/`pov`) but
+  nothing *enforces* alternating talking-head vs product; it is emergent from the LLM.
+- **Auto-publisher** (2.2), which would remove the human from the loop.
+- `Shot.dialogue` is populated by the storyboard and never read by `build_shot_prompt` — a dangling
+  field.
+
+**Deliberately NOT doing:** a prescriptive "editing grammar" (hardcoded "cut every 1s"). The graph
+now measures pacing per account from that account's own winners and losers, which is strictly
+better than overwriting account-specific truth with a generic template. Descriptive-from-winners
+beats prescriptive-by-fiat. Also not doing: Cloudflare R2 (dropped).
 
 ---
 
 ## Appendix A: Run artifacts (`output/<run_id>/`)
 
-`manifest.json`, `brand_kit.json`, `template.json`, `pickings.json` (winners+losers+products), `logo.png`, `script.json`, `storyboard.json`, `storyboard_rendered.json`, `repair_log.json`, `renders/gen_*.mp4` (paid raws), `product_seeds/`, `timeline.mp4` (silent), `voiceover.mp3`, `video_captioned.mp4` (the ad), `qa_report.json`, `variants/`, `ledger.jsonl` (estimates), `fal_actuals.json` (invoice reconciliation), plus subdirs `winners/`, `products/`, `teardown/`, `.work/` (scratch, cleaned on success).
+`manifest.json`, `brand_kit.json`, `creator_kit.json`, `template.json`, `pickings.json`,
+`summary.txt`, `script.json`, `storyboard.json`, `storyboard_rendered.json`, `repair_log.json`,
+`renders/gen_*.mp4` (paid raws, the cache), `product_seeds/`, `persona_seeds/`, `timeline.mp4`
+(silent, pre-caption), `voiceover.mp3`, `video_captioned.mp4` (the ad), `qa_report.json`,
+`variants/`, `ledger.jsonl` (estimates), `fal_actuals.json` (the invoice), plus `winners/`,
+`products/`, `teardown/`, and `.work/` (scratch, deleted on success).
 
-## Appendix B: Environment variables
+## Appendix B: Environment
 
-| Var | Used by | Already in main? |
+| Var | Used by | State |
 |---|---|---|
-| `OPENROUTER_API_KEY` (+ base URL) | language brain + VLM critic | Yes |
-| `META_ACCESS_TOKEN`, `META_AD_ACCOUNT` | winner grounding | Yes |
-| `SHOPIFY_STORE`, `SHOPIFY_TOKEN`, `SHOPIFY_API_VERSION` | product sourcing | Yes |
-| `AI_LAYER_URL`, `AI_LAYER_API_KEY` | Node -> Python bridge + auth | Yes |
-| `FAL_KEY` | all fal generation | Creative-only (new) |
-| `FAL_ADMIN_KEY` | fal billing reads (optional) | Creative-only (new) |
-| `GEMINI_API_KEY`, `CLOUDFLARE_*` | optional image/video paths | Creative-only (new) |
-| storage bucket creds (R2/S3) | durable assets (Step 4) | Not yet |
+| `OPENROUTER_API_KEY` | brain + VLM critic | present |
+| `FAL_KEY` | all fal generation | present |
+| `FAL_ADMIN_KEY` | fal billing reads, the balance guard | **to add** |
+| `META_ACCESS_TOKEN`, `META_AD_ACCOUNT` | cohort grounding | present (**API suspended**) |
+| `SHOPIFY_STORE` / `_TOKEN` / `_API_VERSION` | product sourcing | present |
+| `DATABASE_URL`, `MIGRATION_DATABASE_URL` | Neon | present |
+| `CREATIVE_OUTPUT_DIR` | assets | **needs a volume** |
+| `PG*` / `PG*_POOL` | the test-branch fixture | **missing (CI)** |
+| `CLOUDFLARE_*` | nothing — R2 was dropped | unused |
 
-## Appendix C: Module count
+## Appendix C: The two trees
 
-`rnd/creative/src/` = 28 modules (full studio, both tracks, cost system). `apps/ai-layer/ai_layer/creative/` = 18 files (17 modules + `__init__.py`: static track + basic video providers + FastAPI `service.py` + `video_post.py`), missing the 13 UGC/cost modules listed in 2.2 while adding `service.py` and `video_post.py` for deployment.
+`rnd/creative/src/` and `apps/ai-layer/ai_layer/creative/` hold the same 28-module studio. The only
+structural difference is the store: `outcomes.py` and `graph.py` talk to a `_repo()` seam, which is
+`library.py` (JSON files, no database) in rnd and `ai_layer.db.repository` (Neon) in the deployed
+tree. **The interfaces are identical**, so those modules are the same code in both trees and an
+experiment promoted from rnd needs no rewriting — Postgres already answers the same calls.

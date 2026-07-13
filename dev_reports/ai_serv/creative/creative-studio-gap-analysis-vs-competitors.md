@@ -3,10 +3,48 @@
 > A critique of an external "10 gaps" analysis of Creative Studio, checked against the
 > actual code in `rnd/creative/src/`. Companion to
 > `creative-studio-architecture-and-integration-state.md`.
+>
+> **STATUS 2026-07-13: all three genuinely-open gaps are now BUILT**, in both trees
+> (`rnd/creative` and `apps/ai-layer`). See "Build status" below before reading the rest,
+> which is preserved as the original analysis.
 
 ---
 
-## TL;DR
+## Build status (2026-07-13)
+
+| Gap | Verdict at analysis time | Now |
+|---|---|---|
+| 3 — Creator personas | genuinely open | **BUILT** — `CreatorKit`, split by actuator |
+| 8 — Performance loop | scaffolded, loop not closed | **BUILT** — `outcomes.py`, `creative_variants` |
+| 9 — Creative graph | real, downstream of 8 | **BUILT** — `graph.py`, `creative_teardowns` |
+| 6 — B-roll intelligence | partial | still partial (vocabulary exists, no enforcing rule) |
+| 7 — Editing grammar | *analysis was wrong* | **closed by design** — see below |
+| 1,2,4,5,10 | already built | unchanged |
+
+What the build actually taught us, beyond the analysis:
+
+- **The persona's three halves are not equally real.** Voice is a *guarantee* (and was already
+  structurally consistent — `finish_timeline` makes ONE voiceover per ad). Speech style is a
+  reliable wish. The face is a wish that mostly does not hold, and fal **rejects a person in a
+  ref2v reference**, so face-pinning is an unverified experiment (`pin_face`, off by default)
+  that shouts when its seed is dropped rather than quietly shipping five different faces.
+- **The loop's missing link was the JOIN, not the measurement.** Both halves already existed;
+  `meta_ad_id` appeared only in docstrings. Nothing publishes to Meta (GET-only), so an operator
+  stamps the id back. The hard part was not plumbing but *statistics*: the prior refuses to learn
+  from arms under 1,000 impressions, reports sub-significant gaps as `UNDECIDED`, and gives a new
+  account nothing.
+- **The graph forced a real behavioural change.** It emits nothing without a negative class, so
+  **losers are now torn down** — they used to be downloaded and never opened.
+- **Gap 7 is closed by *not* doing it.** The graph now measures pacing per account from that
+  account's own winners *and* losers. Hardcoding "cut every 1s" would overwrite account-specific
+  truth with a generic template. Descriptive-from-winners beats prescriptive-by-fiat.
+
+Caveat that applies to all of it: **none of this has run live.** The fal balance is negative and
+the Meta API is suspended, so the prior and the graph have never seen real data.
+
+---
+
+## TL;DR (original analysis, 2026-07-12)
 
 The external analysis is sharp and its principles are almost all correct. The problem is
 that it argues for a studio that **already exists**. Roughly six of the ten proposed

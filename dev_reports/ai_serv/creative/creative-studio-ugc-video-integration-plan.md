@@ -147,6 +147,27 @@ of risk and the main reason to port in reviewable batches, not one dump.
 
 ---
 
+## 0. OUTCOME (2026-07-13): the integration is DONE
+
+Every phase below is executed. The deployed service now runs the full UGC pipeline, and the two
+trees are at parity. What was NOT in this plan but got built on top: the creator persona, the
+closed performance loop, and the creative graph (see the gap-analysis doc).
+
+Two things changed direction mid-plan and are worth recording:
+
+- **Cloudflare R2 was dropped.** Phase S proposed it; it turned out never to have existed in the
+  codebase at all (only a plan doc and two unused env vars), and the decision was to not build it.
+  Assets therefore live on the ai-layer's disk and **need a persistent volume** — the single most
+  important ops item. See `creative-studio-ops-handoff.md`.
+- **Neon needed no new plumbing for jobs.** `creative_jobs` and `repository.save_job()` already
+  existed and simply were not called. Two *new* tables were added later, for the loop and the
+  graph (`creative_variants` 0002, `creative_teardowns` 0003).
+
+Still true, and the reason none of this is "finished": **nothing has run live** (fal balance
+negative, Meta API suspended).
+
+---
+
 ## 6. Build progress
 
 - **Phase 0 DONE** (`550252b`): baseline green (93 creative tests); DB-decoupling shadow for the
@@ -157,7 +178,16 @@ of risk and the main reason to port in reviewable batches, not one dump.
   video orchestrators added to pipeline.py, additive merges to video_providers / prompt_builder /
   meta_creatives (both-tails cohort API). 385 creative tests pass. Static-ad service untouched.
 
-## 7. Remaining phases
+- **Phase 2b DONE** (`3a39d0a`): grounding ON by default — both-tails Meta cohort, winner teardown
+  -> template.json, Shopify sourcing, pickings.json.
+- **Phase 3 DONE** (`3a39d0a`): `/creative/video/plan` (free + cost quote) and
+  `/creative/video/generate` (paid, 402 on insufficient balance).
+- **Neon jobs DONE** (`3a39d0a`): wired to the EXISTING `repository.save_job` — no new table.
+- **Phase S — R2 DROPPED, Neon done.** See §0.
+- **Beyond the plan:** persona (`312aabb`), performance loop (`d26af2d`), creative graph
+  (`6fed6ba`), rnd back-port (`1d183e2`).
+
+## 7. Remaining phases (superseded — see §0)
 
 - **Phase 2b -- run() grounding superset (Shopify + cohort teardown).** Merge rnd's run() grounding
   (both-tails Meta cohort -> teardown -> template.json, Shopify bestseller sourcing -> pickings.json,
