@@ -190,6 +190,13 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
         else:
             data_path = str(config.DEFAULT_DATA)
 
+        # The loop closes HERE: what this account measured last time conditions what we
+        # make this time. None for a new account, and a run without a prior is exactly the
+        # run we did before this feature existed.
+        prior = _prior_for(req.account_id)
+        if prior is not None:
+            stage(f"Applying {len(prior.findings)} learned finding(s) from past ads")
+
         m = pipeline.run(
             data_path=data_path, summary=summary, account_name=account_name, run_id=job_id,
             strategy=req.strategy, mode="auto", images=req.images, formats=req.formats,
@@ -197,7 +204,7 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             product_image=req.product_image, use_shopify=req.use_shopify,
             meta_account=req.account_id, meta_token=token, ground_from_meta=req.ground,
             top_creatives=req.top_creatives, bottom_creatives=req.bottom_creatives,
-            min_spend=req.min_spend, on_stage=stage, log=lambda *_: None)
+            min_spend=req.min_spend, prior=prior, on_stage=stage, log=lambda *_: None)
 
         job["rejected"] = m.rejected
         job["assets"] = [
@@ -281,9 +288,11 @@ def video_plan(req: VideoPlanRequest):
     if not (run_dir / "brand_kit.json").exists():
         raise HTTPException(status_code=409,
                             detail=f"run {req.job_id!r} has no brand kit; POST /creative/generate first")
+    job0 = _load(req.job_id) or {}
     try:
-        script, board = pipeline.plan_story(run_id=req.job_id, seconds=req.seconds,
-                                            creator=req.creator, log=lambda *_: None)
+        script, board = pipeline.plan_story(
+            run_id=req.job_id, seconds=req.seconds, creator=req.creator,
+            prior=_prior_for(job0.get("account_id")), log=lambda *_: None)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"planning failed: {e}") from e
 
@@ -345,6 +354,10 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
                 log=lambda *_: None)
             job["variants"] = {"axis": req.variant_axis, "record": str(record),
                                "variants": [v.model_dump() for v in vset.variants]}
+            # Persist them NOW, with no meta_ad_id and no metrics. The row has to exist
+            # before there is anything for an operator to stamp -- this is the front half
+            # of the closed loop (T11).
+            _save_variants(vset, job.get("account_id"))
 
         job["cost_usd"] = _run_cost(run_dir)
         job["actuals"] = _read_json(run_dir / "fal_actuals.json")
@@ -373,6 +386,94 @@ def _run_cost(run_dir: Path) -> float:
         if row.get("op") != "TOTAL":
             total += row.get("cost_usd", 0.0)
     return round(total, 6)
+
+
+# --- the closed loop (T11): publish -> stamp -> harvest -> prior ----------------
+
+def _save_variants(vset, account_id: str | None) -> None:
+    """Front half of the loop. Best-effort, like every other DB write here."""
+    try:
+        from ai_layer.db import repository
+        repository.save_variants(
+            [{**v.model_dump(), "base_id": vset.base_id} for v in vset.variants],
+            brand_id=account_id)
+    except Exception:  # noqa: BLE001
+        log.debug("creative_variants write skipped (no DB)", exc_info=True)
+
+
+def _prior_for(account_id: str | None):
+    """The account's learned prior, or None. Never fails a generation: an account with no
+    history, or no database, simply generates without a prior, which is what it did before
+    this feature existed."""
+    if not account_id:
+        return None
+    try:
+        from ai_layer.creative import outcomes
+        prior = outcomes.build_prior(account_id)
+        return prior if prior.n_observed else None
+    except Exception:  # noqa: BLE001
+        log.debug("prior unavailable (no DB or no history)", exc_info=True)
+        return None
+
+
+class PublishedRequest(BaseModel):
+    meta_ad_id: str = Field(..., description="the Meta ad this variant became")
+
+
+@router.post("/variants/{variant_id}/published")
+def mark_published(variant_id: str, req: PublishedRequest):
+    """Stamp which Meta ad a variant became. THE JOIN.
+
+    Manual by necessity: nothing in this codebase publishes an ad (the Meta layer is
+    GET-only), so a human ships it and records the id here. Without this call the variant
+    is an unattributable number and the loop never closes.
+    """
+    try:
+        from ai_layer.db import repository
+        ok = repository.stamp_published(variant_id, req.meta_ad_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"no database: {e}") from e
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"variant {variant_id!r} not found")
+    return {"variant_id": variant_id, "meta_ad_id": req.meta_ad_id, "status": "published"}
+
+
+class LearnRequest(BaseModel):
+    account_id: str
+    preset: str = "last_30d"
+
+
+@router.post("/learn")
+def learn(req: LearnRequest, x_meta_token: str | None = Header(default=None)):
+    """Harvest realized performance for every published variant, then rebuild the prior.
+
+    Returns the prior AS THE BRAIN WILL SEE IT (`brief`), which is empty when nothing has
+    cleared the significance bar. That emptiness is the honest answer for a young account,
+    and it is deliberately visible here rather than hidden behind an average.
+    """
+    token = x_meta_token or os.getenv("META_ACCESS_TOKEN")
+    if not token:
+        raise HTTPException(status_code=400, detail="no Meta token; cannot harvest outcomes")
+    from ai_layer.creative import outcomes
+    try:
+        stats = outcomes.harvest(req.account_id, req.account_id, token, preset=req.preset,
+                                 log=lambda *_: None)
+        prior = outcomes.build_prior(req.account_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"learn failed: {e}") from e
+    return {"account_id": req.account_id, **stats,
+            "prior": prior.model_dump(), "brief": prior.to_brief()}
+
+
+@router.get("/prior/{account_id}")
+def get_prior(account_id: str):
+    """What this account has actually learned. `brief` is verbatim what the brain is told."""
+    from ai_layer.creative import outcomes
+    try:
+        prior = outcomes.build_prior(account_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"no database: {e}") from e
+    return {**prior.model_dump(), "brief": prior.to_brief()}
 
 
 @router.post("/video/generate")

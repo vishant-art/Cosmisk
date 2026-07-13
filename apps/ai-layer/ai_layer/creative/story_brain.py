@@ -79,7 +79,7 @@ def _structure_block(template: CreativeTemplate | None) -> str:
 
 
 def generate_concepts(client, kit: BrandKit, summary: str, n: int,
-                      template: CreativeTemplate | None = None
+                      template: CreativeTemplate | None = None, prior=None
                       ) -> tuple[list[AdConcept], float]:
     """Propose n ad concepts, optionally grounded in the measured structure of a real
     ad from this account (T5).
@@ -94,7 +94,8 @@ def generate_concepts(client, kit: BrandKit, summary: str, n: int,
     user = (
         f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
         f"ACCOUNT CONTEXT:\n{summary}"
-        f"{_structure_block(template)}\n\nPropose exactly {n} concepts."
+        f"{_structure_block(template)}{_prior_block(prior)}"
+        f"\n\nPropose exactly {n} concepts."
     )
     data, cost = brain.chat_json(client, system, user)
     concepts = [AdConcept.model_validate(c) for c in data.get("concepts", [])]
@@ -122,6 +123,20 @@ _SCRIPT_SYSTEM = (
 )
 
 
+def _prior_block(prior) -> str:
+    """What this account has MEASURED, as opposed to what a winner's structure suggests.
+
+    The template block says "here is how a winner was built". This says "here is what
+    actually moved the number when we changed one thing on purpose". The second is stronger
+    evidence and is stated as such -- but only when it cleared the significance bar, because
+    CreativePrior.to_brief() returns "" otherwise, and an empty prior injects nothing.
+    """
+    if prior is None:
+        return ""
+    brief = prior.to_brief()
+    return f"\n\n{brief}" if brief else ""
+
+
 def _voice_block(creator) -> str:
     """How the creator talks, for the SCRIPT. The persona's speech half only: the LLM can
     honour 'filler words' exactly, and a video model cannot render it at all."""
@@ -139,7 +154,7 @@ def _who_block(creator) -> str:
 
 def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
                     template: CreativeTemplate | None = None,
-                    creator=None) -> tuple[Script, float]:
+                    creator=None, prior=None) -> tuple[Script, float]:
     """The spoken argument, as ordered beats. Grounded in a real ad's structure when one
     was measured: if a winner opened on a pattern interrupt at 168 words per minute,
     that is evidence about this audience, and it belongs in the prompt.
@@ -154,7 +169,8 @@ def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
     user = (f"BRAND: {kit.brand_name} -- {kit.tagline}\n"
             f"TONE: {kit.tone}. VOICE: {', '.join(kit.voice_keywords)}\n"
             f"DO: {'; '.join(kit.dos)}\nDON'T: {'; '.join(kit.donts)}\n\n"
-            f"ACCOUNT CONTEXT:\n{summary}{_structure_block(template)}{_voice_block(creator)}")
+            f"ACCOUNT CONTEXT:\n{summary}{_structure_block(template)}"
+            f"{_prior_block(prior)}{_voice_block(creator)}")
     data, cost = brain.chat_json(client, system, user)
     return Script(beats=[ScriptBeat.model_validate(b) for b in data.get("beats", [])]), cost
 
@@ -195,7 +211,7 @@ def _build_shots(raw: list[dict]) -> list[Shot]:
 
 def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int = 20,
                         template: CreativeTemplate | None = None, retries: int = 1,
-                        max_clip: float | None = None, creator=None, log=print
+                        max_clip: float | None = None, creator=None, prior=None, log=print
                         ) -> tuple[Storyboard, float]:
     """Break the script into shots, then FIT and VALIDATE deterministically.
 
@@ -216,7 +232,7 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
     base_user = (f"BRAND: {kit.brand_name}. TONE: {kit.tone}.\n"
                  f"SCRIPT:\n" +
                  "\n".join(f"  [{b.purpose}] {b.text}" for b in script.beats) +
-                 _structure_block(template) + _who_block(creator))
+                 _structure_block(template) + _prior_block(prior) + _who_block(creator))
 
     total_cost, hint = 0.0, ""
     for attempt in range(retries + 1):

@@ -153,7 +153,7 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
         qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
         meta_account=None, meta_token=None, ground_from_meta=True, meta_preset="last_30d",
         top_creatives=5, bottom_creatives=5, min_spend=100.0, use_shopify=True,
-        style=None, no_logo=False, summary=None, account_name=None,
+        style=None, no_logo=False, summary=None, account_name=None, prior=None,
         on_stage=None, log=print) -> RunManifest:
     """Full grounded run. Every grounding source is ON by default and each degrades
     gracefully (and loudly) when its credentials are absent:
@@ -262,7 +262,7 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
                   run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
-                  template=template, style=style, on_stage=on_stage, log=log)
+                  template=template, style=style, prior=prior, on_stage=on_stage, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -441,7 +441,7 @@ def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries,
 
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                   image_provider, formats, qa_retries, run_vlm, pro, refs=None,
-                  product_image=None, template=None, style=None,
+                  product_image=None, template=None, style=None, prior=None,
                   on_stage=None, log=print) -> None:
     """Generate N concepts CONCURRENTLY (each a text-free QA-gated background ->
     per-format layout -> composite -> verify -> outpaint). Emits milestone updates via
@@ -453,7 +453,7 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
     on_stage = on_stage or (lambda *_: None)
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
     concepts, concepts_cost = story_brain.generate_concepts(client, kit, summary, images,
-                                                            template=template)
+                                                            template=template, prior=prior)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     on_stage(f"Planned {len(concepts)} ad concept(s)")
     negative = prompt_builder.build_negative_prompt()
@@ -568,7 +568,7 @@ def _clean_work(run_dir):
 
 
 def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None = None,
-               seconds: int = None, creator: CreatorKit | None = None,
+               seconds: int = None, creator: CreatorKit | None = None, prior=None,
                log=print) -> tuple[Script, Storyboard]:
     """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
 
@@ -616,13 +616,14 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
 
     script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
                                                  summary=summary, seconds=seconds,
-                                                 template=template, creator=creator)
+                                                 template=template, creator=creator,
+                                                 prior=prior)
     led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
     (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
 
     board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
                                                     template=template, creator=creator,
-                                                    log=log)
+                                                    prior=prior, log=log)
     led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
     (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
 

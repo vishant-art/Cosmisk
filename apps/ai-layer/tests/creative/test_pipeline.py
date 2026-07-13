@@ -28,9 +28,10 @@ def _png(path, size=(1080, 1350), color="white"):
 def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
     monkeypatch.setattr(brand_brain, "generate_brand_kit",
                         lambda c, s, ground_images=None: (brand_kit, 0.0))
-    # Concepts now come from story_brain, which can be grounded in a teardown template.
+    # Concepts come from story_brain, grounded in a teardown template (what a winner DID)
+    # and in the learned prior (what actually moved the number for this account).
     monkeypatch.setattr(story_brain, "generate_concepts",
-                        lambda c, k, s, n, template=None: (concepts[:n], 0.0))
+                        lambda c, k, s, n, template=None, prior=None: (concepts[:n], 0.0))
 
     def fake_logo(kit, out_path, **kw):
         _png(out_path, size=(400, 400), color="red")

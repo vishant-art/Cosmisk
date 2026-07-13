@@ -198,3 +198,78 @@ def list_jobs(brand_id: str, limit: int = 50) -> list[dict]:
                          .where(m.CreativeJob.brand_id == brand_id)
                          .order_by(m.CreativeJob.created_at.desc()).limit(limit)).scalars().all()
         return [_columns_to_job(r) for r in rows]
+
+
+# --- creative_variants: the closed loop (T11) ---------------------------------
+
+_VARIANT_COLS = ("variant_id", "base_id", "axis", "value", "kind", "artifact_path",
+                 "meta_ad_id", "thumb_stop_rate", "thruplay_rate", "impressions",
+                 "spend", "roas", "harvested_at")
+
+
+def _variant_to_dict(row: m.CreativeVariant) -> dict:
+    d = {c: getattr(row, c) for c in _VARIANT_COLS}
+    d["brand_id"] = row.brand_id
+    return d
+
+
+def save_variants(variants: list[dict], brand_id: str | None = None) -> int:
+    """Upsert the variants a run produced. Called the moment they are cut, with no
+    meta_ad_id and no metrics: those arrive later, from an operator and from Meta. The row
+    exists first so there is something to stamp."""
+    if not variants:
+        return 0
+    with engine.get_session() as s:
+        _ensure_brand(s, brand_id)
+        for v in variants:
+            cols = {k: v[k] for k in _VARIANT_COLS if k in v}
+            cols["brand_id"] = brand_id or v.get("brand_id")
+            # Never let a re-run of make_variants wipe a meta_ad_id or a harvested metric
+            # that arrived in between: only fill the planning columns on conflict.
+            upd = {k: cols[k] for k in ("base_id", "axis", "value", "kind", "artifact_path")
+                   if k in cols}
+            upd["updated_at"] = func.now()
+            s.execute(pg_insert(m.CreativeVariant).values(**cols)
+                      .on_conflict_do_update(index_elements=[m.CreativeVariant.variant_id],
+                                             set_=upd))
+        s.commit()
+    return len(variants)
+
+
+def stamp_published(variant_id: str, meta_ad_id: str) -> bool:
+    """Record which Meta ad a variant became. THIS is the join, and it is manual because
+    nothing in this codebase publishes an ad (meta_live is GET-only)."""
+    with engine.get_session() as s:
+        row = s.get(m.CreativeVariant, variant_id)
+        if row is None:
+            return False
+        row.meta_ad_id = meta_ad_id
+        s.commit()
+        return True
+
+
+def record_outcome(variant_id: str, metrics: dict) -> bool:
+    """Write realized performance back onto a variant (the harvest step)."""
+    with engine.get_session() as s:
+        row = s.get(m.CreativeVariant, variant_id)
+        if row is None:
+            return False
+        row.thumb_stop_rate = metrics.get("thumb_stop_rate")
+        row.thruplay_rate = metrics.get("thruplay_rate")
+        row.impressions = int(metrics.get("impressions") or 0)
+        row.spend = float(metrics.get("spend") or 0.0)
+        row.roas = metrics.get("roas")
+        row.harvested_at = dt.datetime.now(dt.timezone.utc)
+        s.commit()
+        return True
+
+
+def load_variants(brand_id: str | None = None, *, published_only: bool = False) -> list[dict]:
+    with engine.get_session() as s:
+        q = select(m.CreativeVariant)
+        if brand_id is not None:
+            q = q.where(m.CreativeVariant.brand_id == brand_id)
+        if published_only:
+            q = q.where(m.CreativeVariant.meta_ad_id.is_not(None))
+        rows = s.execute(q.order_by(m.CreativeVariant.created_at)).scalars().all()
+        return [_variant_to_dict(r) for r in rows]

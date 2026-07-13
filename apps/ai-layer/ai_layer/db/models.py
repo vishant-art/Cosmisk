@@ -96,6 +96,39 @@ class BrandConfig(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CreativeVariant(Base):
+    """One shipped variant and what it did. THIS TABLE IS THE CLOSED LOOP.
+
+    `variant_id` says what we changed; `meta_ad_id` says which ad it became (stamped by an
+    operator after they publish -- there is no auto-publisher); the metrics say what
+    happened. Without this row, N ads that shipped are N unattributable numbers.
+
+    Durable on purpose: the run dir it came from is ephemeral, and the whole point of a
+    prior is that it outlives the run that produced it.
+    """
+    __tablename__ = "creative_variants"
+    __table_args__ = (Index("ix_variants_brand_axis", "brand_id", "axis"),
+                      Index("ix_variants_meta_ad", "meta_ad_id"))
+    variant_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    brand_id: Mapped[str | None] = mapped_column(Text, ForeignKey("brands.brand_id"))
+    base_id: Mapped[str] = mapped_column(Text)          # the run_id this varied from
+    axis: Mapped[str] = mapped_column(Text)             # hook_type | caption_style | aesthetic
+    value: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str | None] = mapped_column(Text)      # edit | structural
+    artifact_path: Mapped[str | None] = mapped_column(Text)
+    # NULL until published. The join.
+    meta_ad_id: Mapped[str | None] = mapped_column(Text)
+    # NULL until harvested. NULL means "not observed", NOT zero.
+    thumb_stop_rate: Mapped[float | None] = mapped_column(Double)
+    thruplay_rate: Mapped[float | None] = mapped_column(Double)
+    impressions: Mapped[int] = mapped_column(BigInteger, default=0)
+    spend: Mapped[float] = mapped_column(Double, default=0.0)
+    roas: Mapped[float | None] = mapped_column(Double)
+    harvested_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class CreativeJob(Base):
     __tablename__ = "creative_jobs"
     __table_args__ = (Index("ix_jobs_brand_created", "brand_id", "created_at"),)

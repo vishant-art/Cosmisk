@@ -462,6 +462,107 @@ class VariantSet(BaseModel):
         return self
 
 
+# --- T11: the closed loop. What we made -> what it did -> what we learn. ----------
+
+class VariantOutcome(BaseModel):
+    """One shipped variant and what it actually did. The join the whole experiment exists
+    for: `variant_id` says WHAT WE CHANGED, `meta_ad_id` says WHICH AD IT BECAME, and the
+    metrics say WHAT HAPPENED.
+
+    `thumb_stop_rate` is the label, not `roas`. A hook can plausibly cause someone to stop
+    scrolling; it cannot cause the landing page, the price, the LTV or the promo calendar,
+    all of which sit between the creative and a sale. Training on ROAS trains on the funnel.
+    ROAS rides along as a sanity check and is never the signal.
+    """
+    variant_id: str
+    base_id: str
+    axis: VariantAxis
+    value: str
+    kind: Literal["edit", "structural"]
+    artifact_path: str | None = None
+    # None until an operator publishes the ad and stamps it back. There is no auto-publisher.
+    meta_ad_id: str | None = None
+    # None until harvested. None means "not observed", NOT zero -- see meta_creatives.metrics_of.
+    thumb_stop_rate: float | None = None
+    thruplay_rate: float | None = None
+    impressions: int = 0
+    spend: float = 0.0
+    roas: float | None = None
+
+    @property
+    def observed(self) -> bool:
+        return self.thumb_stop_rate is not None and self.impressions > 0
+
+
+class ArmResult(BaseModel):
+    """One arm of one experiment: an (axis, value) with its realized thumb-stop."""
+    axis: VariantAxis
+    value: str
+    thumb_stop_rate: float
+    impressions: int
+    n_ads: int = 1
+
+
+class AxisFinding(BaseModel):
+    """A comparison WITHIN one variant set: same base, same axis, one thing different.
+
+    This is the only place a causal claim is licensed. Two ads that differ on one axis and
+    were served by the same account in the same window differ *because of that axis*. Two
+    ads from different runs differ for a hundred reasons, and averaging them is how you end
+    up believing something an A/B test would have killed.
+    """
+    base_id: str
+    axis: VariantAxis
+    winner: str
+    loser: str
+    winner_rate: float
+    loser_rate: float
+    lift: float                      # winner_rate - loser_rate, in absolute rate points
+    significant: bool                # two-proportion z-test cleared the threshold
+    impressions: int                 # total across both arms
+
+
+class CreativePrior(BaseModel):
+    """What this account has actually learned, rendered for the brain (T11).
+
+    Deliberately conservative. An arm below the impression floor is not reported at all,
+    and a difference that fails the significance test is reported as UNDECIDED rather than
+    as a winner. The alternative -- shipping "pattern_interrupt wins" off 40 impressions --
+    is a mediocre output wearing the costume of a rigorous one, which is exactly what the
+    teardown's provenance discipline exists to prevent. `to_brief()` returns "" when there
+    is nothing credible to say, and `story_brain` then injects nothing.
+    """
+    brand_id: str
+    findings: list[AxisFinding] = Field(default_factory=list)
+    arms: list[ArmResult] = Field(default_factory=list)
+    n_observed: int = 0               # variants with realized metrics
+    n_published: int = 0              # variants with a meta_ad_id but no metrics yet
+    n_total: int = 0
+
+    def to_brief(self) -> str:
+        """The evidence block. Empty when nothing has cleared the bar -- and empty is the
+        honest answer for a new account, not a reason to invent one."""
+        decided = [f for f in self.findings if f.significant]
+        if not decided and not self.arms:
+            return ""
+        lines = ["WHAT HAS ACTUALLY WORKED FOR THIS ACCOUNT (measured, not assumed):"]
+        for f in decided:
+            lines.append(
+                f"- on '{f.axis}', {f.winner!r} beat {f.loser!r}: "
+                f"{f.winner_rate:.1%} vs {f.loser_rate:.1%} thumb-stop "
+                f"({f.lift:+.1%}, {f.impressions:,} impressions). Prefer {f.winner!r}.")
+        undecided = [f for f in self.findings if not f.significant]
+        for f in undecided:
+            lines.append(
+                f"- on '{f.axis}', {f.winner!r} vs {f.loser!r} is UNDECIDED "
+                f"({f.winner_rate:.1%} vs {f.loser_rate:.1%}, only {f.impressions:,} "
+                f"impressions). Do not treat this as a preference.")
+        if not decided and undecided:
+            lines.append("Nothing has reached significance yet. Keep varying; do not "
+                         "over-fit to the numbers above.")
+        return "\n".join(lines)
+
+
 # --- T9.5: shot recovery ---------------------------------------------------------
 
 RepairAction = Literal["retry", "reprompt", "replan", "drop"]
