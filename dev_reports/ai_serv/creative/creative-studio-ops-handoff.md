@@ -15,7 +15,7 @@
 |---|---|---|---|
 | 1 | Add `FAL_ADMIN_KEY` to the ai-layer service | Railway → ai-layer → Variables | Not blocking, but the cost guard is OFF without it |
 | 2 | Point `CREATIVE_OUTPUT_DIR` at a persistent volume | Railway → ai-layer | **Yes** — assets are lost on every redeploy otherwise |
-| 3 | Confirm Alembic is at head on the ai-layer service | Railway (deploy log / one-off) | **Yes** — job persistence silently no-ops otherwise |
+| 3 | **Apply Alembic migration `0002`** (new `creative_variants` table) | Railway (one-off / deploy hook) | **Yes** — the learning loop silently never persists otherwise |
 | 4 | Add the `PG*` / `PG*_POOL` test-branch vars to CI | CI env | Yes, for CI — the ai-layer suite can't collect without them |
 | 5 | Top up the fal.ai balance | fal.ai dashboard | **Yes** — balance is negative; all video renders refuse |
 | 6 | Get the Meta API reinstated | Meta | Yes, for grounding |
@@ -79,26 +79,61 @@ possible, tell the AI side and we'll revisit durable object storage.
 
 ---
 
-## 3. Neon / Postgres — no migration needed, just confirm head
+## 3. Neon / Postgres — **there is now a new migration to apply**
 
-Creative jobs are now persisted to the **existing** `creative_jobs` table via
-`ai_layer/db/repository.py` (`save_job` / `load_job`). **No new tables and no new migration were
-added** — `creative_jobs` is already in `0001_initial_ai_layer_schema.py`.
+Two things live here, and the second one is new:
 
-What to confirm: the ai-layer service is at Alembic head against the Neon prod branch.
+**(a) Creative jobs** persist to the **existing** `creative_jobs` table via
+`ai_layer/db/repository.py` (`save_job` / `load_job`). That table is already in
+`0001_initial_ai_layer_schema.py` — nothing to add.
+
+**(b) `creative_variants` — NEW, added by migration `0002_creative_variants.py`.** This table is
+the creative studio's performance feedback loop: one row per shipped variant, carrying the
+`meta_ad_id` it became and the realized `thumb_stop_rate` / impressions harvested back from Meta.
+It is what lets the next generation learn from the last one. It is **additive** — no existing
+table is touched.
+
+So this is no longer a formality. **Please run Alembic to head** on the Neon prod branch:
 
 ```bash
-python -m ai_layer.db.migrate            # applies head; idempotent
+python -m ai_layer.db.migrate            # applies head (0001 -> 0002); idempotent
 ```
 
-Why it matters: job persistence is **best-effort by design** — a DB write failure is caught and
-logged, never fails a run (the generation already happened, the bytes are on disk). That means if
-the table is missing or the URL is wrong, **jobs will silently stop persisting** and simply vanish
-on restart, with only a debug-level log line. Please verify once, and ideally alert on it.
+Verify:
+```sql
+select count(*) from ai_layer.creative_variants;   -- should return 0, not "relation does not exist"
+```
 
-Schema note: `creative_jobs.brand_id` is a nullable FK to `brands` (brief-mode runs have no
-brand), and the job payload lands in JSONB columns (`assets_json`, `video_json`, `brand_kit_json`,
-`winners_json`, `rejected_json`, `progress_json`, `ledger_json`). Nothing to change.
+**Why this matters more than it looks.** Every DB write in the creative path is **best-effort by
+design**: a failure is caught and logged, never fails a run (the generation already happened and
+the bytes are on disk). That is the right call for availability, but it means a missing table
+fails *silently*. Concretely, if `0002` is not applied:
+
+- jobs still generate fine, and
+- **every variant silently fails to persist**, so the loop never accumulates data, the account
+  never builds a prior, and the studio never gets better — with nothing louder than a debug log
+  to tell you.
+
+Please apply it once and, if you can, alert on write failures.
+
+Schema note: both tables' `brand_id` is a nullable FK to `brands` (brief-mode runs have no brand).
+`creative_variants.meta_ad_id` is NULL until an operator publishes the ad and stamps it (see §3b).
+Nothing else to change.
+
+### 3b. One workflow thing you should know about (it involves a human)
+
+**Nothing in this codebase publishes an ad to Meta.** The Meta layer is GET-only, and the token is
+read-only in practice. So the loop has one manual step by design:
+
+1. We generate variants (they land in `creative_variants` with `meta_ad_id = NULL`).
+2. **Someone publishes the ad on Meta** and stamps the id back:
+   `POST /creative/variants/{variant_id}/published  {"meta_ad_id": "..."}`
+3. `POST /creative/learn {"account_id": "act_..."}` harvests the realized metrics and rebuilds the
+   account's prior.
+
+Without step 2 the variants are unattributable numbers and the loop never closes. If you'd rather
+this were automated, that's a real piece of work (a write-scoped `ads_management` token plus an
+`/advideos` → `/adcreatives` → `/ads` publisher) — flag it and we'll scope it.
 
 ---
 
