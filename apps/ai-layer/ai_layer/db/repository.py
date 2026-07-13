@@ -264,6 +264,38 @@ def record_outcome(variant_id: str, metrics: dict) -> bool:
         return True
 
 
+# --- creative_teardowns: the durable structural library (T12) ------------------
+
+def save_teardown(brand_id: str, ad_id: str, cohort: str, template_json: dict,
+                  thumb_stop_rate: float | None = None) -> bool:
+    """Cache one torn-down ad. Immutable, so a conflict is a no-op rather than a rewrite:
+    re-analysing the same ad would cost another ASR + vision call and produce the same
+    answer."""
+    with engine.get_session() as s:
+        _ensure_brand(s, brand_id)
+        s.execute(pg_insert(m.CreativeTeardown).values(
+            brand_id=brand_id, ad_id=ad_id, cohort=cohort,
+            template_json=template_json, thumb_stop_rate=thumb_stop_rate
+        ).on_conflict_do_nothing(index_elements=[m.CreativeTeardown.brand_id,
+                                                 m.CreativeTeardown.ad_id]))
+        s.commit()
+    return True
+
+
+def has_teardown(brand_id: str, ad_id: str) -> bool:
+    with engine.get_session() as s:
+        return s.get(m.CreativeTeardown, (brand_id, ad_id)) is not None
+
+
+def load_teardowns(brand_id: str) -> list[dict]:
+    with engine.get_session() as s:
+        rows = s.execute(select(m.CreativeTeardown)
+                         .where(m.CreativeTeardown.brand_id == brand_id)).scalars().all()
+        return [{"brand_id": r.brand_id, "ad_id": r.ad_id, "cohort": r.cohort,
+                 "template_json": r.template_json,
+                 "thumb_stop_rate": r.thumb_stop_rate} for r in rows]
+
+
 def load_variants(brand_id: str | None = None, *, published_only: bool = False) -> list[dict]:
     with engine.get_session() as s:
         q = select(m.CreativeVariant)

@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ai_layer.creative.taxonomy import (
-    AdFormat, BeatPurpose, CameraStyle, CreatorAge, CreatorEnergy, CreatorFiller,
+    AdFormat, AtomKind, BeatPurpose, CameraStyle, CreatorAge, CreatorEnergy, CreatorFiller,
     CreatorGender, CreatorGesture, FramingStyle, HookType, LightingStyle,
     ProductVisibility, ShotCamera, VariantAxis,
 )
@@ -560,6 +560,78 @@ class CreativePrior(BaseModel):
         if not decided and undecided:
             lines.append("Nothing has reached significance yet. Keep varying; do not "
                          "over-fit to the numbers above.")
+        return "\n".join(lines)
+
+
+# --- T12: the creative graph. An ad is a bundle of choices; learn per CHOICE. -----
+
+class AtomStat(BaseModel):
+    """One creative choice, and how often it shows up in winners versus losers.
+
+    The statistic is the CONTRAST, and it has to be, because prevalence alone is not
+    evidence of anything. "Pattern interrupt appears in 60% of winners" is exactly as true,
+    and exactly as meaningless, as "60% of winners ran on a Tuesday" -- you cannot estimate
+    an effect from a sample selected on the effect. It only becomes a claim when you can
+    also say it appears in 20% of LOSERS. That is why the cohort fetch pulls both tails
+    (UGC-D5), and it is why this object refuses to exist without both.
+
+    Still OBSERVATIONAL. Winners differ from losers in a hundred ways besides this atom
+    (budget, audience, product, timing), so this is a correlation and is labelled as one.
+    A `VariantSet` finding, where exactly one axis was changed on purpose, is the only
+    causal claim in the system. The brief keeps the two firmly apart.
+    """
+    kind: AtomKind
+    value: str
+    n_winners: int                   # winning ads containing this atom
+    n_losers: int
+    winner_rate: float               # share of WINNERS that have it
+    loser_rate: float                # share of LOSERS that have it
+    lift: float                      # winner_rate - loser_rate. The whole point.
+    mean_thumb_stop: float | None = None
+
+    @property
+    def n_ads(self) -> int:
+        return self.n_winners + self.n_losers
+
+
+class CreativeGraph(BaseModel):
+    """What this account's winners DO differently from its losers, atom by atom.
+
+    Answers the questions a folder of MP4s cannot: "which hook works for this brand?",
+    "does fast cutting actually help here?". It answers them weakly and says so.
+
+    Returns "" from `to_brief()` when the corpus cannot support a claim -- which is the
+    normal state early on, and the honest one. Specifically: no losers means no
+    identification, so no brief, no matter how many winners there are.
+    """
+    brand_id: str
+    atoms: list[AtomStat] = Field(default_factory=list)
+    n_winners: int = 0
+    n_losers: int = 0
+
+    @property
+    def identifiable(self) -> bool:
+        """Without a negative class there is nothing to compare against, and every
+        structural feature of a winner-only corpus is, by construction, a feature of a
+        winner."""
+        return self.n_winners > 0 and self.n_losers > 0
+
+    def to_brief(self, top: int = 6) -> str:
+        if not self.identifiable or not self.atoms:
+            return ""
+        ranked = sorted(self.atoms, key=lambda a: abs(a.lift), reverse=True)[:top]
+        strong = [a for a in ranked if abs(a.lift) >= 0.20]
+        if not strong:
+            return ""
+        lines = [f"WHAT THIS ACCOUNT'S WINNERS DO DIFFERENTLY FROM ITS LOSERS "
+                 f"({self.n_winners} winners vs {self.n_losers} losers, torn down and "
+                 f"measured). This is a CORRELATION, not a proven cause: use it to choose "
+                 f"between equally good options, not to override the script."]
+        for a in strong:
+            verb = "MORE" if a.lift > 0 else "LESS"
+            lines.append(
+                f"- {a.kind} = {a.value!r}: appears in {a.winner_rate:.0%} of winners vs "
+                f"{a.loser_rate:.0%} of losers ({verb} common in winners).")
         return "\n".join(lines)
 
 

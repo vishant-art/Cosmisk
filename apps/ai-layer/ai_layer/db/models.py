@@ -96,6 +96,27 @@ class BrandConfig(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class CreativeTeardown(Base):
+    """One torn-down real ad, kept forever. The account's structural memory.
+
+    A teardown costs one ASR call plus one vision call, and it is IMMUTABLE: an ad's
+    structure does not change after it ran. So it is cached by (brand_id, ad_id) and never
+    recomputed, which is what turns a per-run cost into a library that compounds. Today the
+    template dies with the run directory and every run re-analyses the same winner.
+
+    Both cohorts are stored. A winner-only library is unidentifiable (see rank_cohort): you
+    cannot say a hook helped without seeing how often losers used it too.
+    """
+    __tablename__ = "creative_teardowns"
+    __table_args__ = (Index("ix_teardowns_brand_cohort", "brand_id", "cohort"),)
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    ad_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    cohort: Mapped[str] = mapped_column(Text)            # winner | loser
+    template_json: Mapped[dict | None] = mapped_column(JSONB)
+    thumb_stop_rate: Mapped[float | None] = mapped_column(Double)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class CreativeVariant(Base):
     """One shipped variant and what it did. THIS TABLE IS THE CLOSED LOOP.
 

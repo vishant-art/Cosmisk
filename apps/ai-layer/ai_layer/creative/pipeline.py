@@ -28,6 +28,7 @@ from ai_layer.creative import compositor
 from ai_layer.creative import config
 from ai_layer.creative import editor
 from ai_layer.creative import fal_billing
+from ai_layer.creative import graph
 from ai_layer.creative import image_providers
 from ai_layer.creative import layout as layout_mod
 from ai_layer.creative import logo as logo_mod
@@ -115,21 +116,54 @@ def _write_pickings(run_dir, cohort, products, *, grounded, product_source):
     return payload
 
 
-def _teardown_winner(assets, *, client, run_dir, led, log=print):
-    """Tear down the best winner that has a playable MP4. Returns a CreativeTemplate
-    or None. Costs one Whisper call plus one vision call."""
-    with_video = [a for a in assets if a.cohort == "winner" and a.video_path]
+def _teardown_cohort(assets, *, client, run_dir, led, brand_id=None, log=print):
+    """Tear down every ad with a playable MP4 -- WINNERS AND LOSERS -- and remember each one.
+
+    Losers used to be downloaded and then never opened. That is not a small omission: without
+    them the corpus is UNIDENTIFIABLE. "Pattern interrupt appears in 60% of winners" is
+    exactly as true, and exactly as meaningless, as "60% of winners ran on a Tuesday", until
+    you can also say how often LOSERS used it (UGC-D5, and graph.py's whole thesis).
+
+    Cheap enough to be default-on: a teardown is one ASR call plus one vision call, on the
+    order of a cent, against $1.22 for a single Seedance clip. And it is IMMUTABLE -- an ad's
+    structure does not change after it ran -- so an ad already in the library is skipped, and
+    the per-run cost falls to zero as the library fills.
+
+    Returns the best winner's template (what conditions THIS run); the rest go to the library
+    (what conditions every future run, via graph.build_graph).
+    """
+    with_video = [a for a in assets if a.video_path]
     if not with_video:
-        log("[teardown] no winner has a playable MP4; concepts will be ungrounded")
+        log("[teardown] no ad in the cohort has a playable MP4; concepts will be ungrounded")
         return None
-    best = max(with_video, key=lambda a: a.roas)
-    try:
-        return teardown.analyze(best.video_path, ad_id=best.ad_id, ad_name=best.ad_name,
-                                cohort=best.cohort, metrics=best.metrics, client=client,
-                                led=led, work_dir=Path(run_dir) / "teardown", log=log)
-    except Exception as e:  # noqa: BLE001 -- a teardown must never break a run
-        log(f"[teardown] failed for {best.ad_id} ({e!s:.120}); concepts will be ungrounded")
+
+    templates = {}
+    reused = 0
+    for a in with_video:
+        if brand_id and graph.already_known(brand_id, a.ad_id):
+            reused += 1
+            continue                       # already in the library; do not pay again
+        try:
+            t = teardown.analyze(a.video_path, ad_id=a.ad_id, ad_name=a.ad_name,
+                                 cohort=a.cohort, metrics=a.metrics, client=client,
+                                 led=led, work_dir=Path(run_dir) / "teardown", log=log)
+        except Exception as e:  # noqa: BLE001 -- one bad ad never breaks a run
+            log(f"[teardown] failed for {a.ad_id} ({e!s:.100}); skipped")
+            continue
+        templates[a.ad_id] = t
+        if brand_id:
+            graph.remember(brand_id, t)    # the library that compounds
+    log(f"[teardown] analysed {len(templates)} ad(s)"
+        + (f", reused {reused} from the library" if reused else "")
+        + f" ({sum(1 for t in templates.values() if t.cohort == 'winner')} winners, "
+          f"{sum(1 for t in templates.values() if t.cohort == 'loser')} losers)")
+
+    # This run is still conditioned on the single best winner: a concrete structure to
+    # reuse. The aggregate lives in the graph, which is a different kind of evidence.
+    winners = [a for a in with_video if a.cohort == "winner" and a.ad_id in templates]
+    if not winners:
         return None
+    return templates[max(winners, key=lambda a: a.roas).ad_id]
 
 
 def _client() -> OpenAI:
@@ -154,7 +188,7 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
         meta_account=None, meta_token=None, ground_from_meta=True, meta_preset="last_30d",
         top_creatives=5, bottom_creatives=5, min_spend=100.0, use_shopify=True,
         style=None, no_logo=False, summary=None, account_name=None, prior=None,
-        on_stage=None, log=print) -> RunManifest:
+        graph_prior=None, on_stage=None, log=print) -> RunManifest:
     """Full grounded run. Every grounding source is ON by default and each degrades
     gracefully (and loudly) when its credentials are absent:
 
@@ -227,8 +261,8 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
 
     # Structural teardown of the top winner's MP4 -> the template that conditions concepts
     # (T4/T5) and, later, the script + storyboard (T6).
-    template = _teardown_winner(cohort, client=client, run_dir=run_dir, led=led,
-                                log=log) if cohort else None
+    template = _teardown_cohort(cohort, client=client, run_dir=run_dir, led=led,
+                                brand_id=meta_account, log=log) if cohort else None
     if template:
         (run_dir / "template.json").write_text(template.model_dump_json(indent=2),
                                                encoding="utf-8")
@@ -262,7 +296,8 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
                   run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
-                  template=template, style=style, prior=prior, on_stage=on_stage, log=log)
+                  template=template, style=style, prior=prior, graph_prior=graph_prior,
+                  on_stage=on_stage, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -442,7 +477,7 @@ def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries,
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                   image_provider, formats, qa_retries, run_vlm, pro, refs=None,
                   product_image=None, template=None, style=None, prior=None,
-                  on_stage=None, log=print) -> None:
+                  graph_prior=None, on_stage=None, log=print) -> None:
     """Generate N concepts CONCURRENTLY (each a text-free QA-gated background ->
     per-format layout -> composite -> verify -> outpaint). Emits milestone updates via
     `on_stage`. Conditioning: product_image -> Bria product-shot; else refs -> FLUX.2
@@ -453,7 +488,8 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
     on_stage = on_stage or (lambda *_: None)
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
     concepts, concepts_cost = story_brain.generate_concepts(client, kit, summary, images,
-                                                            template=template, prior=prior)
+                                                            template=template, prior=prior,
+                                                            graph=graph_prior)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     on_stage(f"Planned {len(concepts)} ad concept(s)")
     negative = prompt_builder.build_negative_prompt()
@@ -569,7 +605,7 @@ def _clean_work(run_dir):
 
 def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None = None,
                seconds: int = None, creator: CreatorKit | None = None, prior=None,
-               log=print) -> tuple[Script, Storyboard]:
+               graph_prior=None, log=print) -> tuple[Script, Storyboard]:
     """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
 
     Standalone-valuable: a shot list a human creator could shoot is a deliverable even
@@ -617,13 +653,13 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
     script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
                                                  summary=summary, seconds=seconds,
                                                  template=template, creator=creator,
-                                                 prior=prior)
+                                                 prior=prior, graph=graph_prior)
     led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
     (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
 
     board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
                                                     template=template, creator=creator,
-                                                    prior=prior, log=log)
+                                                    prior=prior, graph=graph_prior, log=log)
     led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
     (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
 

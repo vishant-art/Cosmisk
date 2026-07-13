@@ -194,8 +194,12 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
         # make this time. None for a new account, and a run without a prior is exactly the
         # run we did before this feature existed.
         prior = _prior_for(req.account_id)
+        graph_prior = _graph_for(req.account_id)
         if prior is not None:
             stage(f"Applying {len(prior.findings)} learned finding(s) from past ads")
+        if graph_prior is not None:
+            stage(f"Applying {len(graph_prior.atoms)} structural pattern(s) from "
+                  f"{graph_prior.n_winners} winners vs {graph_prior.n_losers} losers")
 
         m = pipeline.run(
             data_path=data_path, summary=summary, account_name=account_name, run_id=job_id,
@@ -204,7 +208,8 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             product_image=req.product_image, use_shopify=req.use_shopify,
             meta_account=req.account_id, meta_token=token, ground_from_meta=req.ground,
             top_creatives=req.top_creatives, bottom_creatives=req.bottom_creatives,
-            min_spend=req.min_spend, prior=prior, on_stage=stage, log=lambda *_: None)
+            min_spend=req.min_spend, prior=prior, graph_prior=graph_prior,
+            on_stage=stage, log=lambda *_: None)
 
         job["rejected"] = m.rejected
         job["assets"] = [
@@ -292,7 +297,8 @@ def video_plan(req: VideoPlanRequest):
     try:
         script, board = pipeline.plan_story(
             run_id=req.job_id, seconds=req.seconds, creator=req.creator,
-            prior=_prior_for(job0.get("account_id")), log=lambda *_: None)
+            prior=_prior_for(job0.get("account_id")),
+            graph_prior=_graph_for(job0.get("account_id")), log=lambda *_: None)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"planning failed: {e}") from e
 
@@ -414,6 +420,40 @@ def _prior_for(account_id: str | None):
     except Exception:  # noqa: BLE001
         log.debug("prior unavailable (no DB or no history)", exc_info=True)
         return None
+
+
+def _graph_for(account_id: str | None):
+    """The account's structural graph (what winners do differently from losers), or None.
+
+    Weaker evidence than the prior and injected as such. None for an account whose teardown
+    library has no losers in it -- a winner-only corpus cannot support a claim.
+    """
+    if not account_id:
+        return None
+    try:
+        from ai_layer.creative import graph as graph_mod
+        g = graph_mod.build_graph(account_id)
+        return g if g.identifiable and g.atoms else None
+    except Exception:  # noqa: BLE001
+        log.debug("graph unavailable (no DB or no teardowns)", exc_info=True)
+        return None
+
+
+@router.get("/graph/{account_id}")
+def get_graph(account_id: str):
+    """The creative graph: every choice this account's winners made, contrasted against its
+    losers. Answers "which hook works here", which a folder of MP4s cannot.
+
+    `brief` is verbatim what the brain is told, and it is EMPTY unless the library contains
+    losers -- because "pattern interrupt appears in 60% of winners" is exactly as true, and
+    exactly as meaningless, as "60% of winners ran on a Tuesday".
+    """
+    from ai_layer.creative import graph as graph_mod
+    try:
+        g = graph_mod.build_graph(account_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"no database: {e}") from e
+    return {**g.model_dump(), "identifiable": g.identifiable, "brief": g.to_brief()}
 
 
 class PublishedRequest(BaseModel):
