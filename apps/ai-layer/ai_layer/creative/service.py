@@ -92,9 +92,12 @@ class CreativeRequest(BaseModel):
     # A logo is never generated: lemon's standing rule for every creative run.
     no_logo: bool = True
     product_image: str | None = None
-    # The single-clip smoke stays opt-in; the real video path is /creative/video/*, which
-    # quotes its cost before spending.
-    with_video: bool = False
+    # ON by default, like everything else. This is the single-clip smoke (one Seedance
+    # render + VO + captions). It is balance-guarded before it spends, and SKIPPED (not
+    # failed) when the balance cannot cover it, so a static-ad run never dies over the
+    # video bolt-on. The full storyboard-driven path remains /creative/video/*, which
+    # quotes its cost first.
+    with_video: bool = True
     voiceover: bool = True
 
 
@@ -199,16 +202,25 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
         job["pickings"] = _read_json(run_dir / "pickings.json")
         job["template"] = _read_json(run_dir / "template.json")
 
-        # Optional single-clip smoke. The real video path is /creative/video/*.
+        # Single-clip smoke, on by default. Balance-guarded: when fal cannot cover the one
+        # clip we SKIP it and say so, rather than half-spending or failing the whole run.
+        # The storyboard-driven path (/creative/video/*) is the one that quotes first.
         if req.with_video and m.ads:
-            copy = next((a.ad_copy for a in m.ads if a.ad_copy), None)
-            v = pipeline.video_smoke(
-                run_id=job_id, prompt="slow cinematic push-in, premium on-brand mood",
-                duration=config.VIDEO_DURATION_DEFAULT, aspect="9:16", copy=copy,
-                kit=m.brand_kit, generate_audio=True, voiceover=req.voiceover,
-                client=pipeline._client(), on_stage=stage, log=lambda *_: None)
-            if v is not None:
-                job["video"] = {"url": _asset_url(job_id, v.path)}
+            g = fal_billing.affordable(1)
+            if g["enabled"] and not g["ok"]:
+                stage(f"Video skipped: fal balance ${g['balance']:.2f} short "
+                      f"${g['shortfall']:.2f} of the ~${g['needed']:.2f} one clip needs")
+                job["video"] = {"skipped": "insufficient fal balance",
+                                "needed_usd": g["needed"], "balance_usd": g["balance"]}
+            else:
+                copy = next((a.ad_copy for a in m.ads if a.ad_copy), None)
+                v = pipeline.video_smoke(
+                    run_id=job_id, prompt="slow cinematic push-in, premium on-brand mood",
+                    duration=config.VIDEO_DURATION_DEFAULT, aspect="9:16", copy=copy,
+                    kit=m.brand_kit, generate_audio=True, voiceover=req.voiceover,
+                    client=pipeline._client(), on_stage=stage, log=lambda *_: None)
+                if v is not None:
+                    job["video"] = {"url": _asset_url(job_id, v.path)}
 
         stage("Done")
         job["status"] = "complete"

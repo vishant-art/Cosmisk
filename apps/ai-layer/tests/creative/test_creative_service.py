@@ -28,6 +28,14 @@ def _open_api_key(monkeypatch):
     monkeypatch.setattr(ai_config, "AI_LAYER_API_KEY", None)
 
 
+@pytest.fixture(autouse=True)
+def _no_live_video(monkeypatch):
+    """with_video defaults True, so ANY /creative/generate here would fire a real Seedance
+    render (~$1.22) unless stubbed. Default it to a no-op; the tests that assert on video
+    override this with their own stub."""
+    monkeypatch.setattr(service.pipeline, "video_smoke", lambda **kw: None)
+
+
 def _poll(job_id, tries=40):
     status = {}
     for _ in range(tries):
@@ -64,7 +72,8 @@ def _script():
 def test_generate_then_poll(monkeypatch):
     monkeypatch.setattr(service.pipeline, "run", lambda **kw: _fake_manifest(kw["run_id"]))
 
-    r = client.post("/creative/generate", json={"images": 1, "formats": ["1:1"]})
+    r = client.post("/creative/generate",
+                    json={"images": 1, "formats": ["1:1"], "with_video": False})
     assert r.status_code == 200
     job_id = r.json()["job_id"]
     assert r.json()["status"] == "queued"
@@ -77,7 +86,49 @@ def test_generate_then_poll(monkeypatch):
     assert a["url"] == f"/creative/assets/{job_id}/ad_01_1x1.png"
     assert a["copy"]["headline"] == "Legacy Woven"
     assert status["cost_usd"] == 0.42
-    assert status["video"] is None            # the paid video path is /creative/video/*
+    assert status["video"] is None            # explicitly opted out above
+
+
+def test_video_is_on_by_default(monkeypatch):
+    """with_video defaults True: a generate run also produces a clip."""
+    from ai_layer.creative.schemas import AssetRecord
+    monkeypatch.setattr(service.pipeline, "run", lambda **kw: _fake_manifest(kw["run_id"]))
+    monkeypatch.setattr(fal_billing, "affordable",
+                        lambda n, **kw: {"enabled": True, "ok": True, "balance": 50.0,
+                                         "needed": 1.52, "shortfall": 0.0})
+    seen = {}
+
+    def fake_smoke(**kw):
+        seen.update(kw)
+        return AssetRecord(kind="video", provider="seedance", model="m",
+                           path=f"{kw['run_id']}/video_captioned.mp4", cost_usd=1.22)
+
+    monkeypatch.setattr(service.pipeline, "video_smoke", fake_smoke)
+
+    job_id = client.post("/creative/generate", json={"images": 1}).json()["job_id"]
+    status = _poll(job_id)
+    assert status["status"] == "complete", status
+    assert status["video"]["url"].endswith("video_captioned.mp4")
+    assert seen["voiceover"] is True and seen["generate_audio"] is True
+
+
+def test_video_is_skipped_not_fatal_when_the_balance_is_short(monkeypatch):
+    """A static-ad run must never die over the video bolt-on: skip it, say so, ship the ads."""
+    monkeypatch.setattr(service.pipeline, "run", lambda **kw: _fake_manifest(kw["run_id"]))
+    monkeypatch.setattr(fal_billing, "affordable",
+                        lambda n, **kw: {"enabled": True, "ok": False, "balance": -0.33,
+                                         "needed": 1.52, "shortfall": 1.85})
+
+    def boom(**kw):
+        raise AssertionError("video_smoke must not be called when the balance is short")
+
+    monkeypatch.setattr(service.pipeline, "video_smoke", boom)
+
+    job_id = client.post("/creative/generate", json={"images": 1}).json()["job_id"]
+    status = _poll(job_id)
+    assert status["status"] == "complete"                 # the ads still shipped
+    assert len(status["assets"]) == 1
+    assert status["video"]["skipped"] == "insufficient fal balance"
 
 
 def test_unknown_job_404():
