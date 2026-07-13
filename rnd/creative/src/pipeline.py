@@ -29,6 +29,7 @@ import compositor  # noqa: E402
 import config  # noqa: E402
 import editor  # noqa: E402
 import fal_billing  # noqa: E402
+import graph  # noqa: E402
 import image_providers  # noqa: E402
 import layout as layout_mod  # noqa: E402
 import logo as logo_mod  # noqa: E402
@@ -43,7 +44,8 @@ import verifier_video  # noqa: E402
 import video_providers  # noqa: E402
 from ledger import Ledger  # noqa: E402
 from schemas import (  # noqa: E402
-    AssetRecord, BrandKit, CreativeTemplate, QAReport, RunManifest, Script, Storyboard,
+    AssetRecord, BrandKit, CreativeTemplate, CreatorKit, QAReport, RunManifest, Script,
+    Storyboard,
 )
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
@@ -131,26 +133,54 @@ def _picked_product_desc(run_dir):
     return title.strip() if isinstance(title, str) and title.strip() else None
 
 
-def _teardown_winner(assets, *, client, run_dir, led, log=print):
-    """Tear down the best winner that has a playable MP4. Returns a CreativeTemplate
-    or None.
+def _teardown_cohort(assets, *, client, run_dir, led, brand_id=None, log=print):
+    """Tear down every ad with a playable MP4 -- WINNERS AND LOSERS -- and remember each one.
 
-    The MP4s were already being downloaded here and then dropped on the floor by a
-    `kind == "image"` filter that never opened them. This is the fix, and it costs one
-    Whisper call plus one vision call.
+    Losers used to be downloaded and then never opened. That is not a small omission: without
+    them the corpus is UNIDENTIFIABLE. "Pattern interrupt appears in 60% of winners" is
+    exactly as true, and exactly as meaningless, as "60% of winners ran on a Tuesday", until
+    you can also say how often LOSERS used it (UGC-D5, and graph.py's whole thesis).
+
+    Cheap enough to be default-on: a teardown is one ASR call plus one vision call, on the
+    order of a cent, against $1.22 for a single Seedance clip. And it is IMMUTABLE -- an ad's
+    structure does not change after it ran -- so an ad already in the library is skipped, and
+    the per-run cost falls to zero as the library fills.
+
+    Returns the best winner's template (what conditions THIS run); the rest go to the library
+    (what conditions every future run, via graph.build_graph).
     """
-    with_video = [a for a in assets if a.cohort == "winner" and a.video_path]
+    with_video = [a for a in assets if a.video_path]
     if not with_video:
-        log("[teardown] no winner has a playable MP4; concepts will be ungrounded")
+        log("[teardown] no ad in the cohort has a playable MP4; concepts will be ungrounded")
         return None
-    best = max(with_video, key=lambda a: a.roas)
-    try:
-        return teardown.analyze(best.video_path, ad_id=best.ad_id, ad_name=best.ad_name,
-                                cohort=best.cohort, metrics=best.metrics, client=client,
-                                led=led, work_dir=Path(run_dir) / "teardown", log=log)
-    except Exception as e:  # noqa: BLE001 -- a teardown must never break a run
-        log(f"[teardown] failed for {best.ad_id} ({e!s:.120}); concepts will be ungrounded")
+
+    templates = {}
+    reused = 0
+    for a in with_video:
+        if brand_id and graph.already_known(brand_id, a.ad_id):
+            reused += 1
+            continue                       # already in the library; do not pay again
+        try:
+            t = teardown.analyze(a.video_path, ad_id=a.ad_id, ad_name=a.ad_name,
+                                 cohort=a.cohort, metrics=a.metrics, client=client,
+                                 led=led, work_dir=Path(run_dir) / "teardown", log=log)
+        except Exception as e:  # noqa: BLE001 -- one bad ad never breaks a run
+            log(f"[teardown] failed for {a.ad_id} ({e!s:.100}); skipped")
+            continue
+        templates[a.ad_id] = t
+        if brand_id:
+            graph.remember(brand_id, t)    # the library that compounds
+    log(f"[teardown] analysed {len(templates)} ad(s)"
+        + (f", reused {reused} from the library" if reused else "")
+        + f" ({sum(1 for t in templates.values() if t.cohort == 'winner')} winners, "
+          f"{sum(1 for t in templates.values() if t.cohort == 'loser')} losers)")
+
+    # This run is still conditioned on the single best winner: a concrete structure to
+    # reuse. The aggregate lives in the graph, which is a different kind of evidence.
+    winners = [a for a in with_video if a.cohort == "winner" and a.ad_id in templates]
+    if not winners:
         return None
+    return templates[max(winners, key=lambda a: a.roas).ad_id]
 
 
 def _client() -> OpenAI:
@@ -174,7 +204,8 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
         qa_retries=1, run_vlm=False, pro=False, refs=None, product_image=None,
         meta_account=None, ground_from_meta=True, meta_preset="last_30d",
         top_creatives=5, bottom_creatives=5, min_spend=100.0, style=None,
-        no_logo=False, use_shopify=False, log=print) -> RunManifest:
+        no_logo=False, use_shopify=False, prior=None, graph_prior=None,
+        log=print) -> RunManifest:
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -220,8 +251,8 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     _write_kit(run_dir, kit)
 
     # Structural teardown of the top winner's MP4 -> the template that conditions concepts.
-    template = _teardown_winner(cohort, client=client, run_dir=run_dir, led=led,
-                                log=log) if cohort else None
+    template = _teardown_cohort(cohort, client=client, run_dir=run_dir, led=led,
+                                brand_id=meta_account, log=log) if cohort else None
     if template:
         (run_dir / "template.json").write_text(template.model_dump_json(indent=2),
                                                encoding="utf-8")
@@ -253,7 +284,8 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
                   run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
-                  template=template, style=style, log=log)
+                  template=template, style=style, prior=prior, graph_prior=graph_prior,
+                  log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -265,8 +297,12 @@ def run(*, data_path: str, run_id: str, strategy="top-roas", n_campaigns=5,
 
 def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
            formats=None, qa_retries=1, run_vlm=False, pro=False, refs=None,
-           product_image=None, style=None, log=print) -> RunManifest:
-    """Generate ads from a (possibly user-edited) brand_kit.json in output/<run>."""
+           product_image=None, style=None, prior=None, graph_prior=None,
+           log=print) -> RunManifest:
+    """Generate ads from a (possibly user-edited) brand_kit.json in output/<run>.
+
+    Takes the same evidence as run(): a resumed run is still a run, and generating it
+    unconditioned would silently produce worse ads than the one it is resuming."""
     formats = list(formats) if formats else list(DEFAULT_FORMATS)
     run_dir = config.OUTPUT_DIR / run_id
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
@@ -293,7 +329,8 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     _generate_ads(client, kit, summary, run_dir, manifest, led, images=images,
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
                   run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
-                  template=template, style=style, log=log)
+                  template=template, style=style, prior=prior, graph_prior=graph_prior,
+                  log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -302,7 +339,8 @@ def resume(*, run_id: str, data_path: str, images=4, image_provider="flux",
     return manifest
 
 
-def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
+def plan_story(*, run_id: str, data_path: str, seconds: int = None, creator=None,
+               prior=None, graph_prior=None, log=print
                ) -> tuple[Script, "sb_mod.Storyboard"]:
     """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
 
@@ -327,14 +365,25 @@ def plan_story(*, run_id: str, data_path: str, seconds: int = None, log=print
     ds = cs.load_dataset(data_path)
     summary = cs.summarize(ds, cs.select_campaigns(ds, "all", 0))
 
+    # The creator is persisted, so render_story renders the same person the script was
+    # written for. An argument written for a deadpan 40-year-old, shot as a bubbly
+    # 22-year-old, is two ads spliced together.
+    creator = creator or _run_creator(run_dir)
+    if creator is not None:
+        _write_creator(run_dir, creator)
+        log(f"[story] creator: {creator.name} ({creator.age_range} {creator.gender}, "
+            f"{creator.energy})")
+
     script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
                                                  summary=summary, seconds=seconds,
-                                                 template=template)
+                                                 template=template, creator=creator,
+                                                 prior=prior, graph=graph_prior)
     led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
     (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
 
     board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
-                                                    template=template, log=log)
+                                                    template=template, creator=creator,
+                                                    prior=prior, graph=graph_prior, log=log)
     led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
     (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
 
@@ -356,6 +405,19 @@ _FINAL_CLIP_NAMES = ("video_captioned.mp4", "video_voiceover.mp4",
                      "video_overlay.mp4", "timeline.mp4", "video.mp4")
 
 
+def _run_creator(run_dir: Path) -> "CreatorKit | None":
+    """The run's CreatorKit, if one was set. Persisted so plan_story and render_story cannot
+    disagree about who is in the ad: the script is written for this person and the shots are
+    rendered as this person, and a mismatch between the two is not recoverable in post."""
+    f = Path(run_dir) / "creator_kit.json"
+    return CreatorKit.model_validate_json(f.read_text("utf-8")) if f.exists() else None
+
+
+def _write_creator(run_dir: Path, creator: "CreatorKit") -> None:
+    (Path(run_dir) / "creator_kit.json").write_text(creator.model_dump_json(indent=2),
+                                                    encoding="utf-8")
+
+
 def _clean_work(run_dir):
     """Remove the scratch dir of $0 intermediates (Phase 9.4). The paid render cache lives
     in renders/, not here, so a re-run still reuses it."""
@@ -365,7 +427,8 @@ def _clean_work(run_dir):
 
 def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
                  single_pass: bool = False, strict: bool = True, finish: bool = True,
-                 keep_work: bool = False, guard_balance: bool = True, log=print):
+                 keep_work: bool = False, guard_balance: bool = True,
+                 creator=None, pin_face: bool = False, log=print):
     """Render a planned storyboard into a timeline (T7). Costs real money.
 
     Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
@@ -392,6 +455,7 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
 
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
     script = _run_script(run_dir)
+    creator = creator or _run_creator(run_dir)     # the person the script was written for
     cut = run_dir / "product_cutout.png"
     cutout = str(cut) if cut.exists() else None
     product_desc = _picked_product_desc(run_dir)   # anchors the seed to the real item (9.6)
@@ -400,13 +464,15 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
     if single_pass:
         timeline = sequencer.render_single_pass(board, kit=kit, run_dir=run_dir,
                                                 style=style, aspect=aspect,
-                                                resolution=resolution, led=led, log=log)
+                                                resolution=resolution, creator=creator,
+                                                led=led, log=log)
         rlog = None
     else:
         client = _client()
         timeline, board, rlog = sequencer.render_storyboard(
             board, kit=kit, run_dir=run_dir, script=script, style=style,
             cutout_path=cutout, product_desc=product_desc, aspect=aspect, resolution=resolution,
+            creator=creator, pin_face=pin_face,
             replan=lambda shot, reason: story_brain.replan_shot(
                 client, kit, shot, reason=reason)[0],
             strict=strict, led=led, log=log)
@@ -417,7 +483,8 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
 
     if finish and script is not None:
         timeline = finish_timeline(timeline, board, script, kit, run_dir,
-                                   client=_client(), led=led, log=log)
+                                   client=_client(), led=led,
+                                   voice=(creator.voice_id if creator else None), log=log)
 
     if not keep_work:
         _clean_work(run_dir)          # keep only paid artifacts + the finished ad (9.4)
@@ -441,7 +508,8 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
 
 def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, run_dir, *,
                     client=None, sfx: bool = True, voiceover: bool = True,
-                    captions: bool = True, led=None, log=print) -> str:
+                    captions: bool = True, voice: str | None = None,
+                    led=None, log=print) -> str:
     """Voiceover, SFX and captions over the ASSEMBLED timeline, not per shot.
 
     One voiceover across the whole ad, muxed once. Splicing per-shot audio at every cut
@@ -459,7 +527,11 @@ def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, 
     if voiceover:
         try:
             spoken = script.spoken()
+            # ONE voiceover for the whole ad, so `voice` is consistent across every shot by
+            # construction. This is the half of a persona that is a GUARANTEE rather than a
+            # wish: MiniMax honours voice_id exactly, where the video model only tries.
             vo = video_providers.generate_voiceover(spoken, run_dir / "voiceover.mp3",
+                                                    voice=voice or None,
                                                     log=log)   # KEPT: paid TTS
             if led:
                 led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"],
@@ -695,7 +767,8 @@ def video_smoke(*, run_id: str, prompt: str, image=None,
 
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                   image_provider, formats, qa_retries, run_vlm, pro, refs=None,
-                  product_image=None, template=None, style=None, log=print) -> None:
+                  product_image=None, template=None, style=None, prior=None,
+                  graph_prior=None, log=print) -> None:
     """For each concept: a text-free background (QA-gated, regenerated on fail) ->
     per-format layout -> Pillow composite -> verify. The base format is the gate;
     other formats are outpainted from the accepted background, then composited.
@@ -708,7 +781,8 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
     `style` grounds the pixels in a UGC capture aesthetic (T1)."""
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
     concepts, concepts_cost = story_brain.generate_concepts(client, kit, summary, images,
-                                                            template=template)
+                                                            template=template, prior=prior,
+                                                            graph=graph_prior)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     negative = prompt_builder.build_negative_prompt()
     base_fmt = formats[0]

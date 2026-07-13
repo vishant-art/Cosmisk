@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from schemas import AdConcept, BrandKit, UGCStyle  # noqa: E402
+from schemas import AdConcept, BrandKit, CreatorKit, UGCStyle  # noqa: E402
 
 
 # Suppression list for models with a real negative_prompt (SDXL); also appended as a
@@ -96,7 +96,7 @@ _SHOT_CAMERA = {
 
 
 def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
-                      hint: str | None = None) -> str:
+                      hint: str | None = None, creator: "CreatorKit | None" = None) -> str:
     """The prompt for ONE storyboard shot (T7).
 
     Carries the same rule as the still prompt: never mention text, logo or copy. Captions
@@ -105,6 +105,11 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
 
     `hint` is the QA verdict from the previous attempt (T9.5, rung 1). It is stated as a
     defect to fix, not as a vague instruction to try harder.
+
+    `creator` names WHO is on camera, and lands immediately after the subject because that
+    is what it modifies. It is only ever a wish: prompt text alone will not hold a face
+    across five renders, which is what the persona seed (sequencer._persona_seed) is for.
+    Only the creator's VISUAL half goes here -- how they speak is the script's business.
     """
     camera = _SHOT_CAMERA.get(shot.camera, shot.camera.replace("_", " "))
     capture = style.to_prompt() if style is not None else ""
@@ -117,9 +122,14 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
     }.get(shot.product_visible, "")
     fix = (f"A previous attempt was rejected for this reason: {hint}. Fix exactly that. "
            if hint else "")
+    # A hero product shot is a shot OF THE PRODUCT: it is seeded from a deliberately
+    # person-free still, so naming a creator in it would fight the seed.
+    who = (f"{creator.to_visual_prompt()} "
+           if creator is not None and shot.product_visible != "hero" else "")
 
     return (
         f"{shot.subject}\n\n"
+        f"{who}"
         f"{camera}. {capture + '. ' if capture else ''}"
         f"{motion}{product}"
         f"Filmed for {kit.brand_name}. Visual style: {kit.visual_style}. Mood: {kit.tone}. "

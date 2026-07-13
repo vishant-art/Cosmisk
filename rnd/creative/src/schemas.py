@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from taxonomy import (  # noqa: E402
-    AdFormat, BeatPurpose, CameraStyle, FramingStyle, HookType, LightingStyle,
+    AdFormat, AtomKind, BeatPurpose, CameraStyle, CreatorAge, CreatorEnergy, CreatorFiller,
+    CreatorGender, CreatorGesture, FramingStyle, HookType, LightingStyle,
     ProductVisibility, ShotCamera, VariantAxis,
 )
 
@@ -128,6 +129,79 @@ class UGCStyle(BaseModel):
         parts = [bits.get(self.camera or ""), lig.get(self.lighting or ""),
                  frm.get(self.framing or "")]
         return ", ".join(p for p in parts if p)
+
+
+# --- the creator persona: WHO is on camera, held constant -----------------------
+
+class CreatorKit(BaseModel):
+    """The person in the ad. `BrandKit` is what the brand is; this is who speaks for it.
+
+    Split by ACTUATOR, the same discipline as UGCStyle, because the three halves are
+    honoured by three different systems with three different levels of reliability:
+
+      visual:   age/gender/appearance/wardrobe/setting -> the VIDEO model. A WISH. The
+                model may ignore it, and across N shots it usually drifts. This is the
+                hard problem; `face_ref` + persona seeding (sequencer) is the attempt.
+      speech:   energy/filler_words/gesture            -> the SCRIPT brain. A WISH, but a
+                reliable one: an LLM asked for filler words produces filler words.
+      voice_id: the TTS voice                          -> MiniMax. A GUARANTEE, exact, and
+                already structurally consistent because ONE voiceover is generated for the
+                whole timeline (pipeline.finish_timeline), never spliced per shot.
+
+    So voice consistency is solved by construction; face consistency is not, and the
+    schema says so rather than implying all three are equally real.
+
+    Cross-run by definition: the same creator fronts many ads. Persisted as
+    `creator_kit.json` in the run dir and echoed on the job, so a caller can hand the same
+    persona back on the next run.
+    """
+    name: str                              # a label, e.g. "Maya" -- not rendered, just identity
+    # --- visual: handed to the video model. A wish. ---
+    age_range: CreatorAge = "25-34"
+    gender: CreatorGender = "unspecified"
+    appearance: str = ""                   # free-text visual brief, like Shot.subject
+    wardrobe: str = ""
+    setting: str = ""                      # the creator's recurring room/location
+    face_ref: str | None = None            # a still of this person, to condition renders
+    # --- speech: handed to the script brain. A wish, reliably honoured. ---
+    energy: CreatorEnergy = "warm"
+    filler_words: CreatorFiller = "some"
+    gesture: CreatorGesture = "occasional"
+    # --- voice: handed to TTS. A guarantee. Empty = the config default. ---
+    voice_id: str = ""
+
+    @field_validator("appearance", "wardrobe", "setting")
+    @classmethod
+    def _tidy(cls, v: str) -> str:
+        return _collapse(v)
+
+    def to_visual_prompt(self) -> str:
+        """WHO the camera sees. Goes into every shot prompt so five shots describe one
+        person rather than five. Says nothing about how they talk: a diffusion model
+        cannot render 'uses filler words', and asking it to is how you get subtitles."""
+        who = " ".join(p for p in [
+            self.age_range.replace("-", " to ") + "-year-old" if self.age_range else "",
+            self.gender if self.gender != "unspecified" else "person",
+        ] if p)
+        bits = [f"The same {who}", self.appearance]
+        if self.wardrobe:
+            bits.append(f"wearing {self.wardrobe}")
+        if self.setting:
+            bits.append(f"in {self.setting}")
+        gest = {"rare": "still, hands mostly out of frame",
+                "occasional": "occasional natural hand gestures",
+                "frequent": "talking with their hands, gesturing constantly"}[self.gesture]
+        return ", ".join(b for b in bits if b) + f". {gest.capitalize()}. " \
+               "The SAME person, unchanged, in every shot."
+
+    def to_voice_brief(self) -> str:
+        """HOW they talk. Goes to the script brain, not the video model."""
+        fill = {"none": "no filler words; clean, edited speech",
+                "some": "the odd filler word ('honestly', 'like'), the way people actually talk",
+                "many": "lots of filler words and false starts, very unpolished"}[self.filler_words]
+        return (f"THE CREATOR SPEAKING: {self.name}, a {self.energy} "
+                f"{self.gender if self.gender != 'unspecified' else 'person'}. "
+                f"Write in their voice: {fill}.")
 
 
 # --- T6: the script is the creative; the video is a rendering of it ------------
@@ -273,6 +347,179 @@ class VariantSet(BaseModel):
             raise ValueError("variant values must be distinct; two identical variants "
                              "are one datapoint wearing two labels")
         return self
+
+
+# --- T11: the closed loop. What we made -> what it did -> what we learn. ----------
+
+class VariantOutcome(BaseModel):
+    """One shipped variant and what it actually did. The join the whole experiment exists
+    for: `variant_id` says WHAT WE CHANGED, `meta_ad_id` says WHICH AD IT BECAME, and the
+    metrics say WHAT HAPPENED.
+
+    `thumb_stop_rate` is the label, not `roas`. A hook can plausibly cause someone to stop
+    scrolling; it cannot cause the landing page, the price, the LTV or the promo calendar,
+    all of which sit between the creative and a sale. Training on ROAS trains on the funnel.
+    ROAS rides along as a sanity check and is never the signal.
+    """
+    variant_id: str
+    base_id: str
+    axis: VariantAxis
+    value: str
+    kind: Literal["edit", "structural"]
+    artifact_path: str | None = None
+    # None until an operator publishes the ad and stamps it back. There is no auto-publisher.
+    meta_ad_id: str | None = None
+    # None until harvested. None means "not observed", NOT zero -- see meta_creatives.metrics_of.
+    thumb_stop_rate: float | None = None
+    thruplay_rate: float | None = None
+    impressions: int = 0
+    spend: float = 0.0
+    roas: float | None = None
+
+    @property
+    def observed(self) -> bool:
+        return self.thumb_stop_rate is not None and self.impressions > 0
+
+
+class ArmResult(BaseModel):
+    """One arm of one experiment: an (axis, value) with its realized thumb-stop."""
+    axis: VariantAxis
+    value: str
+    thumb_stop_rate: float
+    impressions: int
+    n_ads: int = 1
+
+
+class AxisFinding(BaseModel):
+    """A comparison WITHIN one variant set: same base, same axis, one thing different.
+
+    This is the only place a causal claim is licensed. Two ads that differ on one axis and
+    were served by the same account in the same window differ *because of that axis*. Two
+    ads from different runs differ for a hundred reasons, and averaging them is how you end
+    up believing something an A/B test would have killed.
+    """
+    base_id: str
+    axis: VariantAxis
+    winner: str
+    loser: str
+    winner_rate: float
+    loser_rate: float
+    lift: float                      # winner_rate - loser_rate, in absolute rate points
+    significant: bool                # two-proportion z-test cleared the threshold
+    impressions: int                 # total across both arms
+
+
+class CreativePrior(BaseModel):
+    """What this account has actually learned, rendered for the brain (T11).
+
+    Deliberately conservative. An arm below the impression floor is not reported at all,
+    and a difference that fails the significance test is reported as UNDECIDED rather than
+    as a winner. The alternative -- shipping "pattern_interrupt wins" off 40 impressions --
+    is a mediocre output wearing the costume of a rigorous one, which is exactly what the
+    teardown's provenance discipline exists to prevent. `to_brief()` returns "" when there
+    is nothing credible to say, and `story_brain` then injects nothing.
+    """
+    brand_id: str
+    findings: list[AxisFinding] = Field(default_factory=list)
+    arms: list[ArmResult] = Field(default_factory=list)
+    n_observed: int = 0               # variants with realized metrics
+    n_published: int = 0              # variants with a meta_ad_id but no metrics yet
+    n_total: int = 0
+
+    def to_brief(self) -> str:
+        """The evidence block. Empty when nothing has cleared the bar -- and empty is the
+        honest answer for a new account, not a reason to invent one."""
+        decided = [f for f in self.findings if f.significant]
+        if not decided and not self.arms:
+            return ""
+        lines = ["WHAT HAS ACTUALLY WORKED FOR THIS ACCOUNT (measured, not assumed):"]
+        for f in decided:
+            lines.append(
+                f"- on '{f.axis}', {f.winner!r} beat {f.loser!r}: "
+                f"{f.winner_rate:.1%} vs {f.loser_rate:.1%} thumb-stop "
+                f"({f.lift:+.1%}, {f.impressions:,} impressions). Prefer {f.winner!r}.")
+        undecided = [f for f in self.findings if not f.significant]
+        for f in undecided:
+            lines.append(
+                f"- on '{f.axis}', {f.winner!r} vs {f.loser!r} is UNDECIDED "
+                f"({f.winner_rate:.1%} vs {f.loser_rate:.1%}, only {f.impressions:,} "
+                f"impressions). Do not treat this as a preference.")
+        if not decided and undecided:
+            lines.append("Nothing has reached significance yet. Keep varying; do not "
+                         "over-fit to the numbers above.")
+        return "\n".join(lines)
+
+
+# --- T12: the creative graph. An ad is a bundle of choices; learn per CHOICE. -----
+
+class AtomStat(BaseModel):
+    """One creative choice, and how often it shows up in winners versus losers.
+
+    The statistic is the CONTRAST, and it has to be, because prevalence alone is not
+    evidence of anything. "Pattern interrupt appears in 60% of winners" is exactly as true,
+    and exactly as meaningless, as "60% of winners ran on a Tuesday" -- you cannot estimate
+    an effect from a sample selected on the effect. It only becomes a claim when you can
+    also say it appears in 20% of LOSERS. That is why the cohort fetch pulls both tails
+    (UGC-D5), and it is why this object refuses to exist without both.
+
+    Still OBSERVATIONAL. Winners differ from losers in a hundred ways besides this atom
+    (budget, audience, product, timing), so this is a correlation and is labelled as one.
+    A `VariantSet` finding, where exactly one axis was changed on purpose, is the only
+    causal claim in the system. The brief keeps the two firmly apart.
+    """
+    kind: AtomKind
+    value: str
+    n_winners: int                   # winning ads containing this atom
+    n_losers: int
+    winner_rate: float               # share of WINNERS that have it
+    loser_rate: float                # share of LOSERS that have it
+    lift: float                      # winner_rate - loser_rate. The whole point.
+    mean_thumb_stop: float | None = None
+
+    @property
+    def n_ads(self) -> int:
+        return self.n_winners + self.n_losers
+
+
+class CreativeGraph(BaseModel):
+    """What this account's winners DO differently from its losers, atom by atom.
+
+    Answers the questions a folder of MP4s cannot: "which hook works for this brand?",
+    "does fast cutting actually help here?". It answers them weakly and says so.
+
+    Returns "" from `to_brief()` when the corpus cannot support a claim -- which is the
+    normal state early on, and the honest one. Specifically: no losers means no
+    identification, so no brief, no matter how many winners there are.
+    """
+    brand_id: str
+    atoms: list[AtomStat] = Field(default_factory=list)
+    n_winners: int = 0
+    n_losers: int = 0
+
+    @property
+    def identifiable(self) -> bool:
+        """Without a negative class there is nothing to compare against, and every
+        structural feature of a winner-only corpus is, by construction, a feature of a
+        winner."""
+        return self.n_winners > 0 and self.n_losers > 0
+
+    def to_brief(self, top: int = 6) -> str:
+        if not self.identifiable or not self.atoms:
+            return ""
+        ranked = sorted(self.atoms, key=lambda a: abs(a.lift), reverse=True)[:top]
+        strong = [a for a in ranked if abs(a.lift) >= 0.20]
+        if not strong:
+            return ""
+        lines = [f"WHAT THIS ACCOUNT'S WINNERS DO DIFFERENTLY FROM ITS LOSERS "
+                 f"({self.n_winners} winners vs {self.n_losers} losers, torn down and "
+                 f"measured). This is a CORRELATION, not a proven cause: use it to choose "
+                 f"between equally good options, not to override the script."]
+        for a in strong:
+            verb = "MORE" if a.lift > 0 else "LESS"
+            lines.append(
+                f"- {a.kind} = {a.value!r}: appears in {a.winner_rate:.0%} of winners vs "
+                f"{a.loser_rate:.0%} of losers ({verb} common in winners).")
+        return "\n".join(lines)
 
 
 # --- T9.5: shot recovery ---------------------------------------------------------

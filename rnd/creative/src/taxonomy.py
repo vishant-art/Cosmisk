@@ -78,6 +78,20 @@ ShotCamera = Literal[
 # Whether the product is on screen, and how hard it is being sold in that shot.
 ProductVisibility = Literal["hero", "background", "absent"]
 
+# --- the creator persona (CreatorKit) -----------------------------------------
+# WHO is on camera. Closed where a closed set is honest, free text where it is not:
+# `appearance` is a visual brief like Shot.subject, because "5'6, freckles, curly dark
+# hair" is not a category and pretending it is would just produce a category that means
+# nothing. Everything below is a knob a director would actually turn.
+CreatorAge = Literal["18-24", "25-34", "35-44", "45-54", "55+"]
+CreatorGender = Literal["woman", "man", "nonbinary", "unspecified"]
+
+# How they PERFORM. These steer the SCRIPT (what is written for them to say), not the
+# pixels -- a diffusion model cannot render "uses filler words".
+CreatorEnergy = Literal["calm", "warm", "upbeat", "deadpan", "intense"]
+CreatorFiller = Literal["none", "some", "many"]
+CreatorGesture = Literal["rare", "occasional", "frequent"]
+
 # --- temporal QA (T9) ----------------------------------------------------------
 # What a vision critic is permitted to complain about. Closed, for the same reason the
 # teardown's sets are closed: an open vocabulary produces "the pacing feels slightly
@@ -92,6 +106,11 @@ QaIssue = Literal[
     "unreadable_caption",
     "continuity_break",    # shot N+1 does not follow from shot N
     "frozen_frame",        # a shot that never moves
+    # The creator is a DIFFERENT PERSON between shots. Distinct from face_distorted,
+    # which is one mangled face; this is two intact faces that do not match. It is the
+    # signature failure of a persona whose conditioning reference was silently dropped
+    # (see video_providers.generate_with_fallback, which degrades ref2v -> t2v).
+    "identity_drift",
 ]
 
 # --- structural variants (T10) -------------------------------------------------
@@ -104,6 +123,27 @@ VariantAxis = Literal[
     "hook_type",       # structural: regenerate the hook beat, hold the rest. Re-renders.
     "caption_style",   # edit: re-burn captions on the same footage. $0 marginal model cost.
     "aesthetic",       # edit: re-grade the same footage. $0 marginal model cost.
+]
+
+# --- the creative graph (T12): an ad, decomposed into independent atoms ---------
+# An ad is not one thing, it is a bundle of choices, and "which ad won" is a useless
+# question compared to "which CHOICE won". These are the choice dimensions we can extract
+# from a CreativeTemplate WITHOUT inventing anything: every one is either measured from
+# frames/ASR or classified from a closed set above.
+#
+# Deliberately absent: emotion, music, "energy", story arc. A VLM will happily label all
+# four and be unfalsifiable, which is the same trap CreativeTemplate's provenance rule
+# exists to close. An atom you cannot measure is an atom you cannot learn from.
+AtomKind = Literal[
+    "hook_type",      # classified, closed set
+    "ad_format",      # classified, closed set
+    "camera",         # classified (UGCStyle.camera)
+    "lighting",       # classified (UGCStyle.lighting)
+    "framing",        # classified (UGCStyle.framing)
+    "pacing",         # MEASURED: bucketed avg_shot_length_s
+    "first_cut",      # MEASURED: bucketed time_to_first_cut_s
+    "speech_pace",    # MEASURED: bucketed words_per_minute
+    "cta_timing",     # MEASURED: bucketed cta_start_s / duration_s
 ]
 
 # --- CTA detection lexicon -----------------------------------------------------

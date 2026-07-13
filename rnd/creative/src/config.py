@@ -220,6 +220,20 @@ RECOVERY_LADDER = ("retry", "reprompt", "replan", "drop")
 # bounded amount rather than N * ladder_depth.
 RECOVERY_MAX_TOTAL_RENDERS = 40
 
+# --- the closed loop / learned prior (T11) -------------------------------------
+# The bar a result must clear before the brain is told about it.
+#
+# thumb_stop_rate is a PROPORTION, and a proportion measured on a handful of impressions is
+# noise with a decimal point. An ad that got 40 impressions and a 12% thumb-stop tells you
+# nothing, and telling the brain "pattern_interrupt wins" on that basis is worse than
+# telling it nothing: it is a fabricated prior, indistinguishable at the point of use from
+# a measured one. Same discipline as the teardown's provenance rule.
+#
+# So: an arm below the floor is not reported at all, and a difference that fails a
+# two-proportion z-test is reported as UNDECIDED rather than as a winner.
+PRIOR_MIN_IMPRESSIONS = 1000     # per arm, before it may enter the prior at all
+PRIOR_Z = 1.96                   # two-sided 95%. A lift must beat this to be a "winner".
+
 # --- UGCStyle presets (T1) ----------------------------------------------------
 # The `prompt:` half are wishes the model may ignore. The `post:` half are ffmpeg/PIL
 # guarantees applied by the editor (T7.5). Presets live here, not in env, matching the
