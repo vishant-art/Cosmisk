@@ -123,6 +123,56 @@ def _product_seed(shot, index: int, cutout_path, run_dir, *, kit, aspect, led, l
     return str(out)
 
 
+def _persona_seed(creator, run_dir, *, kit: BrandKit, aspect, led=None, log=print) -> str:
+    """One still of the creator, generated ONCE and reused to i2v-seed every shot they are
+    in. The attempt at the hard half of a persona.
+
+    Prompt text alone does not hold a face across five independent renders -- each render is
+    a fresh sample and the model has no memory of the last one. Seeding every shot from the
+    SAME still is the only lever Seedance offers, because its reference-to-video path is the
+    one that REJECTS a reference containing a person (fal's content filter -- the same wall
+    `_product_seed` exists to get around). i2v takes a single `image`, not a ref list, so a
+    persona seed and a product seed cannot both condition one shot; hero shots keep the
+    product, everyone else gets the face.
+
+    THIS IS AN EXPERIMENT, not a guarantee, and it is off by default (`pin_face`): fal may
+    reject a person as an i2v seed exactly as it rejects one as a ref2v reference. We have
+    not been able to find out, because the account balance is empty. If it does reject,
+    `generate_with_fallback` degrades silently to t2v and every shot gets a different face,
+    so `render_shot` shouts about a dropped seed rather than reporting success.
+
+    Cached by (persona, face_ref, aspect): a re-run does not re-pay for the seed, and the
+    filename is content-addressed so `_gen_key` stays stable across runs.
+    """
+    from ai_layer.creative import image_providers                     # lazy: keeps fal_client out of the import path
+    seeds = Path(run_dir) / "persona_seeds"
+    seeds.mkdir(parents=True, exist_ok=True)
+
+    who = creator.to_visual_prompt()
+    face_ref = creator.face_ref if creator.face_ref and Path(creator.face_ref).exists() else None
+    scene = (f"Candid phone photograph of one person. {who} "
+             f"Head and shoulders, looking into the lens, relaxed natural expression, "
+             f"ordinary lived-in surroundings, natural light. Exactly ONE person in frame.")
+    # No person-negative here, obviously. We still suppress text: a seed with letters in it
+    # propagates them into every shot, and the captions are burned on later, by us.
+    negative = "text, words, letters, watermark, logo, caption, subtitle, multiple people, crowd"
+    key = hashlib.sha1(
+        f"{scene}\n{negative}\n{Path(face_ref).name if face_ref else ''}\n{aspect}".encode()
+    ).hexdigest()[:12]
+    out = seeds / f"persona_{key}.png"              # KEPT: paid persona still, reused every run
+    if not out.exists():
+        res = image_providers.generate_with_fallback(
+            scene, out, primary="flux", refs=[face_ref] if face_ref else None,
+            negative=negative, aspect=aspect, log=log)
+        if led is not None:
+            led.record("persona_seed", res["provider"], res["model"], res["cost_usd"],
+                       creator=creator.name)
+        log(f"[seq] persona seed for {creator.name!r} "
+            f"{'from ' + Path(face_ref).name if face_ref else '(generated)'} "
+            f"(est ${res['cost_usd']:.2f})")
+    return str(out)
+
+
 def _playable(path) -> bool:
     try:
         return editor.probe(path)["duration"] > 0
@@ -138,7 +188,8 @@ def billed_seconds(board: Storyboard) -> tuple[float, float]:
 def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
                 kit: BrandKit, run_dir, style: UGCStyle | None = None,
                 aspect: str = "9:16", resolution: str = "720p",
-                refs: list | None = None, seed=None, led=None, log=print) -> str:
+                refs: list | None = None, seed=None, creator=None, led=None,
+                log=print) -> str:
     """Generate one shot, trim it to plan, and apply its edit. Returns the edited clip.
 
     Native audio is off. The concat drops audio anyway (one voiceover runs across the
@@ -152,7 +203,8 @@ def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
     for d in (run_dir, work, renders):
         d.mkdir(parents=True, exist_ok=True)   # render_shot is public; don't assume a caller made these
 
-    prompt = prompt_builder.build_shot_prompt(shot, kit, style=style, hint=hint)
+    prompt = prompt_builder.build_shot_prompt(shot, kit, style=style, hint=hint,
+                                              creator=creator)
     want = snap_duration(shot.duration_s)
 
     # Content-addressed render cache (Phase 9.3): the Seedance output is fully determined
@@ -172,8 +224,18 @@ def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
         if led is not None:
             led.record("shot_video", res["provider"], res["model"], res["cost_usd"],
                        shot=index, attempt=attempt, billed_s=want, used_s=shot.duration_s,
-                       cache_key=key,
+                       cache_key=key, dropped_conditioning=bool(res.get("fell_back_from")),
                        mode=("ref2v" if refs else "i2v" if seed else "t2v"))
+        # The fallback ladder's last rung is t2v: it DROPS the seed and the references. That
+        # is the right call for a content-filter rejection (a shot is better than no shot),
+        # but it is silent, and when the thing dropped was the persona seed it means this
+        # shot has a different face from every other one. Say so. A run that quietly ships
+        # five strangers is the exact failure this feature exists to prevent.
+        if res.get("fell_back_from") and (seed or refs):
+            what = "persona/product seed" if seed else "continuity/product references"
+            log(f"[seq] WARNING shot {index}: conditioning was DROPPED ({what} -> "
+                f"{res['fell_back_from']}). This shot is unconditioned; if a creator was "
+                f"being pinned, its face will not match the others.")
         log(f"[seq] shot {index} ({shot.purpose}) rendered {want}s, keeping "
             f"{shot.duration_s:g}s (est ${res['cost_usd']:.2f}, cache {key})")
 
@@ -191,7 +253,7 @@ def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
 def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
                       script: Script | None = None, style: UGCStyle | None = None,
                       cutout_path=None, product_desc=None, aspect: str = "9:16",
-                      resolution: str = "720p",
+                      resolution: str = "720p", creator=None, pin_face: bool = False,
                       replan=None, strict: bool = True, led=None, log=print
                       ) -> tuple[str, Storyboard, RepairLog]:
     """Render every shot with repair, then concatenate. Returns (timeline, board, log).
@@ -199,10 +261,21 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
     In `sequential` mode each shot is conditioned on its predecessor's final frame via
     reference-to-video. `accepted` is pruned at every render, because a repair invalidates
     the shot being repaired and, in sequential mode, everything after it.
+
+    `creator` names who is on camera and always reaches the PROMPT. `pin_face` additionally
+    i2v-seeds every non-hero shot from one generated still of that person, which is the only
+    mechanism Seedance gives us for holding a face. It is off by default because it may trip
+    the same content filter that rejects a person in a ref2v reference; see `_persona_seed`.
     """
     run_dir = Path(run_dir)
     (run_dir / ".work").mkdir(parents=True, exist_ok=True)
     accepted: dict[int, str] = {}
+
+    # Generated once, reused by every shot the creator appears in (and across runs: the
+    # filename is content-addressed, so the render cache keys stay stable).
+    face_seed = None
+    if pin_face and creator is not None:
+        face_seed = _persona_seed(creator, run_dir, kit=kit, aspect=aspect, led=led, log=log)
 
     billed, used = billed_seconds(board)
     if billed > used:
@@ -215,12 +288,19 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
         for k in [k for k in accepted if k >= index]:
             accepted.pop(k)
 
+        # Seedance takes EITHER one i2v `image` OR a ref2v `refs` list, never both, so these
+        # branches are a priority order, not a menu:
+        #   1. a hero product shot is a shot OF THE PRODUCT -> the product seed wins.
+        #   2. otherwise, if we are pinning a face, the persona seed holds the creator.
+        #   3. otherwise, sequential continuity conditions on the previous frame.
         refs, seed = None, None
         has_cutout = cutout_path and Path(cutout_path).exists()
         if shot.product_visible == "hero" and has_cutout:
             # i2v-seed the product into the shot (people-free reference; no ref2v rejection).
             seed = _product_seed(shot, index, cutout_path, run_dir, kit=kit, aspect=aspect,
                                  led=led, log=log, product_desc=product_desc)
+        elif face_seed is not None:
+            seed = face_seed          # the same person, every shot they are in
         elif board.render_mode == "sequential" and index > 0 and (index - 1) in accepted:
             frame = editor.last_frame(accepted[index - 1],
                                       run_dir / ".work" / f"shot_{index - 1:02d}_last.png")
@@ -230,7 +310,7 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
 
         return render_shot(shot, index, attempt, hint, kit=kit, run_dir=run_dir,
                            style=style, aspect=aspect, resolution=resolution,
-                           refs=refs, seed=seed, led=led, log=log)
+                           refs=refs, seed=seed, creator=creator, led=led, log=log)
 
     def _verify(path, shot, index):
         checks = verifier_video.verify_shot(path, shot, index, cutout_path=cutout_path)
@@ -248,12 +328,18 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
 
 def render_single_pass(board: Storyboard, *, kit: BrandKit, run_dir,
                        style: UGCStyle | None = None, aspect: str = "9:16",
-                       resolution: str = "720p", seed=None, led=None, log=print) -> str:
+                       resolution: str = "720p", seed=None, creator=None,
+                       led=None, log=print) -> str:
     """Render the whole ad as ONE clip (UGC-D1, v2b). The seam for a 30s-native model.
 
     Loses per-shot control: no repair, no per-shot edit, no continuity references. Worth it
     only when the model can hold a multi-shot structure by itself, which Seedance 2.0
     cannot and Seedance 2.5 claims to. Raises rather than silently truncating the ad.
+
+    Note the irony: identity consistency is FREE here. One model call means one face and one
+    room for the whole ad, with no seed, no reference and no content filter to argue with.
+    Everything `pin_face` is fighting for, this path gets by construction -- and pays for by
+    giving up repair, per-shot editing and the temporal QA gate's per-shot checks.
     """
     if board.duration_s > config.VIDEO_MAX_CLIP_SECONDS:
         raise SequenceError(
@@ -265,7 +351,7 @@ def render_single_pass(board: Storyboard, *, kit: BrandKit, run_dir,
     merged = board.shots[0].model_copy(update={
         "subject": beats, "duration_s": board.duration_s,
         "motion": "; ".join(s.motion for s in board.shots if s.motion)})
-    prompt = prompt_builder.build_shot_prompt(merged, kit, style=style)
+    prompt = prompt_builder.build_shot_prompt(merged, kit, style=style, creator=creator)
     want = snap_duration(board.duration_s)
 
     run_dir = Path(run_dir)

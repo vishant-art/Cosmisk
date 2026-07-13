@@ -11,7 +11,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ai_layer.creative.taxonomy import (
-    AdFormat, BeatPurpose, CameraStyle, FramingStyle, HookType, LightingStyle,
+    AdFormat, BeatPurpose, CameraStyle, CreatorAge, CreatorEnergy, CreatorFiller,
+    CreatorGender, CreatorGesture, FramingStyle, HookType, LightingStyle,
     ProductVisibility, ShotCamera, VariantAxis,
 )
 
@@ -241,6 +242,79 @@ class UGCStyle(BaseModel):
         parts = [bits.get(self.camera or ""), lig.get(self.lighting or ""),
                  frm.get(self.framing or "")]
         return ", ".join(p for p in parts if p)
+
+
+# --- the creator persona: WHO is on camera, held constant -----------------------
+
+class CreatorKit(BaseModel):
+    """The person in the ad. `BrandKit` is what the brand is; this is who speaks for it.
+
+    Split by ACTUATOR, the same discipline as UGCStyle, because the three halves are
+    honoured by three different systems with three different levels of reliability:
+
+      visual:   age/gender/appearance/wardrobe/setting -> the VIDEO model. A WISH. The
+                model may ignore it, and across N shots it usually drifts. This is the
+                hard problem; `face_ref` + persona seeding (sequencer) is the attempt.
+      speech:   energy/filler_words/gesture            -> the SCRIPT brain. A WISH, but a
+                reliable one: an LLM asked for filler words produces filler words.
+      voice_id: the TTS voice                          -> MiniMax. A GUARANTEE, exact, and
+                already structurally consistent because ONE voiceover is generated for the
+                whole timeline (pipeline.finish_timeline), never spliced per shot.
+
+    So voice consistency is solved by construction; face consistency is not, and the
+    schema says so rather than implying all three are equally real.
+
+    Cross-run by definition: the same creator fronts many ads. Persisted as
+    `creator_kit.json` in the run dir and echoed on the job, so a caller can hand the same
+    persona back on the next run.
+    """
+    name: str                              # a label, e.g. "Maya" -- not rendered, just identity
+    # --- visual: handed to the video model. A wish. ---
+    age_range: CreatorAge = "25-34"
+    gender: CreatorGender = "unspecified"
+    appearance: str = ""                   # free-text visual brief, like Shot.subject
+    wardrobe: str = ""
+    setting: str = ""                      # the creator's recurring room/location
+    face_ref: str | None = None            # a still of this person, to condition renders
+    # --- speech: handed to the script brain. A wish, reliably honoured. ---
+    energy: CreatorEnergy = "warm"
+    filler_words: CreatorFiller = "some"
+    gesture: CreatorGesture = "occasional"
+    # --- voice: handed to TTS. A guarantee. Empty = the config default. ---
+    voice_id: str = ""
+
+    @field_validator("appearance", "wardrobe", "setting")
+    @classmethod
+    def _tidy(cls, v: str) -> str:
+        return _collapse(v)
+
+    def to_visual_prompt(self) -> str:
+        """WHO the camera sees. Goes into every shot prompt so five shots describe one
+        person rather than five. Says nothing about how they talk: a diffusion model
+        cannot render 'uses filler words', and asking it to is how you get subtitles."""
+        who = " ".join(p for p in [
+            self.age_range.replace("-", " to ") + "-year-old" if self.age_range else "",
+            self.gender if self.gender != "unspecified" else "person",
+        ] if p)
+        bits = [f"The same {who}", self.appearance]
+        if self.wardrobe:
+            bits.append(f"wearing {self.wardrobe}")
+        if self.setting:
+            bits.append(f"in {self.setting}")
+        gest = {"rare": "still, hands mostly out of frame",
+                "occasional": "occasional natural hand gestures",
+                "frequent": "talking with their hands, gesturing constantly"}[self.gesture]
+        return ", ".join(b for b in bits if b) + f". {gest.capitalize()}. " \
+               "The SAME person, unchanged, in every shot."
+
+    def to_voice_brief(self) -> str:
+        """HOW they talk. Goes to the script brain, not the video model."""
+        fill = {"none": "no filler words; clean, edited speech",
+                "some": "the odd filler word ('honestly', 'like'), the way people actually talk",
+                "many": "lots of filler words and false starts, very unpolished"}[self.filler_words]
+        return (f"THE CREATOR SPEAKING: {self.name}, a {self.energy} "
+                f"{self.gender if self.gender != 'unspecified' else 'person'}. "
+                f"Write in their voice: {fill}.")
 
 
 # --- T6: the script is the creative; the video is a rendering of it ------------

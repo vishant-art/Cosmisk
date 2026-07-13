@@ -42,7 +42,8 @@ from ai_layer.creative import verifier_video
 from ai_layer.creative import video_providers
 from ai_layer.creative.ledger import Ledger  # noqa: E402
 from ai_layer.creative.schemas import (  # noqa: E402
-    AssetRecord, BrandKit, CreativeTemplate, QAReport, RunManifest, Script, Storyboard,
+    AssetRecord, BrandKit, CreativeTemplate, CreatorKit, QAReport, RunManifest, Script,
+    Storyboard,
 )
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
@@ -546,6 +547,19 @@ def _run_script(run_dir: Path) -> Script | None:
     return Script.model_validate_json(f.read_text("utf-8")) if f.exists() else None
 
 
+def _run_creator(run_dir: Path) -> CreatorKit | None:
+    """The run's CreatorKit, if one was set. Persisted so plan_story and render_story cannot
+    disagree about who is in the ad: the script is written for this person and the shots are
+    rendered as this person, and a mismatch between the two is not recoverable in post."""
+    f = Path(run_dir) / "creator_kit.json"
+    return CreatorKit.model_validate_json(f.read_text("utf-8")) if f.exists() else None
+
+
+def _write_creator(run_dir: Path, creator: CreatorKit) -> None:
+    (Path(run_dir) / "creator_kit.json").write_text(creator.model_dump_json(indent=2),
+                                                    encoding="utf-8")
+
+
 def _clean_work(run_dir):
     """Remove the scratch dir of $0 intermediates (Phase 9.4). The paid render cache lives
     in renders/, not here, so a re-run still reuses it."""
@@ -554,7 +568,8 @@ def _clean_work(run_dir):
 
 
 def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None = None,
-               seconds: int = None, log=print) -> tuple[Script, Storyboard]:
+               seconds: int = None, creator: CreatorKit | None = None,
+               log=print) -> tuple[Script, Storyboard]:
     """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
 
     Standalone-valuable: a shot list a human creator could shoot is a deliverable even
@@ -590,14 +605,24 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
             raise FileNotFoundError(
                 f"no summary for run {run_id!r}: pass summary= or data_path=, or run() first")
 
+    # The creator is persisted, so render_story renders the same person the script was
+    # written for. An argument written for a deadpan 40-year-old, shot as a bubbly 22-year-old,
+    # is two ads spliced together.
+    creator = creator or _run_creator(run_dir)
+    if creator is not None:
+        _write_creator(run_dir, creator)
+        log(f"[story] creator: {creator.name} ({creator.age_range} {creator.gender}, "
+            f"{creator.energy})")
+
     script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
                                                  summary=summary, seconds=seconds,
-                                                 template=template)
+                                                 template=template, creator=creator)
     led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
     (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
 
     board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
-                                                    template=template, log=log)
+                                                    template=template, creator=creator,
+                                                    log=log)
     led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
     (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
 
@@ -610,7 +635,8 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
 
 def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
                  single_pass: bool = False, strict: bool = True, finish: bool = True,
-                 keep_work: bool = False, guard_balance: bool = True, log=print):
+                 keep_work: bool = False, guard_balance: bool = True,
+                 creator: CreatorKit | None = None, pin_face: bool = False, log=print):
     """Render a planned storyboard into a timeline (T7). Costs real money.
 
     Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
@@ -637,6 +663,7 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
 
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
     script = _run_script(run_dir)
+    creator = creator or _run_creator(run_dir)     # the person the script was written for
     cut = run_dir / "product_cutout.png"
     cutout = str(cut) if cut.exists() else None
     product_desc = _picked_product_desc(run_dir)   # anchors the seed to the real item (9.6)
@@ -645,13 +672,15 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
     if single_pass:
         timeline = sequencer.render_single_pass(board, kit=kit, run_dir=run_dir,
                                                 style=style, aspect=aspect,
-                                                resolution=resolution, led=led, log=log)
+                                                resolution=resolution, creator=creator,
+                                                led=led, log=log)
         rlog = None
     else:
         client = _client()
         timeline, board, rlog = sequencer.render_storyboard(
             board, kit=kit, run_dir=run_dir, script=script, style=style,
             cutout_path=cutout, product_desc=product_desc, aspect=aspect, resolution=resolution,
+            creator=creator, pin_face=pin_face,
             replan=lambda shot, reason: story_brain.replan_shot(
                 client, kit, shot, reason=reason)[0],
             strict=strict, led=led, log=log)
@@ -662,7 +691,8 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
 
     if finish and script is not None:
         timeline = finish_timeline(timeline, board, script, kit, run_dir,
-                                   client=_client(), led=led, log=log)
+                                   client=_client(), led=led,
+                                   voice=(creator.voice_id if creator else None), log=log)
 
     if not keep_work:
         _clean_work(run_dir)          # keep only paid artifacts + the finished ad (9.4)
@@ -686,7 +716,8 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
 
 def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, run_dir, *,
                     client=None, sfx: bool = True, voiceover: bool = True,
-                    captions: bool = True, led=None, log=print) -> str:
+                    captions: bool = True, voice: str | None = None,
+                    led=None, log=print) -> str:
     """Voiceover, SFX and captions over the ASSEMBLED timeline, not per shot.
 
     One voiceover across the whole ad, muxed once. Splicing per-shot audio at every cut
@@ -704,7 +735,11 @@ def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, 
     if voiceover:
         try:
             spoken = script.spoken()
+            # ONE voiceover for the whole ad, so `voice` is consistent across every shot by
+            # construction. This is the half of a persona that is a GUARANTEE rather than a
+            # wish: MiniMax honours voice_id exactly, where the video model only tries.
             vo = video_providers.generate_voiceover(spoken, run_dir / "voiceover.mp3",
+                                                    voice=voice or None,
                                                     log=log)   # KEPT: paid TTS
             if led:
                 led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"],

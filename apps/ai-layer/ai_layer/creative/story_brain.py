@@ -122,11 +122,31 @@ _SCRIPT_SYSTEM = (
 )
 
 
+def _voice_block(creator) -> str:
+    """How the creator talks, for the SCRIPT. The persona's speech half only: the LLM can
+    honour 'filler words' exactly, and a video model cannot render it at all."""
+    return f"\n\n{creator.to_voice_brief()}" if creator is not None else ""
+
+
+def _who_block(creator) -> str:
+    """Who the creator IS, for the STORYBOARD. Without it the director invents a new person
+    for every `subject` line, and five shots describe five different people."""
+    if creator is None:
+        return ""
+    return (f"\n\nTHE CREATOR ON CAMERA (the SAME person in every shot -- write every "
+            f"`subject` around them, never a different person):\n{creator.to_visual_prompt()}")
+
+
 def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
-                    template: CreativeTemplate | None = None) -> tuple[Script, float]:
+                    template: CreativeTemplate | None = None,
+                    creator=None) -> tuple[Script, float]:
     """The spoken argument, as ordered beats. Grounded in a real ad's structure when one
     was measured: if a winner opened on a pattern interrupt at 168 words per minute,
-    that is evidence about this audience, and it belongs in the prompt."""
+    that is evidence about this audience, and it belongs in the prompt.
+
+    `creator` steers HOW it is written (energy, filler words). This is the reliable half of
+    a persona: an LLM asked for false starts produces false starts, where a diffusion model
+    asked for a specific face mostly does not."""
     words = max(8, int(seconds * 2.4))            # ~145 words/min spoken
     system = (_SCRIPT_SYSTEM.replace("{sec}", str(seconds)).replace("{words}", str(words)))
     if template:
@@ -134,7 +154,7 @@ def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
     user = (f"BRAND: {kit.brand_name} -- {kit.tagline}\n"
             f"TONE: {kit.tone}. VOICE: {', '.join(kit.voice_keywords)}\n"
             f"DO: {'; '.join(kit.dos)}\nDON'T: {'; '.join(kit.donts)}\n\n"
-            f"ACCOUNT CONTEXT:\n{summary}{_structure_block(template)}")
+            f"ACCOUNT CONTEXT:\n{summary}{_structure_block(template)}{_voice_block(creator)}")
     data, cost = brain.chat_json(client, system, user)
     return Script(beats=[ScriptBeat.model_validate(b) for b in data.get("beats", [])]), cost
 
@@ -175,7 +195,7 @@ def _build_shots(raw: list[dict]) -> list[Shot]:
 
 def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int = 20,
                         template: CreativeTemplate | None = None, retries: int = 1,
-                        max_clip: float | None = None, log=print
+                        max_clip: float | None = None, creator=None, log=print
                         ) -> tuple[Storyboard, float]:
     """Break the script into shots, then FIT and VALIDATE deterministically.
 
@@ -196,7 +216,7 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
     base_user = (f"BRAND: {kit.brand_name}. TONE: {kit.tone}.\n"
                  f"SCRIPT:\n" +
                  "\n".join(f"  [{b.purpose}] {b.text}" for b in script.beats) +
-                 _structure_block(template))
+                 _structure_block(template) + _who_block(creator))
 
     total_cost, hint = 0.0, ""
     for attempt in range(retries + 1):

@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 
 from ai_layer import meta_live
 from ai_layer.creative import config, fal_billing, pipeline
-from ai_layer.creative.schemas import Storyboard, UGCStyle
+from ai_layer.creative.schemas import CreatorKit, Storyboard, UGCStyle
 
 log = logging.getLogger("ai_layer.creative.service")
 
@@ -105,6 +105,9 @@ class VideoPlanRequest(BaseModel):
     """$0. LLM only: script -> storyboard, plus what the render would cost."""
     job_id: str = Field(..., description="an existing run (from /creative/generate)")
     seconds: int = Field(config.STORY_DEFAULT_SECONDS, ge=6, le=90)
+    # WHO is in the ad. Persisted to the run, so the render cannot disagree with the script
+    # about who is speaking. Reuse the same object across runs to reuse the same creator.
+    creator: CreatorKit | None = None
 
 
 class VideoRenderRequest(BaseModel):
@@ -121,6 +124,14 @@ class VideoRenderRequest(BaseModel):
     guard_balance: bool = Field(True, description="refuse to start if the fal balance can't cover it")
     variant_axis: str | None = Field(None, description="caption_style | aesthetic | hook_type")
     variant_values: list[str] | None = None
+    # The persona. Falls back to the run's creator_kit.json (written by /video/plan).
+    creator: CreatorKit | None = None
+    # EXPERIMENT, off by default. i2v-seeds every non-hero shot from one generated still of
+    # the creator, the only lever Seedance offers for holding a face. It may trip the same
+    # content filter that rejects a person in a ref2v reference -- unverified, because the
+    # fal balance is empty. When the seed IS dropped the render logs loudly rather than
+    # quietly shipping five different faces. Costs one extra FLUX still per persona.
+    pin_face: bool = Field(False, description="try to hold the creator's face across shots")
 
 
 def _brief_summary(brief: dict) -> str:
@@ -272,7 +283,7 @@ def video_plan(req: VideoPlanRequest):
                             detail=f"run {req.job_id!r} has no brand kit; POST /creative/generate first")
     try:
         script, board = pipeline.plan_story(run_id=req.job_id, seconds=req.seconds,
-                                            log=lambda *_: None)
+                                            creator=req.creator, log=lambda *_: None)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"planning failed: {e}") from e
 
@@ -313,7 +324,8 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
         timeline, board, rlog = pipeline.render_story(
             run_id=job_id, style=style, aspect=req.aspect, resolution=req.resolution,
             single_pass=req.single_pass, strict=req.strict, finish=True,
-            guard_balance=req.guard_balance, log=lambda *_: None)
+            guard_balance=req.guard_balance, creator=req.creator, pin_face=req.pin_face,
+            log=lambda *_: None)
 
         stage("Verifying the timeline")
         report = pipeline.qa_video(run_id=job_id, strict=req.strict, run_vlm=True,

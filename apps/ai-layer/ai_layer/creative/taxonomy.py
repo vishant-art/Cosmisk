@@ -78,6 +78,20 @@ ShotCamera = Literal[
 # Whether the product is on screen, and how hard it is being sold in that shot.
 ProductVisibility = Literal["hero", "background", "absent"]
 
+# --- the creator persona (CreatorKit) -----------------------------------------
+# WHO is on camera. Closed where a closed set is honest, free text where it is not:
+# `appearance` is a visual brief like Shot.subject, because "5'6, freckles, curly dark
+# hair" is not a category and pretending it is would just produce a category that means
+# nothing. Everything below is a knob a director would actually turn.
+CreatorAge = Literal["18-24", "25-34", "35-44", "45-54", "55+"]
+CreatorGender = Literal["woman", "man", "nonbinary", "unspecified"]
+
+# How they PERFORM. These steer the SCRIPT (what is written for them to say), not the
+# pixels -- a diffusion model cannot render "uses filler words".
+CreatorEnergy = Literal["calm", "warm", "upbeat", "deadpan", "intense"]
+CreatorFiller = Literal["none", "some", "many"]
+CreatorGesture = Literal["rare", "occasional", "frequent"]
+
 # --- temporal QA (T9) ----------------------------------------------------------
 # What a vision critic is permitted to complain about. Closed, for the same reason the
 # teardown's sets are closed: an open vocabulary produces "the pacing feels slightly
@@ -92,6 +106,11 @@ QaIssue = Literal[
     "unreadable_caption",
     "continuity_break",    # shot N+1 does not follow from shot N
     "frozen_frame",        # a shot that never moves
+    # The creator is a DIFFERENT PERSON between shots. Distinct from face_distorted,
+    # which is one mangled face; this is two intact faces that do not match. It is the
+    # signature failure of a persona whose conditioning reference was silently dropped
+    # (see video_providers.generate_with_fallback, which degrades ref2v -> t2v).
+    "identity_drift",
 ]
 
 # --- structural variants (T10) -------------------------------------------------
