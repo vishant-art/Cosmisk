@@ -23,6 +23,7 @@
 | 7 | Top up the fal.ai balance before a batch | fal.ai dashboard | Now **~$8.25** (was negative); ~1-2 runs left |
 | 8 | Get the Meta API token reinstated | Meta | Grounding degrades until then (works, less grounded) |
 | 9 | Add the `PG*` / `PG*_POOL` test-branch vars to CI | CI env | Yes, for the non-creative ai-layer suite |
+| 10 | **Wire the UGC video track into the UI** (`direction`, `n_shots`, creator, seconds, VO/captions/SFX) — today it is backend-only, no front end | code: `apps/web` + `apps/api` (TS) | Gap — users cannot reach video generation or set the direction from the product |
 
 Redeploy the ai-layer after 1-3 (and 4-5 once patched). `numpy` is in `pyproject.toml`, so the
 image must rebuild (no Dockerfile change — see §Build).
@@ -149,6 +150,48 @@ pre-effects concat, or raise the detector threshold/min-shot for finished clips)
 
 ---
 
+## UI / proxy gap — the UGC video track is backend-only (no front end)
+
+The `direction` operator guide, `n_shots`, the `creator` persona, `seconds`, and the entire
+storyboard-driven UGC video track (`POST /creative/video/plan` + `/creative/video/generate`)
+exist **only on the Python backend**. No customer-facing UI exposes any of them. Tracing all
+three layers:
+
+1. **Angular UI (`apps/web`).** `core/services/creative-studio.service.ts:84` sends only
+   `{ brief, formats, meta_account_id }` to the proxy. The `features/creative-cockpit`
+   component has no direction/video controls — its only `direction` symbol is an unrelated
+   metric trend (`trend: { direction: 'up' }`).
+2. **TS proxy (`apps/api`).** `services/creative-gen-client.ts` is the ONLY TS file that calls
+   the ai-layer, and it wires just `/creative/generate` (fields: formats, images, withVideo,
+   voiceover, ground, noLogo) + `/creative/jobs/{id}` polling. It **never** calls
+   `/creative/video/plan` or `/creative/video/generate`, so `direction` / `n_shots` /
+   `creator` / `seconds` have no path through it at all.
+3. **Python backend (`apps/ai-layer`).** The only layer where `direction` exists
+   (`creative/service.py` — `VideoPlanRequest.direction`, `VideoRenderRequest.direction`),
+   added recently (commit `bea299f`, "operator direction guide + n_shots").
+
+**Impact.** The storyboard UGC video generation — the multi-clip ads, the free-text direction
+guide, shot count, creator persona, and per-clip voiceover/captions/SFX — has **no front end**.
+Today `direction` is reachable only via a direct API call (what `tools/creative_api_liverun.py`
+does) or the FastAPI auto-generated Swagger console at `/docs` (a developer tool, not the
+product UI). The customer UI stops at static-ad generation.
+
+**Wiring it up** (TypeScript, under the current production-hardening code freeze — maintainers
+to own; the AI side won't touch `apps/`):
+
+- `apps/api`: add `videoPlan()` / `videoGenerate()` to `creative-gen-client.ts` that POST
+  `/creative/video/plan` and `/creative/video/generate`, forwarding
+  `{ direction, n_shots, seconds, creator, voiceover, captions, sfx }`, plus the proxy route(s)
+  in `routes/creative-studio.ts`.
+- `apps/web`: a "direction" free-text input (+ optional n_shots / voiceover / captions toggles)
+  on the creative studio screen, and a plan → quote → generate flow in `creative-studio.service.ts`
+  and the cockpit component.
+- **Recommended UX:** call `/creative/video/plan` first and show its returned `quote` (clips +
+  `estimated_usd` + `affordable`) before the paid `/creative/video/generate`. The plan/generate
+  split exists precisely so the user sees the cost before anything spends Seedance.
+
+---
+
 ## Non-blocking / confirm
 
 - **`FAL_ADMIN_KEY`** — present and working locally (the balance guard, the 402 refusal, and
@@ -253,6 +296,9 @@ redeploy** once §3 is done.
 - **Neon persistence is currently broken** (§1) — fix creds + apply migrations to close the loop.
 - **QA gate has two false-fail checks** (§4 caption critic, §5 cut_alignment) — patch before
   trusting the verdict; the produced media is fine.
+- **The UGC video track has no UI** — `direction`, `n_shots`, creator, seconds, and the
+  storyboard video generation are backend-only; the customer UI covers static ads only (see the
+  UI / proxy gap section). Users can't set the direction or trigger video gen from the product.
 - **No object storage** — assets live on the ai-layer disk; §3 is the mitigation, not a fix.
 - **Live-verified only locally.** The 2026-07-16 run was a real paid render via the in-process
   API driver, not against the deployed Railway service. No run has yet gone through the deployed
