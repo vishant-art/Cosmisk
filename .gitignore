@@ -121,6 +121,9 @@ apps/ai-layer/.pytest_cache/
 apps/ai-layer/*.egg-info/
 apps/ai-layer/build/
 apps/ai-layer/plots/
+# creative studio run artifacts (regenerable media; live_runs/ holds dry + live outputs)
+apps/ai-layer/live_runs/
+apps/ai-layer/ai_layer/data/creative_output/
 apps/ai-layer/data/_real_*.json
 apps/ai-layer/data/cost_ledger.jsonl
 apps/ai-layer/data/*.sqlite

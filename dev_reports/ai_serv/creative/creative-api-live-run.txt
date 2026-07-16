@@ -1,0 +1,270 @@
+==============================================================================
+CREATIVE STUDIO — LIVE API SMOKE (blonde-woman direction)
+cap $4.0 | harness est spent $3.0992 | video renders 2
+fal balance 15.8 -> 13.03
+fal actuals: n/a
+direction: generate a video with a bright skinned blonde woman
+==============================================================================
+
+STEPS: {
+  "steps": {
+    "generate": "complete",
+    "plan": {
+      "shots": 3,
+      "quote": {
+        "clips": 3,
+        "estimated_usd": 3.6666,
+        "balance_usd": 15.72,
+        "affordable": true,
+        "guard_enabled": true,
+        "shortfall_usd": 0.0
+      }
+    },
+    "generate_video": "failed"
+  },
+  "error": "'NoneType' object has no attribute 'get'"
+}
+
+==============================================================================
+EVERY PROMPT & PAID CALL
+==============================================================================
+
+--- [1] LLM ---
+SYSTEM:
+You are an elite brand strategist and art director. From the ad-account summary, FIRST infer the brand's category, its audience, and what the winning campaigns reveal about what those customers actually respond to. THEN design a distinctive, ownable brand identity that fits -- intuitive and strategically grounded, never generic, derivative, or stock. Return STRICT JSON only (no prose, no markdown fences). Schema:
+{
+  "brand_name": str, "tagline": str,
+  "palette": [{"role": "primary|secondary|accent|bg", "hex": "#RRGGBB"}],  // 3-5 colors
+  "typography": {"heading_style": str, "body_style": str},
+  "tone": str, "voice_keywords": [str],
+  "dos": [str], "donts": [str],
+  "visual_style": str,  // e.g. "clean studio, warm light, minimal props"
+  "logo": {"brief": str}  // ONE strong, renderable mark concept
+}
+Make it SMART, not safe:
+- Palette: intentional and category-right, with real contrast. Avoid the obvious cliche (default SaaS teal/orange, lazy luxury black+gold) unless it is genuinely the best call. Give a clear primary, a supporting secondary, one accent, and a background.
+- Tone, voice, dos, donts: specific to THIS brand and audience -- concrete and VISUAL (things an art director can act on), never interchangeable boilerplate or platitudes.
+- logo.brief: one memorable, reductive idea (a specific mark or monogram) -- no cliche swoosh, globe, generic leaf, or gradient blob.
+Every hex is a real 6-digit hex. Keep lists to 3-5 items.
+
+USER:
+BRAND: Aria Label
+PRODUCT: the store bestseller
+DESCRIPTION: premium everyday apparel
+TARGET AUDIENCE: women 25-40
+
+--- [2] LLM ---
+SYSTEM:
+You are a senior advertising art director. Given a brand kit and what's working in the account, propose 1 image-ad concepts that are distinct, intuitive, and scroll-stopping -- each a DIFFERENT strategic angle (e.g. hero-product, in-use lifestyle, problem/solution, social proof, bold visual metaphor, pattern interrupt). Return STRICT JSON only:
+{"concepts": [{"title": str, "scene": str, "ad_copy": {"headline": str, "cta_label": str, "angle": str, "subhead": str|null, "legal": str|null}}]}
+Each `scene` is a vivid, art-directed brief for ONE still: a concrete hero subject, a specific setting, intentional composition and camera angle, motivated lighting, and a clear mood -- the kind of frame that stops a feed. Avoid generic stock setups (smiling person at a laptop, plain product-on-white, soulless corporate scenes). The scene must contain NO text and NO logo -- describe only the visual (copy and logo are composited later).
+`ad_copy` is the words placed over the scene afterwards, NOT drawn by the image model:
+- headline: <=6 words, specific and on-voice, the single hook. No clickbait, no hedging.
+- cta_label: 1-3 words, an action (Shop now, Get yours, Book a call).
+- angle: the strategic reason this creative exists (the angle name above).
+- subhead: optional one short supporting line, or null.
+- legal: optional fine print (e.g. *T&C apply), or null.
+Keep the concepts visually varied but unmistakably the same brand.
+
+USER:
+BRAND KIT:
+{
+  "brand_name": "Aria Label",
+  "tagline": "Elevated Ease, Everyday.",
+  "palette": [
+    {
+      "role": "primary",
+      "hex": "#3A4F4F"
+    },
+    {
+      "role": "secondary",
+      "hex": "#A8B4B4"
+    },
+    {
+      "role": "accent",
+      "hex": "#D1C0A4"
+    },
+    {
+      "role": "bg",
+      "hex": "#F8F5F1"
+    }
+  ],
+  "typography": {
+    "heading_style": "Serif, classic yet approachable (e.g., Lora, Playfair Display)",
+    "body_style": "Sans-serif, clean and highly readable (e.g., Raleway, Montserrat)"
+  },
+  "tone": "Sophisticated, understated, confident, and approachable.",
+  "voice_keywords": [
+    "effortless",
+    "refined",
+    "versatile",
+    "enduring",
+    "curated"
+  ],
+  "dos": [
+    "Show real women in diverse, natural settings, living their lives.",
+    "Emphasize the texture and drape of fabrics through movement and close-ups.",
+    "Highlight timeless styling, showing pieces as foundational wardrobe elements.",
+    "Use soft, diffused natural lighting to evoke comfort and quality."
+  ],
+  "donts": [
+    "Avoid overly posed or hyper-sexualized imagery.",
+    "Stay away from fast-fashion trends or fleeting styles in visuals.",
+    "Do not use harsh studio lighting or artificial backgrounds.",
+    "Refrain from cluttered visuals or excessive accessories."
+  ],
+  "visual_style": "Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup.",
+  "logo": {
+    "brief": "A refined, abstract 'A' mark that evokes a gentle drape or a subtle, elegant curve, perhaps with a slight upward lift. Clean lines, not too thin, not too heavy, feeling balanced and sophisticated.",
+    "asset_path": null
+  }
+}
+
+ACCOUNT CONTEXT:
+BRAND: Aria Label
+PRODUCT: the store bestseller
+DESCRIPTION: premium everyday apparel
+TARGET AUDIENCE: women 25-40
+
+Propose exactly 1 concepts.
+
+--- [3] CUTOUT ---
+{"cost": 0.0}
+
+--- [4] FLUX ---
+cost=$0.04
+PROMPT:
+A woman (30s, natural, relaxed expression) stands silhouetted against a large, sun-drenched window in a minimalist, modern apartment. She is wearing a flowing, premium everyday dress (Aria Label's bestseller, in a deep, sophisticated hue like slate grey or forest green). Her back is slightly turned towards the camera, revealing the elegant drape of the fabric. Her hands are gently holding a ceramic mug, and she is looking out the window, a sense of calm and quiet contemplation. Soft, diffused morning light streams in, creating long, gentle shadows and highlighting the texture and movement of the dress. The composition is clean, with warm, muted tones from the interior.
+
+Art-directed advertising photograph for Aria Label. Visual style: Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup.. Mood: Sophisticated, understated, confident, and approachable.. Color-grade deliberately to the brand palette (use it intentionally, not as flat blocks): primary #3A4F4F, secondary #A8B4B4, accent #D1C0A4, bg #F8F5F1. ONE clear hero subject, intentional composition with depth and a focal point; real, tactile materials and authentic texture; motivated, directional lighting; premium editorial craft. Do: Show real women in diverse, natural settings, living their lives.; Emphasize the texture and drape of fabrics through movement and close-ups.; Highlight timeless styling, showing pieces as foundational wardrobe elements.; Use soft, diffused natural lighting to evoke comfort and quality.. Don't: Avoid overly posed or hyper-sexualized imagery.; Stay away from fast-fashion trends or fleeting styles in visuals.; Do not use harsh studio lighting or artificial backgrounds.; Refrain from cluttered visuals or excessive accessories.. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, no over-blurred bokeh, nothing posed or soulless-corporate. A clean, unembellished 9:16 composition with calm, simple surroundings.
+NEGATIVE:
+text, words, letters, numbers, captions, typography, font, handwriting, logo, wordmark, watermark, signature, label, sticker, badge, brand name, ui, interface, frame, border, poster text, meme text
+
+--- [5] LLM ---
+SYSTEM:
+You are a meticulous advertising creative director reviewing ONE finished static ad. Judge it against this rubric and return STRICT JSON only: {"passed": bool, "issues": [str]}. Fail (passed=false) if ANY: the headline is unreadable or low-contrast; the headline or CTA overlaps/obscures the product; spelling is wrong vs the intended copy; the CTA is missing or invisible; it looks generic, off-brand, or AI-slop. List concrete issues. If it is clean and on-brand, passed=true with [] issues. This ad intentionally has NO logo; that is correct, not a defect.
+
+USER:
+<vision>
+
+--- [6] FLUX ---
+cost=$0.04
+PROMPT:
+A woman (30s, natural, relaxed expression) stands silhouetted against a large, sun-drenched window in a minimalist, modern apartment. She is wearing a flowing, premium everyday dress (Aria Label's bestseller, in a deep, sophisticated hue like slate grey or forest green). Her back is slightly turned towards the camera, revealing the elegant drape of the fabric. Her hands are gently holding a ceramic mug, and she is looking out the window, a sense of calm and quiet contemplation. Soft, diffused morning light streams in, creating long, gentle shadows and highlighting the texture and movement of the dress. The composition is clean, with warm, muted tones from the interior.
+
+Art-directed advertising photograph for Aria Label. Visual style: Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup.. Mood: Sophisticated, understated, confident, and approachable.. Color-grade deliberately to the brand palette (use it intentionally, not as flat blocks): primary #3A4F4F, secondary #A8B4B4, accent #D1C0A4, bg #F8F5F1. ONE clear hero subject, intentional composition with depth and a focal point; real, tactile materials and authentic texture; motivated, directional lighting; premium editorial craft. Do: Show real women in diverse, natural settings, living their lives.; Emphasize the texture and drape of fabrics through movement and close-ups.; Highlight timeless styling, showing pieces as foundational wardrobe elements.; Use soft, diffused natural lighting to evoke comfort and quality.. Don't: Avoid overly posed or hyper-sexualized imagery.; Stay away from fast-fashion trends or fleeting styles in visuals.; Do not use harsh studio lighting or artificial backgrounds.; Refrain from cluttered visuals or excessive accessories.. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, no over-blurred bokeh, nothing posed or soulless-corporate. A clean, unembellished 9:16 composition with calm, simple surroundings.
+NEGATIVE:
+text, words, letters, numbers, captions, typography, font, handwriting, logo, wordmark, watermark, signature, label, sticker, badge, brand name, ui, interface, frame, border, poster text, meme text
+
+--- [7] LLM ---
+SYSTEM:
+You are a meticulous advertising creative director reviewing ONE finished static ad. Judge it against this rubric and return STRICT JSON only: {"passed": bool, "issues": [str]}. Fail (passed=false) if ANY: the headline is unreadable or low-contrast; the headline or CTA overlaps/obscures the product; spelling is wrong vs the intended copy; the CTA is missing or invisible; it looks generic, off-brand, or AI-slop. List concrete issues. If it is clean and on-brand, passed=true with [] issues. This ad intentionally has NO logo; that is correct, not a defect.
+
+USER:
+<vision>
+
+--- [8] LLM ---
+SYSTEM:
+You are a direct-response copywriter who writes short-form video ads that do not look like ads. Write the SPOKEN script for a 10-second creator-style video, as ordered beats. Return STRICT JSON only:
+{"beats": [{"purpose": str, "text": str}]}
+`purpose` MUST be one of: hook, problem, agitate, demo, proof, objection, cta. Use each at most once, in a sensible order.
+The FIRST beat is always `hook`, and it must earn the next two seconds on its own: a real sentence a person would say out loud, not a slogan. No 'Introducing'. No 'Are you tired of'. No brand name in the hook.
+The LAST beat should be `cta` unless there is a strong reason otherwise.
+HARD LIMIT: at most 22 words TOTAL across all beats. The spoken track MUST fit inside 10 seconds at a natural pace -- err on the side of SHORTER. Going over is not stylistic: the voiceover then has to be sped up to fit the video, or the ad runs long. Count the words. (Reference) Total spoken length ~22 words MAX -- it has to FIT 10 seconds when read aloud at a natural pace. Write speech, not prose: contractions, short clauses, no stage directions, no narrator labels, no emoji.
+HARD LIMIT: use AT MOST 3 beats total (fewer is fine). This ad is exactly 3 shots, and a beat with no shot is not allowed.
+
+USER:
+BRAND: Aria Label -- Elevated Ease, Everyday.
+TONE: Sophisticated, understated, confident, and approachable.. VOICE: effortless, refined, versatile, enduring, curated
+DO: Show real women in diverse, natural settings, living their lives.; Emphasize the texture and drape of fabrics through movement and close-ups.; Highlight timeless styling, showing pieces as foundational wardrobe elements.; Use soft, diffused natural lighting to evoke comfort and quality.
+DON'T: Avoid overly posed or hyper-sexualized imagery.; Stay away from fast-fashion trends or fleeting styles in visuals.; Do not use harsh studio lighting or artificial backgrounds.; Refrain from cluttered visuals or excessive accessories.
+
+ACCOUNT CONTEXT:
+BRAND: Aria Label
+PRODUCT: the store bestseller
+DESCRIPTION: premium everyday apparel
+TARGET AUDIENCE: women 25-40
+
+THE CREATOR SPEAKING: Aria, a warm woman. Write in their voice: the odd filler word ('honestly', 'like'), the way people actually talk.
+
+OPERATOR DIRECTION (how this ad should look and feel -- honour it): generate a video with a bright skinned blonde woman
+
+--- [9] LLM ---
+SYSTEM:
+You are a director breaking a script into a shot list for a creator-style video ad. Return STRICT JSON only:
+{"shots": [{"purpose": str, "duration_s": number, "camera": str, "subject": str, "product_visible": str, "motion": str, "dialogue": str|null}]}
+`purpose` MUST be one of: hook, problem, agitate, demo, proof, objection, cta -- and every beat in the script MUST be covered by at least one shot. `purpose` is how a shot is tied back to the line it renders.
+`camera` MUST be one of: selfie, handheld_wide, close_up, macro, over_shoulder, overhead, pov.
+`product_visible` MUST be one of: hero, background, absent.
+The FIRST shot renders the hook. The LAST shot renders the CTA.
+`subject` is a concrete visual brief for that shot: who or what is on screen, where, doing what. `motion` is what moves. `dialogue` is the line spoken during the shot, taken from the script, or null for a silent shot.
+Shots are SHORT: 1.2-4 seconds each. Cut every couple of seconds; that pacing is what the audience expects, not a limit of the camera. Aim for 3-3 shots totalling about 10 seconds. Treat `duration_s` as a proposal: it will be scaled.
+
+USER:
+BRAND: Aria Label. TONE: Sophisticated, understated, confident, and approachable..
+SCRIPT:
+  [hook] Honestly, I just stopped buying clothes that don't feel good.
+  [problem] Because what's the point, right?
+  [cta] I mean, check out Aria Label.
+
+THE CREATOR ON CAMERA (the SAME person in every shot -- write every `subject` around them, never a different person):
+The same 25 to 34-year-old woman, fair, bright skin, blonde hair, natural light makeup, wearing the product, in a bright airy apartment. Occasional natural hand gestures. The SAME person, unchanged, in every shot.
+
+OPERATOR DIRECTION (how this ad should look and feel -- honour it): generate a video with a bright skinned blonde woman
+
+--- [10] FLUX ---
+cost=$0.2
+PROMPT:
+Studio e-commerce product photograph of Pastel Green Floral Embroidered Anarkali, presented ON ITS OWN as a flat-lay or on a plain ghost mannequin against a clean neutral backdrop, centred, sharp, evenly lit. The item is the ONLY subject. Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup..
+NEGATIVE:
+person, people, model, human, face, head, hands, arms, legs, body, skin, text
+
+--- [11] SEEDANCE ---
+mode=i2v dur=4s cost=$1.2096 fell_back=None
+PROMPT:
+Creator, smiling subtly, making eye contact with the camera, one hand resting gently on her chest, in her bright, airy apartment.
+
+front-facing phone selfie, held at arm's length. shot handheld on a phone, natural camera movement, lit by soft daylight from a nearby window, casually framed, slightly off-centre, unstyled. The shot moves: Subtle hand gesture, slight head tilt.. The product is the subject of this shot, clearly in frame and in focus. Art direction: generate a video with a bright skinned blonde woman. Filmed for Aria Label. Visual style: Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup.. Mood: Sophisticated, understated, confident, and approachable.. Looks like a real photo a customer took, not an advertisement. Ordinary, lived-in surroundings with a little honest mess; nothing styled or staged; natural skin and real surfaces. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, nothing posed or soulless-corporate.
+
+--- [12] FLUX ---
+cost=$0.2
+PROMPT:
+Studio e-commerce product photograph of Pastel Green Floral Embroidered Anarkali, presented ON ITS OWN as a flat-lay or on a plain ghost mannequin against a clean neutral backdrop, centred, sharp, evenly lit. The item is the ONLY subject. Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup..
+NEGATIVE:
+person, people, model, human, face, head, hands, arms, legs, body, skin, text
+
+--- [13] SEEDANCE ---
+mode=i2v dur=4s cost=$1.2096 fell_back=None
+PROMPT:
+Creator, turning slightly to showcase the fit of the Aria Label top, looking thoughtfully out a window.
+
+handheld wide shot, the whole scene in frame. shot handheld on a phone, natural camera movement, lit by soft daylight from a nearby window, casually framed, slightly off-centre, unstyled. The shot moves: Gentle pivot, soft fabric movement.. The product is the subject of this shot, clearly in frame and in focus. Art direction: generate a video with a bright skinned blonde woman. Filmed for Aria Label. Visual style: Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup.. Mood: Sophisticated, understated, confident, and approachable.. Looks like a real photo a customer took, not an advertisement. Ordinary, lived-in surroundings with a little honest mess; nothing styled or staged; natural skin and real surfaces. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, nothing posed or soulless-corporate.
+
+--- [14] FLUX ---
+cost=$0.2
+PROMPT:
+Studio e-commerce product photograph of Pastel Green Floral Embroidered Anarkali, presented ON ITS OWN as a flat-lay or on a plain ghost mannequin against a clean neutral backdrop, centred, sharp, evenly lit. The item is the ONLY subject. Naturalistic and authentic; clean environments, soft natural light, focus on fabric drape and subtle detailing, minimal hair/makeup..
+NEGATIVE:
+person, people, model, human, face, head, hands, arms, legs, body, skin, text
+
+--- [15] ERROR ---
+{"detail": "Traceback (most recent call last):\n  File \"C:\\Users\\91626\\AppData\\Local\\Temp\\claude\\api_live_smoke.py\", line 167, in <module>\n    note(f\"  video -> {s3.get('status')}; qa={s3.get('qa', {}).get('verdict')}; url={s3.get('video', {}).get('url')}\")\n                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'NoneType' object has no attribute 'get'\n"}
+
+==============================================================================
+LOG
+  [14:02:49] fal balance before: 15.8
+  [14:02:49] POST /creative/generate
+  [14:04:22]   flux -> $0.0400 (spent $0.04)
+  [14:04:59]   flux -> $0.0400 (spent $0.08)
+  [14:05:16]   job_id=3b114c00ab734dfd8d9942dbfb15f5a6
+  [14:05:16]   generate -> complete, 0 asset(s)
+  [14:05:16] POST /creative/video/plan
+  [14:05:25]   plan attempt 1: HTTP 200
+  [14:05:25]   plan -> 3 shots, quote $3.6666 affordable=True balance=15.72
+  [14:05:25] POST /creative/video/generate
+  [14:06:04]   flux -> $0.2000 (spent $0.28)
+  [14:08:55]   seedance #1 4s -> $1.2096 (spent $1.49)
+  [14:09:39]   flux -> $0.2000 (spent $1.69)
+  [14:14:19]   seedance #2 4s -> $1.2096 (spent $2.90)
+  [14:15:15]   flux -> $0.2000 (spent $3.10)
+  [14:15:19] !! 'NoneType' object has no attribute 'get'
