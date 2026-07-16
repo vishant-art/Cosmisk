@@ -185,8 +185,8 @@ def _direction_block(direction) -> str:
 
 def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
                     template: CreativeTemplate | None = None,
-                    creator=None, prior=None, graph=None, direction=None
-                    ) -> tuple[Script, float]:
+                    creator=None, prior=None, graph=None, direction=None,
+                    max_beats: int | None = None) -> tuple[Script, float]:
     """The spoken argument, as ordered beats. Grounded in a real ad's structure when one
     was measured: if a winner opened on a pattern interrupt at 168 words per minute,
     that is evidence about this audience, and it belongs in the prompt.
@@ -196,6 +196,12 @@ def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
     asked for a specific face mostly does not."""
     words = max(8, int(seconds * 2.2))            # ~132 wpm: headroom so the VO fits the cut
     system = (_SCRIPT_SYSTEM.replace("{sec}", str(seconds)).replace("{words}", str(words)))
+    if max_beats:
+        # The shot count is pinned (n_shots), and every beat needs its own shot, so the beat
+        # count must not exceed it -- otherwise the storyboard is forced past the pin. Cap it
+        # here, at the source.
+        system += (f"\nHARD LIMIT: use AT MOST {max_beats} beats total (fewer is fine). This "
+                   f"ad is exactly {max_beats} shots, and a beat with no shot is not allowed.")
     if template:
         system += _STRUCTURE_SYSTEM
     user = (f"BRAND: {kit.brand_name} -- {kit.tagline}\n"

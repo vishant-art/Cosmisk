@@ -670,7 +670,7 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
                                                  summary=summary, seconds=seconds,
                                                  template=template, creator=creator,
                                                  prior=prior, graph=graph_prior,
-                                                 direction=direction)
+                                                 direction=direction, max_beats=n_shots)
     led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
     (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
 
