@@ -93,9 +93,32 @@ pytest DB fixture); a plain uvicorn boot is enough.
 
 ---
 
-## Open questions (need answers before the live run)
-1. **Mode:** hermetic-only ($0, contract), or hermetic **then** one capped live video, or
-   straight to live?
-2. **Target:** a locally-started uvicorn (fast, same code), or the deployed Railway service
-   (needs the branch deployed + the ops items in the handoff doc done first)?
-3. **Cap:** total $ ceiling for the live portion (e.g. $4 for one video, $8 for two)?
+## Decisions (LOCKED) + prepared artifacts
+
+- **Mode:** hermetic first, then ONE capped live video.
+- **Target:** local (in-process ASGI, same app/routes as uvicorn — see note below).
+- **Cap:** $4 hard.
+- **Direction for the live video (operator):** *"generate a video with a bright skinned
+  blonde woman"* — passed as `direction`, plus a matching `CreatorKit` (woman, fair/bright
+  skin, blonde) so it holds across shots.
+
+**Ready, and validated at $0:**
+1. Hermetic full-surface test — `apps/ai-layer/tests/creative/test_creative_api_loop.py`
+   (9 tests, PASS): the loop routes (publish/learn/prior/graph) + `direction`/`n_shots`
+   reaching the pipeline. With `test_creative_service.py`, all 9 routes are covered offline.
+2. Live capped runner — `<scratchpad>/api_live_smoke.py` (syntax-checked, NOT run): drives
+   `/creative/generate` (no smoke) -> `/creative/video/plan` (n_shots 3 + direction + creator)
+   -> checks the quote <= $4 -> `/creative/video/generate` -> polls -> the loop routes. Wraps
+   every paid fal call with a hard $4 guard, and writes a full TEXT record to
+   `creative-api-live-run.txt`.
+
+**Cap + "local uvicorn" note:** the runner uses in-process ASGI (`TestClient`), which is the
+SAME app, routes, request/response, and real generation as a uvicorn server — the difference
+is only the network socket. That in-process form is deliberate: it lets the paid providers be
+wrapped so the $4 cap is HARD. A true separate `uvicorn` process cannot be wrapped from
+outside, so its cap would soften to n_shots=3 + the balance guard + no-retry (~$3.7, but a QA
+repair could exceed $4). If a real socket server is required, say so and I'll add a
+server-side spend ceiling instead.
+
+**On "go":** run the hermetic test (already green), then execute the live runner (~$3.7,
+capped at $4).
