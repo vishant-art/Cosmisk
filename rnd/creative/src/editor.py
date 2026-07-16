@@ -65,6 +65,83 @@ def probe(path) -> dict:
             "has_audio": bool(meta.get("audio_codec"))}
 
 
+def media_duration(path) -> float | None:
+    """Duration in seconds of ANY media -- audio OR video -- parsed from ffmpeg's banner.
+
+    `probe()` decodes a video frame and cannot read an audio-only file (voiceover.mp3),
+    which is exactly the thing the sync check needs to measure. This reads the container's
+    `Duration:` line instead. Returns None when it cannot be read (a test stub, a corrupt
+    file), so callers treat "unmeasurable" as "skip", never as zero.
+    """
+    import re
+    import subprocess                    # lazy
+    proc = subprocess.run([_ffmpeg(), "-i", str(path)], capture_output=True)
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",
+                  (proc.stderr or b"").decode("utf-8", "replace"))
+    if not m:
+        return None
+    h, mnt, s = m.groups()
+    return int(h) * 3600 + int(mnt) * 60 + float(s)
+
+
+def fit_audio(audio_in, audio_out, target_s: float, *, max_tempo: float | None = None,
+              tol: float | None = None, log=print) -> dict:
+    """Make an audio track end WITH the picture, so voice and video finish together.
+
+    The voiceover is free-running TTS: it comes out however long it comes out, and if it is
+    longer than the video the mux silently truncates its tail (the CTA). This fixes that
+    deterministically and WITHOUT ever cutting the tail:
+
+      voiceover longer  -> speed it up (ffmpeg atempo), clamped to `max_tempo` so speech
+                           stays natural. A take too long to fit even at the cap is left
+                           long ON PURPOSE -- the audio_video_sync QA check then fails the
+                           gate, rather than a listener losing the last words of the ad.
+      voiceover shorter -> pad with trailing silence to the target (a beat of quiet under
+                           the held final frame, which is normal, not a truncation).
+
+    Returns {duration, target, tempo, action}. Passthrough (a copy) when the input cannot be
+    probed, so a $0 test stub with a dummy audio file is unaffected. `audio_in == audio_out`
+    is supported (writes a temp, then replaces).
+    """
+    import os
+    import shutil
+    import tempfile
+    max_tempo = config.AUDIO_FIT_MAX_TEMPO if max_tempo is None else max_tempo
+    tol = config.AUDIO_FIT_TOL_S if tol is None else tol
+    src, dst = Path(audio_in), Path(audio_out)
+    dur = media_duration(src)
+
+    def _emit(args):
+        fd, tmp = tempfile.mkstemp(suffix=dst.suffix or ".mp3", dir=str(dst.parent))
+        os.close(fd)
+        try:
+            _run([_ffmpeg(), "-y", "-i", str(src)] + args + [tmp])
+            os.replace(tmp, dst)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+    if dur is None:                                   # unprobeable (test stub) -> leave it
+        if str(src) != str(dst):
+            shutil.copy(str(src), str(dst))
+        return {"duration": None, "target": target_s, "tempo": 1.0, "action": "skip"}
+    if dur > target_s + tol:
+        tempo = min(dur / target_s, max_tempo)
+        _emit(["-filter:a", f"atempo={tempo:g}"])
+        new = dur / tempo
+        over = new > target_s + tol
+        log(f"[finish] voiceover {dur:.2f}s > video {target_s:.2f}s -> atempo {tempo:.3f} "
+            f"-> {new:.2f}s" + ("  (clamped; still long -> QA will flag)" if over else ""))
+        return {"duration": new, "target": target_s, "tempo": tempo, "action": "sped"}
+    if dur < target_s - tol:
+        _emit(["-af", "apad", "-t", f"{target_s:g}"])
+        log(f"[finish] voiceover {dur:.2f}s < video {target_s:.2f}s -> padded to {target_s:.2f}s")
+        return {"duration": target_s, "target": target_s, "tempo": 1.0, "action": "padded"}
+    if str(src) != str(dst):
+        shutil.copy(str(src), str(dst))
+    return {"duration": dur, "target": target_s, "tempo": 1.0, "action": "ok"}
+
+
 # --- filtergraph construction (PURE) --------------------------------------------
 # No ffmpeg, no filesystem, no clip. Just strings. Tested exhaustively without a video.
 

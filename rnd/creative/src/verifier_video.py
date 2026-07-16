@@ -435,6 +435,37 @@ def check_product_presence(clip, board: Storyboard, cutout_path=None) -> list[QA
     return out
 
 
+def check_audio_video_sync(clip, audio_path, *, tol: float | None = None) -> QACheck | None:
+    """Do the voiceover and the picture end together?
+
+    The video is authored to a fixed length; the voiceover is free-running TTS. When the
+    voiceover runs longer, the mux truncates its tail -- which is the CTA, the one line the
+    ad exists to deliver. That failure slipped through before because the only audio check
+    was caption/text drift, which compares WORDS and is blind to LENGTH.
+
+    Returns None (not a failure) when there is no voiceover, or when neither track can be
+    measured -- absence of evidence is not a defect. NOT repairable: re-rendering a shot
+    cannot change how long the spoken track is; the fix is a shorter script or the finish
+    step's speed-fit.
+    """
+    tol = config.QA_AV_SYNC_TOL_S if tol is None else tol
+    if not audio_path or not Path(audio_path).exists():
+        return None
+    a = editor.media_duration(audio_path)
+    v = editor.media_duration(clip)
+    if a is None or v is None or v <= 0:
+        return None
+    diff = a - v
+    if abs(diff) <= tol:
+        return QACheck(name="audio_video_sync", passed=True,
+                       detail=f"voiceover {a:.2f}s vs video {v:.2f}s (in sync)")
+    why = ("voiceover longer than the video: its tail (the CTA) is being cut off"
+           if diff > 0 else "voiceover shorter than the video")
+    return QACheck(name="audio_video_sync", passed=False, repairable=False,
+                   detail=f"voiceover {a:.2f}s vs video {v:.2f}s (drift {diff:+.2f}s, "
+                          f"tol {tol}s) -- {why}")
+
+
 # --- the VLM critic (closed set) --------------------------------------------------
 
 _CRITIC_SYSTEM = (
@@ -500,7 +531,7 @@ def vlm_critique(client, clip, *, led=None) -> QACheck:
 def verify(clip, board: Storyboard, script: Script | str | None = None, *,
            client=None, cutout_path=None, shot_paths=None, transcribe=None,
            strict: bool = True, led=None, work_dir=None, cuts_clip=None,
-           log=print) -> QAReport:
+           audio_path=None, log=print) -> QAReport:
     """Run every applicable check and return a fail-closed verdict.
 
     `strict` (the default) fails the gate on an INCONCLUSIVE check. A shot that promised
@@ -526,6 +557,9 @@ def verify(clip, board: Storyboard, script: Script | str | None = None, *,
         text = script.spoken() if isinstance(script, Script) else str(script)
         checks.append(check_caption_audio(clip, text, transcribe=transcribe,
                                           work_dir=work_dir, led=led))
+    sync = check_audio_video_sync(clip, audio_path)
+    if sync is not None:
+        checks.append(sync)
     if client is not None:
         checks.append(vlm_critique(client, clip, led=led))
 

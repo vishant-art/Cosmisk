@@ -121,7 +121,11 @@ _SCRIPT_SYSTEM = (
     "a real sentence a person would say out loud, not a slogan. No 'Introducing'. No "
     "'Are you tired of'. No brand name in the hook.\n"
     "The LAST beat should be `cta` unless there is a strong reason otherwise.\n"
-    "Total spoken length ~{words} words MAX -- it has to FIT {sec} seconds when read "
+    "HARD LIMIT: at most {words} words TOTAL across all beats. The spoken track MUST fit "
+    "inside {sec} seconds at a natural pace -- err on the side of SHORTER. Going over is "
+    "not stylistic: the voiceover then has to be sped up to fit the video, or the ad runs "
+    "long. Count the words. "
+    "(Reference) Total spoken length ~{words} words MAX -- it has to FIT {sec} seconds when read "
     "aloud at a natural pace. Write speech, not prose: contractions, short clauses, no "
     "stage directions, no narrator labels, no emoji."
 )
@@ -173,9 +177,20 @@ def _who_block(creator) -> str:
             f"`subject` around them, never a different person):\n{creator.to_visual_prompt()}")
 
 
+def _direction_block(direction) -> str:
+    """The operator's free-text guide for how the ad should look/feel. The human is in the
+    loop here on purpose: it is a WISH, weighted above the model's own taste but below the
+    hard rules (a direction cannot ask for a beat with no hook, or two axes in a variant).
+    Threaded into the script, the storyboard, and every shot prompt so the whole ad follows
+    one intent instead of three."""
+    d = (direction or "").strip()
+    return f"\n\nOPERATOR DIRECTION (how this ad should look and feel -- honour it): {d}" if d else ""
+
+
 def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
                     template: CreativeTemplate | None = None,
-                    creator=None, prior=None, graph=None) -> tuple[Script, float]:
+                    creator=None, prior=None, graph=None, direction=None
+                    ) -> tuple[Script, float]:
     """The spoken argument, as ordered beats. Grounded in a real ad's structure when one
     was measured: if a winner opened on a pattern interrupt at 168 words per minute,
     that is evidence about this audience, and it belongs in the prompt.
@@ -183,7 +198,7 @@ def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
     `creator` steers HOW it is written (energy, filler words). This is the reliable half of
     a persona: an LLM asked for false starts produces false starts, where a diffusion model
     asked for a specific face mostly does not."""
-    words = max(8, int(seconds * 2.4))            # ~145 words/min spoken
+    words = max(8, int(seconds * 2.2))            # ~132 wpm: headroom so the VO fits the cut
     system = (_SCRIPT_SYSTEM.replace("{sec}", str(seconds)).replace("{words}", str(words)))
     if template:
         system += _STRUCTURE_SYSTEM
@@ -191,7 +206,8 @@ def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
             f"TONE: {kit.tone}. VOICE: {', '.join(kit.voice_keywords)}\n"
             f"DO: {'; '.join(kit.dos)}\nDON'T: {'; '.join(kit.donts)}\n\n"
             f"ACCOUNT CONTEXT:\n{summary}{_structure_block(template)}"
-            f"{_prior_block(prior)}{_graph_block(graph)}{_voice_block(creator)}")
+            f"{_prior_block(prior)}{_graph_block(graph)}{_voice_block(creator)}"
+            f"{_direction_block(direction)}")
     data, cost = brain.chat_json(client, system, user)
     return Script(beats=[ScriptBeat.model_validate(b) for b in data.get("beats", [])]), cost
 
@@ -233,7 +249,7 @@ def _build_shots(raw: list[dict]) -> list[Shot]:
 def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int = 20,
                         template: CreativeTemplate | None = None, retries: int = 1,
                         max_clip: float | None = None, creator=None, prior=None,
-                        graph=None, log=print
+                        graph=None, direction=None, n_shots: int | None = None, log=print
                         ) -> tuple[Storyboard, float]:
     """Break the script into shots, then FIT and VALIDATE deterministically.
 
@@ -241,11 +257,17 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
     lands on `seconds` exactly. Coverage is not rescalable: if a beat has no shot, we
     retry once with the violation as a hint and then raise. Inventing the missing shot
     would put a fabricated beat next to written ones with nothing to tell them apart.
+
+    `n_shots` pins the shot count (e.g. 3) instead of the adaptive seconds-based range. It
+    is never allowed below the beat count, because every beat must still be covered.
     """
     max_clip = config.VIDEO_MAX_CLIP_SECONDS if max_clip is None else max_clip
     lo, hi = config.STORY_MIN_SHOT_SECONDS, min(max_clip, config.STORY_TYPICAL_SHOT_MAX)
-    n_lo = max(len(script.beats), int(seconds / hi) or 1)
-    n_hi = max(n_lo, int(seconds / lo))
+    if n_shots is not None:
+        n_lo = n_hi = max(len(script.beats), int(n_shots))    # exactly N, but cover the beats
+    else:
+        n_lo = max(len(script.beats), int(seconds / hi) or 1)
+        n_hi = max(n_lo, int(seconds / lo))
 
     system = (_STORYBOARD_SYSTEM
               .replace("{lo}", f"{lo:g}").replace("{hi}", f"{hi:g}")
@@ -255,7 +277,7 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
                  f"SCRIPT:\n" +
                  "\n".join(f"  [{b.purpose}] {b.text}" for b in script.beats) +
                  _structure_block(template) + _prior_block(prior) + _graph_block(graph)
-                 + _who_block(creator))
+                 + _who_block(creator) + _direction_block(direction))
 
     total_cost, hint = 0.0, ""
     for attempt in range(retries + 1):

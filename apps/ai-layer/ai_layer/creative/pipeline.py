@@ -596,6 +596,17 @@ def _write_creator(run_dir: Path, creator: CreatorKit) -> None:
                                                     encoding="utf-8")
 
 
+def _run_direction(run_dir) -> str | None:
+    """The operator's look/feel guide for this run, if one was given. Persisted so the
+    render uses the SAME direction the script was written to."""
+    f = Path(run_dir) / "direction.txt"
+    return f.read_text("utf-8") if f.exists() else None
+
+
+def _write_direction(run_dir, direction: str) -> None:
+    (Path(run_dir) / "direction.txt").write_text(direction, encoding="utf-8")
+
+
 def _clean_work(run_dir):
     """Remove the scratch dir of $0 intermediates (Phase 9.4). The paid render cache lives
     in renders/, not here, so a re-run still reuses it."""
@@ -605,7 +616,8 @@ def _clean_work(run_dir):
 
 def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None = None,
                seconds: int = None, creator: CreatorKit | None = None, prior=None,
-               graph_prior=None, log=print) -> tuple[Script, Storyboard]:
+               graph_prior=None, direction: str | None = None, n_shots: int | None = None,
+               log=print) -> tuple[Script, Storyboard]:
     """Script -> Storyboard, written to the run dir. No pixels, no renderer (T6).
 
     Standalone-valuable: a shot list a human creator could shoot is a deliverable even
@@ -649,17 +661,23 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
         _write_creator(run_dir, creator)
         log(f"[story] creator: {creator.name} ({creator.age_range} {creator.gender}, "
             f"{creator.energy})")
+    direction = direction or _run_direction(run_dir)
+    if direction:
+        _write_direction(run_dir, direction)
+        log(f"[story] operator direction: {direction.strip()[:120]}")
 
     script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
                                                  summary=summary, seconds=seconds,
                                                  template=template, creator=creator,
-                                                 prior=prior, graph=graph_prior)
+                                                 prior=prior, graph=graph_prior,
+                                                 direction=direction)
     led.record("script", "openrouter", config.TEXT_MODEL, s_cost, beats=len(script.beats))
     (run_dir / "script.json").write_text(script.model_dump_json(indent=2), encoding="utf-8")
 
     board, b_cost = story_brain.generate_storyboard(client, kit, script, seconds=seconds,
                                                     template=template, creator=creator,
-                                                    prior=prior, graph=graph_prior, log=log)
+                                                    prior=prior, graph=graph_prior,
+                                                    direction=direction, n_shots=n_shots, log=log)
     led.record("storyboard", "openrouter", config.TEXT_MODEL, b_cost, shots=len(board.shots))
     (run_dir / "storyboard.json").write_text(board.model_dump_json(indent=2), encoding="utf-8")
 
@@ -673,7 +691,8 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
 def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: str = "720p",
                  single_pass: bool = False, strict: bool = True, finish: bool = True,
                  keep_work: bool = False, guard_balance: bool = True,
-                 creator: CreatorKit | None = None, pin_face: bool = False, log=print):
+                 creator: CreatorKit | None = None, pin_face: bool = False,
+                 direction: str | None = None, log=print):
     """Render a planned storyboard into a timeline (T7). Costs real money.
 
     Reads the run's storyboard.json and brand_kit.json, renders every shot with repair
@@ -701,6 +720,7 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
     kit = BrandKit.model_validate_json((run_dir / "brand_kit.json").read_text("utf-8"))
     script = _run_script(run_dir)
     creator = creator or _run_creator(run_dir)     # the person the script was written for
+    direction = direction or _run_direction(run_dir)   # the same look/feel guide the script used
     cut = run_dir / "product_cutout.png"
     cutout = str(cut) if cut.exists() else None
     product_desc = _picked_product_desc(run_dir)   # anchors the seed to the real item (9.6)
@@ -710,14 +730,14 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
         timeline = sequencer.render_single_pass(board, kit=kit, run_dir=run_dir,
                                                 style=style, aspect=aspect,
                                                 resolution=resolution, creator=creator,
-                                                led=led, log=log)
+                                                direction=direction, led=led, log=log)
         rlog = None
     else:
         client = _client()
         timeline, board, rlog = sequencer.render_storyboard(
             board, kit=kit, run_dir=run_dir, script=script, style=style,
             cutout_path=cutout, product_desc=product_desc, aspect=aspect, resolution=resolution,
-            creator=creator, pin_face=pin_face,
+            creator=creator, pin_face=pin_face, direction=direction,
             replan=lambda shot, reason: story_brain.replan_shot(
                 client, kit, shot, reason=reason)[0],
             strict=strict, led=led, log=log)
@@ -781,6 +801,11 @@ def finish_timeline(timeline, board: Storyboard, script: Script, kit: BrandKit, 
             if led:
                 led.record("voiceover", vo["provider"], vo["model"], vo["cost_usd"],
                            chars=len(spoken))
+            # Make the voiceover end WITH the picture. TTS length is uncontrolled, and a
+            # voiceover longer than the video gets its tail (the CTA) truncated at mux time.
+            # fit_audio speeds it up to fit (or pads if short); it never cuts the tail.
+            editor.fit_audio(run_dir / "voiceover.mp3", run_dir / "voiceover.mp3",
+                             board.duration_s, log=log)
             merged = video_providers.merge_audio_onto_video(
                 out, vo["path"], work / "timeline_voiceover.mp4",
                 seconds=board.duration_s, log=log)
@@ -908,11 +933,13 @@ def qa_video(*, run_id: str, clip=None, cutout=None, shot_paths=None, strict: bo
     pre_caption = run_dir / "timeline.mp4"
     cuts_clip = str(pre_caption) if pre_caption.exists() and Path(clip).name != "timeline.mp4" else None
 
+    vo_file = run_dir / "voiceover.mp3"
     led = Ledger(run_dir)
     report = verifier_video.verify(
         clip, board, _run_script(run_dir), client=(_client() if run_vlm else None),
         cutout_path=cutout, shot_paths=shot_paths, strict=strict, led=led,
-        work_dir=run_dir / "qa", cuts_clip=cuts_clip, log=log)
+        work_dir=run_dir / "qa", cuts_clip=cuts_clip,
+        audio_path=(str(vo_file) if vo_file.exists() else None), log=log)
     (run_dir / "qa_report.json").write_text(report.model_dump_json(indent=2),
                                             encoding="utf-8")
     led.finalize()

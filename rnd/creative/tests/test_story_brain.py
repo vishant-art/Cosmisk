@@ -159,7 +159,7 @@ def test_script_prompt_carries_the_template(brand_kit):
 def test_script_word_budget_scales_with_length(brand_kit):
     c = _Capturing(payload=json.dumps({"beats": [{"purpose": "hook", "text": "hi"}]}))
     story_brain.generate_script(c, brand_kit, "ctx", seconds=30)
-    assert "72 words MAX" in c.system          # 30 * 2.4, ~145 wpm spoken
+    assert "66 words" in c.system              # 30 * 2.2, headroom so the VO fits the cut
 
 
 # --- storyboard (T6) ------------------------------------------------------------------

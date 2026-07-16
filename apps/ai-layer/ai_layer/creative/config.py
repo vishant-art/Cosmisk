@@ -140,6 +140,19 @@ CAPTION_FPS = 24               # caption overlay framerate (independent of the c
 # is worse than no caption. See verify_agreement().
 CAPTION_MAX_DRIFT = 0.35
 
+# --- audio/video sync (T7.5 finish + T9 gate) ---------------------------------
+# The voiceover is free-running TTS and the video is authored to a fixed length; when the
+# voiceover is longer, the mux truncates its tail (the CTA). finish_timeline speeds the
+# voiceover up to fit (atempo), but only to here -- past this speech sounds unnatural, so a
+# still-too-long take is left long and the QA gate below fails it rather than shipping a
+# clipped ad.
+AUDIO_FIT_MAX_TEMPO = 1.30    # max voiceover speed-up to fit the video
+AUDIO_FIT_TOL_S = 0.15        # within this, audio and video already end together
+# The guardrail. The voiceover and the video must end within this of each other, or the ad
+# is out of sync (usually: the CTA got cut). fail-closed, and NOT repairable -- re-rendering
+# a shot cannot change the length of the spoken track; the script or the fit is the fix.
+QA_AV_SYNC_TOL_S = 0.35
+
 # --- temporal QA gate (T9) ----------------------------------------------------
 # Four of five checks are arithmetic. That is the whole differentiator: every competitor
 # puts a human here, because verifying a temporal artifact is unsolved. It is only

@@ -108,6 +108,12 @@ class VideoPlanRequest(BaseModel):
     # WHO is in the ad. Persisted to the run, so the render cannot disagree with the script
     # about who is speaking. Reuse the same object across runs to reuse the same creator.
     creator: CreatorKit | None = None
+    # The operator's free-text guide for how the ad should look and feel. The SAME string
+    # steers the script AND the shot prompts, so words and pictures share one intent.
+    # Persisted, so the render uses the direction the script was written to.
+    direction: str | None = Field(None, description="e.g. 'cozy handheld, morning light, slow'")
+    # Pin the shot count (e.g. 3). Also caps how many clips the paid render will cost.
+    n_shots: int | None = Field(None, ge=1, le=12, description="exact number of shots/clips")
 
 
 class VideoRenderRequest(BaseModel):
@@ -126,6 +132,9 @@ class VideoRenderRequest(BaseModel):
     variant_values: list[str] | None = None
     # The persona. Falls back to the run's creator_kit.json (written by /video/plan).
     creator: CreatorKit | None = None
+    # The look/feel guide. Falls back to the run's direction.txt (written by /video/plan),
+    # so a render inherits the same direction the plan was made with unless overridden here.
+    direction: str | None = Field(None, description="art-direction guide; overrides the plan's")
     # EXPERIMENT, off by default. i2v-seeds every non-hero shot from one generated still of
     # the creator, the only lever Seedance offers for holding a face. It may trip the same
     # content filter that rejects a person in a ref2v reference -- unverified, because the
@@ -297,6 +306,7 @@ def video_plan(req: VideoPlanRequest):
     try:
         script, board = pipeline.plan_story(
             run_id=req.job_id, seconds=req.seconds, creator=req.creator,
+            direction=req.direction, n_shots=req.n_shots,
             prior=_prior_for(job0.get("account_id")),
             graph_prior=_graph_for(job0.get("account_id")), log=lambda *_: None)
     except Exception as e:  # noqa: BLE001
@@ -340,7 +350,7 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
             run_id=job_id, style=style, aspect=req.aspect, resolution=req.resolution,
             single_pass=req.single_pass, strict=req.strict, finish=True,
             guard_balance=req.guard_balance, creator=req.creator, pin_face=req.pin_face,
-            log=lambda *_: None)
+            direction=req.direction, log=lambda *_: None)
 
         stage("Verifying the timeline")
         report = pipeline.qa_video(run_id=job_id, strict=req.strict, run_vlm=True,

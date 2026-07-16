@@ -103,7 +103,8 @@ _SHOT_CAMERA = {
 
 
 def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
-                      hint: str | None = None, creator: "CreatorKit | None" = None) -> str:
+                      hint: str | None = None, creator: "CreatorKit | None" = None,
+                      direction: str | None = None) -> str:
     """The prompt for ONE storyboard shot (T7).
 
     Carries the same rule as the still prompt: never mention text, logo or copy. Captions
@@ -117,6 +118,9 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
     is what it modifies. It is only ever a wish: prompt text alone will not hold a face
     across five renders, which is what the persona seed (sequencer._persona_seed) is for.
     Only the creator's VISUAL half goes here -- how they speak is the script's business.
+
+    `direction` is the operator's free-text guide for the whole ad's look/feel; the SAME
+    string steers the script (story_brain) so the words and the pictures share one intent.
     """
     camera = _SHOT_CAMERA.get(shot.camera, shot.camera.replace("_", " "))
     capture = style.to_prompt() if style is not None else ""
@@ -133,12 +137,14 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
     # person-free still, so naming a creator in it would fight the seed.
     who = (f"{creator.to_visual_prompt()} "
            if creator is not None and shot.product_visible != "hero" else "")
+    guide = f"Art direction: {direction.strip()}. " if (direction or "").strip() else ""
 
     return (
         f"{shot.subject}\n\n"
         f"{who}"
         f"{camera}. {capture + '. ' if capture else ''}"
         f"{motion}{product}"
+        f"{guide}"
         f"Filmed for {kit.brand_name}. Visual style: {kit.visual_style}. Mood: {kit.tone}. "
         f"{craft}"
         f"{fix}"

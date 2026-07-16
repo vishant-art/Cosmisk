@@ -188,8 +188,8 @@ def billed_seconds(board: Storyboard) -> tuple[float, float]:
 def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
                 kit: BrandKit, run_dir, style: UGCStyle | None = None,
                 aspect: str = "9:16", resolution: str = "720p",
-                refs: list | None = None, seed=None, creator=None, led=None,
-                log=print) -> str:
+                refs: list | None = None, seed=None, creator=None, direction=None,
+                led=None, log=print) -> str:
     """Generate one shot, trim it to plan, and apply its edit. Returns the edited clip.
 
     Native audio is off. The concat drops audio anyway (one voiceover runs across the
@@ -204,7 +204,7 @@ def render_shot(shot: Shot, index: int, attempt: int, hint: str | None, *,
         d.mkdir(parents=True, exist_ok=True)   # render_shot is public; don't assume a caller made these
 
     prompt = prompt_builder.build_shot_prompt(shot, kit, style=style, hint=hint,
-                                              creator=creator)
+                                              creator=creator, direction=direction)
     want = snap_duration(shot.duration_s)
 
     # Content-addressed render cache (Phase 9.3): the Seedance output is fully determined
@@ -254,7 +254,7 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
                       script: Script | None = None, style: UGCStyle | None = None,
                       cutout_path=None, product_desc=None, aspect: str = "9:16",
                       resolution: str = "720p", creator=None, pin_face: bool = False,
-                      replan=None, strict: bool = True, led=None, log=print
+                      direction=None, replan=None, strict: bool = True, led=None, log=print
                       ) -> tuple[str, Storyboard, RepairLog]:
     """Render every shot with repair, then concatenate. Returns (timeline, board, log).
 
@@ -310,7 +310,8 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
 
         return render_shot(shot, index, attempt, hint, kit=kit, run_dir=run_dir,
                            style=style, aspect=aspect, resolution=resolution,
-                           refs=refs, seed=seed, creator=creator, led=led, log=log)
+                           refs=refs, seed=seed, creator=creator, direction=direction,
+                           led=led, log=log)
 
     def _verify(path, shot, index):
         checks = verifier_video.verify_shot(path, shot, index, cutout_path=cutout_path)
@@ -329,7 +330,7 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
 def render_single_pass(board: Storyboard, *, kit: BrandKit, run_dir,
                        style: UGCStyle | None = None, aspect: str = "9:16",
                        resolution: str = "720p", seed=None, creator=None,
-                       led=None, log=print) -> str:
+                       direction=None, led=None, log=print) -> str:
     """Render the whole ad as ONE clip (UGC-D1, v2b). The seam for a 30s-native model.
 
     Loses per-shot control: no repair, no per-shot edit, no continuity references. Worth it
@@ -351,7 +352,8 @@ def render_single_pass(board: Storyboard, *, kit: BrandKit, run_dir,
     merged = board.shots[0].model_copy(update={
         "subject": beats, "duration_s": board.duration_s,
         "motion": "; ".join(s.motion for s in board.shots if s.motion)})
-    prompt = prompt_builder.build_shot_prompt(merged, kit, style=style, creator=creator)
+    prompt = prompt_builder.build_shot_prompt(merged, kit, style=style, creator=creator,
+                                              direction=direction)
     want = snap_duration(board.duration_s)
 
     run_dir = Path(run_dir)
