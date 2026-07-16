@@ -48,3 +48,20 @@ Meta grounding attempted (degrades), `direction="tall blonde woman"`, voiceover 
 ```
 
 Check the fal balance any time: `../../cos/Scripts/python.exe -m ai_layer.creative.fal_billing balance`
+
+## `creative_caption_fix.py` — re-caption a finished run, no re-render
+
+Re-burns large, high-contrast, scrim-backed captions on an already-rendered run, **reusing
+its clips + voiceover** so there is no Seedance/FLUX/TTS re-spend. Upscales the timeline to
+1080p so captions burn crisp, uses few words per cue for a big font, and muxes the existing
+voiceover back on. Only paid call is one Whisper ASR (~$0.005). Fixes the "captions
+unreadable" QA outcome without touching the expensive clips.
+
+```
+../../cos/Scripts/python.exe tools/creative_caption_fix.py live_runs/<run>/<job_id>
+```
+Output: `video_captioned_v2.mp4` + `caption_fix_frame.png` (eyeball it) in the run dir.
+
+Note: the VLM caption critic scores 48×48px keyframe thumbnails (`config.TEARDOWN_GRID`), so
+it cannot read any burned caption regardless of resolution — judge legibility from the frame,
+not that gate.

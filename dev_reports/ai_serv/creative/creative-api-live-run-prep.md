@@ -1,8 +1,39 @@
-# Creative Studio API — live run prep (3 clips, 720p, all assets)
+# Creative Studio API — live run prep + executed run (3 clips, 720p, all assets)
 
-Status: **PREP ONLY. Nothing paid has been run.** The $0 dry harness is green; the live
-driver is written and preflight-clean but deliberately gated behind `--confirm-spend`.
-Prepared 2026-07-16.
+Status: **EXECUTED 2026-07-16.** The prep below stands as the runbook; the live run has now
+been run once via `tools/creative_api_liverun.py --confirm-spend`. Outcome recorded below.
+
+## Live run outcome (2026-07-16, job `30e75ae7…`)
+
+- **Brand derived from Shopify** (no Meta account → grounding skipped). Store: Pratap Sons
+  USA; top bestseller "Pastel Green Floral Embroidered Anarkali" (₹8995) drove the brief.
+- **Both jobs `complete`.** Produced 3 static concept ads (× formats), product cutout, 3
+  product seeds, 3 Seedance clips, voiceover, burned captions, SFX, and `video_captioned.mp4`
+  (12s, real 720×1280 + AAC). The `"tall blonde woman"` direction reached the storyboard
+  verbatim (hook + CTA shots), Anarkali hero in all 3 shots.
+- **Actual cost $4.78** (fal invoice; balance $13.03 → $8.25), ~19% over the $4.02 estimate:
+  the grounded clips rendered as **image-to-video** at ~$1.42/clip (not $1.21 t2v), + 3 FLUX
+  product seeds $0.25 + 6 Bria backgrounds $0.24 + TTS/ASR/merge ~$0.015. Update estimates to
+  ~$1.42/clip for grounded-hero runs.
+- **QA verdict: fail**, on the two pre-flagged issues — `cut_alignment` (22 detected cuts vs 2
+  planned, from the UGC micro-cut editing) and `vlm_critic` unreadable captions. Everything
+  else passed: product_presence (0.54–0.66), continuity, audio_video_sync, caption drift.
+- **Caption fix** (`tools/creative_caption_fix.py`): re-burned large, scrim-backed, 1080p
+  captions reusing the cached clips + voiceover → `video_captioned_v2.mp4`. Cost ~$0.005 (one
+  Whisper ASR), no re-render. The extracted frame is plainly legible.
+- **Finding — the caption QA gate is blind to captions.** `verifier_video`'s VLM critic scores
+  a contact sheet of keyframes downsampled to **48×48 px** (`config.TEARDOWN_GRID`), so no
+  burned text can be crisp there regardless of source resolution. The "unreadable caption"
+  verdict is largely a harness artifact. Truly passing it needs a repo change (raise the grid
+  for the caption critic, or judge legibility on a full-res frame) — out of scope for a
+  no-edit run, logged here.
+
+---
+
+## Original prep (runbook)
+
+The $0 dry harness is green; the live driver is preflight-clean and gated behind
+`--confirm-spend`. Prepared 2026-07-16.
 
 ## What this run is
 
