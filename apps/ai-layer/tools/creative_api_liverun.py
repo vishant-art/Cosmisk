@@ -27,8 +27,10 @@ Run (cwd = apps/ai-layer):
 """
 from __future__ import annotations
 
+import html
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -36,23 +38,16 @@ from datetime import datetime
 from pathlib import Path
 
 # ===========================================================================
-# CONFIG -- confirm/edit these before a live run.
+# CONFIG
 # ===========================================================================
-# TODO(lemon): the real Meta ad account (act_<id>). .env has no META_AD_ACCOUNT, so this
-# MUST be filled to exercise the Meta winners call. The token is outdated, so grounding
-# will DEGRADE regardless; the id only decides which account is (unsuccessfully) queried.
-ACCOUNT_ID = "act_REPLACE_ME"
+# No Meta ad account is available, so Meta winner grounding is SKIPPED (there is nothing to
+# query). Set to a real act_<id> to attempt it (with an outdated token it degrades anyway).
+ACCOUNT_ID = None
 
-# TODO(lemon): brand/product context for the brand kit. Shopify supplies the product IMAGE,
-# but the brief still shapes the brand kit's palette/voice. Confirm brand + product.
-BRIEF = {
-    "brand_name": "REPLACE_ME",
-    "product_name": "REPLACE_ME",
-    "product_description": "REPLACE_ME",
-    "target_audience": "REPLACE_ME",
-    "key_features": ["REPLACE_ME"],
-    "price": "REPLACE_ME",
-}
+# Brand/product context for the brand kit. Derived live from the connected Shopify store
+# (bestseller title/description/price + shop/vendor identity) when True; else set BRIEF.
+DERIVE_BRAND_FROM_SHOPIFY = True
+BRIEF = None
 
 DIRECTION = "tall blonde woman"          # per lemon; steers script + shot prompts
 N_SHOTS = 3                              # 3 clips
@@ -76,6 +71,7 @@ os.environ["CREATIVE_OUTPUT_DIR"] = str(OUTDIR)          # config reads this at 
 from fastapi.testclient import TestClient                # noqa: E402
 
 from ai_layer import config as ai_config                 # noqa: E402
+from ai_layer import shopify_products                     # noqa: E402
 from ai_layer.creative import (                          # noqa: E402
     config as ccfg,
     fal_billing,
@@ -91,6 +87,72 @@ ai_config.AI_LAYER_API_KEY = None                        # open the in-process g
 
 PROMPTS_FILE = OUTDIR / "prompts_and_calls.txt"
 REPORT_FILE = OUTDIR / "LIVE_RUN_REPORT.md"
+
+
+# ===========================================================================
+# Derive the brand/product brief from the connected Shopify store (read-only, free).
+# ===========================================================================
+def _strip_html(s: str) -> str:
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s or ""))).strip()
+
+
+def _brand_from_domain(shop: str) -> str:
+    # "pratap-sons.myshopify.com" -> "Pratap Sons"
+    base = (shop or "").split(".")[0]
+    return base.replace("-", " ").replace("_", " ").title() or "The Store"
+
+
+def derive_brief_from_shopify() -> tuple[dict | None, str | None, str | None]:
+    """(brief, top_product_title, note). Never raises: a store hiccup yields a minimal
+    domain-only brief so the run can still proceed, mirroring how grounding degrades."""
+    token, shop = ccfg.SHOPIFY_TOKEN, ccfg.SHOPIFY_STORE
+    if not token or not shop:
+        return None, None, "SHOPIFY_TOKEN/SHOPIFY_STORE not set"
+    brand = _brand_from_domain(shop)
+    brief: dict = {"brand_name": brand, "product_name": f"{brand} bestseller"}
+    try:
+        picks = shopify_products.fetch_bestsellers(
+            token, shop, out_dir=OUTDIR / "_shopify_probe", top_n=3, log=lambda *_: None)
+    except Exception as e:  # noqa: BLE001
+        return brief, None, f"bestseller fetch failed ({e!s:.80}); domain-only brief"
+    if not picks:
+        return brief, None, "no bestsellers in recent orders; domain-only brief"
+    top = picks[0]
+    brief["product_name"] = top.title
+    try:
+        base = shopify_products._base(shop, ccfg.SHOPIFY_API_VERSION)
+        body = shopify_products._api(
+            f"{base}/products/{top.product_id}.json",
+            {"fields": "id,title,body_html,tags,product_type,vendor,variants"},
+            {"X-Shopify-Access-Token": token})
+        p = body.get("product", {}) or {}
+        if p.get("vendor"):
+            brief["brand_name"] = p["vendor"]
+        desc = _strip_html(p.get("body_html") or "")
+        if desc:
+            brief["product_description"] = desc[:300]
+        tags = [t.strip() for t in (p.get("tags") or "").split(",") if t.strip()][:5]
+        if tags:
+            brief["key_features"] = tags
+        elif p.get("product_type"):
+            brief["key_features"] = [p["product_type"]]
+        variants = p.get("variants") or []
+        if variants and variants[0].get("price"):
+            brief["price"] = str(variants[0]["price"])
+    except Exception as e:  # noqa: BLE001
+        return brief, top.title, f"product detail fetch failed ({e!s:.80}); title-only brief"
+    return brief, top.title, None
+
+
+def resolve_brief() -> tuple[dict | None, str | None]:
+    """The effective brief + a human note about where it came from."""
+    if DERIVE_BRAND_FROM_SHOPIFY:
+        brief, top, note = derive_brief_from_shopify()
+        src = f"Shopify (top: {top!r})" if top else "Shopify (domain-only)"
+        if note:
+            src += f" [{note}]"
+        return brief, src
+    return BRIEF, "static BRIEF constant"
 
 # ===========================================================================
 # Prompt + provider-call logging: WRAP the real seams (no repo edit). Each wrapper
@@ -203,13 +265,14 @@ def _install_logging_wrappers() -> None:
 # ===========================================================================
 # Preflight (free): validate inputs + keys + balance, print the plan + estimate.
 # ===========================================================================
-def _needs_filling() -> list[str]:
+def _needs_filling(brief: dict | None) -> list[str]:
     problems = []
-    if "REPLACE_ME" in ACCOUNT_ID:
-        problems.append("ACCOUNT_ID is still the placeholder (act_REPLACE_ME)")
-    if any("REPLACE_ME" in str(v) for v in BRIEF.values()) or \
-       any("REPLACE_ME" in str(x) for x in BRIEF["key_features"]):
-        problems.append("BRIEF still contains REPLACE_ME placeholder fields")
+    if not DERIVE_BRAND_FROM_SHOPIFY and not BRIEF:
+        problems.append("BRIEF is not set and DERIVE_BRAND_FROM_SHOPIFY is False")
+    if brief is None:
+        problems.append("no brief could be resolved (Shopify creds missing?)")
+    elif not brief.get("brand_name") or not brief.get("product_name"):
+        problems.append("resolved brief has no brand_name / product_name")
     return problems
 
 
@@ -221,6 +284,7 @@ def preflight() -> dict:
     keys = {k: bool(os.getenv(k)) for k in
             ("FAL_KEY", "FAL_ADMIN_KEY", "OPENROUTER_API_KEY", "SHOPIFY_STORE",
              "SHOPIFY_TOKEN", "META_ACCESS_TOKEN")}
+    brief, brief_src = resolve_brief()          # live Shopify read (free)
     try:
         bal = fal_billing.balance()
     except Exception as e:  # noqa: BLE001
@@ -228,17 +292,21 @@ def preflight() -> dict:
         print(f"  (balance read failed: {e})")
     guard = fal_billing.affordable(N_SHOTS)
     info = {"per_clip": per_clip, "est_video": est_video, "est_static": est_static,
-            "est_total": est_total, "keys": keys, "balance": bal, "guard": guard}
+            "est_total": est_total, "keys": keys, "balance": bal, "guard": guard,
+            "brief": brief, "brief_src": brief_src}
 
+    meta = f"ATTEMPTED ({ACCOUNT_ID}, token degrades)" if ACCOUNT_ID else "SKIPPED (no account id)"
     print("=" * 72)
     print("CREATIVE STUDIO -- LIVE RUN PREFLIGHT")
     print("=" * 72)
     print(f"  output dir      : {OUTDIR}")
     print(f"  clips / res     : {N_SHOTS} x {RESOLUTION} {ASPECT}   (seconds={SECONDS})")
     print(f"  static images   : {IMAGES} concepts x {FORMATS}")
-    print(f"  shopify sourcing: ON   meta grounding: ATTEMPTED ({ACCOUNT_ID}, token degrades)")
+    print(f"  shopify sourcing: ON   meta grounding: {meta}")
     print(f"  direction       : {DIRECTION!r}")
     print(f"  voiceover/caps/sfx: ON")
+    print(f"  brief source    : {brief_src}")
+    print(f"  derived brief   : {json.dumps(brief, ensure_ascii=False)}")
     print("  keys present    :")
     for k, v in keys.items():
         print(f"      {k:20} {'set' if v else 'MISSING'}")
@@ -246,7 +314,7 @@ def preflight() -> dict:
     print(f"  est. cost       : ~${est_total}  (video ${est_video} + static ~${est_static})")
     print(f"  balance guard   : enabled={guard['enabled']} ok={guard['ok']} "
           f"needed=${guard['needed']} shortfall=${guard['shortfall']}")
-    fills = _needs_filling()
+    fills = _needs_filling(brief)
     if fills:
         print("  REQUIRED INPUTS MISSING:")
         for p in fills:
@@ -293,10 +361,15 @@ def live_run(info: dict) -> int:
     client = TestClient(app)
     result = {"info": info, "started": datetime.now().isoformat(timespec="seconds")}
 
-    print("\n--- POST /creative/generate (static + shopify + meta-grounding attempt) ---")
-    gen_body = {"brief": BRIEF, "account_id": ACCOUNT_ID, "images": IMAGES,
-                "formats": FORMATS, "ground": True, "use_shopify": True,
+    print("\n--- POST /creative/generate (static + shopify product; meta grounding "
+          f"{'attempted' if ACCOUNT_ID else 'skipped: no account'}) ---")
+    brief = info["brief"]
+    print(f"  brief ({info['brief_src']}): {json.dumps(brief, ensure_ascii=False)}")
+    gen_body = {"brief": brief, "images": IMAGES, "formats": FORMATS,
+                "ground": bool(ACCOUNT_ID), "use_shopify": True,
                 "with_video": False}       # full video comes from the /video/* track
+    if ACCOUNT_ID:
+        gen_body["account_id"] = ACCOUNT_ID
     r = client.post("/creative/generate", json=gen_body)
     r.raise_for_status()
     job_id = r.json()["job_id"]
@@ -388,18 +461,17 @@ def _write_report(result: dict) -> None:
 
 def main() -> int:
     info = preflight()
-    fills = _needs_filling()
+    fills = _needs_filling(info.get("brief"))
     if not CONFIRM:
         print("\nPREFLIGHT ONLY -- no money spent. To execute the live run:")
         print("  ../../cos/Scripts/python.exe tools/creative_api_liverun.py --confirm-spend")
         if fills:
-            print("First fill the REQUIRED INPUTS above (ACCOUNT_ID / BRIEF).")
+            print("Resolve the REQUIRED INPUTS above first.")
         return 0
     if fills:
-        print("\nREFUSING to spend: required inputs are still placeholders:")
+        print("\nREFUSING to spend: required inputs could not be resolved:")
         for p in fills:
             print(f"  - {p}")
-        print("Edit CONFIG at the top of this file, then re-run with --confirm-spend.")
         return 2
     if not info["keys"]["FAL_KEY"] or not info["keys"]["OPENROUTER_API_KEY"]:
         print("\nREFUSING to spend: FAL_KEY or OPENROUTER_API_KEY missing from the env.")
