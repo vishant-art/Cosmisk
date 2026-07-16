@@ -1,250 +1,262 @@
-# Creative Studio — Ops Handoff (Railway + Neon)
+# Creative Studio — Dev / Ops Handoff (Railway + Neon + code)
 
-> For the dev/infra side. The AI side (lemon) has finished integrating the UGC video
-> pipeline into `apps/ai-layer`; what's left needs the Railway panel and the Neon console,
-> which the AI side can't touch. **Nothing here changes application code.**
+> For the dev/infra side: what still needs doing to confirm the Creative Studio works end to
+> end. The AI side has integrated the UGC video pipeline into `apps/ai-layer` and has now
+> **run it live once** (2026-07-16) through the HTTP API. This doc records what that run
+> verified, what is still blocking, and the code fixes the run surfaced.
 >
-> Status: code is merged on `improve/creative`, 400 tests pass, nothing is live-verified yet.
-> Companion: `creative-studio-ugc-video-integration-plan.md`.
+> Companion: `creative-studio-ugc-video-integration-plan.md`, `creative-api-live-run-prep.md`.
+> Branch: `improve/creative`.
 
 ---
 
 ## TL;DR — what you actually need to do
 
-| # | Action | Where | Blocking? |
+| # | Action | Where | Status |
 |---|---|---|---|
-| 1 | Add `FAL_ADMIN_KEY` to the ai-layer service | Railway → ai-layer → Variables | Not blocking, but the cost guard is OFF without it |
-| 2 | Point `CREATIVE_OUTPUT_DIR` at a persistent volume | Railway → ai-layer | **Yes** — assets are lost on every redeploy otherwise |
-| 3 | **Apply Alembic migrations `0002` + `0003`** (new `creative_variants`, `creative_teardowns`) | Railway (one-off / deploy hook) | **Yes** — the learning loop silently never persists otherwise |
-| 4 | Add the `PG*` / `PG*_POOL` test-branch vars to CI | CI env | Yes, for CI — the ai-layer suite can't collect without them |
-| 5 | Top up the fal.ai balance | fal.ai dashboard | **Yes** — balance is negative; all video renders refuse |
-| 6 | Get the Meta API reinstated | Meta | Yes, for grounding |
+| 1 | **Fix the Neon credentials** — the current `DATABASE_URL` / `MIGRATION_DATABASE_URL` **fail auth** (`password authentication failed for user 'neondb_owner'`) | Railway → ai-layer → Variables; Neon console | **BLOCKING (new)** — all persistence silently no-ops |
+| 2 | **Apply + verify Alembic migrations `0002` + `0003`** (`creative_variants`, `creative_teardowns`) | Neon prod branch (one-off / deploy hook) | **BLOCKING** — unverifiable right now because of #1 |
+| 3 | Point `CREATIVE_OUTPUT_DIR` at a persistent volume | Railway → ai-layer | **BLOCKING** — assets lost on every redeploy otherwise |
+| 4 | Fix the **caption QA critic** (judges 48px thumbnails → false "unreadable_caption") | code: `verifier_video.py` / `teardown.py` | **Code fix** — gate is unreliable, not the video |
+| 5 | Fix **`cut_alignment`** (re-detects cuts on the UGC-edited clip → false fail) | code: `verifier_video.py` | **Code fix** — 22 detected vs 2 planned |
+| 6 | Confirm `FAL_ADMIN_KEY` is set on Railway | Railway | Verify — working locally (guard + reconciliation proven) |
+| 7 | Top up the fal.ai balance before a batch | fal.ai dashboard | Now **~$8.25** (was negative); ~1-2 runs left |
+| 8 | Get the Meta API token reinstated | Meta | Grounding degrades until then (works, less grounded) |
+| 9 | Add the `PG*` / `PG*_POOL` test-branch vars to CI | CI env | Yes, for the non-creative ai-layer suite |
 
-Redeploy the ai-layer after 1-3. `numpy` was added to `pyproject.toml`, so the image must
-rebuild (no Dockerfile change needed — see §5).
-
----
-
-## 1. Environment variables (Railway → `ai-layer` service)
-
-**New, added by this work:**
-
-| Var | Value | What breaks without it |
-|---|---|---|
-| `FAL_ADMIN_KEY` | a fal **admin-scoped, billing-read-only** key (NOT the render key) | The pre-spend balance guard and the actual-cost reconciliation silently disable themselves. Renders can then start against an empty balance and die halfway, having already paid for the clips they did render. |
-
-Create it at fal.ai → dashboard → keys, with **admin/billing read** scope. It is deliberately
-**separate from `FAL_KEY`**: `FAL_KEY` renders, `FAL_ADMIN_KEY` only reads billing. The render
-path never carries admin scope. Everything degrades gracefully (guard disabled) if it's unset,
-so this is safe to add at any time.
-
-**Existing, must be present** (the service reads all of these):
-
-```
-OPENROUTER_API_KEY          # the brain + VLM critic
-FAL_KEY                     # all image/video generation
-META_ACCESS_TOKEN           # Meta cohort grounding  (currently SUSPENDED, see §6)
-META_AD_ACCOUNT             # act_<id>
-SHOPIFY_STORE               # product sourcing
-SHOPIFY_TOKEN
-SHOPIFY_API_VERSION         # optional, defaults to 2026-07
-DATABASE_URL                # Neon (pooled)
-MIGRATION_DATABASE_URL      # Neon (direct/unpooled) — Alembic uses this
-AI_LAYER_API_KEY            # the X-API-Key gate on every route
-CREATIVE_OUTPUT_DIR         # see §2 — IMPORTANT
-```
-
-All grounding sources (Meta, Shopify, teardown) are now **ON by default** and each degrades
-gracefully **and loudly** when its credentials are missing: the run still produces ads, and the
-logs say `GROUNDING UNAVAILABLE ... proceeding UNGROUNDED`. So a missing Shopify token is not an
-outage, it's a quality regression you'll only see in the logs. Worth an alert.
+Redeploy the ai-layer after 1-3 (and 4-5 once patched). `numpy` is in `pyproject.toml`, so the
+image must rebuild (no Dockerfile change — see §Build).
 
 ---
 
-## 2. Asset storage — `CREATIVE_OUTPUT_DIR` (needs a volume)
+## What the 2026-07-16 live run VERIFIED
 
-Generated ads and videos are written to `CREATIVE_OUTPUT_DIR` and served from the ai-layer's own
-static mount at `GET /creative/assets/...`. **Cloudflare R2 was evaluated and dropped**, so there
-is no object storage: if that directory is on the container's ephemeral filesystem, **every asset
-URL breaks on redeploy**, including ones already stored on Neon rows.
+Run via `tools/creative_api_liverun.py --confirm-spend` (in-process TestClient on
+`ai_layer.api:app` — same app/routes/pipeline/spend as uvicorn; in-process only so prompts
+could be captured). Both jobs reached `complete`. Verified working:
 
-Please attach a **Railway persistent volume** and set:
+- **The full pipeline end to end at real cost:** brand kit → 3 static concepts × 3 formats →
+  product cutout → 3 product seeds → 3 Seedance clips → voiceover → burned captions → SFX →
+  `video_captioned.mp4` (12s, real 720×1280 + AAC). Direction `"tall blonde woman"` reached
+  the storyboard verbatim; the real Shopify product was hero in all shots.
+- **Shopify sourcing + brand derivation:** brief derived live from the store (Pratap Sons USA;
+  bestseller "Pastel Green Floral Embroidered Anarkali"). Product images downloaded.
+- **The fal balance guard + cost reconciliation (`FAL_ADMIN_KEY`):** pre-spend quote, the
+  402 guard, and post-run `fal_actuals.json` all worked. Estimate tracked the invoice to −6.65%.
+- **Actual cost: $4.78** (fal invoice; balance $13.03 → $8.25). Note: grounded clips render as
+  **image-to-video at ~$1.42/clip**, not the $1.21 t2v figure. 3-clip grounded run ≈ $4.78;
+  a 5-6 shot storyboard would be ~$7-9.
 
-```
-CREATIVE_OUTPUT_DIR=/data/creative_output
-```
-
-(mount the volume at `/data`). This is the single highest-value ops item here. If a volume isn't
-possible, tell the AI side and we'll revisit durable object storage.
+What the run did NOT verify (still open, below): Neon persistence (auth fails), Meta grounding
+(no account + outdated token → ran ungrounded), and the two QA checks that failed.
 
 ---
 
-## 3. Neon / Postgres — **there is now a new migration to apply**
+## §1 (BLOCKING, new). Neon credentials fail auth
 
-Two things live here, and the second one is new:
+Connecting to Neon with the current env fails for **both** URLs:
 
-**(a) Creative jobs** persist to the **existing** `creative_jobs` table via
-`ai_layer/db/repository.py` (`save_job` / `load_job`). That table is already in
-`0001_initial_ai_layer_schema.py` — nothing to add.
+```
+DATABASE_URL           -> psycopg.OperationalError: password authentication failed for user 'neondb_owner'
+MIGRATION_DATABASE_URL -> same
+```
 
-**(b) `creative_variants` — NEW (migration `0002`).** The performance feedback loop: one row per
-shipped variant, carrying the `meta_ad_id` it became and the realized `thumb_stop_rate` /
-impressions harvested back from Meta. This is what lets the next generation learn from the last.
+Every DB write in the creative path is **best-effort by design** (a failure is caught and
+logged, never fails a run — the bytes are already on disk). So with broken creds:
 
-**(c) `creative_teardowns` — NEW (migration `0003`).** The account's structural memory: one row
-per torn-down real ad, **both winners and losers**. A teardown costs an ASR call plus a vision
-call and is immutable, so caching it here means we never pay to analyse the same ad twice, and
-the library compounds across runs. Today the analysis dies with the run directory and every run
-re-analyses the same winner.
+- generation still works and assets still land on disk, but
+- **`creative_jobs`, `creative_variants`, and `creative_teardowns` all silently fail to
+  persist.** The 2026-07-16 live job is in the in-process mirror only; it is **not** in Neon.
+  The learning loop never accumulates, and nothing is louder than a debug log.
 
-Both are **additive** — no existing table is touched.
+Action: refresh/rotate the Neon role password and update `DATABASE_URL` (pooled) +
+`MIGRATION_DATABASE_URL` (direct/unpooled) on the ai-layer service. Then do §2. If you can,
+add an alert on creative DB write failures so this class of silent failure is visible.
 
-So this is no longer a formality. **Please run Alembic to head** on the Neon prod branch:
+## §2 (BLOCKING). Apply + verify migrations `0002` + `0003`
+
+Migration files exist in the repo (`ai_layer/migrations/versions/`): `0001_initial`,
+`0002_creative_variants`, `0003_creative_teardowns`. Whether they are applied to the Neon
+prod branch **could not be verified from here** (auth failure, §1). Both are additive (no
+existing table is touched).
+
+- **`0002` `creative_variants`** — the performance feedback loop: one row per shipped variant,
+  its `meta_ad_id` and the realized `thumb_stop_rate`/impressions harvested from Meta.
+- **`0003` `creative_teardowns`** — the account's structural memory (winners AND losers). A
+  teardown costs an ASR + a vision call and is immutable, so caching it means we never re-pay
+  to analyse the same ad. Without it, the analysis dies with the run dir.
+
+After §1, apply to head and verify:
 
 ```bash
-python -m ai_layer.db.migrate            # applies head (0001 -> 0002 -> 0003); idempotent
+python -m ai_layer.db.migrate            # applies 0001 -> 0002 -> 0003 (command.upgrade head); idempotent
 ```
-
-Verify:
 ```sql
-select count(*) from ai_layer.creative_variants;   -- 0, not "relation does not exist"
-select count(*) from ai_layer.creative_teardowns;  -- 0, not "relation does not exist"
+select version_num from ai_layer.alembic_version;                 -- expect 0003
+select count(*) from ai_layer.creative_variants;                  -- 0, not "relation does not exist"
+select count(*) from ai_layer.creative_teardowns;                 -- 0, not "relation does not exist"
 ```
 
-**Why this matters more than it looks.** Every DB write in the creative path is **best-effort by
-design**: a failure is caught and logged, never fails a run (the generation already happened and
-the bytes are on disk). That is the right call for availability, but it means a missing table
-fails *silently*. Concretely, if `0002` is not applied:
+`brand_id` is a nullable FK to `brands` (brief-mode runs have no brand);
+`creative_variants.meta_ad_id` is NULL until an operator publishes and stamps it (§Loop).
 
-- jobs still generate fine, and
-- **every variant and every teardown silently fails to persist**, so the loop never accumulates
-  data, the account never builds a prior or a creative graph, and the studio never gets better —
-  with nothing louder than a debug log to tell you. Worse, the teardown cache is what stops us
-  re-paying to analyse the same ads every single run.
+## §3 (BLOCKING). Asset storage — `CREATIVE_OUTPUT_DIR` needs a volume
 
-Please apply it once and, if you can, alert on write failures.
+Ads/videos are written to `CREATIVE_OUTPUT_DIR` and served from the ai-layer's static mount at
+`GET /creative/assets/...`. **R2 was evaluated and dropped**, so there is no object storage: on
+ephemeral disk, **every asset URL breaks on redeploy**. Attach a Railway persistent volume:
 
-Schema note: both tables' `brand_id` is a nullable FK to `brands` (brief-mode runs have no brand).
-`creative_variants.meta_ad_id` is NULL until an operator publishes the ad and stamps it (see §3b).
-Nothing else to change.
+```
+CREATIVE_OUTPUT_DIR=/data/creative_output      # mount the volume at /data
+```
 
-### 3b. One workflow thing you should know about (it involves a human)
-
-**Nothing in this codebase publishes an ad to Meta.** The Meta layer is GET-only, and the token is
-read-only in practice. So the loop has one manual step by design:
-
-1. We generate variants (they land in `creative_variants` with `meta_ad_id = NULL`).
-2. **Someone publishes the ad on Meta** and stamps the id back:
-   `POST /creative/variants/{variant_id}/published  {"meta_ad_id": "..."}`
-3. `POST /creative/learn {"account_id": "act_..."}` harvests the realized metrics and rebuilds the
-   account's prior.
-
-Without step 2 the variants are unattributable numbers and the loop never closes. If you'd rather
-this were automated, that's a real piece of work (a write-scoped `ads_management` token plus an
-`/advideos` → `/adcreatives` → `/ads` publisher) — flag it and we'll scope it.
+(Locally the tools default to `apps/ai-layer/live_runs/`, which is gitignored.) This is the
+single highest-value ops item. If a volume isn't possible, flag it and we'll revisit durable
+object storage.
 
 ---
 
-## 4. CI — the `PG*` test-branch variables
+## Code fixes the live run surfaced (QA gate)
 
-The ai-layer test suite currently **cannot collect** without Neon test-branch credentials. The root
-`apps/ai-layer/tests/conftest.py` has a session-scoped autouse fixture that builds a **Neon TEST
-BRANCH** URL from `PG*` / `PG*_POOL` vars, applies migrations, and runs every test in a rolled-back
-transaction. Without them you get `KeyError: 'PGUSER'` at collection.
+The run's QA verdict was **fail**, on two checks that are **harness bugs, not video defects**.
+Everything else passed (product_presence 0.54-0.66, continuity, audio_video_sync, caption
+drift 0.05). Both need a small change on the AI/code side (flagged here so dev is aware; the
+AI side can own the patch on `improve/creative`).
 
-Needed in CI (from the Neon **test branch**, not prod):
+### §4. The caption critic is blind to captions
 
-```
-PGUSER  PGPASSWORD  PGHOST  PGDATABASE  PGSSLMODE  PGCHANNELBINDING
-PGUSER_POOL  PGPASSWORD_POOL  PGHOST_POOL  PGDATABASE_POOL  ...   # pooled endpoint
-```
+`vlm_critique` (`verifier_video.py:484`) sends the VLM a 3×3 **contact sheet** built by
+`teardown._contact_sheet` (`teardown.py:219`), whose tiles are keyframes captured at
+`config.TEARDOWN_GRID = 48` px (`config.py:112`) then upscaled to 256 (`teardown.py:231`). At
+48px native, **no burned caption is legible**, so the critic returns `unreadable_caption` even
+for a clearly-readable 1080p caption. Proof: the caption-fix pass produced a plainly legible
+1080p caption (`video_captioned_v2.mp4` / `caption_fix_frame.png`) and the same critic still
+"failed" it.
 
-The **creative** subtree is exempt: `tests/creative/` shadows that fixture (its tests are
-mock-based and never touch Postgres), so `pytest tests/creative` runs anywhere with no DB. That's
-the 400 tests that pass today. The other ai-layer tests still need the vars above.
+Fix: give the caption-legibility question a **full-resolution sample** (a crop around the
+caption band from a real keyframe, or a higher-grid frame), separate from the 48px
+diff-metric contact sheet. Until then, treat `unreadable_caption` as unreliable (false
+negatives), and judge legibility from a full-res frame.
+
+### §5. `cut_alignment` double-counts UGC editing as cuts
+
+`check_cut_alignment` (`verifier_video.py:298`) re-runs `teardown.detect_shots` on the finished
+clip and fails when `len(detected) != len(planned)` (`verifier_video.py:310`). The UGC editor's
+micro-shake / punch-in / grain spike the frame-diff shot detector, so it counted **22 detected
+cuts vs 2 planned**. The editor **places** the cuts, so the QA should compare against the known
+edit-plan cut list rather than re-detecting on the effect-laden clip (or run detection on the
+pre-effects concat, or raise the detector threshold/min-shot for finished clips).
 
 ---
 
-## 5. Build / deps
+## Non-blocking / confirm
 
-- `numpy` was added to `apps/ai-layer/pyproject.toml` (temporal-QA frame correlation + the
-  teardown's shot-diff). The image must rebuild.
-- **No Dockerfile change is needed.** The video editor shells out to ffmpeg, but it uses the
-  binary bundled in the `imageio-ffmpeg` pip wheel, which is already a dependency. Do **not** add
-  a system `ffmpeg` apt package; it isn't used.
+- **`FAL_ADMIN_KEY`** — present and working locally (the balance guard, the 402 refusal, and
+  the per-run `fal_actuals.json` reconciliation all ran). Just confirm it is set on Railway,
+  admin/billing-read scope, separate from `FAL_KEY` (render path never carries admin scope).
+- **fal balance** — now **~$8.25** (was negative in the prior handoff). Enough for ~1-2 grounded
+  runs; top up before a batch. `/creative/video/plan` is free and quotes exact cost first.
+- **Meta API** — the token is present but **outdated**; with no `META_AD_ACCOUNT` set, grounding
+  is skipped and the run proceeds **ungrounded** (`pickings.grounded=false`). Reinstate the
+  token + set an account to ground on winners/teardowns.
+- **CI `PG*` vars** — the non-creative ai-layer suite can't collect without Neon test-branch
+  creds (`PGUSER … PGCHANNELBINDING` + `*_POOL`). The `tests/creative/` subtree is exempt (it
+  shadows the DB fixture; mock-based, $0), which is the suite that passes anywhere today.
+
+---
+
+## Tooling (verification aids, committed to `apps/ai-layer/tools/`)
+
+Repeatable ways to confirm the studio without hunting. Run from `apps/ai-layer/` with the venv:
+
+| Tool | What it does | Cost |
+|---|---|---|
+| `creative_api_dryrun.py` | Full-surface $0 smoke: drives the real API + pipeline with paid seams mocked to real tiny media. Proves wiring + money-gating. | $0 |
+| `creative_api_liverun.py` | Guarded live run. `--confirm-spend` required; preflight ($0) validates keys + reads balance + prints the estimate + derives the brief from Shopify. Captures every prompt to `prompts_and_calls.txt`. | ~$4-5 with `--confirm-spend`, else $0 |
+| `creative_caption_fix.py` | Re-burn large 1080p captions on a finished run, reusing its clips + voiceover (no re-render). | ~$0.005 (one ASR) |
+| `python -m ai_layer.creative.fal_billing balance` / `report --days 7` | fal balance + actual spend. | $0 |
+
+See `apps/ai-layer/tools/README.md`.
+
+---
+
+## Build / deps
+
+- `numpy` is in `apps/ai-layer/pyproject.toml` (temporal-QA frame correlation + teardown
+  shot-diff). The image must rebuild.
+- **No Dockerfile change.** The editor shells out to the ffmpeg binary bundled in the
+  `imageio-ffmpeg` wheel (already a dep). Do **not** add a system `ffmpeg` apt package.
 - Base image stays `python:3.12-slim`.
 
 ---
 
-## 6. Currently blocked externally (not code problems)
+## The learning loop has one manual step (by design)
 
-Two things stop us from live-verifying any of this. Both are on your side of the fence:
+**Nothing in this codebase publishes an ad to Meta** (the Meta layer is GET-only). So:
 
-1. **fal.ai balance is negative** (last read: **-$0.33**). Every video render now refuses up front
-   with `402` rather than starting, so nothing will generate until it's topped up. Budget note:
-   one Seedance clip is **~$1.22**, and a typical storyboard is 5-6 shots, so **~$6-8 per video**.
-   The `/creative/video/plan` endpoint is free and returns an exact quote before anything spends.
-2. **The Meta API is suspended.** Cohort grounding and the winner teardown degrade to UNGROUNDED
-   until it's reinstated. Static and video generation still work, just less well-grounded.
+1. We generate variants → they land in `creative_variants` with `meta_ad_id = NULL` (needs §1+§2).
+2. **A human publishes the ad on Meta** and stamps the id back:
+   `POST /creative/variants/{variant_id}/published {"meta_ad_id": "..."}`.
+3. `POST /creative/learn {"account_id": "act_..."}` harvests realized metrics and rebuilds the prior.
+
+Without step 2 the variants are unattributable and the loop never closes. Automating it is real
+work (a write-scoped `ads_management` token + an `/advideos`→`/adcreatives`→`/ads` publisher);
+flag it if you want it scoped.
 
 ---
 
-## 7. How to verify once it's all set
+## Verify once it's all set
 
 ```bash
-# 1. service is up and the routes are mounted
+# service up + routes mounted
 curl -H "X-API-Key: $AI_LAYER_API_KEY" $AI_LAYER_URL/health
 
-# 2. the balance guard can see fal (proves FAL_ADMIN_KEY works)
-#    from the repo:
+# fal billing visible (proves FAL_ADMIN_KEY)
 python -m ai_layer.creative.fal_billing balance
 python -m ai_layer.creative.fal_billing report --days 7
 
-# 3. a static run (grounding + a video clip are ON by default)
+# $0 full-surface smoke (no spend, no network) — proves the wiring
+python tools/creative_api_dryrun.py
+
+# a static run (grounding + a smoke clip are ON by default; set with_video:false to skip the clip)
 curl -X POST -H "X-API-Key: $AI_LAYER_API_KEY" -H "Content-Type: application/json" \
-     -d '{"brief":{"brand_name":"Test","product_name":"Thing"},"images":1}' \
+     -d '{"brief":{"brand_name":"Test","product_name":"Thing"},"images":1,"with_video":false}' \
      $AI_LAYER_URL/creative/generate            # -> {job_id}
 curl -H "X-API-Key: $AI_LAYER_API_KEY" $AI_LAYER_URL/creative/jobs/<job_id>
 
-# 4. the job actually persisted (the point of §3)
-#    psql against Neon:
-select job_id, status, cost_usd, created_at from ai_layer.creative_jobs order by created_at desc limit 5;
+# the job actually persisted (the point of §1+§2) — psql against Neon:
+#   select job_id,status,cost_usd,created_at from ai_layer.creative_jobs order by created_at desc limit 5;
 
-# 5. video: FREE plan first — returns the shot list AND the cost quote
-curl -X POST ... -d '{"job_id":"<job_id>"}' $AI_LAYER_URL/creative/video/plan
-#    then the PAID render (402 if the balance can't cover it)
-curl -X POST ... -d '{"job_id":"<job_id>"}' $AI_LAYER_URL/creative/video/generate
+# video: FREE plan (quote) first, then the PAID render (402 if the balance can't cover it)
+curl -X POST ... -d '{"job_id":"<job_id>","n_shots":3}' $AI_LAYER_URL/creative/video/plan
+curl -X POST ... -d '{"job_id":"<job_id>"}'             $AI_LAYER_URL/creative/video/generate
 ```
 
 Assets should be reachable at `$AI_LAYER_URL/creative/assets/<job_id>/<file>` **and survive a
-redeploy** once §2 is done.
+redeploy** once §3 is done.
 
 ---
 
-## 8. Cost safety, so you know what protects you
+## Cost safety (what protects you)
 
-- Every video render is **balance-guarded**: it refuses to start (`402`) when fal can't cover the
-  planned clips, because a half-rendered board is the worst outcome — the clips it did render are
-  already paid for.
-- `/creative/video/plan` is **$0** (one LLM call) and returns clips, estimated USD, live balance,
-  and affordable yes/no. Nothing pays Seedance blind.
-- After each run, actual fal charges are reconciled against our estimate and written to
-  `fal_actuals.json` in the run dir (needs `FAL_ADMIN_KEY`). Estimates have tracked actuals to
-  within ~1%.
-- The single-clip smoke on `/creative/generate` is **skipped, not fatal**, when the balance is
-  short: the static ads still ship.
+- Every video render is **balance-guarded**: it refuses to start (`402`) when fal can't cover
+  the planned clips — a half-rendered board is the worst outcome (rendered clips are already paid).
+- `/creative/video/plan` is **$0** and returns clips, estimated USD, live balance, affordable y/n.
+- Post-run, actual fal charges are reconciled to the estimate and written to `fal_actuals.json`
+  (needs `FAL_ADMIN_KEY`). On the 2026-07-16 run the estimate tracked the invoice to −6.65%.
+- The single-clip smoke on `/creative/generate` is **skipped, not fatal**, when the balance is short.
 
 ---
 
-## 9. What is NOT done (so you're not surprised)
+## What is NOT done / known limits
 
-- **No object storage.** R2 was investigated and dropped; assets live on the ai-layer's disk. §2 is
-  the mitigation, and it's a mitigation, not a fix.
-- **Nothing is live-verified.** The 400 passing tests are all mock-based ($0, no network). No real
-  Seedance render or real Meta grounding has run through the deployed service yet, because of §6.
-- **`rnd/creative/` is still in the repo** as the source of truth. It will be retired only after a
-  live smoke passes. Don't delete it.
-- **Job store is single-worker.** The in-process mirror assumes one uvicorn worker; Neon is the
-  durable record. If you scale the ai-layer to multiple workers/replicas, polling may hit a worker
-  that doesn't hold the job in memory — it will fall back to the Neon row, so this works, but it's
-  worth knowing before you scale.
+- **Neon persistence is currently broken** (§1) — fix creds + apply migrations to close the loop.
+- **QA gate has two false-fail checks** (§4 caption critic, §5 cut_alignment) — patch before
+  trusting the verdict; the produced media is fine.
+- **No object storage** — assets live on the ai-layer disk; §3 is the mitigation, not a fix.
+- **Live-verified only locally.** The 2026-07-16 run was a real paid render via the in-process
+  API driver, not against the deployed Railway service. No run has yet gone through the deployed
+  uvicorn (blocked on the ops items above).
+- **`rnd/creative/` stays in the repo** as the source of truth until a deployed live smoke passes.
+- **Job store is single-worker** — the in-process mirror assumes one uvicorn worker; Neon is the
+  durable record. Multi-replica polling falls back to the Neon row (once §1+§2 are done).
