@@ -76,10 +76,6 @@ import { environment } from '../../../environments/environment';
             </div>
             <p class="text-xs text-gray-700 font-body m-0 leading-relaxed line-clamp-3" [innerHTML]="briefingSummary()"></p>
           </div>
-          <a routerLink="/app/ai-studio"
-            class="px-3 py-1.5 text-xs font-body font-semibold text-accent border border-accent/30 rounded-lg hover:bg-accent/5 transition-colors no-underline shrink-0 flex items-center gap-1">
-            Full Briefing <lucide-icon name="arrow-right" [size]="12"></lucide-icon>
-          </a>
         </div>
       </div>
     }
@@ -452,7 +448,7 @@ import { environment } from '../../../environments/environment';
           </div>
         }
 
-        <a routerLink="/app/ai-studio" class="block text-center text-sm text-accent font-body font-semibold mt-4 hover:underline no-underline">
+        <a routerLink="/app/ai-chat" class="block text-center text-sm text-accent font-body font-semibold mt-4 hover:underline no-underline">
           Ask Cosmisk AI <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
@@ -679,7 +675,7 @@ export default class DashboardComponent implements OnInit {
     { icon: 'rocket', title: 'Creative Engine', description: 'Batch generate 100+ creatives', route: '/app/creative-engine', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
     { icon: 'video', title: 'UGC Scripts', description: 'AI-powered ad scripts', route: '/app/ugc-studio', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
     { icon: 'image', title: 'Static Ads', description: 'Graphics & carousels', route: '/app/graphic-studio', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
-    { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-studio', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
+    { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-chat', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
   ];
 
   smartActions = computed(() => {
@@ -859,7 +855,7 @@ export default class DashboardComponent implements OnInit {
         } else {
           // Fallback briefing so dashboard never looks bare
           this.briefingSummary.set(
-            'Your AI strategist is monitoring your ad accounts. <strong>Press Cmd+K</strong> to ask a question or check the <strong>AI Studio</strong> for a full strategic briefing.'
+            'Your AI strategist is monitoring your ad accounts. <strong>Press Cmd+K</strong> to ask a question or open <strong>AI Chat</strong> for a full strategic briefing.'
           );
         }
       },
