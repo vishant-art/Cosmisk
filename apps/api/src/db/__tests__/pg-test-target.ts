@@ -105,7 +105,10 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
     throw new Error(NO_URL_ERROR);
   }
 
-  const pool = new Pool({ connectionString });
+  // keepAlive: the lock client below sits idle for this file's whole lifetime
+  // while other test files run; without TCP keepalive Neon reaps that idle
+  // socket and the file fails wholesale with "Connection terminated unexpectedly".
+  const pool = new Pool({ connectionString, keepAlive: true, keepAliveInitialDelayMillis: 10_000 });
   const db = drizzle(pool);
 
   // Serialize pg-backed test FILES against this shared branch: hold a session

@@ -23,9 +23,14 @@ import * as schema from './pg-schema.js';
 types.setTypeParser(20, (val) => parseInt(val, 10));
 
 // Pooled connection (PgBouncer endpoint) for the long-running app process.
+// keepAlive stops Neon/the network from silently reaping an idle socket — a
+// dropped idle connection otherwise surfaces as "Connection terminated
+// unexpectedly" on the next query.
 export const pgPool = new Pool({
   connectionString: process.env['DATABASE_URL'],
   max: 20,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
 });
 
 export const pgDb = drizzle(pgPool, { schema });
