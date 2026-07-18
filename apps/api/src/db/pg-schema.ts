@@ -184,6 +184,20 @@ export const autopilotAlerts = pgTable('autopilot_alerts', {
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
 });
 
+// Human-taste feedback on AI outputs (thumbs + optional comment). Study data only —
+// kept SEPARATE from Meta performance; not blended into the intelligence graph.
+export const aiFeedback = pgTable('ai_feedback', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),               // 'chat' | 'creative'
+  refId: text('ref_id').notNull(),            // studio_outputs.id | `${sessionId}:${turn}` | sessionId
+  rating: integer('rating').notNull(),        // -1 | 0 | +1
+  comment: text('comment'),
+  promptText: text('prompt_text'),
+  responseText: text('response_text'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uniqUserKindRef: unique().on(t.userId, t.kind, t.refId) }));
+
 export const automations = pgTable('automations', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
