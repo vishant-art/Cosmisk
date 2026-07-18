@@ -130,3 +130,5 @@ apps/ai-layer/data/*.sqlite
 apps/ai-layer/data/*.sqlite-*
 # hand-off scratch docs (forwarded manually, never committed)
 temp_docs/
+# exported infra env dumps (secrets — never commit)
+railwayenv.txt

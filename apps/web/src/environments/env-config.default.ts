@@ -3,5 +3,5 @@
 // scripts/apply-env.mjs reads these and writes the gitignored env-config.ts,
 // overriding API_BASE_URL / META_OAUTH_ENABLED from env vars when set.
 export const API_BASE_URL = 'https://api.cosmisk.com';
-export const META_APP_ID = '675224542133938';
+export const META_APP_ID = '2018025028900369';
 export const META_OAUTH_ENABLED = true;
