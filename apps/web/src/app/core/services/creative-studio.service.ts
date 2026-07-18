@@ -73,6 +73,15 @@ export interface StudioGeneration {
   updated_at: string;
 }
 
+export interface VideoQuote {
+  clips: number; estimated_usd: number; balance_usd: number | null;
+  affordable: boolean; guard_enabled: boolean; shortfall_usd: number;
+}
+export interface VideoPlan {
+  job_id: string; shots: number; duration_s: number; grounded: boolean;
+  storyboard: { shots: { title?: string; description?: string }[] }; quote: VideoQuote;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CreativeStudioService {
   private api = inject(ApiService);
@@ -99,5 +108,19 @@ export class CreativeStudioService {
 
   getAccuracy(): Observable<{ success: boolean; totalPredictions: number; resolvedPredictions: number; meanAbsoluteError: number | null; trend: string }> {
     return this.api.get('creative-studio/accuracy');
+  }
+
+  videoPlan(generationId: string, opts: { seconds?: number; direction?: string; n_shots?: number }):
+    Observable<{ success: boolean; plan: VideoPlan; error?: string }> {
+    return this.api.post('creative-studio/video/plan', { generation_id: generationId, ...opts });
+  }
+
+  videoGenerate(generationId: string, opts: { voiceover?: boolean; captions?: boolean; sfx?: boolean }):
+    Observable<{ success: boolean; status: string; clips: number; error?: string }> {
+    return this.api.post('creative-studio/video/generate', { generation_id: generationId, ...opts });
+  }
+
+  getVideoJob(jobId: string): Observable<{ success: boolean; job: any }> {
+    return this.api.get(`creative-studio/video/job/${jobId}`);
   }
 }
