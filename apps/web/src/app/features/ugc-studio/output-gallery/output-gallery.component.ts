@@ -1,7 +1,8 @@
-import { Component, input, output, EventEmitter } from '@angular/core';
+import { Component, input, output, EventEmitter, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
 import { CreativeScore } from '../../../core/services/creative-studio.service';
+import { FeedbackService } from '../../../core/services/feedback.service';
 
 @Component({
   selector: 'app-output-gallery',
@@ -268,6 +269,22 @@ import { CreativeScore } from '../../../core/services/creative-studio.service';
           }
         }
 
+        <!-- Feedback: thumbs on a completed output (study data) -->
+        @if (out.status === 'completed') {
+          <div class="flex gap-2 mt-1 ml-1 text-gray-400">
+            <button type="button" (click)="rateOutput(out.id, 1)" [disabled]="!!rated()[out.id]"
+                    [class.text-green-600]="rated()[out.id] === 1" class="hover:text-green-600 disabled:opacity-100"
+                    aria-label="Good">
+              <lucide-icon name="thumbs-up" [size]="14"></lucide-icon>
+            </button>
+            <button type="button" (click)="rateOutput(out.id, -1)" [disabled]="!!rated()[out.id]"
+                    [class.text-red-500]="rated()[out.id] === -1" class="hover:text-red-500 disabled:opacity-100"
+                    aria-label="Poor">
+              <lucide-icon name="thumbs-down" [size]="14"></lucide-icon>
+            </button>
+          </div>
+        }
+
         <!-- Error state for any format -->
         @if (out.status === 'failed' && out.format !== 'video') {
           <div class="card !p-4 border border-red-100">
@@ -284,6 +301,14 @@ import { CreativeScore } from '../../../core/services/creative-studio.service';
 })
 export class OutputGalleryComponent {
   outputs = input.required<any[]>();
+  private feedback = inject(FeedbackService);
+  rated = signal<Record<string, -1 | 1>>({});
+
+  rateOutput(outputId: string, rating: -1 | 1): void {
+    if (this.rated()[outputId]) return;
+    this.feedback.rate('creative', outputId, rating).subscribe({ error: () => {} });
+    this.rated.update((r) => ({ ...r, [outputId]: rating }));
+  }
   regenerate = output<{ format: string; outputId: string }>();
 
   filterOptions = [
