@@ -1,8 +1,12 @@
 # dev_reports — STATUS INDEX (master catalog)
 
-> ⭐ **LATEST HANDOFF (2026-07-18):** [`ai_serv/2026-07-18-ai-engineer-handoff.md`](./ai_serv/2026-07-18-ai-engineer-handoff.md)
+> ⭐ **NEXT ACTION (2026-07-19):** [`2026-07-19-r2-execution-resume-note.md`](./2026-07-19-r2-execution-resume-note.md)
+> — execute `docs/superpowers/plans/2026-07-18-r2-asset-storage.md` via `superpowers:executing-plans`
+> (R2 media storage, decoupled + Mode 2; creds + dryayeet consent ready). **Read this first.**
+>
+> **PRIOR HANDOFF (2026-07-18):** [`ai_serv/2026-07-18-ai-engineer-handoff.md`](./ai_serv/2026-07-18-ai-engineer-handoff.md)
 > — demo-prep session shipped UGC video UI + async delivery, chat formatting, AI-Studio
-> retirement, and the `ai_feedback` capture layer. Google-Ads consumption untouched. **Read this first.**
+> retirement, and the `ai_feedback` capture layer. Google-Ads consumption untouched.
 
 **Date:** 2026-05-31 (index) · updated 2026-07-18 · **Status:** 🔵 ACTIVE (regenerate when reports are added/superseded).
 **What this is:** the single place to check "is this report still true?". Every non-log report carries a matching banner at its top. Terminology is canonical per [`VOCABULARY.md`](./VOCABULARY.md) (`M1…M5` = SoW milestones; the DB migration runs in stages **DB-1 / DB-1.5 / DB-2 / DB-3** inside M1).
