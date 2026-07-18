@@ -1,6 +1,10 @@
 # dev_reports — STATUS INDEX (master catalog)
 
-**Date:** 2026-05-31 · **Status:** 🔵 ACTIVE (regenerate when reports are added/superseded).
+> ⭐ **LATEST HANDOFF (2026-07-18):** [`ai_serv/2026-07-18-ai-engineer-handoff.md`](./ai_serv/2026-07-18-ai-engineer-handoff.md)
+> — demo-prep session shipped UGC video UI + async delivery, chat formatting, AI-Studio
+> retirement, and the `ai_feedback` capture layer. Google-Ads consumption untouched. **Read this first.**
+
+**Date:** 2026-05-31 (index) · updated 2026-07-18 · **Status:** 🔵 ACTIVE (regenerate when reports are added/superseded).
 **What this is:** the single place to check "is this report still true?". Every non-log report carries a matching banner at its top. Terminology is canonical per [`VOCABULARY.md`](./VOCABULARY.md) (`M1…M5` = SoW milestones; the DB migration runs in stages **DB-1 / DB-1.5 / DB-2 / DB-3** inside M1).
 
 **Legend:** ✅ IMPLEMENTED · ❌ INVALIDATED · ♻️ SUPERSEDED · 🔵 ACTIVE · 📖 REFERENCE (durable) · 📓 LOG (untouched).
@@ -25,6 +29,19 @@
 | `31_05/migration_0001_verification.md` | ✅ IMPLEMENTED | `0001` applied (79 tables) + verified |
 | `31_05/m1_postgres_migration_and_connectivity.md` | ✅ IMPLEMENTED | DB-1 done & verified |
 | `29_05/async_migration_call_site_audit.md` | 🔵 ACTIVE | **DB-2 source of truth** (635 sites). Its "M2" = DB-2 |
+
+## AI-layer / demo era (2026-06 → 07) — newest first
+
+| File | Status | Note |
+|---|---|---|
+| `ai_serv/2026-07-18-ai-engineer-handoff.md` | ⭐ 🔵 ACTIVE | **Latest handoff** → ai-engineer. Session summary + `ai_feedback` contract |
+| `ai_serv/ai-studio-retired.md` | ✅ IMPLEMENTED | AI-Studio UI entry points removed; route kept for deep links |
+| `docs/superpowers/plans/2026-07-17-ugc-video-ui-async.md` | ✅ IMPLEMENTED | Video UI + poller + routes (Tasks 1–7 done; T8 → dryayeet) |
+| `docs/superpowers/plans/2026-07-17-chat-formatting-and-ai-studio-retirement.md` | ✅ IMPLEMENTED | Chat CSS + prompt + retirement |
+| `docs/superpowers/plans/2026-07-17-feedback-ai-feedback.md` | ✅ IMPLEMENTED | `ai_feedback` table + route + thumbs |
+| `ai_serv/creative/chat-to-studio-handoff-deferred.md` | 🔵 ACTIVE | Deferred design — chat→studio prefill handoff |
+| `2026-07-17-execution-resume-note.md` | ✅ IMPLEMENTED | Compact-survival note; all 3 plans now executed (compressed) |
+| `2026-07-17-ai-layer-demo-state-and-tasklist.md` | 🔵 ACTIVE | Demo state + per-route AI-serving map + persistence decisions |
 
 ## Durable reference (point-in-time facts, still accurate)
 
