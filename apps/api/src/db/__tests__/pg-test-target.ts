@@ -146,13 +146,19 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   };
 
   const teardown = async (): Promise<void> => {
-    // Release the cross-file serialization lock, then drop the pool.
+    // Release the cross-file serialization lock, then drop the pool. If the lock
+    // client's socket already died (idle reaping), the unlock query rejects — but
+    // the lock is SESSION-scoped, so a dead session has already released it. Swallow
+    // it; letting it throw would fail the whole file's afterAll even though every
+    // test passed. release(true) discards a possibly-broken client instead of
+    // returning it to the pool.
     try {
       await lockClient.query('SELECT pg_advisory_unlock($1)', [DB2_TEST_LOCK_KEY]);
-    } finally {
-      lockClient.release();
+    } catch { /* connection gone; session-scoped lock already released */ }
+    finally {
+      try { lockClient.release(true); } catch { /* already gone */ }
     }
-    await pool.end();
+    await pool.end().catch(() => { /* best-effort pool shutdown */ });
   };
 
   return { pool, db, reset, teardown };
