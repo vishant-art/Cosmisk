@@ -38,7 +38,8 @@
 
 | File | Status | Note |
 |---|---|---|
-| `ai_serv/2026-07-18-asset-storage-r2-migration-plan.md` | 🔵 ACTIVE | **Media storage: Cloudflare R2 from day one** (vendor-neutral S3 layer). Web-priced; gates the main merge |
+| `2026-07-19-ts-r2-client-future-work.md` | 🔵 ACTIVE | **Deferred:** wire the TS (apps/api) S3 client to R2 if ever needed (triggers, gotchas, reactivation blueprint). Not on demo path |
+| `ai_serv/2026-07-18-asset-storage-r2-migration-plan.md` | ♻️ SUPERSEDED | Original TS-owns-S3 R2 design; superseded on the TS side by the decoupled plan. Kept as reactivation blueprint (see row above) |
 | `ai_serv/2026-07-18-ai-engineer-handoff.md` | ⭐ 🔵 ACTIVE | **Latest handoff** → ai-engineer. Session summary + `ai_feedback` contract |
 | `ai_serv/ai-studio-retired.md` | ✅ IMPLEMENTED | AI-Studio UI entry points removed; route kept for deep links |
 | `docs/superpowers/plans/2026-07-17-ugc-video-ui-async.md` | ✅ IMPLEMENTED | Video UI + poller + routes (Tasks 1–7 done; T8 → dryayeet) |
