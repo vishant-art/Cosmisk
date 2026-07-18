@@ -109,6 +109,10 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   // while other test files run; without TCP keepalive Neon reaps that idle
   // socket and the file fails wholesale with "Connection terminated unexpectedly".
   const pool = new Pool({ connectionString, keepAlive: true, keepAliveInitialDelayMillis: 10_000 });
+  // Without an 'error' listener, an idle client's dropped socket surfaces as an
+  // UNHANDLED error and vitest marks the whole file failed even when every test
+  // passed. Swallow it — the serialized-lock connection is best-effort.
+  pool.on('error', () => { /* idle client dropped; harness recovers on next connect */ });
   const db = drizzle(pool);
 
   // Serialize pg-backed test FILES against this shared branch: hold a session
@@ -117,6 +121,9 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   // files block here until this one's teardown() releases. Auto-released if the
   // process dies (session-scoped lock).
   const lockClient = await pool.connect();
+  // This client stays checked out (idle) for the whole file; a dropped socket
+  // emits on the client itself, not the pool. Swallow so it isn't unhandled.
+  lockClient.on('error', () => { /* idle lock client dropped; teardown/next run recovers */ });
   await lockClient.query('SELECT pg_advisory_lock($1)', [DB2_TEST_LOCK_KEY]);
 
   // Apply migrations: test schema == migrated prod schema. (Serialized by the

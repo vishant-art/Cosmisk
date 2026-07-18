@@ -12,6 +12,7 @@ import './load-env.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, types } from 'pg';
 import * as schema from './pg-schema.js';
+import { logger } from '../utils/logger.js';
 
 // node-postgres returns int8 (OID 20) — what `COUNT(*)` and `SUM(int)` produce —
 // as a JS STRING by default, to avoid precision loss beyond Number.MAX_SAFE_INTEGER.
@@ -32,6 +33,11 @@ export const pgPool = new Pool({
   keepAlive: true,
   keepAliveInitialDelayMillis: 10_000,
 });
+
+// An idle client's backend/network error is emitted on the pool; without a
+// listener node-postgres throws it as an unhandled error. Log and swallow —
+// the pool discards the dead client and the next query gets a fresh one.
+pgPool.on('error', (err) => logger.error({ err }, '[pg] idle client error (discarded)'));
 
 export const pgDb = drizzle(pgPool, { schema });
 
