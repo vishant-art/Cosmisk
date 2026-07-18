@@ -40,7 +40,8 @@
 |---|---|---|
 | `2026-07-19-ts-r2-client-future-work.md` | 🔵 ACTIVE | **Deferred:** wire the TS (apps/api) S3 client to R2 if ever needed (triggers, gotchas, reactivation blueprint). Not on demo path |
 | `ai_serv/2026-07-18-asset-storage-r2-migration-plan.md` | ♻️ SUPERSEDED | Original TS-owns-S3 R2 design; superseded on the TS side by the decoupled plan. Kept as reactivation blueprint (see row above) |
-| `ai_serv/2026-07-18-ai-engineer-handoff.md` | ⭐ 🔵 ACTIVE | **Latest handoff** → ai-engineer. Session summary + `ai_feedback` contract |
+| `ai_serv/2026-07-19-ai-engineer-handoff-r2-storage.md` | ⭐ 🔵 ACTIVE | **Latest handoff** → ai-engineer. R2 object store is live: `ai_layer.storage` contract + how to read/write |
+| `ai_serv/2026-07-18-ai-engineer-handoff.md` | 🔵 ACTIVE | Prior handoff → ai-engineer. Session summary + `ai_feedback` contract |
 | `ai_serv/ai-studio-retired.md` | ✅ IMPLEMENTED | AI-Studio UI entry points removed; route kept for deep links |
 | `docs/superpowers/plans/2026-07-17-ugc-video-ui-async.md` | ✅ IMPLEMENTED | Video UI + poller + routes (Tasks 1–7 done; T8 → dryayeet) |
 | `docs/superpowers/plans/2026-07-17-chat-formatting-and-ai-studio-retirement.md` | ✅ IMPLEMENTED | Chat CSS + prompt + retirement |
