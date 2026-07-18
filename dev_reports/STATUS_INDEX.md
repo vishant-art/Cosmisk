@@ -34,7 +34,7 @@
 
 | File | Status | Note |
 |---|---|---|
-| `ai_serv/2026-07-18-asset-storage-r2-migration-plan.md` | 🔵 ACTIVE | **Media storage: vendor-neutral S3 → Railway Buckets now (burns $4 credit), R2 later.** Web-priced; gates the main merge |
+| `ai_serv/2026-07-18-asset-storage-r2-migration-plan.md` | 🔵 ACTIVE | **Media storage: Cloudflare R2 from day one** (vendor-neutral S3 layer). Web-priced; gates the main merge |
 | `ai_serv/2026-07-18-ai-engineer-handoff.md` | ⭐ 🔵 ACTIVE | **Latest handoff** → ai-engineer. Session summary + `ai_feedback` contract |
 | `ai_serv/ai-studio-retired.md` | ✅ IMPLEMENTED | AI-Studio UI entry points removed; route kept for deep links |
 | `docs/superpowers/plans/2026-07-17-ugc-video-ui-async.md` | ✅ IMPLEMENTED | Video UI + poller + routes (Tasks 1–7 done; T8 → dryayeet) |

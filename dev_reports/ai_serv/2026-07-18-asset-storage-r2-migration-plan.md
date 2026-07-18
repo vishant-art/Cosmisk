@@ -1,4 +1,4 @@
-# Asset storage → cloud (vendor-neutral S3: Railway Buckets now, R2 later) — plan (2026-07-18)
+# Asset storage → Cloudflare R2 (vendor-neutral S3 layer) — plan (2026-07-18)
 
 **Status:** 🔵 ACTIVE (decision + plan; implementation pending). Web-verified pricing 2026-07-18.
 
@@ -11,25 +11,25 @@ feature makes this acute (a render survives ~15 min then must be served later), 
 **multi-tenant soon** with **egress-heavy** playback. Durable, scalable, cheap-egress storage is now
 required — and gates the `main` merge (assets would 404 in prod without it).
 
-## Decision: **vendor-neutral S3 layer → Railway Buckets now, Cloudflare R2 later**
+## Decision: **Cloudflare R2 from day one** (user-approved 2026-07-18)
 
-Both R2 and Railway Buckets speak the **S3 API**, so the storage layer is built vendor-neutral
-(endpoint + creds from env) and **switching vendors is an env change, not a rewrite.** That makes the
-"which cloud" call low-stakes and reversible.
-
-- **Now (demo → the ~19-day Railway-credit window, expires ~2026-08-06):** **Railway Buckets.** ~zero
-  setup (services already on Railway → creds auto-injected, no new vendor), **burns the $4 remaining
-  credit**, S3-compatible (same boto3/AWS-SDK code), presigned URLs for tenant isolation. Only cost:
-  service→bucket *upload* bills $0.05/GB service egress — cents at 10–15 videos. Limits: no public
-  buckets, no CDN, young product (fine for the demo; we use presigned URLs anyway).
-- **Later (CDN latency matters / real multi-tenant scale / want public image URLs):** **Cloudflare R2** —
-  flip four env vars. Mature, custom-domain CDN, bigger free tier, $0 delivery egress.
+The storage layer is still built **vendor-neutral** (S3 client, endpoint + creds from env) — cheap
+insurance against lock-in — but the concrete target is **R2 now**, not a Railway-Buckets stopgap.
+Rationale: R2 and Railway Buckets are both S3-compatible, so the code is identical either way; R2 is
+the mature long-term winner (custom-domain CDN, public buckets, bigger free tier, $0 delivery egress),
+and standing it up now (~15–30 min Cloudflare setup, **no extra code**) avoids ever doing a
+throwaway-and-migrate. **User is provisioning the Cloudflare account + R2 bucket + S3 API token in
+parallel** (2026-07-18).
 
 Priced against our egress-dominated workload (all options, 2026 web-verified; full log in the research
-subagent output). At ~5 TB egress/mo: **R2 ~$7 · Railway Buckets ~$7.50** · AWS S3 ~$450 · Supabase
-~$180–250 · Railway **Volume** ~$325 · Neon bytea = anti-pattern (store the KEY, never the bytes). Both
-zero-egress S3 stores win by ~60× over S3/Supabase at scale. Note: R2 has a *standing* free tier (10 GB
-+ free egress) that also covers the MVP at $0 — the credit's real advantage is lower friction, not $.
+subagent output). At ~5 TB egress/mo: **R2 ~$7** · Railway Buckets ~$7.50 · AWS S3 ~$450 · Supabase
+~$180–250 · Railway **Volume** ~$325 · Neon bytea = anti-pattern (store the KEY, never the bytes). R2's
+**standing free tier** (10 GB + free egress) covers the MVP at $0.
+
+**Ops (R2 Class A/B):** each finished job = a few **Class A** writes (`PutObject` per asset, $4.50/M,
+1M free/mo); each browser view = cheap **Class B** reads (`GetObject`/Range, $0.36/M, 10M free/mo);
+presigning is a local HMAC — **free, no R2 call**; egress **$0**. Discipline: **plain `PutObject`, never
+multipart**, for our MB-sized files, so each upload is 1 Class A. MVP sits entirely in the free tier.
 
 ## Architecture (verified sound)
 
@@ -58,10 +58,11 @@ URLs (tenant-prefixed keys) for isolation.**
 3. **apps/api** (ours): ElevenLabs MP3 (`api-providers.ts:502`) → R2; drop the `/audio` static
    (`index.ts:227`); the `/creative-studio/asset/:jobId/*` proxy (`creative-studio.ts:265`) → 302 to a
    presigned R2 URL (or the client consumes R2 URLs directly).
-4. **Env** (both services, **vendor-neutral names** so the vendor swap is env-only):
-   `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_BUCKET`,
-   `STORAGE_REGION=auto`. Railway Buckets → `storage.railway.app` endpoint (creds auto-injected for
-   Railway services); R2 → `https://<acct>.r2.cloudflarestorage.com`. Same S3 client either way.
+4. **Env** (both Railway services, **vendor-neutral names** so any future vendor swap is env-only):
+   `STORAGE_ENDPOINT=https://<acct>.r2.cloudflarestorage.com`, `STORAGE_ACCESS_KEY_ID`,
+   `STORAGE_SECRET_ACCESS_KEY`, `STORAGE_BUCKET`, `STORAGE_REGION=auto`. Values come from the R2 S3
+   API token the user is provisioning. Set the boto3/aws-sdk checksum flags to `when_required`
+   (R2 rejects the SDK-default aws-chunked checksums).
 
 ## Coupled cleanup (folded in per user)
 
