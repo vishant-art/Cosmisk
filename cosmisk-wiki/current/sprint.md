@@ -2,6 +2,22 @@
 
 > Injected into CLAUDE.md. Keep under 300 tokens.
 
+## Session 2026-07-18: UGC video UI + chat formatting + feedback (demo prep)
+
+Executed 3 plans inline on `feat/ai-layer-adapter` (13 commits, no push):
+- **UGC video** (async): `/creative-studio/video/{plan,generate,job}` proxy routes →
+  ai-layer storyboard track; quote-before-spend planner UI; soft-deadline completion
+  poller (`video-job-poller.ts`, 3 tests) → bell notification via `autopilot_alerts` +
+  boot recovery; `withVideo:false` (storyboard owns video).
+- **Chat**: `.md-body` formatting (mono money, bold-takeaway callout, tables) + `chat.py`
+  SYSTEM prompt asks for that shape. AI Studio retired from the UI (route kept for deep
+  links; CTAs repointed to AI Chat). See `dev_reports/ai_serv/ai-studio-retired.md`.
+- **Feedback**: `ai_feedback` table (migration 0004, applied to Neon) + `POST /feedback`
+  upsert (3 pg tests) + thumbs on chat/creative + session comment box. Study data only.
+
+No fal spend (render is the user's manual demo click). Task 8 (service.py hardening)
+deferred to dryayeet.
+
 ## Session 7: Quality Governance WIRED, Client Experience DESIGNED
 
 **Yesterday's Progress:**
