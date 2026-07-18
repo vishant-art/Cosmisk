@@ -132,6 +132,22 @@ export async function fetchCreativeAsset(jobId: string, path: string): Promise<R
   });
 }
 
+/** GET /creative/asset-url/{jobId}/{path} -> presigned R2 URL, or null when storage is
+ *  off (404) so the caller byte-proxies the ai-layer's local copy instead. */
+export async function fetchCreativeAssetUrl(jobId: string, path: string): Promise<string | null> {
+  const safe = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  const url = `${base()}/creative/asset-url/${encodeURIComponent(jobId)}/${safe}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { 'X-API-Key': config.aiLayerApiKey },
+    signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
+  });
+  if (res.status === 404) return null;               // storage off -> fall back to byte-proxy
+  if (!res.ok) throw new AiLayerError(`asset-url ${res.status}`, res.status);
+  const body = (await res.json()) as { url: string };
+  return body.url;
+}
+
 // ─── Storyboard UGC-video track: quote (free) then paid render ──────────────
 
 export interface VideoPlanOpts { seconds?: number; direction?: string; n_shots?: number; }

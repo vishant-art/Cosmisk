@@ -9,7 +9,7 @@ import { FluxProvider } from '../services/api-providers.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 import {
-  creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset,
+  creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset, fetchCreativeAssetUrl,
   videoPlan, videoGenerate,
 } from '../services/creative-gen-client.js';
 import { pollVideoJob } from '../services/video-job-poller.js';
@@ -265,6 +265,16 @@ Return ONLY valid JSON, no markdown.`,
   app.get('/asset/:jobId/*', async (request, reply) => {
     const { jobId } = request.params as { jobId: string };
     const file = (request.params as Record<string, string>)['*'];  // may include a subdir
+    if (file.includes('..')) return reply.status(400).send({ success: false, error: 'bad path' });
+    // Storage on: 302 the browser straight to a presigned R2 URL the ai-layer minted
+    // (bytes flow browser<->R2, $0 Railway egress; apps/api holds no R2 creds).
+    try {
+      const signed = await fetchCreativeAssetUrl(jobId, file);
+      if (signed) return reply.redirect(signed, 302);
+    } catch (err: any) {
+      logger.warn({ err: err.message, jobId, file }, 'asset-url lookup failed; falling back to proxy');
+    }
+    // Storage off (dev / pre-deploy): byte-proxy from the ai-layer's ephemeral local disk.
     try {
       const upstream = await fetchCreativeAsset(jobId, file);
       if (!upstream.ok) {
