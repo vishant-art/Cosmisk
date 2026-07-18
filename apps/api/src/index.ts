@@ -286,6 +286,10 @@ try {
   // Recover any sprints interrupted by previous server restart
   const { recoverInterruptedSprints } = await import('./services/job-queue.js');
   await recoverInterruptedSprints();
+
+  // Re-attach notifiers for video renders that were in-flight at restart
+  const { recoverVideoJobs } = await import('./services/video-job-poller.js');
+  await recoverVideoJobs();
 } catch (err: unknown) {
   logger.error(err);
   process.exit(1);
