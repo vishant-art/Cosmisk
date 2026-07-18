@@ -1,7 +1,7 @@
 # ---- Backend Build Stage ----
 FROM node:22-alpine AS builder
 
-# Native build tools for better-sqlite3
+# Native build tools for sharp (native image processing)
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
@@ -17,7 +17,7 @@ RUN npm run build
 # ---- Production Stage ----
 FROM node:22-alpine AS production
 
-# Native build tools for better-sqlite3 compilation + libstdc++ for runtime
+# Native build tools for sharp (native image processing) + libstdc++ for runtime
 RUN apk add --no-cache python3 make g++ libstdc++
 
 WORKDIR /app
