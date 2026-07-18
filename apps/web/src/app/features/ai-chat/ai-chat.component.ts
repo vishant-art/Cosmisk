@@ -167,8 +167,17 @@ import { ChatStateService } from './chat-state.service';
     .md-body :where(h1, h2, h3, h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; font-size: 0.95rem; }
     .md-body :where(code) { background: rgba(0,0,0,0.06); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
     .md-body :where(a) { color: var(--accent); text-decoration: underline; }
-    .md-body :where(table) { border-collapse: collapse; margin: 0.25rem 0; }
-    .md-body :where(th, td) { border: 1px solid rgba(0,0,0,0.1); padding: 0.2rem 0.45rem; }
+    .md-body :where(table) { border-collapse: collapse; margin: 0.5rem 0; width: 100%; font-size: 0.85rem; }
+    .md-body :where(th, td) { border: 1px solid rgba(0,0,0,0.1); padding: 0.3rem 0.5rem; text-align: left; }
+    .md-body :where(th) { background: rgba(0,0,0,0.04); font-weight: 600; }
+    /* Money & ROAS: mono, tabular — scannable 0.62 vs 3.00 */
+    .md-body :where(code) { font-variant-numeric: tabular-nums; }
+    .md-body :where(td) { font-variant-numeric: tabular-nums; }
+    /* First bold line reads as the takeaway when the model leads with it */
+    .md-body :where(p:first-child strong:only-child) {
+      display: block; border-left: 3px solid var(--accent, #6366F1); padding-left: 0.6rem;
+      margin-bottom: 0.6rem; font-size: 1rem;
+    }
   `],
 })
 export default class AiChatComponent implements AfterViewChecked {
