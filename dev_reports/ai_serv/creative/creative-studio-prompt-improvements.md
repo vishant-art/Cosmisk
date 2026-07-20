@@ -188,43 +188,16 @@ The highest-leverage cross-cutting move from the research: make "generic" and "u
 
 ---
 
-## TypeScript / UI impact (apps/web + apps/api, under code freeze)
+## TypeScript / UI impact (code freeze)
 
-The prompt and schema changes are Python-backend only and additive. **Nothing here REQUIRES a
-TypeScript change to keep working:** the `apps/api` proxy (`services/creative-gen-client.ts`,
-`routes/creative-studio.ts`) passes the job JSON through, and every new field below is additive
-(a TS client that ignores it is unaffected). This section records the OPTIONAL front-end work to
-actually SURFACE the new value, all owned by the maintainers under the code freeze (the AI side
-will not touch `apps/`). If any phase is found to REQUIRE a TS change, it is added here as a hard
-dependency with the exact route/field.
-
-New or changed job fields these changes introduce (all additive on the Python side):
-- `qa_passed` (already shipped this session) and, with the judge-rubric upgrade, per-check
-  `evidence` strings on `qa.checks`.
-- Brand kit: `tone` as 0-10 scored axes plus `always_use` / `banned` lexicon arrays (replacing the
-  free-text `tone` + `voice_keywords`).
-- Concepts: an `awareness_stage` field and the logged `ad_copy` (headline/subhead/CTA).
-- Script: a first-frame `on_screen_text` hook (2-5 words) and a per-beat `is_spoken_sentence` flag.
-- Storyboard shots: an explicit `camera_move` field and a shared `continuity` object.
-
-Optional TS work to expose them (maintainers, not required for correctness):
-1. `apps/web` video-planner / cockpit: show `qa_passed` and the per-check evidence, so a
-   QA-flagged-but-shipped render reads clearly (pairs with the salvage change already shipped).
-2. If the UI renders the brand kit, handle the new `tone`-as-scales + lexicon shape instead of the
-   old free-text `tone`.
-3. Optional: preview/edit the elaborated creator identity. The operator `direction` is already a
-   free-text input in `video-planner.component.ts`; the elaboration is backend, so this is a
-   nice-to-have, not a dependency.
-4. Optional: surface the `on_screen_text` hook and the concept `ad_copy` in the review UI.
-5. **To use 1d's concept-casting fully:** the backend now accepts `CreativeRequest.direction`
-   on `POST /creative/generate` (additive), so a run casts one person into the static concept
-   ads too. Today the UI sends `direction` only to `/video/plan`; sending it to `generate` as
-   well (a maintainer TS change) makes the still ads and the video share the same cast. Without
-   it, 1d still casts the video path; only the concept-ad casting stays dormant.
-
-**Phase 1 specifically (Seedance motion/camera, FLUX suppression, direction propagation) has no
-hard TS dependency:** it is entirely within `apps/ai-layer` + `rnd/creative`, changes no job-field
-shape the proxy relies on, and needs no front-end work to function.
+All prompt and schema changes here are Python-backend only and additive: nothing REQUIRES a
+TypeScript change to keep working (the `apps/api` proxy passes the job JSON through, and every new
+field is additive). The OPTIONAL front-end work to surface the new value, all owned by maintainers
+under the code freeze, is tracked in one place: **`creative-studio-ts-wiring.md`**. New/changed
+job fields these phases introduce (brand-kit `tone_scales` + lexicon arrays, concept
+`awareness_stage` + logged `ad_copy`, script `on_screen_text`, shot `camera_move` + `continuity`,
+`qa_passed` + per-check `evidence`, and sending `direction` to `/creative/generate`) are all
+listed there as additive with the exact routes/fields.
 
 ---
 
