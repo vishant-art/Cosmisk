@@ -440,6 +440,9 @@ def run_scenario():
     if video.get("status") != "complete":
         RESULTS["errors"].append(f"video job status={video.get('status')} "
                                  f"error={video.get('error')}")
+    # the explicit QA pass/fail flag now rides on the job (mocked QA passes here)
+    if video.get("qa_passed") is not True:
+        RESULTS["errors"].append(f"video qa_passed={video.get('qa_passed')} (expected True)")
 
     RESULTS["wall_clock_s"] = round(time.time() - started, 2)
 
@@ -599,6 +602,7 @@ def write_report(run_dir: Path):
         "progress": video.get("progress"),
         "video": video.get("video"),
         "qa": video.get("qa"),
+        "qa_passed": video.get("qa_passed"),
         "repair": video.get("repair"),
         "cost_usd": video.get("cost_usd"),
         "actuals": video.get("actuals"),

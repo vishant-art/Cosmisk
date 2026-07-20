@@ -272,9 +272,84 @@ def test_video_generate_renders_verifies_and_reports(monkeypatch, tmp_path):
     assert status["status"] == "complete", status
     assert status["video"]["url"].endswith("video_captioned.mp4")
     assert status["qa"]["verdict"] == "pass"
+    assert status["qa_passed"] is True
     # max features by default: UGC capture style, strict fail-closed QA
     assert seen["strict"] is True
     assert seen["style"] is not None and seen["style"].camera == "handheld"
+
+
+def test_a_qa_fail_verdict_still_ships_the_render_flagged(monkeypatch, tmp_path):
+    """The gate returns a fail VERDICT (it does not raise). The clips are already paid for
+    and the QA gate has known false-fails, so the render still ships, marked qa_passed=False."""
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "j6"
+    run.mkdir()
+    (run / "storyboard.json").write_text(_board().model_dump_json(), encoding="utf-8")
+    monkeypatch.setattr(service.pipeline, "render_story",
+                        lambda **kw: (str(run / "video_captioned.mp4"), _board(), None))
+    monkeypatch.setattr(service.pipeline, "qa_video",
+                        lambda **kw: QAReport(checks=[QACheck(name="vlm_critic", passed=False,
+                                                             detail="unreadable_caption")],
+                                              verdict="fail"))
+    monkeypatch.setattr(fal_billing, "affordable",
+                        lambda n, **kw: {"enabled": True, "ok": True, "balance": 50.0,
+                                         "needed": 2.74, "shortfall": 0.0})
+
+    client.post("/creative/video/generate", json={"job_id": "j6"})
+    status = _poll("j6")
+    assert status["status"] == "complete", status        # a paid render is never discarded
+    assert status["qa_passed"] is False
+    assert status["qa"]["verdict"] == "fail"
+    assert status["video"]["url"].endswith("video_captioned.mp4")
+
+
+def test_a_strict_qa_raise_still_ships_the_paid_render(monkeypatch, tmp_path):
+    """render_story RAISES after the clips were paid for (recovery exhausted, or a finish
+    step erroring). The paid render on disk must be salvaged and attached, not discarded."""
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "j7"
+    run.mkdir()
+    (run / "storyboard.json").write_text(_board().model_dump_json(), encoding="utf-8")
+    (run / "video_captioned.mp4").write_bytes(b"\x00\x00")   # a paid render is on disk
+
+    def boom(**kw):
+        raise RuntimeError("recovery exhausted on shot 2")
+
+    monkeypatch.setattr(service.pipeline, "render_story", boom)
+    monkeypatch.setattr(fal_billing, "affordable",
+                        lambda n, **kw: {"enabled": True, "ok": True, "balance": 50.0,
+                                         "needed": 2.74, "shortfall": 0.0})
+
+    client.post("/creative/video/generate", json={"job_id": "j7"})
+    status = _poll("j7")
+    assert status["status"] == "complete", status        # never lose a paid render
+    assert status["qa_passed"] is False
+    assert status["video"]["url"].endswith("video_captioned.mp4")
+    assert status["video"]["partial"] is True
+    assert "did not complete cleanly" in status["qa"]["retry_hint"]
+
+
+def test_a_raise_before_any_render_stays_a_genuine_failure(monkeypatch, tmp_path):
+    """A raise BEFORE any clip is rendered (nothing paid, nothing on disk) is a real failure,
+    not something to dress up as a partial success."""
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    run = tmp_path / "j8"
+    run.mkdir()
+    (run / "storyboard.json").write_text(_board().model_dump_json(), encoding="utf-8")
+
+    def boom(**kw):
+        raise RuntimeError("fal down before any spend")
+
+    monkeypatch.setattr(service.pipeline, "render_story", boom)
+    monkeypatch.setattr(fal_billing, "affordable",
+                        lambda n, **kw: {"enabled": True, "ok": True, "balance": 50.0,
+                                         "needed": 2.74, "shortfall": 0.0})
+
+    client.post("/creative/video/generate", json={"job_id": "j8"})
+    status = _poll("j8")
+    assert status["status"] == "failed", status
+    assert "fal down before any spend" in status["error"]
+    assert status["video"] is None
 
 
 def test_video_generate_can_cut_variants(monkeypatch, tmp_path):

@@ -191,6 +191,7 @@ def _new_job(job_id: str, req: BaseModel, account_id: str | None) -> dict:
     return {"job_id": job_id, "status": "queued", "stage": "Queued", "progress": [],
             "run_id": job_id, "assets": [], "video": None, "brand_kit": None,
             "winners": [], "cost_usd": 0.0, "rejected": [], "error": None,
+            "qa_passed": None,
             "account_id": account_id, "request": json.loads(req.model_dump_json())}
 
 
@@ -387,6 +388,9 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
         job["qa"] = {"verdict": report.verdict,
                      "checks": [c.model_dump() for c in report.checks],
                      "retry_hint": report.retry_hint}
+        # Explicit pass/fail flag. The gate returns a "fail" VERDICT (it does not raise),
+        # so the video is already attached above: a QA-failed render still ships, marked.
+        job["qa_passed"] = report.verdict == "pass"
         job["repair"] = rlog.model_dump() if rlog else None
 
         if req.variant_axis and req.variant_values:
@@ -414,10 +418,62 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
         stage("Done")
         job["status"] = "complete"
     except Exception as e:  # noqa: BLE001
-        job["status"] = "failed"
-        job["error"] = f"{e}"
         traceback.print_exc()
+        salvaged = _salvage_partial(job_id)
+        if salvaged is not None:
+            # Clips were already rendered (paid). A strict-QA raise or a finish-step error
+            # must NOT discard them: attach the partial render and flag QA as not passed,
+            # rather than returning a bare "failed" with nothing (the render is the money).
+            run_dir = config.OUTPUT_DIR / job_id
+            job["video"] = salvaged
+            job["qa_passed"] = False
+            job["qa"] = {"verdict": "fail", "checks": [],
+                         "retry_hint": f"render did not complete cleanly: {e}"}
+            job["cost_usd"] = _run_cost(run_dir)
+            job["actuals"] = _read_json(run_dir / "fal_actuals.json")
+            _publish_assets(job_id, run_dir)
+            job["error"] = None
+            stage("Done (QA not passed; partial render attached)")
+            job["status"] = "complete"
+        else:
+            job["status"] = "failed"
+            job["error"] = f"{e}"
     _save(job)
+
+
+def _salvage_partial(job_id: str) -> dict | None:
+    """The most-finished on-disk render for a video job whose render RAISED after clips
+    were already paid for (recovery exhausted, or a finish step erroring). Returns a
+    job["video"] payload, or None when nothing has rendered yet -- a raise before any
+    spend (balance guard, missing storyboard) stays a genuine failure.
+
+    Never throw away a paid Seedance render over a QA raise: the clips are the expensive
+    part and they are already on disk.
+    """
+    run_dir = config.OUTPUT_DIR / job_id
+    clip = next((run_dir / n for n in pipeline._FINAL_CLIP_NAMES
+                 if (run_dir / n).exists()), None)
+    if clip is None:                      # no assembled timeline yet: the newest raw shot
+        renders = sorted(run_dir.glob("renders/*.mp4"), key=lambda p: p.stat().st_mtime)
+        clip = renders[-1] if renders else None
+    if clip is None:
+        return None
+
+    shots = dur = None
+    for name in ("storyboard_rendered.json", "storyboard.json"):
+        try:
+            board = Storyboard.model_validate_json((run_dir / name).read_text("utf-8"))
+            shots, dur = len(board.shots), board.duration_s
+            break
+        except Exception:  # noqa: BLE001 -- best-effort metadata; the clip is what matters
+            continue
+    if dur is None:
+        from ai_layer.creative import editor
+        dur = editor.media_duration(clip)
+
+    rel = clip.relative_to(run_dir).as_posix()
+    return {"url": f"/creative/assets/{job_id}/{rel}",
+            "duration_s": dur, "shots": shots, "partial": True}
 
 
 def _run_cost(run_dir: Path) -> float:

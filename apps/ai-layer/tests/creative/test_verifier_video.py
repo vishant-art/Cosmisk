@@ -338,10 +338,23 @@ def test_a_drifted_cut_is_caught(textured_3shot):
     assert "planned" in check.detail
 
 
-def test_the_wrong_number_of_cuts_is_caught(textured_3shot):
+def test_a_planned_cut_with_no_boundary_is_caught(textured_3shot):
+    """The clip cuts at 1.0s and 2.0s; a board planning a single cut at 1.5s has no real
+    boundary there. A MISSING planned boundary (a stalled render, a wrong assembly) is the
+    failure that matters, and it still fails."""
     check = vv.check_cut_alignment(textured_3shot, _board(1.5, 1.5))
     assert not check.passed
-    assert "detected 2 cut(s), planned 1" in check.detail
+    assert "no detected boundary" in check.detail
+
+
+def test_surplus_detected_cuts_from_effects_are_tolerated(textured_3shot):
+    """The UGC editor's punch-in / micro-shake / grain spike the frame-diff detector into
+    extra 'cuts'. As long as every PLANNED cut has a real boundary, surplus detections do
+    NOT fail the gate: requiring an exact count false-failed clean assemblies (22 vs 2)."""
+    # board plans ONE cut at 1.0s; the clip really has boundaries at 1.0s AND 2.0s.
+    check = vv.check_cut_alignment(textured_3shot, _board(1.0, 2.0))
+    assert check.passed, check.detail
+    assert "surplus" in check.detail
 
 
 # --- continuity -----------------------------------------------------------------------
@@ -456,6 +469,45 @@ def test_the_critic_cannot_invent_an_issue(textured_3shot):
     from ai_layer.creative import taxonomy
     with pytest.raises(taxonomy.TaxonomyError):
         vv.vlm_critique(_Vision({"issues": ["vibes_are_off"]}), textured_3shot)
+
+
+def test_caption_band_crop_returns_a_full_res_frame(textured_3shot):
+    """The 48px contact sheet cannot show a legible caption. The legibility question gets a
+    real, full-resolution crop of the lower caption band instead."""
+    crop = vv._caption_band_crop(textured_3shot, 1.0)
+    assert crop is not None and crop[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_a_missing_clip_crops_to_none_not_a_crash(tmp_path):
+    """Legibility is a bonus signal: if the frame grab fails, the critic falls back to the
+    contact sheet alone rather than crashing the gate."""
+    assert vv._caption_band_crop(str(tmp_path / "nope.mp4"), 1.0) is None
+
+
+def test_the_critic_gets_a_full_res_caption_crop(textured_3shot):
+    """The contact sheet is illegible for text, so a full-res caption-band crop rides along
+    as a SECOND image aimed at the legibility question."""
+    captured = {}
+
+    class _Spy:
+        def __init__(self):
+            class _C:
+                @staticmethod
+                def create(**kw):
+                    captured["messages"] = kw["messages"]
+
+                    class R:
+                        choices = [type("X", (), {"message": type(
+                            "M", (), {"content": '{"issues": ["none"]}'})()})()]
+
+                        def model_dump(self):
+                            return {"usage": {"cost": 0.0}}
+                    return R()
+            self.chat = type("Chat", (), {"completions": _C()})()
+
+    vv.vlm_critique(_Spy(), textured_3shot)
+    imgs = [p for p in captured["messages"][1]["content"] if p.get("type") == "image_url"]
+    assert len(imgs) == 2, "expected the contact sheet AND a full-res caption crop"
 
 
 # --- the gate ---------------------------------------------------------------------------

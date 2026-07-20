@@ -298,24 +298,35 @@ def _planned_cuts(board: Storyboard) -> list[float]:
 def check_cut_alignment(clip, board: Storyboard, *, tol: float | None = None) -> QACheck:
     """Do the cuts land where the storyboard put them?
 
-    Defense in depth on the concat: we know where the boundaries should be, so a
-    detector that disagrees means the assembly is wrong, not that the detector is
-    clever. Detection is the fallback, the plan is the truth.
+    Defense in depth on the concat: we know where the boundaries should be, so the
+    question is whether each PLANNED cut has a real boundary near it. The plan is the
+    truth; detection is the fallback.
+
+    We anchor on the plan, not on an exact count. The UGC editor bakes punch-in,
+    micro-shake and grain into every shot, and the frame-difference detector reads those
+    intra-shot spikes as extra "cuts" -- so requiring `len(detected) == len(planned)`
+    false-failed clean assemblies (22 detected vs 2 planned on a real run). A MISSING
+    planned boundary (two shots that never actually cut -- a stalled render) is the real
+    defect and still fails; SURPLUS detected boundaries from effects are tolerated.
     """
     tol = config.QA_CUT_TOL_S if tol is None else tol
     planned = _planned_cuts(board)
+    if not planned:                       # single-shot board: no cut to place
+        return QACheck(name="cut_alignment", passed=True, detail="no planned cuts (single shot)")
+
     shots, _duration, _stats = teardown.detect_shots(clip)
     detected = [s.start_s for s in shots[1:]]
 
-    if len(detected) != len(planned):
-        return QACheck(name="cut_alignment", passed=False,
-                       detail=f"detected {len(detected)} cut(s), planned {len(planned)}")
-    for i, (d, p) in enumerate(zip(detected, planned)):
-        if abs(d - p) > tol:
+    for i, p in enumerate(planned):
+        if not any(abs(d - p) <= tol for d in detected):
             return QACheck(name="cut_alignment", passed=False, shot_index=i + 1,
-                           detail=f"cut {i + 1} at {d:.2f}s, planned {p:.2f}s (tol {tol}s)")
-    return QACheck(name="cut_alignment", passed=True,
-                   detail=f"{len(planned)} cut(s) within {tol}s of plan")
+                           detail=f"planned cut {i + 1} at {p:.2f}s has no detected boundary "
+                                  f"within {tol}s ({len(detected)} detected in total)")
+    extra = len(detected) - len(planned)
+    detail = f"{len(planned)} planned cut(s) each within {tol}s of a detected boundary"
+    if extra > 0:
+        detail += f"; {extra} surplus detected boundary(ies) tolerated (editor effects)"
+    return QACheck(name="cut_alignment", passed=True, detail=detail)
 
 
 def check_continuity(clip, board: Storyboard) -> list[QACheck]:
@@ -481,6 +492,43 @@ _CRITIC_SYSTEM = (
 _HARMLESS = {"none"}
 
 
+def _caption_band_crop(clip, at_s: float) -> bytes | None:
+    """A FULL-RESOLUTION crop of the lower caption band at `at_s`, for the legibility
+    question. The contact sheet is 48px keyframes (config.TEARDOWN_GRID) upscaled, so no
+    burned caption is readable there -- which made the critic flag legible 1080p captions
+    as `unreadable_caption`. This gives the model a frame it can actually read. Returns
+    None on any failure (the critic then uses the contact sheet alone; never crashes the gate).
+    """
+    import io
+    import os
+    import subprocess
+    import tempfile
+
+    import imageio_ffmpeg
+    from PIL import Image
+
+    fd, tmpname = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    tmp = Path(tmpname)
+    try:
+        cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-ss", f"{max(at_s, 0.0):g}",
+               "-i", str(clip), "-frames:v", "1", str(tmp)]
+        proc = subprocess.run(cmd, capture_output=True)
+        if proc.returncode != 0 or tmp.stat().st_size == 0:
+            return None
+        with Image.open(tmp) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            band = im.crop((0, int(h * 0.50), w, h))   # lower half: caption band + margin
+        buf = io.BytesIO()
+        band.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 -- legibility is a bonus signal, never a crash
+        return None
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def vlm_critique(client, clip, *, led=None) -> QACheck:
     """One vision call on a contact sheet, not on the video.
 
@@ -488,11 +536,31 @@ def vlm_critique(client, clip, *, led=None) -> QACheck:
     model ("did it draw six fingers", "are the captions legible") are all answerable
     from the shot openings. Sending the whole clip would cost more and buy nothing.
     """
-    _shots, _dur, stats = teardown.detect_shots(clip)
+    _shots, dur, stats = teardown.detect_shots(clip)
     sheet = teardown._contact_sheet(stats["keyframes"])
 
     import base64
     system = _CRITIC_SYSTEM.replace("{issues}", ", ".join(taxonomy.values(taxonomy.QaIssue)))
+
+    # The contact sheet is 48px keyframes (config.TEARDOWN_GRID) upscaled, so a burned
+    # caption is illegible there and the critic false-reported `unreadable_caption`. Attach
+    # a FULL-RESOLUTION crop of the caption band and aim the legibility question at it.
+    content = [
+        {"type": "text", "text": "Inspect this ad for visible defects."},
+        {"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{base64.b64encode(sheet).decode()}"}},
+    ]
+    crop = _caption_band_crop(clip, (dur or 0.0) * 0.5)
+    if crop is not None:
+        content[0]["text"] = (
+            "Inspect this ad for visible defects. The FIRST image is a contact sheet of "
+            "chronological keyframes (low resolution -- judge motion, anatomy and artifacts "
+            "from it). The SECOND image is a FULL-RESOLUTION crop of the caption band -- judge "
+            "caption legibility (e.g. unreadable_caption, text_garbled) from the SECOND image "
+            "only; the contact sheet is too small to read text.")
+        content.append({"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{base64.b64encode(crop).decode()}"}})
+
     resp = client.chat.completions.create(
         model=config.VISION_MODEL,
         temperature=config.CLASSIFY_TEMPERATURE,
@@ -500,11 +568,7 @@ def vlm_critique(client, clip, *, led=None) -> QACheck:
         extra_body={"usage": {"include": True}},
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": [
-                {"type": "text", "text": "Inspect this ad for visible defects."},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:image/png;base64,{base64.b64encode(sheet).decode()}"}},
-            ]},
+            {"role": "user", "content": content},
         ],
     )
     text = (resp.choices[0].message.content or "").strip()
