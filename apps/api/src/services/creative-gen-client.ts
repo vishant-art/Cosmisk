@@ -38,6 +38,7 @@ export interface CreativeGenJob {
   run_id: string | null;
   assets: CreativeGenAsset[];
   video: { url: string } | null;
+  qa?: { verdict: string; checks?: unknown[]; retry_hint?: string } | null;
   brand_kit: Record<string, unknown> | null;
   winners: { url: string }[];
   cost_usd: number;
@@ -129,4 +130,62 @@ export async function fetchCreativeAsset(jobId: string, path: string): Promise<R
     headers: { 'X-API-Key': config.aiLayerApiKey },
     signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
   });
+}
+
+/** GET /creative/asset-url/{jobId}/{path} -> presigned R2 URL, or null when storage is
+ *  off (404) so the caller byte-proxies the ai-layer's local copy instead. */
+export async function fetchCreativeAssetUrl(jobId: string, path: string): Promise<string | null> {
+  const safe = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  const url = `${base()}/creative/asset-url/${encodeURIComponent(jobId)}/${safe}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { 'X-API-Key': config.aiLayerApiKey },
+    signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
+  });
+  if (res.status === 404) return null;               // storage off -> fall back to byte-proxy
+  if (!res.ok) throw new AiLayerError(`asset-url ${res.status}`, res.status);
+  const body = (await res.json()) as { url: string };
+  return body.url;
+}
+
+// ─── Storyboard UGC-video track: quote (free) then paid render ──────────────
+
+export interface VideoPlanOpts { seconds?: number; direction?: string; n_shots?: number; }
+export interface VideoGenOpts { voiceover?: boolean; captions?: boolean; sfx?: boolean; }
+export interface VideoQuote {
+  clips: number; estimated_usd: number; balance_usd: number | null;
+  affordable: boolean; guard_enabled: boolean; shortfall_usd: number;
+}
+export interface VideoPlan {
+  job_id: string; shots: number; duration_s: number; grounded: boolean;
+  storyboard: unknown; quote: VideoQuote;
+}
+
+/** POST /creative/video/plan — $0, LLM only. 409 if the run has no brand kit. */
+export async function videoPlan(jobId: string, opts: VideoPlanOpts, metaToken?: string): Promise<VideoPlan> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey };
+  if (metaToken) headers['X-Meta-Token'] = metaToken;
+  const res = await fetch(`${base()}/creative/video/plan`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ job_id: jobId, seconds: opts.seconds, direction: opts.direction, n_shots: opts.n_shots }),
+  });
+  if (!res.ok) throw new AiLayerError(`video/plan failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<VideoPlan>;
+}
+
+/** POST /creative/video/generate — PAID. 409 without a storyboard, 402 if balance can't cover. */
+export async function videoGenerate(jobId: string, opts: VideoGenOpts, metaToken?: string): Promise<{ job_id: string; status: string; clips: number }> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey };
+  if (metaToken) headers['X-Meta-Token'] = metaToken;
+  const res = await fetch(`${base()}/creative/video/generate`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      job_id: jobId,
+      voiceover: opts.voiceover ?? true, captions: opts.captions ?? true, sfx: opts.sfx ?? true,
+    }),
+  });
+  if (!res.ok) throw new AiLayerError(`video/generate failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<{ job_id: string; status: string; clips: number }>;
 }

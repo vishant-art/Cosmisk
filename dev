@@ -17,6 +17,12 @@ AI_URL="http://localhost:8077"
 dc()        { docker compose -f "${COMPOSE_FILE}" "$@"; }
 dexec()     { dc exec -T "${SERVICE}" "$@"; }
 dexec_tty() { dc exec "${SERVICE}" "$@"; }
+# Detached in-container start. `docker compose exec -d` hangs on some Compose
+# builds (seen with v2.39-desktop on WSL2 — the detach never returns), so use
+# plain `docker exec -d` against the pinned container_name (== SERVICE). This
+# reparents the process to the container's init, so it survives this exec
+# returning.
+ddetach()   { docker exec -d "${SERVICE}" "$@"; }
 
 # True on first run (or after volumes are wiped): deps/venv not yet installed.
 needs_bootstrap() {
@@ -43,16 +49,16 @@ cmd_down() {
 # own file inside the container.
 cmd_start() {
   echo "==> Starting ai-layer (uvicorn --reload) -> ${AI_URL}"
-  dexec bash -lc 'pkill -f "uvicorn ai_layer.api:app" 2>/dev/null || true; sleep 0.3'
-  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/apps/ai-layer && exec /workspace/cos/bin/python -m uvicorn ai_layer.api:app --host 0.0.0.0 --port 8077 --reload > /tmp/ai-layer.log 2>&1'
+  dexec bash -lc 'pkill -f "[u]vicorn ai_layer.api:app" 2>/dev/null || true; sleep 0.3'
+  ddetach bash -lc 'cd /workspace/apps/ai-layer && exec /workspace/cos/bin/python -m uvicorn ai_layer.api:app --host 0.0.0.0 --port 8077 --reload > /tmp/ai-layer.log 2>&1'
 
   echo "==> Starting API (tsx watch)            -> ${API_URL}"
-  dexec bash -lc 'pkill -f "tsx watch src/index.ts" 2>/dev/null || true; sleep 0.3'
-  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/apps/api && exec npx tsx watch src/index.ts > /tmp/api.log 2>&1'
+  dexec bash -lc 'pkill -f "[t]sx watch src/index.ts" 2>/dev/null || true; sleep 0.3'
+  ddetach bash -lc 'cd /workspace/apps/api && exec npx tsx watch src/index.ts > /tmp/api.log 2>&1'
 
   echo "==> Starting Web (ng serve)             -> ${WEB_URL}"
-  dexec bash -lc 'pkill -f "ng serve" 2>/dev/null || true; sleep 0.3'
-  dc exec -d "${SERVICE}" bash -lc 'cd /workspace/apps/web && exec npx ng serve --host 0.0.0.0 --port 4200 > /tmp/web.log 2>&1'
+  dexec bash -lc 'pkill -f "[n]g serve" 2>/dev/null || true; sleep 0.3'
+  ddetach bash -lc 'cd /workspace/apps/web && exec npx ng serve --host 0.0.0.0 --port 4200 > /tmp/web.log 2>&1'
 
   echo -n "    waiting for API /health"
   local api_ok=0
@@ -78,9 +84,9 @@ cmd_start() {
 
 cmd_stop() {
   dexec bash -lc '
-    pkill -f "ng serve" 2>/dev/null || true
-    pkill -f "tsx watch src/index.ts" 2>/dev/null || true
-    pkill -f "uvicorn ai_layer.api:app" 2>/dev/null || true
+    pkill -f "[n]g serve" 2>/dev/null || true
+    pkill -f "[t]sx watch src/index.ts" 2>/dev/null || true
+    pkill -f "[u]vicorn ai_layer.api:app" 2>/dev/null || true
     echo "    all three services stopped"
   '
 }

@@ -252,7 +252,6 @@ export class SidebarComponent implements OnInit, OnDestroy {
         { label: 'Watchdog', icon: 'scan-eye', route: '/app/agent', pro: true, live: true },
         { label: 'Competitor Spy', icon: 'search', route: '/app/competitor-spy', pro: true },
         { label: 'Analytics', icon: 'bar-chart-3', route: '/app/analytics' },
-        { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio', live: true },
         { label: 'Reports', icon: 'file-text', route: '/app/reports' },
         { label: 'Creative Score', icon: 'target', route: '/app/score' },
       ]

@@ -12,6 +12,7 @@ import './load-env.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, types } from 'pg';
 import * as schema from './pg-schema.js';
+import { logger } from '../utils/logger.js';
 
 // node-postgres returns int8 (OID 20) — what `COUNT(*)` and `SUM(int)` produce —
 // as a JS STRING by default, to avoid precision loss beyond Number.MAX_SAFE_INTEGER.
@@ -23,10 +24,20 @@ import * as schema from './pg-schema.js';
 types.setTypeParser(20, (val) => parseInt(val, 10));
 
 // Pooled connection (PgBouncer endpoint) for the long-running app process.
+// keepAlive stops Neon/the network from silently reaping an idle socket — a
+// dropped idle connection otherwise surfaces as "Connection terminated
+// unexpectedly" on the next query.
 export const pgPool = new Pool({
   connectionString: process.env['DATABASE_URL'],
   max: 20,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
 });
+
+// An idle client's backend/network error is emitted on the pool; without a
+// listener node-postgres throws it as an unhandled error. Log and swallow —
+// the pool discards the dead client and the next query gets a fresh one.
+pgPool.on('error', (err) => logger.error({ err }, '[pg] idle client error (discarded)'));
 
 export const pgDb = drizzle(pgPool, { schema });
 

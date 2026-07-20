@@ -15,6 +15,7 @@ import DOMPurify from 'dompurify';
 import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { AuthService } from '../../core/services/auth.service';
+import { FeedbackService } from '../../core/services/feedback.service';
 import { environment } from '../../../environments/environment';
 import { ChatStateService } from './chat-state.service';
 
@@ -102,7 +103,7 @@ import { ChatStateService } from './chat-state.service';
           </div>
         }
         @for (m of messages(); track $index) {
-          <div class="flex" [class.justify-end]="m.role === 'user'">
+          <div class="flex flex-col" [class.items-end]="m.role === 'user'">
             <div
               class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm font-body leading-relaxed"
               [ngClass]="m.role === 'user'
@@ -120,7 +121,36 @@ import { ChatStateService } from './chat-state.service';
                 </span>
               }
             </div>
+            @if (m.role === 'assistant' && m.content) {
+              <div class="flex gap-2 mt-1 ml-1 text-gray-400">
+                <button type="button" (click)="rateChat($index, 1)" [disabled]="!!rated()[$index]"
+                        [class.text-green-600]="rated()[$index] === 1" class="hover:text-green-600 disabled:opacity-100"
+                        aria-label="Helpful">
+                  <lucide-icon name="thumbs-up" [size]="14"></lucide-icon>
+                </button>
+                <button type="button" (click)="rateChat($index, -1)" [disabled]="!!rated()[$index]"
+                        [class.text-red-500]="rated()[$index] === -1" class="hover:text-red-500 disabled:opacity-100"
+                        aria-label="Not helpful">
+                  <lucide-icon name="thumbs-down" [size]="14"></lucide-icon>
+                </button>
+              </div>
+            }
           </div>
+        }
+        @if (answerCount() >= 3 && !commentDismissed() && !commentSent()) {
+          <div class="rounded-xl border border-gray-200 bg-white p-3">
+            <p class="text-xs text-gray-500 m-0 mb-2">How's this chat going? (optional — helps us improve)</p>
+            <textarea [(ngModel)]="commentText" name="sessionComment" rows="2"
+              placeholder="Anything working well or missing?"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-body focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none"></textarea>
+            <div class="flex gap-2 justify-end mt-2">
+              <button type="button" (click)="commentDismissed.set(true)" class="text-xs text-gray-400 hover:text-gray-600 px-2">Dismiss</button>
+              <button type="button" (click)="sendSessionComment()" class="text-xs bg-accent text-white rounded-pill px-3 py-1.5 font-semibold">Send</button>
+            </div>
+          </div>
+        }
+        @if (commentSent()) {
+          <p class="text-xs text-green-700 text-center m-0">Thanks — noted.</p>
         }
         @if (errorMsg()) {
           <div class="flex">
@@ -167,8 +197,17 @@ import { ChatStateService } from './chat-state.service';
     .md-body :where(h1, h2, h3, h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; font-size: 0.95rem; }
     .md-body :where(code) { background: rgba(0,0,0,0.06); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
     .md-body :where(a) { color: var(--accent); text-decoration: underline; }
-    .md-body :where(table) { border-collapse: collapse; margin: 0.25rem 0; }
-    .md-body :where(th, td) { border: 1px solid rgba(0,0,0,0.1); padding: 0.2rem 0.45rem; }
+    .md-body :where(table) { border-collapse: collapse; margin: 0.5rem 0; width: 100%; font-size: 0.85rem; }
+    .md-body :where(th, td) { border: 1px solid rgba(0,0,0,0.1); padding: 0.3rem 0.5rem; text-align: left; }
+    .md-body :where(th) { background: rgba(0,0,0,0.04); font-weight: 600; }
+    /* Money & ROAS: mono, tabular — scannable 0.62 vs 3.00 */
+    .md-body :where(code) { font-variant-numeric: tabular-nums; }
+    .md-body :where(td) { font-variant-numeric: tabular-nums; }
+    /* First bold line reads as the takeaway when the model leads with it */
+    .md-body :where(p:first-child strong:only-child) {
+      display: block; border-left: 3px solid var(--accent, #6366F1); padding-left: 0.6rem;
+      margin-bottom: 0.6rem; font-size: 1rem;
+    }
   `],
 })
 export default class AiChatComponent implements AfterViewChecked {
@@ -176,7 +215,14 @@ export default class AiChatComponent implements AfterViewChecked {
   private adAccounts = inject(AdAccountService);
   private auth = inject(AuthService);
   private sanitizer = inject(DomSanitizer);
+  private feedback = inject(FeedbackService);
   state = inject(ChatStateService);
+
+  // Per-answer thumbs (keyed by message index) + once-per-session comment box.
+  rated = signal<Record<number, -1 | 1>>({});
+  commentDismissed = signal(false);
+  commentSent = signal(false);
+  commentText = '';
 
   @ViewChild('scroll') private scrollEl?: ElementRef<HTMLDivElement>;
 
@@ -214,6 +260,28 @@ export default class AiChatComponent implements AfterViewChecked {
   renderMd(text: string): SafeHtml {
     const html = marked.parse(text ?? '', { async: false }) as string;
     return this.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(html));
+  }
+
+  /** Thumbs on an assistant answer. refId = `${sessionId}:${index}`; pairs the Q&A for study. */
+  rateChat(index: number, rating: -1 | 1): void {
+    if (this.rated()[index]) return;
+    const msgs = this.messages();
+    const prompt = index > 0 ? msgs[index - 1]?.content : '';
+    this.feedback.rate('chat', `${this.state.sessionId()}:${index}`, rating,
+      { prompt_text: prompt, response_text: msgs[index]?.content }).subscribe({ error: () => {} });
+    this.rated.update((r) => ({ ...r, [index]: rating }));
+  }
+
+  /** Number of completed assistant answers this session. */
+  answerCount(): number {
+    return this.messages().filter((m) => m.role === 'assistant' && m.content).length;
+  }
+
+  sendSessionComment(): void {
+    const comment = this.commentText.trim();
+    if (!comment) { this.commentDismissed.set(true); return; }
+    this.feedback.rate('chat', this.state.sessionId(), 0, { comment }).subscribe({ error: () => {} });
+    this.commentSent.set(true);
   }
 
   toggleSummary(): void {

@@ -215,7 +215,6 @@ export class CommandPaletteComponent implements AfterViewChecked {
     { id: 'nav-ugc', label: 'Creative Studio', category: 'Pages', icon: '&#9654;', route: '/app/ugc-studio' },
     { id: 'nav-brain', label: 'Brain', category: 'Pages', icon: '&#129504;', route: '/app/brain' },
     { id: 'nav-analytics', label: 'Analytics', category: 'Pages', icon: '&#128202;', route: '/app/analytics' },
-    { id: 'nav-ai', label: 'AI Studio', category: 'Pages', icon: '&#128172;', route: '/app/ai-studio' },
     { id: 'nav-reports', label: 'Reports', category: 'Pages', icon: '&#128196;', route: '/app/reports' },
     { id: 'nav-campaigns', label: 'Campaign Builder', category: 'Pages', icon: '&#128227;', route: '/app/campaigns' },
     { id: 'nav-graphic', label: 'Graphic Studio', category: 'Pages', icon: '&#128444;', route: '/app/graphic-studio' },
@@ -347,8 +346,8 @@ export class CommandPaletteComponent implements AfterViewChecked {
           actions.push({ label: 'Run Audit', type: 'info', route: '/app/audit' });
         }
 
-        // Always offer to continue in AI Studio for deeper conversation
-        actions.push({ label: 'Continue in AI Studio', type: 'info', route: '/app/ai-studio' });
+        // Offer to continue in AI Chat for deeper conversation
+        actions.push({ label: 'Continue in AI Chat', type: 'info', route: '/app/ai-chat' });
         this.aiActions.set(actions);
       },
       error: () => {
@@ -408,7 +407,6 @@ export class CommandPaletteComponent implements AfterViewChecked {
     { keys: ['G', 'A'], desc: 'Go to Analytics' },
     { keys: ['G', 'B'], desc: 'Go to Brain' },
     { keys: ['G', 'C'], desc: 'Go to Creative Cockpit' },
-    { keys: ['G', 'S'], desc: 'Go to AI Studio' },
     { keys: ['G', 'E'], desc: 'Go to Creative Engine' },
     { keys: ['G', 'R'], desc: 'Go to Reports' },
     { keys: ['G', 'P'], desc: 'Go to Autopilot' },
@@ -422,7 +420,6 @@ export class CommandPaletteComponent implements AfterViewChecked {
     a: '/app/analytics',
     b: '/app/brain',
     c: '/app/creative-cockpit',
-    s: '/app/ai-studio',
     e: '/app/creative-engine',
     r: '/app/reports',
     p: '/app/autopilot',

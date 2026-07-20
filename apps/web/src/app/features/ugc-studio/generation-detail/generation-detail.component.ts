@@ -5,11 +5,12 @@ import { LucideAngularModule } from 'lucide-angular';
 import { CreativeStudioService, StudioGeneration } from '../../../core/services/creative-studio.service';
 import { OutputGalleryComponent } from '../output-gallery/output-gallery.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { VideoPlannerComponent } from './video-planner/video-planner.component';
 
 @Component({
   selector: 'app-generation-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule, OutputGalleryComponent, LoadingSpinnerComponent],
+  imports: [CommonModule, RouterLink, LucideAngularModule, OutputGalleryComponent, LoadingSpinnerComponent, VideoPlannerComponent],
   template: `
     <div class="space-y-6">
       <!-- Back link -->
@@ -82,6 +83,11 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
         <!-- Gallery -->
         @if (generation()!.outputs && generation()!.outputs!.length > 0) {
           <app-output-gallery [outputs]="generation()!.outputs!" />
+        }
+
+        <!-- Video: storyboard planner, quote before render -->
+        @if (generation()!.status === 'completed') {
+          <app-video-planner [generationId]="generation()!.id" />
         }
       }
 

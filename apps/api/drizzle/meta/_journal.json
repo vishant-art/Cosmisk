@@ -29,6 +29,13 @@
       "when": 1782851133364,
       "tag": "0003_lowly_elektra",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784356515791,
+      "tag": "0004_dry_namorita",
+      "breakpoints": true
     }
   ]
 }

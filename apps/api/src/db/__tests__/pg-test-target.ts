@@ -105,7 +105,14 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
     throw new Error(NO_URL_ERROR);
   }
 
-  const pool = new Pool({ connectionString });
+  // keepAlive: the lock client below sits idle for this file's whole lifetime
+  // while other test files run; without TCP keepalive Neon reaps that idle
+  // socket and the file fails wholesale with "Connection terminated unexpectedly".
+  const pool = new Pool({ connectionString, keepAlive: true, keepAliveInitialDelayMillis: 10_000 });
+  // Without an 'error' listener, an idle client's dropped socket surfaces as an
+  // UNHANDLED error and vitest marks the whole file failed even when every test
+  // passed. Swallow it — the serialized-lock connection is best-effort.
+  pool.on('error', () => { /* idle client dropped; harness recovers on next connect */ });
   const db = drizzle(pool);
 
   // Serialize pg-backed test FILES against this shared branch: hold a session
@@ -114,6 +121,9 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   // files block here until this one's teardown() releases. Auto-released if the
   // process dies (session-scoped lock).
   const lockClient = await pool.connect();
+  // This client stays checked out (idle) for the whole file; a dropped socket
+  // emits on the client itself, not the pool. Swallow so it isn't unhandled.
+  lockClient.on('error', () => { /* idle lock client dropped; teardown/next run recovers */ });
   await lockClient.query('SELECT pg_advisory_lock($1)', [DB2_TEST_LOCK_KEY]);
 
   // Apply migrations: test schema == migrated prod schema. (Serialized by the
@@ -136,13 +146,19 @@ export async function getMigratedTestPg(): Promise<MigratedTestPg> {
   };
 
   const teardown = async (): Promise<void> => {
-    // Release the cross-file serialization lock, then drop the pool.
+    // Release the cross-file serialization lock, then drop the pool. If the lock
+    // client's socket already died (idle reaping), the unlock query rejects — but
+    // the lock is SESSION-scoped, so a dead session has already released it. Swallow
+    // it; letting it throw would fail the whole file's afterAll even though every
+    // test passed. release(true) discards a possibly-broken client instead of
+    // returning it to the pool.
     try {
       await lockClient.query('SELECT pg_advisory_unlock($1)', [DB2_TEST_LOCK_KEY]);
-    } finally {
-      lockClient.release();
+    } catch { /* connection gone; session-scoped lock already released */ }
+    finally {
+      try { lockClient.release(true); } catch { /* already gone */ }
     }
-    await pool.end();
+    await pool.end().catch(() => { /* best-effort pool shutdown */ });
   };
 
   return { pool, db, reset, teardown };

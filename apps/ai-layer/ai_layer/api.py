@@ -280,9 +280,23 @@ def blended(account_id: str, preset: str = Query("last_30d"),
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from ai_layer.creative import config as _creative_config  # noqa: E402
 from ai_layer.creative.service import router as _creative_router  # noqa: E402
+from ai_layer import storage as _storage  # noqa: E402
 
 app.include_router(_creative_router, dependencies=[Depends(require_api_key)])
 _creative_config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/creative/assets",
           StaticFiles(directory=str(_creative_config.OUTPUT_DIR), check_dir=False),
           name="creative-assets")
+
+
+@app.get("/creative/asset-url/{job_id}/{path:path}",
+         dependencies=[Depends(require_api_key)])
+def creative_asset_url(job_id: str, path: str):
+    """A presigned R2 GET URL for a finished asset. apps/api calls this and 302s the browser
+    to the returned URL, so the bytes flow browser<->R2 directly ($0 egress) and apps/api
+    never holds R2 creds. 404 when storage is off -> the caller byte-proxies the local copy."""
+    if ".." in path:
+        raise HTTPException(status_code=400, detail="bad path")
+    if not _storage.enabled():
+        raise HTTPException(status_code=404, detail="storage disabled")
+    return {"url": _storage.presign_get(_storage.asset_key(job_id, path))}

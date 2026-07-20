@@ -9,8 +9,10 @@ import { FluxProvider } from '../services/api-providers.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 import {
-  creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset,
+  creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset, fetchCreativeAssetUrl,
+  videoPlan, videoGenerate,
 } from '../services/creative-gen-client.js';
+import { pollVideoJob } from '../services/video-job-poller.js';
 import { getMetaTokenForUser } from '../boot/meta-helpers.js';
 
 /* ------------------------------------------------------------------ */
@@ -263,6 +265,16 @@ Return ONLY valid JSON, no markdown.`,
   app.get('/asset/:jobId/*', async (request, reply) => {
     const { jobId } = request.params as { jobId: string };
     const file = (request.params as Record<string, string>)['*'];  // may include a subdir
+    if (file.includes('..')) return reply.status(400).send({ success: false, error: 'bad path' });
+    // Storage on: 302 the browser straight to a presigned R2 URL the ai-layer minted
+    // (bytes flow browser<->R2, $0 Railway egress; apps/api holds no R2 creds).
+    try {
+      const signed = await fetchCreativeAssetUrl(jobId, file);
+      if (signed) return reply.redirect(signed, 302);
+    } catch (err: any) {
+      logger.warn({ err: err.message, jobId, file }, 'asset-url lookup failed; falling back to proxy');
+    }
+    // Storage off (dev / pre-deploy): byte-proxy from the ai-layer's ephemeral local disk.
     try {
       const upstream = await fetchCreativeAsset(jobId, file);
       if (!upstream.ok) {
@@ -292,6 +304,58 @@ Return ONLY valid JSON, no markdown.`,
     } catch (err: any) {
       return internalError(reply, err, 'creative-studio/accuracy failed');
     }
+  });
+
+  // POST /video/plan — $0 quote. 409 (no brand kit) surfaces as a clean message.
+  app.post('/video/plan', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { generation_id, seconds, direction, n_shots } = request.body as {
+      generation_id: string; seconds?: number; direction?: string; n_shots?: number;
+    };
+    const db = getDbAdapter();
+    const gen = await db.get<{ ai_job_id: string | null }>(
+      'SELECT ai_job_id FROM studio_generations WHERE id = ? AND user_id = ?', [generation_id, request.user.id]);
+    if (!gen?.ai_job_id) return reply.status(409).send({ success: false, error: 'Generate static ads first, then plan the video.' });
+    try {
+      const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
+      const plan = await videoPlan(gen.ai_job_id, { seconds, direction, n_shots }, metaToken || undefined);
+      return { success: true, plan };
+    } catch (err: any) {
+      return reply.status(err.status ?? 500).send({ success: false, error: err.message });
+    }
+  });
+
+  // POST /video/generate — PAID. Starts the poller on success. 402 surfaces the top-up hint.
+  app.post('/video/generate', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { generation_id, voiceover, captions, sfx } = request.body as {
+      generation_id: string; voiceover?: boolean; captions?: boolean; sfx?: boolean;
+    };
+    const db = getDbAdapter();
+    const gen = await db.get<{ ai_job_id: string | null; brief_json: string; meta_account_id: string | null }>(
+      'SELECT ai_job_id, brief_json, meta_account_id FROM studio_generations WHERE id = ? AND user_id = ?',
+      [generation_id, request.user.id]);
+    if (!gen?.ai_job_id) return reply.status(409).send({ success: false, error: 'Plan the video first.' });
+    // Ensure a video output row exists to track against.
+    const outputId = randomUUID();
+    await db.run(`INSERT INTO studio_outputs (id, generation_id, format, status) VALUES (?, ?, 'video', 'generating')
+                  ON CONFLICT DO NOTHING`, [outputId, generation_id]);
+    try {
+      const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
+      const res = await videoGenerate(gen.ai_job_id, { voiceover, captions, sfx }, metaToken || undefined);
+      const productName = (() => { try { return JSON.parse(gen.brief_json)?.product_name ?? 'your product'; } catch { return 'your product'; } })();
+      void pollVideoJob({ generationId: generation_id, aiJobId: gen.ai_job_id, userId: request.user.id,
+        videoOutputId: outputId, productName, accountId: gen.meta_account_id });
+      return { success: true, status: res.status, clips: res.clips };
+    } catch (err: any) {
+      return reply.status(err.status ?? 500).send({ success: false, error: err.message });
+    }
+  });
+
+  // GET /video/job/:jobId — live stage/progress passthrough for a user who stays on the page.
+  app.get('/video/job/:jobId', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { jobId } = request.params as { jobId: string };
+    try { return { success: true, job: await getCreativeJob(jobId) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
   });
 }
 
@@ -541,7 +605,8 @@ async function processGenerationViaAiLayer(
       accountId: metaAccountId,
       images: 2,
       formats: ['1:1', '4:5', '9:16'],
-      withVideo: formats.includes('video'),
+      // The storyboard flow (/video/*) owns video now; do not fire the unquoted single-clip smoke.
+      withVideo: false,
       noLogo: true,
     }, metaToken || undefined);
     await db.run('UPDATE studio_generations SET ai_job_id = ?, updated_at = ? WHERE id = ?', [jobId, now(), generationId]);

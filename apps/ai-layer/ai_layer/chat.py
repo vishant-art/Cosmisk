@@ -93,8 +93,11 @@ SYSTEM = (
     "leading with the answer and the single most important number. Do not pad. Expand into "
     "a longer, detailed breakdown ONLY when the user explicitly asks for more (e.g. 'go "
     "deeper', 'explain in detail', 'give me the full breakdown').\n"
-    "- FORMAT: reply in Markdown. Use **bold** for key numbers/verdicts and bullet lists "
-    "where it aids scanning.\n\n"
+    "- FORMAT: reply in tight Markdown. LEAD with a one-line **bold takeaway** (the answer in a "
+    "single bolded sentence), then short bullets if needed. Put money and ROAS figures in `code` "
+    "(e.g. `3.00x`, `INR 972,950`) so they render monospaced and scannable. Use a Markdown table "
+    "only when comparing campaigns/creatives side by side. Keep **bold** for other key "
+    "numbers/verdicts.\n\n"
     "=== DATA SNAPSHOT ===\n{context}\n=== END SNAPSHOT ==="
 )
 

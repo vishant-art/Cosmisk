@@ -120,18 +120,16 @@ function startAgentCrons() {
     }
   });
 
-  // Meta API warmup: every 2 hours — ~120 calls/run × 12 runs/day = ~1,500 calls/day for App Review
-  cron.schedule('0 */2 * * *', async () => {
-    logger.info('[MetaWarmup] Starting Meta API warmup...');
-    try {
-      const result = await runMetaWarmup();
-      logger.info(`[MetaWarmup] Complete: ${result.usersProcessed} users, ${result.totalCalls} calls, ${result.errors.length} errors`);
-    } catch (err: unknown) {
-      logger.error({ err: err instanceof Error ? err.message : err }, '[MetaWarmup] Failed');
-    }
-  });
+  // Meta API warmup: DISABLED. On the app's development_access tier this shared the
+  // ads_insights rate budget with the product — ~273 calls/run of the most expensive
+  // shapes (breakdowns, ad-level insights, previews, reachestimate) exhausted it, and
+  // Meta then rejected real ingests with a misleading code=1 "reduce the amount of
+  // data". It only ever existed to accrue call volume for App Review, which is moot
+  // while multi-tenancy is deferred. Re-enable only alongside Advanced Access.
+  // if (config.metaWarmupEnabled) cron.schedule('0 */2 * * *', ...) — see
+  // dev_reports/2026-07-17-ai-layer-demo-state-and-tasklist.md §3
 
-  logger.info('[Brain] Crons scheduled: watchdog every 6h (24/7), briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, warmup every 2h, decay Sun 3:00 UTC');
+  logger.info('[Brain] Crons scheduled: watchdog every 6h (24/7), briefing 1:35 UTC, outcomes Mon 2:00 UTC, reports Tue 2:00 UTC, content Wed 2:00 UTC, sales Thu 2:00 UTC, decay Sun 3:00 UTC (warmup: disabled, see above)');
 }
 
 /* ------------------------------------------------------------------ */
