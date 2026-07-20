@@ -339,10 +339,23 @@ def test_a_drifted_cut_is_caught(textured_3shot):
     assert "planned" in check.detail
 
 
-def test_the_wrong_number_of_cuts_is_caught(textured_3shot):
+def test_a_planned_cut_with_no_boundary_is_caught(textured_3shot):
+    """The clip cuts at 1.0s and 2.0s; a board planning a single cut at 1.5s has no real
+    boundary there. A MISSING planned boundary (a stalled render, a wrong assembly) is the
+    failure that matters, and it still fails."""
     check = vv.check_cut_alignment(textured_3shot, _board(1.5, 1.5))
     assert not check.passed
-    assert "detected 2 cut(s), planned 1" in check.detail
+    assert "no detected boundary" in check.detail
+
+
+def test_surplus_detected_cuts_from_effects_are_tolerated(textured_3shot):
+    """The UGC editor's punch-in / micro-shake / grain spike the frame-diff detector into
+    extra 'cuts'. As long as every PLANNED cut has a real boundary, surplus detections do
+    NOT fail the gate: requiring an exact count false-failed clean assemblies (22 vs 2)."""
+    # board plans ONE cut at 1.0s; the clip really has boundaries at 1.0s AND 2.0s.
+    check = vv.check_cut_alignment(textured_3shot, _board(1.0, 2.0))
+    assert check.passed, check.detail
+    assert "surplus" in check.detail
 
 
 # --- continuity -----------------------------------------------------------------------

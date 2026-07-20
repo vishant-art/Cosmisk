@@ -300,24 +300,35 @@ def _planned_cuts(board: Storyboard) -> list[float]:
 def check_cut_alignment(clip, board: Storyboard, *, tol: float | None = None) -> QACheck:
     """Do the cuts land where the storyboard put them?
 
-    Defense in depth on the concat: we know where the boundaries should be, so a
-    detector that disagrees means the assembly is wrong, not that the detector is
-    clever. Detection is the fallback, the plan is the truth.
+    Defense in depth on the concat: we know where the boundaries should be, so the
+    question is whether each PLANNED cut has a real boundary near it. The plan is the
+    truth; detection is the fallback.
+
+    We anchor on the plan, not on an exact count. The UGC editor bakes punch-in,
+    micro-shake and grain into every shot, and the frame-difference detector reads those
+    intra-shot spikes as extra "cuts" -- so requiring `len(detected) == len(planned)`
+    false-failed clean assemblies (22 detected vs 2 planned on a real run). A MISSING
+    planned boundary (two shots that never actually cut -- a stalled render) is the real
+    defect and still fails; SURPLUS detected boundaries from effects are tolerated.
     """
     tol = config.QA_CUT_TOL_S if tol is None else tol
     planned = _planned_cuts(board)
+    if not planned:                       # single-shot board: no cut to place
+        return QACheck(name="cut_alignment", passed=True, detail="no planned cuts (single shot)")
+
     shots, _duration, _stats = teardown.detect_shots(clip)
     detected = [s.start_s for s in shots[1:]]
 
-    if len(detected) != len(planned):
-        return QACheck(name="cut_alignment", passed=False,
-                       detail=f"detected {len(detected)} cut(s), planned {len(planned)}")
-    for i, (d, p) in enumerate(zip(detected, planned)):
-        if abs(d - p) > tol:
+    for i, p in enumerate(planned):
+        if not any(abs(d - p) <= tol for d in detected):
             return QACheck(name="cut_alignment", passed=False, shot_index=i + 1,
-                           detail=f"cut {i + 1} at {d:.2f}s, planned {p:.2f}s (tol {tol}s)")
-    return QACheck(name="cut_alignment", passed=True,
-                   detail=f"{len(planned)} cut(s) within {tol}s of plan")
+                           detail=f"planned cut {i + 1} at {p:.2f}s has no detected boundary "
+                                  f"within {tol}s ({len(detected)} detected in total)")
+    extra = len(detected) - len(planned)
+    detail = f"{len(planned)} planned cut(s) each within {tol}s of a detected boundary"
+    if extra > 0:
+        detail += f"; {extra} surplus detected boundary(ies) tolerated (editor effects)"
+    return QACheck(name="cut_alignment", passed=True, detail=detail)
 
 
 def check_continuity(clip, board: Storyboard) -> list[QACheck]:
