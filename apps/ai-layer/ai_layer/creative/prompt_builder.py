@@ -91,14 +91,18 @@ _UGC_CRAFT = (
 
 # How each ShotCamera reads to a video model. The storyboard's closed set (T6) becomes
 # prose here, exactly once, rather than the model being handed the enum name.
+# Each entry pairs the framing with a distinct camera MOVE. A video model reads film
+# vocabulary as literal instruction, and the one thing video adds over a still is motion:
+# leaving every shot on the same static framing wastes it (the live run shipped identical
+# boilerplate camera on all three shots). One sensible move per camera, phone-plausible.
 _SHOT_CAMERA = {
-    "selfie": "front-facing phone selfie, held at arm's length",
-    "handheld_wide": "handheld wide shot, the whole scene in frame",
-    "close_up": "close-up",
-    "macro": "extreme macro, very shallow depth of field",
-    "over_shoulder": "over-the-shoulder shot",
-    "overhead": "shot from directly overhead, looking down",
-    "pov": "first-person point of view, as if through the subject's eyes",
+    "selfie": "front-facing phone selfie held at arm's length, a slight handheld push-in",
+    "handheld_wide": "handheld wide shot with the whole scene in frame, the camera drifting to follow the action",
+    "close_up": "close-up that slowly pushes in on the subject",
+    "macro": "extreme macro with very shallow depth of field, the focus settling onto the detail",
+    "over_shoulder": "over-the-shoulder shot, easing in past the shoulder",
+    "overhead": "shot from directly overhead looking down, a slow descent toward the subject",
+    "pov": "first-person point of view as if through the subject's eyes, natural head motion",
 }
 
 
@@ -125,7 +129,7 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
     camera = _SHOT_CAMERA.get(shot.camera, shot.camera.replace("_", " "))
     capture = style.to_prompt() if style is not None else ""
     craft = _UGC_CRAFT if style is not None else _STUDIO_CRAFT
-    motion = f"The shot moves: {shot.motion}. " if shot.motion else ""
+    motion = f"The shot moves: {shot.motion.strip().rstrip('.').strip()}. " if shot.motion else ""
     product = {
         "hero": "The product is the subject of this shot, clearly in frame and in focus. ",
         "background": "The product is visible in the background, not the subject. ",
@@ -138,6 +142,12 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
     who = (f"{creator.to_visual_prompt()} "
            if creator is not None and shot.product_visible != "hero" else "")
     guide = f"Art direction: {direction.strip()}. " if (direction or "").strip() else ""
+    # On the UGC track the brand's polished visual_style/tone fights the "real photo a
+    # customer took" look, so it is dropped here. The studio track keeps it: there the
+    # editorial brand identity IS the intended look. (The live run demanded both at once.)
+    brand_line = (f"Filmed for {kit.brand_name}. " if style is not None
+                  else f"Filmed for {kit.brand_name}. Visual style: {kit.visual_style}. "
+                       f"Mood: {kit.tone}. ")
 
     return (
         f"{shot.subject}\n\n"
@@ -145,7 +155,7 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
         f"{camera}. {capture + '. ' if capture else ''}"
         f"{motion}{product}"
         f"{guide}"
-        f"Filmed for {kit.brand_name}. Visual style: {kit.visual_style}. Mood: {kit.tone}. "
+        f"{brand_line}"
         f"{craft}"
         f"{fix}"
         f"Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no "

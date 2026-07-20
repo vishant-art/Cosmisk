@@ -80,3 +80,39 @@ def test_ugc_prompt_still_does_not_prime_text_or_logo(brand_kit, concepts):
 def test_style_is_optional_and_defaults_to_the_old_behaviour(brand_kit, concepts):
     assert (prompt_builder.build_image_prompt(concepts[0], brand_kit)
             == prompt_builder.build_image_prompt(concepts[0], brand_kit, style=None))
+
+
+# --- per-shot video prompt (Phase 1: motion/camera) ---------------------------
+
+def _shot(camera="selfie", motion="walks in", product_visible="absent",
+          subject="a woman to camera"):
+    from schemas import Shot
+    return Shot(purpose="hook", duration_s=3, camera=camera, subject=subject,
+                product_visible=product_visible, motion=motion, dialogue=None)
+
+
+def test_each_camera_gets_a_distinct_move(brand_kit):
+    """Video's whole value-add over a still is motion; each camera now carries its own move."""
+    selfie = prompt_builder.build_shot_prompt(_shot(camera="selfie"), brand_kit)
+    macro = prompt_builder.build_shot_prompt(_shot(camera="macro"), brand_kit)
+    wide = prompt_builder.build_shot_prompt(_shot(camera="handheld_wide"), brand_kit)
+    assert "push-in" in selfie
+    assert "focus settling" in macro
+    assert "follow the action" in wide
+
+
+def test_ugc_shot_drops_the_brand_visual_style(brand_kit):
+    """The polished visual_style is the studio track's look; a UGC shot must not carry it."""
+    ugc = prompt_builder.build_shot_prompt(
+        _shot(), brand_kit, style=_style(camera="handheld", lighting="window"))
+    studio = prompt_builder.build_shot_prompt(_shot(), brand_kit, style=None)
+    assert brand_kit.visual_style not in ugc
+    assert brand_kit.visual_style in studio
+    assert brand_kit.brand_name in ugc
+
+
+def test_motion_has_no_doubled_period(brand_kit):
+    p = prompt_builder.build_shot_prompt(
+        _shot(motion="woman's head, dress fabric."), brand_kit)
+    assert "The shot moves: woman's head, dress fabric. " in p
+    assert ".." not in p
