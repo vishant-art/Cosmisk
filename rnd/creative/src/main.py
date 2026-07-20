@@ -76,6 +76,8 @@ def main() -> None:
     ap.add_argument("--style", default="ugc", choices=["ugc", "studio"],
                     help="ugc = amateur capture aesthetic (default); studio = the old "
                          "premium editorial look, for product/catalogue work")
+    ap.add_argument("--direction", default="",
+                    help="operator art-direction guide; casts ONE person across the ads + video")
     ap.add_argument("--product", help="path to a product image -> Bria product-shot scenes")
     ap.add_argument("--shopify", action="store_true",
                     help="source the product image from the store's Shopify bestseller "
@@ -141,7 +143,8 @@ def main() -> None:
         if not args.resume:
             ap.error("--storyboard needs --resume <run_id> (it reads that run's "
                      "brand_kit.json and template.json)")
-        pipeline.plan_story(run_id=args.resume, data_path=args.data, seconds=args.seconds)
+        pipeline.plan_story(run_id=args.resume, data_path=args.data, seconds=args.seconds,
+                            direction=(args.direction or None))
         return
 
     if args.variants:
@@ -215,7 +218,7 @@ def main() -> None:
                  ground_from_meta=not args.no_ground, meta_preset=args.meta_preset,
                  top_creatives=args.top_creatives, bottom_creatives=args.bottom_creatives,
                  min_spend=args.min_spend, style=style, no_logo=args.no_logo,
-                 use_shopify=args.shopify)
+                 use_shopify=args.shopify, direction=(args.direction or None))
 
 
 if __name__ == "__main__":

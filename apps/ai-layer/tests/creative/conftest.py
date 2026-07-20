@@ -92,6 +92,11 @@ CONCEPTS_JSON = {"concepts": [
 ]}
 
 
+CREATOR_JSON = {"name": "Ava",
+                "appearance": "a tall woman in her late 20s with long blonde hair and fair skin",
+                "wardrobe": "a flowing pastel dress", "setting": "a sunlit courtyard"}
+
+
 SCRIPT_JSON = {"beats": [
     {"purpose": "hook", "text": "I genuinely thought this was a scam."},
     {"purpose": "problem", "text": "My hallway was always dark."},
@@ -123,6 +128,8 @@ REPLACEMENT_SHOT_JSON = {
 
 def _router(system_content: str) -> str:
     # route on a token unique to each system prompt.
+    if "casting director" in system_content:        # creator_from_direction (audit fix)
+        return json.dumps(CREATOR_JSON)
     if "VOICEOVER" in system_content:
         return json.dumps({"script": "Discover timeless craftsmanship. Shop the new collection."})
     if "OPENING LINE" in system_content:            # revary_hook (T10)

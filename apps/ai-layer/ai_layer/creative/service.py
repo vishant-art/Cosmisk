@@ -99,6 +99,10 @@ class CreativeRequest(BaseModel):
     # quotes its cost first.
     with_video: bool = True
     voiceover: bool = True
+    # Operator art-direction guide. When set, the run casts ONE concrete person from it (via
+    # story_brain.creator_from_direction) and persists it, so the static concept ads AND the
+    # later UGC video show the same human. Optional; without it concepts are uncast, as before.
+    direction: str | None = Field(None, description="art-direction guide; casts one person across ads + video")
 
 
 class VideoPlanRequest(BaseModel):
@@ -244,7 +248,7 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             meta_account=req.account_id, meta_token=token, ground_from_meta=req.ground,
             top_creatives=req.top_creatives, bottom_creatives=req.bottom_creatives,
             min_spend=req.min_spend, prior=prior, graph_prior=graph_prior,
-            on_stage=stage, log=lambda *_: None)
+            direction=req.direction, on_stage=stage, log=lambda *_: None)
 
         job["rejected"] = m.rejected
         job["assets"] = [

@@ -43,6 +43,52 @@ def test_concepts_fallback_when_empty(brand_kit):
     assert out[0].ad_copy.headline and out[0].ad_copy.cta_label
 
 
+# --- casting: operator direction -> one concrete person (audit fix) -----------
+
+def test_creator_from_direction_casts_a_person(fake_client, brand_kit):
+    creator = story_brain.creator_from_direction(fake_client, "tall blonde woman", kit=brand_kit)
+    assert creator.name == "Ava"
+    assert "blonde" in creator.appearance
+    assert creator.wardrobe and creator.setting
+
+
+def test_cast_block_injects_the_person():
+    from schemas import CreatorKit
+    c = CreatorKit(name="Ava", appearance="a tall blonde woman", wardrobe="a pastel dress")
+    block = story_brain._cast_block(c)
+    assert "a tall blonde woman" in block
+    assert "same person" in block.lower()
+    assert story_brain._cast_block(None) == ""
+
+
+def test_concepts_are_cast_with_the_creator(brand_kit):
+    """When a creator is supplied, the concept prompt tells the model to use that same person,
+    so the static ads match the video's cast (the live run cast a different generic person)."""
+    from schemas import CreatorKit
+    captured = {}
+
+    class _Cap:
+        def __init__(self):
+            class _C:
+                @staticmethod
+                def create(*, model, messages, **kw):
+                    captured["user"] = messages[1]["content"]
+
+                    class R:
+                        choices = [type("X", (), {"message": type(
+                            "M", (), {"content": json.dumps({"concepts": []})})()})()]
+
+                        def model_dump(self):
+                            return {"usage": {"cost": 0.0}}
+                    return R()
+            self.chat = type("Chat", (), {"completions": _C()})()
+
+    creator = CreatorKit(name="Ava", appearance="a tall blonde woman", wardrobe="a pastel dress")
+    story_brain.generate_concepts(_Cap(), brand_kit, "ctx", 2, creator=creator)
+    assert "a tall blonde woman" in captured["user"]
+    assert "same person" in captured["user"].lower()
+
+
 class _Capturing:
     """Captures the messages sent, so we can assert what the brain was actually told."""
     def __init__(self, payload='{"concepts": []}'):

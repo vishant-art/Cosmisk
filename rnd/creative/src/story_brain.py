@@ -28,7 +28,8 @@ import config  # noqa: E402
 import storyboard as sb_mod  # noqa: E402
 import taxonomy  # noqa: E402
 from schemas import (  # noqa: E402
-    AdConcept, BrandKit, CopySet, CreativeTemplate, Script, ScriptBeat, Shot, Storyboard,
+    AdConcept, BrandKit, CopySet, CreativeTemplate, CreatorKit, Script, ScriptBeat, Shot,
+    Storyboard,
 )
 
 _BEATS = ", ".join(taxonomy.values(taxonomy.BeatPurpose))
@@ -82,9 +83,57 @@ def _structure_block(template: CreativeTemplate | None) -> str:
     return f"\n\n{template.to_brief()}" if template else ""
 
 
+# --- casting: operator direction -> one concrete person -------------------------
+
+_CAST_SYSTEM = (
+    "You are a casting director for short-form UGC video ads. Turn the operator's free-text "
+    "art-direction note into ONE concrete, castable on-camera person, so that every shot AND "
+    "every lifestyle still in the campaign shows the SAME identifiable human, not a generic "
+    "'a woman'. Return STRICT JSON only:\n"
+    '{"name": str, "appearance": str, "wardrobe": str, "setting": str}\n'
+    "- name: a short first name, a private handle for the person (never shown on screen).\n"
+    "- appearance: a specific, filmable visual brief (apparent age, build, hair, face, skin), "
+    "faithful to the operator's note, the way a director briefs an actor.\n"
+    "- wardrobe: what they wear, on-brand and plausible for the product.\n"
+    "- setting: the ordinary, lived-in place they film in.\n"
+    "Describe ONLY the person and their surroundings. No text, no logo, no on-screen graphics."
+)
+
+
+def creator_from_direction(client, direction: str, *, kit: BrandKit) -> CreatorKit:
+    """Elaborate the operator's free-text direction into ONE concrete, reusable CreatorKit, so
+    the SAME person casts the concepts, the script, the storyboard and every shot. Without it
+    the direction lands only as a tail token and each stage casts a different generic person
+    (the live-run defect). Only the free-text visual fields are taken from the model; the enum
+    fields keep their defaults, so an off-taxonomy value can never fail validation. Callers wrap
+    this best-effort: on any failure the run simply proceeds with no cast persona, as before."""
+    user = (f"BRAND: {kit.brand_name} -- {kit.visual_style}. Tone: {kit.tone}.\n"
+            f"OPERATOR DIRECTION: {direction.strip()}\n"
+            "Cast one person who fits this direction and this brand.")
+    data, _cost = brain.chat_json(client, _CAST_SYSTEM, user)
+    return CreatorKit(
+        name=(str(data.get("name") or "").strip() or "Creator"),
+        appearance=str(data.get("appearance") or "").strip(),
+        wardrobe=str(data.get("wardrobe") or "").strip(),
+        setting=str(data.get("setting") or "").strip(),
+    )
+
+
+def _cast_block(creator) -> str:
+    """The elaborated operator persona, so a lifestyle CONCEPT shows the same person the video
+    ad will. Only injected when a creator was cast from the direction; empty otherwise."""
+    if creator is None:
+        return ""
+    who = ", ".join(b for b in [getattr(creator, "appearance", ""),
+                                (f"wearing {creator.wardrobe}" if creator.wardrobe else "")]
+                    if b)
+    return (f"\n\nWhen a concept shows a person, it MUST be this same person, identical to the "
+            f"video ad: {who}. Do not invent a different model per concept.") if who else ""
+
+
 def generate_concepts(client, kit: BrandKit, summary: str, n: int,
-                      template: CreativeTemplate | None = None, prior=None, graph=None
-                      ) -> tuple[list[AdConcept], float]:
+                      template: CreativeTemplate | None = None, prior=None, graph=None,
+                      creator=None) -> tuple[list[AdConcept], float]:
     """Propose n ad concepts, optionally grounded in the measured structure of a real
     ad from this account (T5).
 
@@ -99,6 +148,7 @@ def generate_concepts(client, kit: BrandKit, summary: str, n: int,
         f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
         f"ACCOUNT CONTEXT:\n{summary}"
         f"{_structure_block(template)}{_prior_block(prior)}{_graph_block(graph)}"
+        f"{_cast_block(creator)}"
         f"\n\nPropose exactly {n} concepts."
     )
     data, cost = brain.chat_json(client, system, user)

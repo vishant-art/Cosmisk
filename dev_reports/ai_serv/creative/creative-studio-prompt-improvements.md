@@ -1,6 +1,6 @@
 # Creative Studio — Prompt Improvement Plan
 
-**Created:** 2026-07-20 · **Owner:** ai-engineer (creative subtree, `dryayeet`) · **Status:** Phase 1 approved and in implementation; Phases 2-4 remain proposals
+**Created:** 2026-07-20 · **Owner:** ai-engineer (creative subtree, `dryayeet`) · **Status:** Phase 1 COMPLETE (1a-1d shipped, both trees); Phases 2-4 remain proposals
 
 > A per-prompt analysis of the Creative Studio's LLM/VLM prompts, grounded in (a) the actual
 > prompt code, (b) the real recorded prompts from past live runs, (c) 2025-2026 prompt-craft
@@ -216,6 +216,11 @@ Optional TS work to expose them (maintainers, not required for correctness):
    free-text input in `video-planner.component.ts`; the elaboration is backend, so this is a
    nice-to-have, not a dependency.
 4. Optional: surface the `on_screen_text` hook and the concept `ad_copy` in the review UI.
+5. **To use 1d's concept-casting fully:** the backend now accepts `CreativeRequest.direction`
+   on `POST /creative/generate` (additive), so a run casts one person into the static concept
+   ads too. Today the UI sends `direction` only to `/video/plan`; sending it to `generate` as
+   well (a maintainer TS change) makes the still ads and the video share the same cast. Without
+   it, 1d still casts the video path; only the concept-ad casting stays dormant.
 
 **Phase 1 specifically (Seedance motion/camera, FLUX suppression, direction propagation) has no
 hard TS dependency:** it is entirely within `apps/ai-layer` + `rnd/creative`, changes no job-field

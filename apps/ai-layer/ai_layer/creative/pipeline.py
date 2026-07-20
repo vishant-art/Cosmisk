@@ -188,7 +188,7 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
         meta_account=None, meta_token=None, ground_from_meta=True, meta_preset="last_30d",
         top_creatives=5, bottom_creatives=5, min_spend=100.0, use_shopify=True,
         style=None, no_logo=False, summary=None, account_name=None, prior=None,
-        graph_prior=None, on_stage=None, log=print) -> RunManifest:
+        graph_prior=None, direction=None, on_stage=None, log=print) -> RunManifest:
     """Full grounded run. Every grounding source is ON by default and each degrades
     gracefully (and loudly) when its credentials are absent:
 
@@ -259,6 +259,20 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
     _write_kit(run_dir, kit)
     on_stage("Brand kit decided")
 
+    # Operator direction -> ONE concrete person, elaborated ONCE here and reused everywhere:
+    # the concept scenes below (via generate_concepts) and the later video plan_story (via
+    # _run_creator). Best-effort: on any failure the concepts stay uncast, exactly as before.
+    creator = None
+    if direction and direction.strip():
+        _write_direction(run_dir, direction)
+        try:
+            creator = story_brain.creator_from_direction(client, direction, kit=kit)
+            _write_creator(run_dir, creator)
+            log(f"[cast] {creator.name}: {creator.appearance[:80]}")
+        except Exception as e:  # noqa: BLE001 -- casting is best-effort; the run proceeds uncast
+            creator = None
+            log(f"[cast] direction not elaborated ({e!s:.80}); concepts stay uncast")
+
     # Structural teardown of the top winner's MP4 -> the template that conditions concepts
     # (T4/T5) and, later, the script + storyboard (T6).
     template = _teardown_cohort(cohort, client=client, run_dir=run_dir, led=led,
@@ -297,7 +311,7 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
                   image_provider=image_provider, formats=formats, qa_retries=qa_retries,
                   run_vlm=run_vlm, pro=pro, refs=refs, product_image=product_image,
                   template=template, style=style, prior=prior, graph_prior=graph_prior,
-                  on_stage=on_stage, log=log)
+                  creator=creator, on_stage=on_stage, log=log)
     manifest.status = "complete"
     manifest.total_cost_usd = led.total
     led.finalize()
@@ -477,7 +491,7 @@ def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries,
 def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                   image_provider, formats, qa_retries, run_vlm, pro, refs=None,
                   product_image=None, template=None, style=None, prior=None,
-                  graph_prior=None, on_stage=None, log=print) -> None:
+                  graph_prior=None, creator=None, on_stage=None, log=print) -> None:
     """Generate N concepts CONCURRENTLY (each a text-free QA-gated background ->
     per-format layout -> composite -> verify -> outpaint). Emits milestone updates via
     `on_stage`. Conditioning: product_image -> Bria product-shot; else refs -> FLUX.2
@@ -489,7 +503,7 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
     log(f"[4/4] {images} concepts x {len(formats)} format(s); QA retries={qa_retries}...")
     concepts, concepts_cost = story_brain.generate_concepts(client, kit, summary, images,
                                                             template=template, prior=prior,
-                                                            graph=graph_prior)
+                                                            graph=graph_prior, creator=creator)
     led.record("concepts", "openrouter", config.TEXT_MODEL, concepts_cost)
     on_stage(f"Planned {len(concepts)} ad concept(s)")
     negative = prompt_builder.build_negative_prompt()
@@ -656,17 +670,28 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
     # The creator is persisted, so render_story renders the same person the script was
     # written for. An argument written for a deadpan 40-year-old, shot as a bubbly 22-year-old,
     # is two ads spliced together.
+    client = _client()
     creator = creator or _run_creator(run_dir)
+    direction = direction or _run_direction(run_dir)
+    # If only a free-text direction was given (no creator -- e.g. video/plan without a prior
+    # generate that already cast one), elaborate it into a person here so the script and the
+    # storyboard cast the SAME identity. Best-effort: on failure the direction still flows as
+    # a block, exactly as before.
+    if creator is None and (direction or "").strip():
+        try:
+            creator = story_brain.creator_from_direction(client, direction, kit=kit)
+        except Exception as e:  # noqa: BLE001 -- casting is best-effort
+            creator = None
+            log(f"[story] direction not elaborated ({e!s:.80})")
     if creator is not None:
         _write_creator(run_dir, creator)
         log(f"[story] creator: {creator.name} ({creator.age_range} {creator.gender}, "
             f"{creator.energy})")
-    direction = direction or _run_direction(run_dir)
     if direction:
         _write_direction(run_dir, direction)
         log(f"[story] operator direction: {direction.strip()[:120]}")
 
-    script, s_cost = story_brain.generate_script(client=(client := _client()), kit=kit,
+    script, s_cost = story_brain.generate_script(client=client, kit=kit,
                                                  summary=summary, seconds=seconds,
                                                  template=template, creator=creator,
                                                  prior=prior, graph=graph_prior,

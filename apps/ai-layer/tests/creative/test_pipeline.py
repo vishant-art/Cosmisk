@@ -32,7 +32,7 @@ def _patch_all(monkeypatch, brand_kit, concepts, bg_calls):
     # template (what one winner DID), the learned prior (what a controlled variant test
     # PROVED), and the creative graph (what winners CORRELATE with vs losers).
     monkeypatch.setattr(story_brain, "generate_concepts",
-                        lambda c, k, s, n, template=None, prior=None, graph=None:
+                        lambda c, k, s, n, template=None, prior=None, graph=None, creator=None:
                         (concepts[:n], 0.0))
 
     def fake_logo(kit, out_path, **kw):
