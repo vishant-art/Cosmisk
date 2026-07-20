@@ -113,12 +113,14 @@ def _vlm_system(expect_logo: bool) -> str:
                  else "")   # no logo expected on this ad -- do NOT flag a missing logo
     return (
         "You are a meticulous advertising creative director reviewing ONE finished static ad. "
-        "Judge it against this rubric and return STRICT JSON only: "
+        "First READ the exact headline and CTA text you can see in the image, then judge it "
+        "against this rubric and return STRICT JSON only: "
         '{"passed": bool, "issues": [str]}. '
         "Fail (passed=false) if ANY: the headline is unreadable or low-contrast; the headline or "
         "CTA overlaps/obscures the product; spelling is wrong vs the intended copy; the CTA is "
         f"missing or invisible; {logo_rule}it looks generic, off-brand, or "
-        "AI-slop. List concrete issues. If it is clean and on-brand, passed=true with [] issues."
+        "AI-slop. Each issue must name the specific element you see it on, not a vague verdict. "
+        "If it is clean and on-brand, passed=true with [] issues."
         + ("" if expect_logo else " This ad intentionally has NO logo; that is correct, not a defect.")
     )
 

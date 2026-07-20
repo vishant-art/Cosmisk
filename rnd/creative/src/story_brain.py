@@ -309,7 +309,10 @@ _STORYBOARD_SYSTEM = (
     "taken from the script, or null for a silent shot.\n"
     "Shots are SHORT: {lo}-{hi} seconds each. Cut every couple of seconds; that pacing is "
     "what the audience expects, not a limit of the camera. Aim for {n_lo}-{n_hi} shots "
-    "totalling about {sec} seconds. Treat `duration_s` as a proposal: it will be scaled."
+    "totalling about {sec} seconds. Treat `duration_s` as a proposal: it will be scaled.\n"
+    "CONTINUITY: hold the SAME person, wardrobe, setting and lighting across every shot -- a "
+    "video model has no memory between clips, so write each `subject` to restate that identity "
+    "and change only ONE thing per shot (the action or the framing), never the person or place."
 )
 
 

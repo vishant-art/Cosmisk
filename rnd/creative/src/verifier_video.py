@@ -476,8 +476,9 @@ _CRITIC_SYSTEM = (
     "Each issue MUST be chosen verbatim from this list: {issues}\n"
     "Return [\"none\"] when the frames are clean. Do NOT invent an issue code. Do NOT "
     "estimate any timing, duration, ratio or count: those are measured elsewhere and "
-    "your guess would silently overwrite a real measurement. `note` is one short "
-    "sentence for a human, never a substitute for an issue code."
+    "your guess would silently overwrite a real measurement. For every issue you report, "
+    "`note` must say WHAT you see and WHICH tile/region shows it (grounded evidence, not a "
+    "guess); it is one short sentence for a human, never a substitute for an issue code."
 )
 
 _HARMLESS = {"none"}

@@ -160,6 +160,24 @@ def test_ad_concept_accepts_awareness_stage():
     assert c.awareness_stage == "problem_aware"
 
 
+# --- Phase 3: continuity + judge grounding ------------------------------------
+
+def test_storyboard_prompt_enforces_continuity():
+    s = story_brain._STORYBOARD_SYSTEM
+    assert "CONTINUITY" in s and "SAME person" in s and "change only ONE thing" in s
+
+
+def test_static_critic_grounds_its_verdict():
+    import verifier
+    s = verifier._vlm_system(expect_logo=True)
+    assert "First READ" in s and "specific element" in s
+
+
+def test_temporal_critic_requires_a_grounded_note():
+    import verifier_video as vv
+    assert "grounded evidence" in vv._CRITIC_SYSTEM and "WHICH tile" in vv._CRITIC_SYSTEM
+
+
 class _Capturing:
     """Captures the messages sent, so we can assert what the brain was actually told."""
     def __init__(self, payload='{"concepts": []}'):
