@@ -33,6 +33,9 @@ _KIT_SYSTEM = (
     '  "palette": [{"role": "primary|secondary|accent|bg", "hex": "#RRGGBB"}],  // 3-5 colors\n'
     '  "typography": {"heading_style": str, "body_style": str},\n'
     '  "tone": str, "voice_keywords": [str],\n'
+    '  "tone_scales": {"formal_casual": 0, "serious_funny": 0, "reserved_bold": 0, "corporate_personal": 0},  // each 0-10\n'
+    '  "always_use": [str],  // 5-15 on-voice words/phrases\n'
+    '  "banned": [str],  // 10-20 words/phrases to never use (the AI-slop and off-brand ones)\n'
     '  "dos": [str], "donts": [str],\n'
     '  "visual_style": str,  // e.g. "clean studio, warm light, minimal props"\n'
     '  "logo": {"brief": str}  // ONE strong, renderable mark concept\n'
@@ -43,6 +46,9 @@ _KIT_SYSTEM = (
     "Give a clear primary, a supporting secondary, one accent, and a background.\n"
     "- Tone, voice, dos, donts: specific to THIS brand and audience -- concrete and VISUAL "
     "(things an art director can act on), never interchangeable boilerplate or platitudes.\n"
+    "- Operational voice: score tone_scales 0-10 on each axis; always_use and banned are CONCRETE "
+    "word lists an editor can enforce, not adjectives. Ban the generic AI-marketing words this "
+    "brand would never say.\n"
     "- logo.brief: one memorable, reductive idea (a specific mark or monogram) -- no cliche "
     "swoosh, globe, generic leaf, or gradient blob.\n"
     "Every hex is a real 6-digit hex. Keep lists to 3-5 items."

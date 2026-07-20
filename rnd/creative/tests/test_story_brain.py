@@ -89,6 +89,77 @@ def test_concepts_are_cast_with_the_creator(brand_kit):
     assert "same person" in captured["user"].lower()
 
 
+# --- Phase 2a: hook reliability -----------------------------------------------
+
+def test_hook_guidance_ships_positive_exemplars():
+    """Every closed hook type gets a concrete opener to imitate, not just a ban-list."""
+    for ht, guidance in story_brain._HOOK_GUIDANCE.items():
+        assert "e.g." in guidance, ht
+
+
+def test_script_prompt_few_shots_the_hook():
+    """GOOD/BAD hook exemplars make the 'spoken, not a slogan' rule enforceable."""
+    sysp = story_brain._SCRIPT_SYSTEM
+    assert "GOOD:" in sysp and "BAD:" in sysp
+    assert "not a slogan" in sysp
+
+
+# --- Phase 2b: operational voice ----------------------------------------------
+
+def test_brand_kit_carries_operational_voice(brand_kit):
+    assert brand_kit.banned and brand_kit.always_use
+    assert isinstance(brand_kit.tone_scales, dict)
+
+
+def test_kit_prompt_asks_for_the_lexicons():
+    import brand_brain
+    assert "banned" in brand_brain._KIT_SYSTEM and "always_use" in brand_brain._KIT_SYSTEM
+    assert "tone_scales" in brand_brain._KIT_SYSTEM
+
+
+def test_script_prompt_injects_the_banned_words(brand_kit):
+    captured = {}
+
+    class _Cap:
+        def __init__(self):
+            class _C:
+                @staticmethod
+                def create(*, model, messages, **kw):
+                    captured["user"] = messages[1]["content"]
+
+                    class R:
+                        choices = [type("X", (), {"message": type("M", (), {"content": json.dumps(
+                            {"beats": [{"purpose": "hook", "text": "okay this changed my week"},
+                                       {"purpose": "cta", "text": "go check them out"}]})})()})()]
+
+                        def model_dump(self):
+                            return {"usage": {"cost": 0.0}}
+                    return R()
+            self.chat = type("Chat", (), {"completions": _C()})()
+
+    try:
+        story_brain.generate_script(_Cap(), brand_kit, "ctx", seconds=12)
+    except Exception:
+        pass                                     # the injection is captured before any downstream
+    assert "NEVER use these words" in captured["user"]
+    assert "revolutionary" in captured["user"]   # from the fake kit's banned list
+
+
+# --- Phase 2c: concept diversity + reconciliation -----------------------------
+
+def test_concept_prompt_asks_for_awareness_and_obeys_donts():
+    sysc = story_brain._CONCEPTS_SYSTEM
+    assert "awareness_stage" in sysc
+    assert "donts" in sysc and "share more than one keyword" in sysc
+
+
+def test_ad_concept_accepts_awareness_stage():
+    from schemas import AdConcept, CopySet
+    c = AdConcept(title="t", scene="s", ad_copy=CopySet(headline="h", cta_label="c", angle="a"),
+                  awareness_stage="problem_aware")
+    assert c.awareness_stage == "problem_aware"
+
+
 class _Capturing:
     """Captures the messages sent, so we can assert what the brain was actually told."""
     def __init__(self, payload='{"concepts": []}'):

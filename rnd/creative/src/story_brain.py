@@ -44,7 +44,7 @@ _CONCEPTS_SYSTEM = (
     "account, propose {n} image-ad concepts that are distinct, intuitive, and scroll-stopping "
     "-- each a DIFFERENT strategic angle (e.g. hero-product, in-use lifestyle, problem/solution, "
     "social proof, bold visual metaphor, pattern interrupt). Return STRICT JSON only:\n"
-    '{"concepts": [{"title": str, "scene": str, "ad_copy": '
+    '{"concepts": [{"title": str, "scene": str, "awareness_stage": str, "ad_copy": '
     '{"headline": str, "cta_label": str, "angle": str, "subhead": str|null, "legal": str|null}}]}\n'
     "Each `scene` is a vivid, art-directed brief for ONE still: a concrete hero subject, a "
     "specific setting, intentional composition and camera angle, motivated lighting, and a clear "
@@ -57,6 +57,10 @@ _CONCEPTS_SYSTEM = (
     "- angle: the strategic reason this creative exists (the angle name above).\n"
     "- subhead: optional one short supporting line, or null.\n"
     "- legal: optional fine print (e.g. *T&C apply), or null.\n"
+    "Give each concept a DIFFERENT `awareness_stage` from: unaware, problem_aware, solution_aware, "
+    "product_aware, most_aware -- so the set targets different mindsets and cannot collapse into "
+    "one. Every concept MUST obey the brand kit's `donts` and `visual_style`; if an angle conflicts "
+    "with them, change the angle. No two concepts may share more than one keyword.\n"
     "Keep the concepts visually varied but unmistakably the same brand."
 )
 
@@ -170,6 +174,14 @@ _SCRIPT_SYSTEM = (
     "The FIRST beat is always `hook`, and it must earn the next two seconds on its own: "
     "a real sentence a person would say out loud, not a slogan. No 'Introducing'. No "
     "'Are you tired of'. No brand name in the hook.\n"
+    "EXAMPLES of the hook (the FIRST beat):\n"
+    "  GOOD: \"Honestly, I stopped buying dresses that don't feel like this.\" -- a real spoken "
+    "sentence, a specific felt claim.\n"
+    "  GOOD: \"Okay, this is going to sound dramatic, but it changed my mornings.\"\n"
+    "  BAD: \"This dress makes me feel amazing.\" -- a slogan, vague, could be any product.\n"
+    "  BAD: \"Introducing our new collection.\" -- an announcement, not a hook.\n"
+    "Write the hook like the GOOD examples: spoken, specific, and unmistakably about THIS "
+    "product, not a slogan.\n"
     "The LAST beat should be `cta` unless there is a strong reason otherwise.\n"
     "HARD LIMIT: at most {words} words TOTAL across all beats. The spoken track MUST fit "
     "inside {sec} seconds at a natural pace -- err on the side of SHORTER. Going over is "
@@ -237,6 +249,17 @@ def _direction_block(direction) -> str:
     return f"\n\nOPERATOR DIRECTION (how this ad should look and feel -- honour it): {d}" if d else ""
 
 
+def _lexicon_block(kit) -> str:
+    """The brand's operational lexicon (Phase 2b): the always-use / banned word lists, injected so
+    the copy is on-voice by construction. Empty when the kit has none (older kits, brief mode)."""
+    parts = []
+    if getattr(kit, "always_use", None):
+        parts.append("ON-VOICE words to lean on: " + ", ".join(kit.always_use))
+    if getattr(kit, "banned", None):
+        parts.append("NEVER use these words/phrases: " + ", ".join(kit.banned))
+    return ("\n" + "\n".join(parts) + "\n") if parts else ""
+
+
 def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
                     template: CreativeTemplate | None = None,
                     creator=None, prior=None, graph=None, direction=None,
@@ -260,6 +283,7 @@ def generate_script(client, kit: BrandKit, summary: str, *, seconds: int = 20,
         system += _STRUCTURE_SYSTEM
     user = (f"BRAND: {kit.brand_name} -- {kit.tagline}\n"
             f"TONE: {kit.tone}. VOICE: {', '.join(kit.voice_keywords)}\n"
+            f"{_lexicon_block(kit)}"
             f"DO: {'; '.join(kit.dos)}\nDON'T: {'; '.join(kit.donts)}\n\n"
             f"ACCOUNT CONTEXT:\n{summary}{_structure_block(template)}"
             f"{_prior_block(prior)}{_graph_block(graph)}{_voice_block(creator)}"
@@ -356,16 +380,23 @@ def generate_storyboard(client, kit: BrandKit, script: Script, *, seconds: int =
 # What each hook type means, in prose the model can act on. The closed set is in taxonomy;
 # these are its instructions. Kept here because they are prompt copy, not data.
 _HOOK_GUIDANCE = {
-    "pattern_interrupt": "something visually or tonally jarring that stops the scroll",
-    "question": "open by asking the viewer a direct question",
-    "bold_claim": "a strong assertion stated flat, no hedging",
-    "pov": "a 'POV: you just...' framing, present tense",
-    "authority_stat": "lead with a specific number, a credential, or a study",
-    "visual_only": "a line that describes what is shown rather than making an argument",
-    "controversy": "a contrarian or mildly forbidden take",
-    "social_proof": "everyone is doing this / reviews / a crowd",
-    "narrative": "begin a story already in motion",
-    "direct_address": "speak straight to camera using 'you'",
+    "pattern_interrupt": "something visually or tonally jarring that stops the scroll. "
+                         "e.g. \"Okay, this is going to sound fake, but...\"",
+    "question": "open by asking the viewer a direct question. "
+                "e.g. \"Why did nobody tell me about this sooner?\"",
+    "bold_claim": "a strong assertion stated flat, no hedging. "
+                  "e.g. \"This is the only one that actually worked.\"",
+    "pov": "a 'POV: you just...' framing, present tense. e.g. \"POV: you finally found the one.\"",
+    "authority_stat": "lead with a specific number, a credential, or a study. "
+                      "e.g. \"I tried twelve of these. One was worth it.\"",
+    "visual_only": "a line that describes what is shown rather than making an argument. "
+                   "e.g. \"Watch what happens when I put this on.\"",
+    "controversy": "a contrarian or mildly forbidden take. e.g. \"Stop buying [category]. Here's why.\"",
+    "social_proof": "everyone is doing this / reviews / a crowd. "
+                    "e.g. \"The reviews were not lying about this one.\"",
+    "narrative": "begin a story already in motion. e.g. \"So I almost returned this on day one...\"",
+    "direct_address": "speak straight to camera using 'you'. "
+                      "e.g. \"If you've ever felt [frustration], this is for you.\"",
 }
 
 _REHOOK_SYSTEM = (

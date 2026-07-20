@@ -45,6 +45,11 @@ class BrandKit(BaseModel):
     typography: dict                 # {"heading_style": str, "body_style": str} (descriptors in v1)
     tone: str
     voice_keywords: list[str]
+    # Operational voice (Phase 2b): 0-10 tone axes + explicit lexicons. Additive and optional, so
+    # a kit generated before this still validates; downstream reads them when present.
+    tone_scales: dict = {}           # e.g. {"formal_casual": 3, "serious_funny": 6} on a 0-10 scale
+    always_use: list[str] = []       # on-voice words/phrases to lean on
+    banned: list[str] = []           # words/phrases to never use (the AI-slop and off-brand ones)
     dos: list[str]
     donts: list[str]
     visual_style: str                # e.g. "clean studio, warm light, minimal props"
@@ -83,6 +88,10 @@ class AdConcept(BaseModel):
     title: str                       # short label for the ad idea
     scene: str                       # text-free visual brief (becomes the image prompt core)
     ad_copy: CopySet                 # the words placed over the scene by the compositor
+    # Schwartz awareness stage (Phase 2c): unaware|problem_aware|solution_aware|product_aware|
+    # most_aware. Additive/optional; an orthogonal axis so N concepts target N mindsets and
+    # cannot collapse into one distribution. Prompt-constrained (hardening to a closed enum TBD).
+    awareness_stage: str | None = None
 
 
 # --- T1: the visual language, split by ACTUATOR --------------------------------

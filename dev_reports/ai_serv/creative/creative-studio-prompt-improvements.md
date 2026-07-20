@@ -1,6 +1,6 @@
 # Creative Studio — Prompt Improvement Plan
 
-**Created:** 2026-07-20 · **Owner:** ai-engineer (creative subtree, `dryayeet`) · **Status:** Phase 1 COMPLETE (1a-1d shipped, both trees); Phases 2-4 remain proposals
+**Created:** 2026-07-20 · **Owner:** ai-engineer (creative subtree, `dryayeet`) · **Status:** Phases 1-2 COMPLETE (both trees); Phases 3-4 remain proposals
 
 > A per-prompt analysis of the Creative Studio's LLM/VLM prompts, grounded in (a) the actual
 > prompt code, (b) the real recorded prompts from past live runs, (c) 2025-2026 prompt-craft
@@ -204,7 +204,7 @@ listed there as additive with the exact routes/fields.
 ## Suggested rollout (all $0 prompt-copy unless noted)
 
 1. **Phase 1 (highest leverage, low risk):** Stage 6-7 motion + camera + identity-anchor + product-restatement + template-bug fixes (#1, #7); the FLUX positive-suppression + front-loaded craft (#3, Stage 7b); the operator-direction elaboration + propagation (#A). These are where the real run was visibly weakest.
-2. **Phase 2:** Hook reliability (few-shot + positive formulas + self-check, #4); brand-kit input honesty + operational voice (#5); concept↔kit reconciliation + awareness-stage diversity + ad-copy logging (#8).
+2. **Phase 2 — SHIPPED:** Hook reliability (few-shot GOOD/BAD exemplars + positive opener formulas per hook type, #4); operational brand voice (additive `tone_scales` 0-10 + `always_use`/`banned` lexicons + `banned` injected into the script prompt, #5); concept diversity + reconciliation (additive `awareness_stage`, obey the kit's donts/visual_style, no >1 shared keyword, #8). Deferred to a follow-up: the `is_spoken_sentence` self-check field, the grounding-honesty fallback (#C), hardening `awareness_stage` to a closed taxonomy enum, and the `on_screen_text` first-frame hook (needs editor support to burn it).
 3. **Phase 3:** Shot-count pinning + continuity block (#6); VO voice-mapping fix + dedupe prompts (#9); judge-rubric upgrade for both critics (#3/#10, evidence-anchored ternary).
 4. **Phase 4 (not pure prompt work, scope separately):** motion QA coverage (#10); the seed-the-person-not-the-empty-garment change (needs a pipeline tweak, not just prompt copy).
 
