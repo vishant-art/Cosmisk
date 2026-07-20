@@ -99,6 +99,17 @@ _SHOT_CAMERA = {
 }
 
 
+# Seedance (unlike a diffusion image model, which ignores exclusionary phrasing) HONORS a
+# trailing negative cue, so the video prompt ends by naming these terms TO SUPPRESS them.
+# Captions, the logo and the voiceover are composited by the editor afterwards, so the raw
+# clip must contain none of them. This is model-specific: build_image_prompt (FLUX) must
+# still never name text/logo, because there naming primes the model to draw them.
+_VIDEO_NEGATIVE = (
+    "No on-screen text, captions, subtitles, logos, watermarks, or UI graphics; "
+    "no added background music."
+)
+
+
 def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
                       hint: str | None = None, creator: "CreatorKit | None" = None,
                       direction: str | None = None) -> str:
@@ -153,7 +164,8 @@ def build_shot_prompt(shot, kit: BrandKit, style: UGCStyle | None = None,
         f"{fix}"
         f"Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no "
         f"cliche gradients, no clutter or random props, nothing posed or "
-        f"soulless-corporate."
+        f"soulless-corporate. "
+        f"{_VIDEO_NEGATIVE}"
     )
 
 

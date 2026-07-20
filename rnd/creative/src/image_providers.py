@@ -60,7 +60,12 @@ def _flux(prompt: str, out_path: Path, *, refs=None, aspect="4:5", negative=None
     import fal_client                   # lazy
     w, h = _ASPECT_PX.get(aspect, (1024, 1280))
     endpoint = config.IMAGE_MODEL_FLEX if flex else config.IMAGE_MODEL_PRO
-    args = {"prompt": _suppress(prompt, negative),
+    # FLUX.2's text encoder IGNORES negative/exclusionary phrasing, so folding the negative
+    # list in as "Must NOT appear: text, logo..." does nothing it respects and NAMES the very
+    # tokens we don't want, which can prime the draw. Text-free-ness comes from the positive
+    # scene (build_image_prompt never names text/logo). `negative` stays in the signature for a
+    # real-negative-channel model, but is not folded into a FLUX prompt.
+    args = {"prompt": prompt,
             "image_size": {"width": w, "height": h}, "output_format": "png"}
     ref_mp = _ref_megapixels(refs)
     if refs:                            # brand-asset conditioning (flex supports up to 10)

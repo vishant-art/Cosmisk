@@ -42,7 +42,10 @@ def test_flux_flex_is_default_and_shapes_call(monkeypatch, tmp_path):
                             aspect="1:1", negative="text, logo")
     assert cap["endpoint"] == config.IMAGE_MODEL_FLEX
     assert cap["args"]["image_size"] == {"width": 1024, "height": 1024}
-    assert "Must NOT appear in the image: text, logo" in cap["args"]["prompt"]
+    # FLUX.2 ignores negatives, so the negative list is NOT folded into the prompt: naming
+    # "text, logo" there would prime the model to draw them. Text-free comes from the scene.
+    assert "Must NOT appear" not in cap["args"]["prompt"]
+    assert "a teal product scene" in cap["args"]["prompt"]
     assert res["provider"] == "flux"
     assert (tmp_path / "a.png").read_bytes() == b"IMGBYTES"
 

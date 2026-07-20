@@ -176,15 +176,18 @@ def test_the_shot_edit_is_applied(tmp_path, brand_kit, fake_render):
 
 # --- the prompt -------------------------------------------------------------------
 
-def test_the_shot_prompt_never_primes_text_or_logo(brand_kit):
-    """Same rule as the still prompt. Captions are burned on afterwards, deterministically,
-    and priming a video model with 'text' gets you letters you cannot remove."""
-    import re
+def test_the_shot_prompt_suppresses_on_screen_text_and_logo(brand_kit):
+    """Seedance HONORS a trailing negative cue (unlike a diffusion image model), so the video
+    prompt ends by naming text/captions/logos in order to SUPPRESS them: captions, the logo and
+    the voiceover are composited by the editor afterwards, so the raw clip must carry none.
+    (The still prompt, build_image_prompt, still must never name them -- FLUX ignores negatives,
+    so naming there primes the draw instead of suppressing it.)"""
     shot = _shot("demo", 3.0, product="hero", motion="hands twist the lamp")
     p = prompt_builder.build_shot_prompt(shot, brand_kit,
                                          style=UGCStyle(camera="selfie")).lower()
-    for word in ("logo", "text", "watermark", "copy", "typography", "caption", "subtitle"):
-        assert not re.search(rf"\b{word}\b", p), word
+    assert "no on-screen text" in p
+    for suppressed in ("text", "captions", "logos", "watermarks"):
+        assert suppressed in p
 
 
 def test_the_shot_prompt_carries_subject_camera_motion_and_product(brand_kit):
