@@ -484,6 +484,84 @@ _CRITIC_SYSTEM = (
 _HARMLESS = {"none"}
 
 
+def _caption_band_crop(clip, at_s: float) -> bytes | None:
+    """A FULL-RESOLUTION crop of the lower caption band at `at_s`, for the legibility question.
+    The contact sheet is 48px keyframes (config.TEARDOWN_GRID) upscaled, so no burned caption is
+    readable there -- which made the critic flag legible 1080p captions as `unreadable_caption`.
+    This gives the model a frame it can actually read. Returns None on any failure."""
+    import io
+    import os
+    import subprocess
+    import tempfile
+
+    import imageio_ffmpeg
+    from PIL import Image
+
+    fd, tmpname = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    tmp = Path(tmpname)
+    try:
+        cmd = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-ss", f"{max(at_s, 0.0):g}",
+               "-i", str(clip), "-frames:v", "1", str(tmp)]
+        proc = subprocess.run(cmd, capture_output=True)
+        if proc.returncode != 0 or tmp.stat().st_size == 0:
+            return None
+        with Image.open(tmp) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            band = im.crop((0, int(h * 0.50), w, h))   # lower half: caption band + margin
+        buf = io.BytesIO()
+        band.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 -- legibility is a bonus signal, never a crash
+        return None
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _motion_strip(clip, at_s: float, *, n: int = 4, gap_s: float = 0.12) -> bytes | None:
+    """N CONSECUTIVE frames tiled left-to-right, so the VLM can judge MOTION (frozen frame,
+    morphing / face_distorted, identity_drift, extra_limb) from whether the subject changes
+    smoothly between adjacent frames. The contact sheet is chronological keyframes across shots
+    and structurally cannot show motion quality. Returns None on any failure (the critic then
+    judges from the contact sheet alone; never crashes the gate)."""
+    import io
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+
+    import imageio_ffmpeg
+    from PIL import Image
+
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    tmpdir = tempfile.mkdtemp()
+    try:
+        imgs = []
+        for i in range(n):
+            p = os.path.join(tmpdir, f"m{i}.png")
+            proc = subprocess.run([ff, "-y", "-ss", f"{max(at_s + i * gap_s, 0.0):g}",
+                                   "-i", str(clip), "-frames:v", "1", p], capture_output=True)
+            if proc.returncode == 0 and os.path.exists(p) and os.path.getsize(p) > 0:
+                imgs.append(Image.open(p).convert("RGB"))
+        if len(imgs) < 2:
+            return None
+        h = min(im.height for im in imgs)
+        thumbs = [im.resize((max(1, int(im.width * h / im.height)), h)) for im in imgs]
+        strip = Image.new("RGB", (sum(t.width for t in thumbs), h))
+        x = 0
+        for t in thumbs:
+            strip.paste(t, (x, 0))
+            x += t.width
+        buf = io.BytesIO()
+        strip.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 -- motion is a bonus signal, never a crash
+        return None
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def vlm_critique(client, clip, *, led=None) -> QACheck:
     """One vision call on a contact sheet, not on the video.
 
@@ -491,11 +569,43 @@ def vlm_critique(client, clip, *, led=None) -> QACheck:
     model ("did it draw six fingers", "are the captions legible") are all answerable
     from the shot openings. Sending the whole clip would cost more and buy nothing.
     """
-    _shots, _dur, stats = teardown.detect_shots(clip)
+    _shots, dur, stats = teardown.detect_shots(clip)
     sheet = teardown._contact_sheet(stats["keyframes"])
 
     import base64
     system = _CRITIC_SYSTEM.replace("{issues}", ", ".join(taxonomy.values(taxonomy.QaIssue)))
+
+    # The contact sheet is 48px keyframes (config.TEARDOWN_GRID) upscaled, so a burned caption
+    # is illegible there and the critic false-reported `unreadable_caption`. Attach a FULL-
+    # RESOLUTION crop of the caption band and aim the legibility question at it.
+    content = [
+        {"type": "text", "text": "Inspect this ad for visible defects."},
+        {"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{base64.b64encode(sheet).decode()}"}},
+    ]
+    crop = _caption_band_crop(clip, (dur or 0.0) * 0.5)
+    if crop is not None:
+        content[0]["text"] = (
+            "Inspect this ad for visible defects. The FIRST image is a contact sheet of "
+            "chronological keyframes (low resolution -- judge motion, anatomy and artifacts "
+            "from it). The SECOND image is a FULL-RESOLUTION crop of the caption band -- judge "
+            "caption legibility (e.g. unreadable_caption, text_garbled) from the SECOND image "
+            "only; the contact sheet is too small to read text.")
+        content.append({"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{base64.b64encode(crop).decode()}"}})
+
+    # The contact sheet is static keyframes, so the critic is blind to MOTION. Attach a strip of
+    # CONSECUTIVE frames from one shot so it can catch frozen_frame / morphing / identity_drift.
+    strip = _motion_strip(clip, (dur or 0.0) * 0.4)
+    if strip is not None:
+        content[0]["text"] += (
+            " A final image labeled MOTION STRIP shows consecutive frames from one shot -- judge "
+            "motion defects (frozen_frame, morphing/face_distorted, identity_drift, extra_limb) "
+            "from whether the subject changes smoothly across those adjacent frames.")
+        content.append({"type": "text", "text": "MOTION STRIP (consecutive frames of one shot):"})
+        content.append({"type": "image_url", "image_url": {
+            "url": f"data:image/png;base64,{base64.b64encode(strip).decode()}"}})
+
     resp = client.chat.completions.create(
         model=config.VISION_MODEL,
         temperature=config.CLASSIFY_TEMPERATURE,
@@ -503,11 +613,7 @@ def vlm_critique(client, clip, *, led=None) -> QACheck:
         extra_body={"usage": {"include": True}},
         messages=[
             {"role": "system", "content": system},
-            {"role": "user", "content": [
-                {"type": "text", "text": "Inspect this ad for visible defects."},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:image/png;base64,{base64.b64encode(sheet).decode()}"}},
-            ]},
+            {"role": "user", "content": content},
         ],
     )
     text = (resp.choices[0].message.content or "").strip()

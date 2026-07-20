@@ -440,6 +440,18 @@ class _Vision:
         self.chat = type("Chat", (), {"completions": _C()})()
 
 
+def test_caption_band_crop_returns_a_full_res_frame(textured_3shot):
+    """Full-res caption-band crop for the legibility question (the 48px sheet can't show text)."""
+    crop = vv._caption_band_crop(textured_3shot, 1.0)
+    assert crop is not None and crop[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_motion_strip_returns_consecutive_frames(textured_3shot):
+    """Consecutive-frame strip so the critic can judge motion (frozen / morphing / drift)."""
+    strip = vv._motion_strip(textured_3shot, 0.5)
+    assert strip is not None and strip[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def test_a_clean_sheet_passes(textured_3shot):
     c = vv.vlm_critique(_Vision({"issues": ["none"], "note": "looks fine"}), textured_3shot)
     assert c.passed and c.cost_usd == pytest.approx(0.0003)

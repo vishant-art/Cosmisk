@@ -19,6 +19,7 @@ the AI side does not touch `apps/`).
 | 5 | **Migrate `/analyze-url` off TS Anthropic** | `apps/api` | The one UI-reachable route still fulfilled by TS Anthropic (creative brief extraction), flagged in the 2026-07-18 handoff. Move to the ai-layer, or leave as-is. |
 | 6 | **TS-side R2 client** (deferred) | `apps/api` | Only if the TS side ever needs to own storage instead of the ai-layer 302-to-R2 proxy. See `../2026-07-19-ts-r2-client-future-work.md`. |
 | 7 | **`<a download>` cross-origin fix** | `apps/web` + presign path | A cross-origin R2 asset opens in a new tab instead of downloading. Upgrade: presign with `ResponseContentDisposition=attachment` behind a `?download=1` flag. (2026-07-19 R2 handoff.) |
+| 8 | **Optional: expose `hero_with_creator`** | `apps/web` video-planner + `apps/api` videoGenerate | Phase 4b added `VideoRenderRequest.hero_with_creator` (default off): seed the creator WITH the product on hero shots instead of a person-free plate. A UI toggle would let a user opt in. Keep it off until a paid live run validates the product-fidelity-vs-person-consistency tradeoff. |
 
 ## Already shipped (not pending)
 

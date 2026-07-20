@@ -309,6 +309,47 @@ def test_a_hero_shot_is_i2v_seeded_from_a_person_free_product_still(
     assert (tmp_path / "product_seeds").exists()
 
 
+def test_hero_with_creator_opt_in_seeds_the_person_with_the_product(
+        tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
+    """OPT-IN (Phase 4b): with hero_with_creator=True and a creator, a hero shot seeds a still
+    of the CREATOR WITH the product (a person IS in it), instead of the person-free plate --
+    so the i2v hop doesn't have to hallucinate a whole person onto an empty-garment frame."""
+    from ai_layer.creative import image_providers
+    from ai_layer.creative.schemas import CreatorKit, QACheck
+    seeded = []
+    monkeypatch.setattr(image_providers, "generate_with_fallback", _fake_product_shot(seeded))
+    monkeypatch.setattr(vv, "verify_shot", lambda *a, **k: [QACheck(name="ok", passed=True)])
+    creator = CreatorKit(name="Ava", appearance="a tall woman with blonde hair")
+
+    sequencer.render_storyboard(_hero_board(), kit=brand_kit, run_dir=tmp_path,
+                                cutout_path=product_cutout, product_desc="a linen tote bag",
+                                creator=creator, hero_with_creator=True, log=lambda *_: None)
+
+    assert len(seeded) == 1
+    assert "a linen tote bag" in seeded[0]["scene"]
+    assert "wearing or holding" in seeded[0]["scene"]        # the creator is IN the seed
+    assert "ON ITS OWN" not in seeded[0]["scene"]            # not the person-free plate
+    assert "model" not in seeded[0]["negative"]              # the person is NOT hard-excluded
+
+
+def test_hero_with_creator_defaults_off_to_the_person_free_plate(
+        tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
+    """Default (flag off): a hero shot still uses the person-free product plate, unchanged --
+    the new behaviour is strictly opt-in until a live run validates the fidelity tradeoff."""
+    from ai_layer.creative import image_providers
+    from ai_layer.creative.schemas import CreatorKit, QACheck
+    seeded = []
+    monkeypatch.setattr(image_providers, "generate_with_fallback", _fake_product_shot(seeded))
+    monkeypatch.setattr(vv, "verify_shot", lambda *a, **k: [QACheck(name="ok", passed=True)])
+    creator = CreatorKit(name="Ava", appearance="a tall woman")
+
+    sequencer.render_storyboard(_hero_board(), kit=brand_kit, run_dir=tmp_path,
+                                cutout_path=product_cutout, product_desc="a linen tote bag",
+                                creator=creator, log=lambda *_: None)   # hero_with_creator off
+    assert "ON ITS OWN" in seeded[0]["scene"]                # person-free plate, unchanged
+    assert "model" in seeded[0]["negative"]                  # person still hard-excluded
+
+
 def test_a_shot_that_does_not_feature_the_product_is_not_seeded(
         tmp_path, brand_kit, fake_render, monkeypatch, product_cutout):
     from ai_layer.creative import image_providers

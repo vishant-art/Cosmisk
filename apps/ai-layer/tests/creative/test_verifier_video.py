@@ -484,6 +484,13 @@ def test_a_missing_clip_crops_to_none_not_a_crash(tmp_path):
     assert vv._caption_band_crop(str(tmp_path / "nope.mp4"), 1.0) is None
 
 
+def test_motion_strip_returns_consecutive_frames(textured_3shot):
+    """The contact sheet is static keyframes; the critic also gets a strip of CONSECUTIVE
+    frames so it can judge motion (frozen_frame / morphing / identity_drift)."""
+    strip = vv._motion_strip(textured_3shot, 0.5)
+    assert strip is not None and strip[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def test_the_critic_gets_a_full_res_caption_crop(textured_3shot):
     """The contact sheet is illegible for text, so a full-res caption-band crop rides along
     as a SECOND image aimed at the legibility question."""
@@ -506,8 +513,11 @@ def test_the_critic_gets_a_full_res_caption_crop(textured_3shot):
             self.chat = type("Chat", (), {"completions": _C()})()
 
     vv.vlm_critique(_Spy(), textured_3shot)
-    imgs = [p for p in captured["messages"][1]["content"] if p.get("type") == "image_url"]
-    assert len(imgs) == 2, "expected the contact sheet AND a full-res caption crop"
+    content = captured["messages"][1]["content"]
+    imgs = [p for p in content if p.get("type") == "image_url"]
+    texts = " ".join(p.get("text", "") for p in content if p.get("type") == "text")
+    assert len(imgs) >= 2, "expected the contact sheet AND a full-res caption crop"
+    assert "MOTION STRIP" in texts, "the consecutive-frame motion strip should ride along too"
 
 
 # --- the gate ---------------------------------------------------------------------------

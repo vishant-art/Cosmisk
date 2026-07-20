@@ -145,6 +145,10 @@ class VideoRenderRequest(BaseModel):
     # fal balance is empty. When the seed IS dropped the render logs loudly rather than
     # quietly shipping five different faces. Costs one extra FLUX still per persona.
     pin_face: bool = Field(False, description="try to hold the creator's face across shots")
+    # OPT-IN (default off): for hero product shots WITH a creator, seed the person wearing/holding
+    # the product instead of a person-free plate. Better i2v/face consistency, but a possible
+    # product-fidelity tradeoff vs the person-free seed -- needs a live run to validate on.
+    hero_with_creator: bool = Field(False, description="seed the creator with the product on hero shots")
 
 
 def _brief_summary(brief: dict) -> str:
@@ -381,6 +385,7 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
             run_id=job_id, style=style, aspect=req.aspect, resolution=req.resolution,
             single_pass=req.single_pass, strict=req.strict, finish=True,
             guard_balance=req.guard_balance, creator=req.creator, pin_face=req.pin_face,
+            hero_with_creator=req.hero_with_creator,
             direction=req.direction, log=lambda *_: None)
 
         stage("Verifying the timeline")

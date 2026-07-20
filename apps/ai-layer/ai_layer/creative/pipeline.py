@@ -717,6 +717,7 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
                  single_pass: bool = False, strict: bool = True, finish: bool = True,
                  keep_work: bool = False, guard_balance: bool = True,
                  creator: CreatorKit | None = None, pin_face: bool = False,
+                 hero_with_creator: bool = False,
                  direction: str | None = None, log=print):
     """Render a planned storyboard into a timeline (T7). Costs real money.
 
@@ -762,7 +763,8 @@ def render_story(*, run_id: str, style=None, aspect: str = "9:16", resolution: s
         timeline, board, rlog = sequencer.render_storyboard(
             board, kit=kit, run_dir=run_dir, script=script, style=style,
             cutout_path=cutout, product_desc=product_desc, aspect=aspect, resolution=resolution,
-            creator=creator, pin_face=pin_face, direction=direction,
+            creator=creator, pin_face=pin_face, hero_with_creator=hero_with_creator,
+            direction=direction,
             replan=lambda shot, reason: story_brain.replan_shot(
                 client, kit, shot, reason=reason)[0],
             strict=strict, led=led, log=log)

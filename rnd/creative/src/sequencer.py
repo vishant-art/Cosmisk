@@ -125,6 +125,40 @@ def _product_seed(shot, index: int, cutout_path, run_dir, *, kit, aspect, led, l
     return str(out)
 
 
+def _hero_persona_seed(shot, index: int, cutout_path, creator, run_dir, *, kit, aspect, led,
+                       log, product_desc=None) -> str:
+    """OPT-IN alternative to `_product_seed` for a hero shot WHEN a creator persona exists: a
+    still of THE CREATOR with the product, so the Seedance i2v hop does not have to hallucinate
+    a whole person onto an empty-garment plate (the audit's "structurally hard" hop).
+
+    Tradeoff, and why this is OFF by default: `_product_seed` regenerates the item on its own
+    and preserves it exactly; rendering the creator WEARING it (FLUX conditioned on the cutout)
+    can cost product fidelity. Which wins is a per-brand quality question that only a real paid
+    render can settle, so this stays opt-in until a live run validates it. Cached like the others.
+    """
+    import image_providers                     # lazy: keeps fal_client out of the import path
+    seeds = Path(run_dir) / "product_seeds"
+    seeds.mkdir(parents=True, exist_ok=True)
+    item = (product_desc or "the item shown in the reference").strip()
+    who = creator.to_visual_prompt()
+    scene = (f"Candid phone photograph of one person wearing or holding {item}. {who} "
+             f"The {item} is clearly visible on them, natural light, ordinary lived-in "
+             f"surroundings. Exactly ONE person in frame. {kit.visual_style}.")
+    # No person-negative here: the creator IS the person. Suppress text as always.
+    negative = "text, words, letters, watermark, logo, caption, subtitle, multiple people, crowd"
+    key = hashlib.sha1(
+        f"{scene}\n{negative}\n{Path(cutout_path).name}\n{aspect}".encode()).hexdigest()[:12]
+    out = seeds / f"seed_{index:02d}_wc_{key}.png"   # KEPT: paid seed still, shown in output
+    if not out.exists():
+        res = image_providers.generate_with_fallback(
+            scene, out, primary="flux", refs=[str(cutout_path)], negative=negative,
+            aspect=aspect, log=log)
+        if led is not None:
+            led.record("product_seed", res["provider"], res["model"], res["cost_usd"], shot=index)
+        log(f"[seq] shot {index} hero+creator seed ({item!r:.50}) (est ${res['cost_usd']:.2f})")
+    return str(out)
+
+
 def _persona_seed(creator, run_dir, *, kit: BrandKit, aspect, led=None, log=print) -> str:
     """One still of the creator, generated ONCE and reused to i2v-seed every shot they are
     in. The attempt at the hard half of a persona.
@@ -256,6 +290,7 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
                       script: Script | None = None, style: UGCStyle | None = None,
                       cutout_path=None, product_desc=None, aspect: str = "9:16",
                       resolution: str = "720p", creator=None, pin_face: bool = False,
+                      hero_with_creator: bool = False,
                       direction=None, replan=None, strict: bool = True, led=None, log=print
                       ) -> tuple[str, Storyboard, RepairLog]:
     """Render every shot with repair, then concatenate. Returns (timeline, board, log).
@@ -298,9 +333,15 @@ def render_storyboard(board: Storyboard, *, kit: BrandKit, run_dir,
         refs, seed = None, None
         has_cutout = cutout_path and Path(cutout_path).exists()
         if shot.product_visible == "hero" and has_cutout:
-            # i2v-seed the product into the shot (people-free reference; no ref2v rejection).
-            seed = _product_seed(shot, index, cutout_path, run_dir, kit=kit, aspect=aspect,
-                                 led=led, log=log, product_desc=product_desc)
+            if hero_with_creator and creator is not None:
+                # OPT-IN: seed the CREATOR with the product, so i2v does not hallucinate a whole
+                # person onto an empty-garment plate. Tradeoff (product fidelity) is documented.
+                seed = _hero_persona_seed(shot, index, cutout_path, creator, run_dir, kit=kit,
+                                          aspect=aspect, led=led, log=log, product_desc=product_desc)
+            else:
+                # i2v-seed the product into the shot (people-free reference; no ref2v rejection).
+                seed = _product_seed(shot, index, cutout_path, run_dir, kit=kit, aspect=aspect,
+                                     led=led, log=log, product_desc=product_desc)
         elif face_seed is not None:
             seed = face_seed          # the same person, every shot they are in
         elif board.render_mode == "sequential" and index > 0 and (index - 1) in accepted:

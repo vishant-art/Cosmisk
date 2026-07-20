@@ -78,6 +78,8 @@ def main() -> None:
                          "premium editorial look, for product/catalogue work")
     ap.add_argument("--direction", default="",
                     help="operator art-direction guide; casts ONE person across the ads + video")
+    ap.add_argument("--hero-with-creator", action="store_true",
+                    help="OPT-IN: seed the creator WITH the product on hero shots (vs person-free)")
     ap.add_argument("--product", help="path to a product image -> Bria product-shot scenes")
     ap.add_argument("--shopify", action="store_true",
                     help="source the product image from the store's Shopify bestseller "
@@ -163,6 +165,7 @@ def main() -> None:
                      "storyboard.json and brand_kit.json). Plan one with --storyboard.")
         pipeline.render_story(run_id=args.resume, style=style, aspect=args.video_aspect,
                               resolution=args.resolution, single_pass=args.single_pass,
+                              hero_with_creator=args.hero_with_creator,
                               finish=not args.no_captions)
         return
 
