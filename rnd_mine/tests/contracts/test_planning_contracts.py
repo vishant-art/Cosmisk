@@ -79,3 +79,9 @@ def test_character_sheet_completed_with_portrait_ok():
         status="completed",
         reference_assets={"primaryPortrait": {"r2Uri": "r2://b/portrait.png"}}))
     assert sheet.status == "completed"
+
+def test_charactersheet_completed_with_nondict_portrait_rejected():
+    with pytest.raises(ValidationError):
+        CharacterSheet(**make_character(
+            status="completed",
+            reference_assets={"primaryPortrait": "processing"}))

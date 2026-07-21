@@ -44,7 +44,11 @@ class ShotSpec(ContractBase):
             raise ValueError("exactly 3 shots in Hook, Product, CTA order")
         if [s.shot_number for s in self.shots] != [1, 2, 3]:
             raise ValueError("shot numbers must be 1,2,3")
-        if [float(s.duration) for s in self.shots] != [float(d) for d in self.timing.shot_durations]:
+        durations_match = len(self.shots) == len(self.timing.shot_durations) and all(
+            abs(float(s.duration) - float(d)) <= 0.01
+            for s, d in zip(self.shots, self.timing.shot_durations)
+        )
+        if not durations_match:
             raise ValueError("timing.shotDurations must match shot durations")
         if not (9.5 <= sum(self.timing.shot_durations) <= 10.5):
             raise ValueError("total duration must be 10s ± 0.5")

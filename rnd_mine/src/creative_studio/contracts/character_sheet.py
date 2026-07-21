@@ -23,7 +23,9 @@ class CharacterSheet(ContractBase):
             if not getattr(self, field_name):
                 raise ValueError(f"{field_name} must be a non-empty dict")
         if self.status == "completed":
-            portrait = self.reference_assets.get("primaryPortrait") or {}
+            portrait = self.reference_assets.get("primaryPortrait")
+            if not isinstance(portrait, dict):
+                portrait = {}
             if not portrait.get("r2Uri"):
                 raise ValueError("reference_assets.primaryPortrait.r2Uri is required when status is completed")
         return self
