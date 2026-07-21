@@ -66,6 +66,7 @@ export interface StudioGeneration {
   status: string;
   stage?: string | null;       // live milestone while generating ("Brand kit decided", ...)
   progress?: string[];         // all milestones so far
+  error_message?: string | null; // set on status: failed
   brand_kit?: Record<string, any> | null;   // AI brand kit (palette/tone/logo)
   winners?: { url: string }[]; // Meta winning creatives we conditioned on
   outputs?: StudioOutput[];

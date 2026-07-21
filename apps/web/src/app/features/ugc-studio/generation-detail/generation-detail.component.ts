@@ -1,4 +1,4 @@
-import { Component, signal, inject, OnInit, OnDestroy } from '@angular/core';
+import { Component, computed, signal, inject, AfterViewChecked, ElementRef, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule } from 'lucide-angular';
@@ -6,11 +6,21 @@ import { CreativeStudioService, StudioGeneration } from '../../../core/services/
 import { OutputGalleryComponent } from '../output-gallery/output-gallery.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { VideoPlannerComponent } from './video-planner/video-planner.component';
+import { DegradeBadgeComponent } from '../shared/degrade-badge.component';
+
+/** Static-track milestone rail — a small fixed set of human-named phases (spec §5), not a state machine. */
+const MILESTONES: { label: string; match: RegExp }[] = [
+  { label: 'Learn the brand', match: /brand/i },
+  { label: 'Tear down your ads', match: /tear.?down|teardown|winner|competitor/i },
+  { label: 'Write concepts', match: /concept/i },
+  { label: 'Render', match: /render|image|generat/i },
+  { label: 'Compose & QA', match: /composit|qa|compose/i },
+];
 
 @Component({
   selector: 'app-generation-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule, OutputGalleryComponent, LoadingSpinnerComponent, VideoPlannerComponent],
+  imports: [CommonModule, RouterLink, LucideAngularModule, OutputGalleryComponent, LoadingSpinnerComponent, VideoPlannerComponent, DegradeBadgeComponent],
   template: `
     <div class="space-y-6">
       <!-- Back link -->
@@ -33,6 +43,11 @@ import { VideoPlannerComponent } from './video-planner/video-planner.component';
             <p class="text-sm text-gray-500 font-body mt-1 mb-0">
               Generated {{ generation()!.created_at | date:'medium' }}
             </p>
+            @if (ungrounded()) {
+              <div class="mt-2">
+                <app-degrade-badge text="Ungrounded — no Meta account" detail="This run was not conditioned on your real Meta winners. Reconnect Meta in Settings." />
+              </div>
+            }
           </div>
           <span class="px-3 py-1 rounded-lg text-xs font-body font-semibold capitalize"
             [ngClass]="{
@@ -50,6 +65,51 @@ import { VideoPlannerComponent } from './video-planner/video-planner.component';
             }
           </span>
         </div>
+
+        <!-- Milestone rail + verbatim activity feed (run in progress, or the failed-run report) -->
+        @if (generation()!.status === 'generating' || generation()!.status === 'failed') {
+          <div class="card !p-5 space-y-4">
+            <div class="flex flex-wrap gap-2">
+              @for (m of milestones(); track m.label) {
+                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-body"
+                  [ngClass]="{
+                    'bg-green-50 text-green-700': m.state === 'done',
+                    'bg-accent/10 text-accent font-semibold': m.state === 'active',
+                    'bg-gray-50 text-gray-400': m.state === 'pending'
+                  }">
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0"
+                    [ngClass]="{
+                      'bg-green-500': m.state === 'done',
+                      'bg-accent animate-pulse': m.state === 'active',
+                      'bg-gray-300': m.state === 'pending'
+                    }"></span>
+                  {{ m.label }}
+                </div>
+              }
+            </div>
+
+            <div>
+              <h4 class="text-xs font-display text-navy uppercase tracking-wide m-0 mb-2">Activity</h4>
+              <div #feedEl class="bg-navy rounded-lg p-3 max-h-56 overflow-y-auto font-mono text-[11px] leading-relaxed text-cream/90">
+                @for (line of generation()!.progress ?? []; track $index) {
+                  <div class="whitespace-pre-wrap break-words"><span class="text-cream/40">{{ ($index + 1).toString().padStart(2, '0') }}</span>&nbsp; {{ line }}</div>
+                }
+                @if (generation()!.status === 'failed' && generation()!.error_message) {
+                  <div class="text-red-400 font-semibold whitespace-pre-wrap break-words">{{ generation()!.error_message }}</div>
+                }
+                @if (generation()!.status === 'generating') {
+                  <span class="inline-block w-2 h-3 bg-cream/70 animate-pulse align-text-bottom"></span>
+                }
+              </div>
+            </div>
+
+            @if (generation()!.status === 'failed') {
+              <a routerLink="/app/ugc-studio" class="inline-flex items-center gap-1 text-sm font-body font-semibold text-accent hover:underline no-underline">
+                Retry →
+              </a>
+            }
+          </div>
+        }
 
         <!-- Brief summary -->
         <div class="card !p-5">
@@ -100,13 +160,28 @@ import { VideoPlannerComponent } from './video-planner/video-planner.component';
     </div>
   `,
 })
-export default class GenerationDetailComponent implements OnInit, OnDestroy {
+export default class GenerationDetailComponent implements OnInit, OnDestroy, AfterViewChecked {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private studioService = inject(CreativeStudioService);
 
+  @ViewChild('feedEl') private feedEl?: ElementRef<HTMLDivElement>;
+
   generation = signal<StudioGeneration | null>(null);
   loading = signal(true);
+
+  ungrounded = computed(() =>
+    (this.generation()?.progress ?? []).some(p => /UNGROUNDED|GROUNDING UNAVAILABLE/i.test(p)));
+
+  milestones = computed(() => {
+    const stage = this.generation()?.stage ?? '';
+    let active = 0;
+    MILESTONES.forEach((m, i) => { if (m.match.test(stage)) active = i; });
+    return MILESTONES.map((m, i) => ({
+      label: m.label,
+      state: i < active ? 'done' : i === active ? 'active' : 'pending',
+    }));
+  });
   private pollTimer: any;
 
   ngOnInit() {
@@ -120,6 +195,14 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.pollTimer) clearInterval(this.pollTimer);
+  }
+
+  ngAfterViewChecked() {
+    // Auto-scroll the verbatim activity feed to the newest line (spec §5).
+    if (this.feedEl) {
+      const el = this.feedEl.nativeElement;
+      el.scrollTop = el.scrollHeight;
+    }
   }
 
   private fetchGeneration(id: string) {
