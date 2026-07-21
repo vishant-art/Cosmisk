@@ -164,7 +164,10 @@ export interface CreatorKit {
 }
 
 export interface VideoPlanOpts { seconds?: number; direction?: string; n_shots?: number; creator?: CreatorKit; }
-export interface VideoGenOpts { voiceover?: boolean; captions?: boolean; sfx?: boolean; }
+export interface VideoGenOpts {
+  voiceover?: boolean; captions?: boolean; sfx?: boolean;
+  direction?: string; creator?: CreatorKit; pin_face?: boolean; hero_with_creator?: boolean;
+}
 export interface VideoQuote {
   clips: number; estimated_usd: number; balance_usd: number | null;
   affordable: boolean; guard_enabled: boolean; shortfall_usd: number;
@@ -197,6 +200,8 @@ export async function videoGenerate(jobId: string, opts: VideoGenOpts, metaToken
     body: JSON.stringify({
       job_id: jobId,
       voiceover: opts.voiceover ?? true, captions: opts.captions ?? true, sfx: opts.sfx ?? true,
+      direction: opts.direction, creator: opts.creator,
+      pin_face: opts.pin_face ?? false, hero_with_creator: opts.hero_with_creator ?? false,
     }),
   });
   if (!res.ok) throw new AiLayerError(`video/generate failed: ${await res.text()}`, res.status);

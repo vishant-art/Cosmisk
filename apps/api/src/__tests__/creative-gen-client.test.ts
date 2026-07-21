@@ -32,4 +32,19 @@ describe('creative-gen-client', () => {
     expect(body.n_shots).toBe(3);
     expect(body.creator).toEqual({ name: 'Maya', gender: 'woman' });
   });
+
+  it('videoGenerate forwards direction, creator, pin_face, hero_with_creator', async () => {
+    mockFetch.mockResolvedValueOnce(ok({ job_id: 'j1', status: 'queued', clips: 3 }));
+    const { videoGenerate } = await import('../services/creative-gen-client.js');
+    await videoGenerate('j1', {
+      voiceover: true, captions: true, sfx: false,
+      direction: 'cozy', creator: { name: 'Maya' }, pin_face: true, hero_with_creator: true,
+    });
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.direction).toBe('cozy');
+    expect(body.creator).toEqual({ name: 'Maya' });
+    expect(body.pin_face).toBe(true);
+    expect(body.hero_with_creator).toBe(true);
+    expect(body.sfx).toBe(false);
+  });
 });

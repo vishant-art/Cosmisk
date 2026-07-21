@@ -328,8 +328,10 @@ Return ONLY valid JSON, no markdown.`,
   // POST /video/generate — PAID. Starts the poller on success. 402 surfaces the top-up hint.
   app.post('/video/generate', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (request, reply) => {
-    const { generation_id, voiceover, captions, sfx } = request.body as {
+    const { generation_id, voiceover, captions, sfx, direction, creator, pin_face, hero_with_creator } = request.body as {
       generation_id: string; voiceover?: boolean; captions?: boolean; sfx?: boolean;
+      direction?: string; creator?: import('../services/creative-gen-client.js').CreatorKit;
+      pin_face?: boolean; hero_with_creator?: boolean;
     };
     const db = getDbAdapter();
     const gen = await db.get<{ ai_job_id: string | null; brief_json: string; meta_account_id: string | null }>(
@@ -342,7 +344,7 @@ Return ONLY valid JSON, no markdown.`,
                   ON CONFLICT DO NOTHING`, [outputId, generation_id]);
     try {
       const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
-      const res = await videoGenerate(gen.ai_job_id, { voiceover, captions, sfx }, metaToken || undefined);
+      const res = await videoGenerate(gen.ai_job_id, { voiceover, captions, sfx, direction, creator, pin_face, hero_with_creator }, metaToken || undefined);
       const productName = (() => { try { return JSON.parse(gen.brief_json)?.product_name ?? 'your product'; } catch { return 'your product'; } })();
       void pollVideoJob({ generationId: generation_id, aiJobId: gen.ai_job_id, userId: request.user.id,
         videoOutputId: outputId, productName, accountId: gen.meta_account_id });
