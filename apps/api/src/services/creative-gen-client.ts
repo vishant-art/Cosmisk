@@ -21,6 +21,7 @@ export interface CreativeGenRequest {
   voiceover?: boolean;
   ground?: boolean;
   noLogo?: boolean;
+  direction?: string;      // art-direction guide; casts one person across ads + video
 }
 
 export interface CreativeGenAsset {
@@ -79,6 +80,7 @@ export async function startCreativeGen(
     voiceover: req.voiceover ?? false,
     ground: req.ground ?? false,
     no_logo: req.noLogo ?? false,
+    direction: req.direction ?? null,
   };
 
   let res: Response;

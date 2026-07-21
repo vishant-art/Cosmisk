@@ -37,6 +37,7 @@ interface GenerateBody {
   formats: string[];
   meta_account_id?: string;
   url?: string;
+  direction?: string;
 }
 
 
@@ -117,7 +118,7 @@ Return ONLY valid JSON, no markdown.`,
     preHandler: [app.authenticate],
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
   }, async (request, reply) => {
-    const { brief, formats, meta_account_id } = request.body as GenerateBody;
+    const { brief, formats, meta_account_id, direction } = request.body as GenerateBody;
 
     if (!brief || !formats || !Array.isArray(formats) || formats.length === 0) {
       return reply.status(400).send({ success: false, error: 'brief and formats[] are required' });
@@ -151,7 +152,7 @@ Return ONLY valid JSON, no markdown.`,
       // Kick off async generation (don't await). When the ai-layer (M4 Generative
       // Engine) is configured, route to the Python pipeline; otherwise the legacy path.
       const background = creativeGenEnabled()
-        ? processGenerationViaAiLayer(generationId, brief, formats, outputIds, userId, meta_account_id)
+        ? processGenerationViaAiLayer(generationId, brief, formats, outputIds, userId, meta_account_id, direction)
         : processGeneration(generationId, brief, formats, outputIds);
       background.catch(err => {
         logger.error({ err: err.message, generationId }, 'Background generation failed');
@@ -581,6 +582,7 @@ async function processGenerationViaAiLayer(
   outputIds: Record<string, string>,
   userId: string,
   metaAccountId?: string,
+  direction?: string,
 ): Promise<void> {
   const db = getDbAdapter();
   const now = () => new Date().toISOString();
@@ -608,6 +610,7 @@ async function processGenerationViaAiLayer(
       // The storyboard flow (/video/*) owns video now; do not fire the unquoted single-clip smoke.
       withVideo: false,
       noLogo: true,
+      direction,
     }, metaToken || undefined);
     await db.run('UPDATE studio_generations SET ai_job_id = ?, updated_at = ? WHERE id = ?', [jobId, now(), generationId]);
 
