@@ -1,5 +1,14 @@
 # Creative Studio: Architecture and Integration State
 
+> **⚠️ UPDATE 2026-07-21 (maintainers) — two claims below are now stale:**
+> **(1) R2 was implemented.** §3.2's "R2 evaluated and never built / ephemeral disk" no longer holds.
+> Decoupled + Mode-2 presigned delivery shipped (`ai_layer/storage.py`, `_publish_assets`, the
+> `/creative/asset-url` endpoint, and the apps/api 302 proxy), merged to `improve/creative`. Finished
+> assets are R2-backed and survive a redeploy.
+> **(2) Meta grounding is now available.** A real ad account + working token are wired, so runs can be
+> grounded — the "Meta suspended / never run grounded" caveats are superseded.
+> See `docs/superpowers/specs/2026-07-21-creative-studio-ui-redesign-design.md`.
+
 > Status: reference doc. Rewritten 2026-07-13, after the UGC pipeline was integrated into the
 > deployed service and the three open gaps (persona, performance loop, creative graph) were built.
 > Supersedes the 2026-07-12 version, which described two diverged copies and a port that had not

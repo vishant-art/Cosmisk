@@ -1,5 +1,11 @@
 # Creative Studio — Dev / Ops Handoff (Railway + Neon + code)
 
+> **⚠️ UPDATE 2026-07-21 — several blockers below are resolved:** **Meta grounding** is wired (real
+> account + working token → runs are grounded; item #8 done); **Neon creds work** (migrations applied
+> to the demo branch — 9 `ai_layer` tables); **asset durability** is solved by **R2** (Mode-2 presigned
+> delivery), not the `CREATIVE_OUTPUT_DIR` volume (#3). The fal-balance top-up and the two QA-check
+> fixes (#4/#5) still stand.
+
 > For the dev/infra side: what still needs doing to confirm the Creative Studio works end to
 > end. The AI side has integrated the UGC video pipeline into `apps/ai-layer` and has now
 > **run it live once** (2026-07-16) through the HTTP API. This doc records what that run

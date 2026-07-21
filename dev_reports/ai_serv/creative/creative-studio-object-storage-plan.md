@@ -1,5 +1,11 @@
 # Creative Studio — Object Storage Plan (durable asset bytes)
 
+> **⚠️ UPDATE 2026-07-21: IMPLEMENTED — this is no longer a pending plan.** R2 object storage was
+> built (decoupled: the ai-layer owns R2 via `ai_layer/storage.py` + `_publish_assets` + a presigned
+> `/creative/asset-url` endpoint; apps/api 302s the browser straight to R2, $0 egress). Finished
+> assets now survive an ai-layer redeploy. See `docs/superpowers/plans/2026-07-18-r2-asset-storage.md`
+> and `dev_reports/2026-07-19-ts-r2-client-future-work.md`.
+
 > Make generated ad images/videos DURABLE. Today the bytes live on the ephemeral
 > ai-layer and are proxied through /api, so stored asset URLs break on an ai-layer
 > redeploy. This plan gives them a permanent home so the DB's asset URLs stay valid

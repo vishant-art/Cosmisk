@@ -1,5 +1,10 @@
 # Creative Studio — Data & Storage Design (what's stored, how, where)
 
+> **⚠️ UPDATE 2026-07-21:** The object-storage half of this doc (R2 / durable `asset_url`) is now
+> **BUILT, not planned** — R2 delivery shipped (decoupled + Mode-2 302) on `improve/creative`. Asset
+> bytes are served via the apps/api proxy, which 302s the browser to a presigned R2 URL. The Neon
+> table design below stands as written. See `docs/superpowers/plans/2026-07-18-r2-asset-storage.md`.
+
 > The persistence design for promoting the creative pipeline into the main repo. Covers:
 > (1) where the actual media bytes live, (2) what DB rows are written and to which tables,
 > (3) exact column conventions, (4) cost tracking, (5) migrations.
