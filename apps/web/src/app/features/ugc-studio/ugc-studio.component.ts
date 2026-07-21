@@ -95,10 +95,6 @@ import { DegradeBadgeComponent } from './shared/degrade-badge.component';
           </div>
         </div>
 
-        <div class="mt-4 flex items-center gap-2">
-          <input type="checkbox" id="voiceover" [(ngModel)]="voiceover" class="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent" />
-          <label for="voiceover" class="text-xs font-body font-semibold text-gray-700">Voiceover</label>
-        </div>
 
         <p class="text-[11px] text-gray-400 font-body m-0 mt-4">
           Grounding (on by default): Meta winners + losers, Shopify bestseller, brand kit &mdash; see status pill above.
@@ -231,7 +227,6 @@ export default class UgcStudioComponent implements OnInit {
   // State
   direction = '';
   metaAccountId = signal<string | null>(null);
-  voiceover = false;
   selectedFormats = signal<string[]>(['1:1', '4:5', '9:16']);
   generating = signal(false);
   loading = signal(false);
