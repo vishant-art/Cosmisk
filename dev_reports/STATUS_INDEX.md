@@ -1,12 +1,15 @@
 # dev_reports — STATUS INDEX (master catalog)
 
 > ⭐ **NEXT ACTION (2026-07-21):** [`2026-07-21-creative-studio-redesign-resume-note.md`](./2026-07-21-creative-studio-redesign-resume-note.md)
-> — **build the Creative Studio UI redesign** (`writing-plans` → `executing-plans`) off spec
-> `docs/superpowers/specs/2026-07-21-creative-studio-ui-redesign-design.md`. Two halves: apps/api
-> passthrough (4 loop routes + missing fields + voice endpoint) and the apps/web UI. **Read this first.**
+> — Creative Studio UI redesign **IMPLEMENTATION COMPLETE** (14 commits on `improve/creative`,
+> `dddb396..b7a61c2`; gates green; final review READY-WITH-FOLLOWUPS + Important fixed). **Next:**
+> decide branch completion (`finishing-a-development-branch`, no push) + the paid end-to-end sim run.
+> Deferred: variants/publish back-half (needs apps/api `variant_axis`). **Read the resume note first.**
 >
 > **DONE this session (2026-07-21):** R2 shipped (Mode-2) & merged; env split per-service; demo Neon
-> migrated; Meta grounding + OAuth wired; dockerized split-deploy sim runs green. See the resume note.
+> migrated; Meta grounding + OAuth wired; dockerized split-deploy sim runs green; **Creative Studio
+> redesign built end-to-end (backend passthrough + Angular UI), apps/api 436p, ai-layer creative 487p.**
+> See the resume note.
 >
 > **PRIOR HANDOFF (2026-07-18):** [`ai_serv/2026-07-18-ai-engineer-handoff.md`](./ai_serv/2026-07-18-ai-engineer-handoff.md)
 > — demo-prep session shipped UGC video UI + async delivery, chat formatting, AI-Studio

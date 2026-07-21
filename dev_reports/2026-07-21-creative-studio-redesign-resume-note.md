@@ -1,85 +1,59 @@
-# Resume note — Creative Studio frontend redesign (2026-07-21)
+# Resume note — Creative Studio redesign (2026-07-21)
 
-**Status:** 🔵 ACTIVE · compact-survival note. Branch `improve/creative`. **Next action: build the
-Creative Studio UI redesign.**
+**Status:** 🟢 IMPLEMENTATION COMPLETE · compact-survival note. Branch `improve/creative`.
+**Not pushed. `finishing-a-development-branch` not yet run.**
 
-## Do this next
+## What's done (14 commits, `dddb396..b7a61c2`)
 
-Invoke **`superpowers:writing-plans`** to turn the design spec into an implementation plan, then
-**`superpowers:executing-plans`** to build it:
+Built subagent-driven off `docs/superpowers/plans/2026-07-21-creative-studio-ui-redesign.md`
+(spec: `docs/superpowers/specs/2026-07-21-creative-studio-ui-redesign-design.md`). Every task
+two-stage reviewed (spec ✅ + quality approved). Full per-task record + commit hashes:
+`.superpowers/sdd/progress.md` (the SDD ledger).
 
-> Spec: `docs/superpowers/specs/2026-07-21-creative-studio-ui-redesign-design.md` (authoritative)
+**Backend passthrough (Phase 1, TDD):** `direction` on generate · `creator` on video/plan ·
+`direction`+`creator`+`pin_face`+`hero_with_creator` on video/generate · 4 loop routes proxied
+(published/learn/prior/graph) · voice-preview endpoint (new ai-layer MiniMax route + passthrough).
 
-Frontend = Angular `apps/web` (the `ugc-studio` component / `/app/ugc-studio` route is the live
-Creative Studio surface). Backend passthrough = `apps/api`. `frontend-design` skill applies for the
-visual treatment **within Cosmisk's existing dark/purple system** (not a new identity). Ponytail; no
-push without permission; no AI attribution.
+**Frontend (Phase 2, build-verified — no Chrome so Karma can't run here):** studio service
+extended · degrade-badge component · brief-first Zone A (removed dead URL hero + Import-from-Sprint)
+· run milestone rail + verbatim activity feed · evidence-forward results (rejected[]+cost; **no
+fabricated per-image QA** — static assets carry none) · persona + voice preview + quote polish +
+402 re-quote + video QA banner (filters the 2 known-FP checks `caption_audio`/`cut_alignment`) ·
+prior/graph + harvest panel (metaAccountId consolidated onto `AdAccountService`).
 
-## The build has TWO halves
+**Gates:** web prod build 0 errors · apps/api **436 passed / 2 skipped** · ai-layer creative
+**487 passed** · tsc baseline-only (`billing.ts:4`) · code-review-graph: every `/creative/*`
+endpoint routed frontend↔api↔ai-layer, **no orphans**. Final whole-branch review:
+**READY-WITH-FOLLOWUPS**; its one Important find (persona Age/Gender/Energy free-text → 422 on the
+$0 plan step) was **fixed** → taxonomy `<select>` dropdowns (`b7a61c2`).
 
-**1. apps/api backend passthrough (verified gaps, 2026-07-21 live grep):**
-- **4 loop routes NOT routed** — add proxies: `POST /creative/variants/{id}/published`,
-  `POST /creative/learn`, `GET /creative/prior/{acct}`, `GET /creative/graph/{acct}`.
-- **Fields NOT forwarded** — add: `direction` on `/generate`; `creator` on `/video/plan`;
-  `direction`+`creator`+`pin_face`+`hero_with_creator` on `/video/generate`.
-- **New voice-preview endpoint** (ai-layer MiniMax + apps/api passthrough).
-- Already routed & working: `/generate`, `/video/plan`, `/video/generate`, `/jobs`
-  (`/generation/:id`, `/video/job/:id`), assets (`/asset/:jobId/*`, R2-backed 302).
+## Do this next (pick up here)
 
-**2. apps/web UI** per the spec: brief + `direction` as the hero (remove the dead URL-analyze box
-and "Import from Sprint"); persona inputs; **the quote-before-spend screen** (the centerpiece —
-`/video/plan` quote card, paid-confirm, 402/shortfall state); progress feed (poll the shipped
-`video-job-poller`, the 12-step narrative); evidence-forward results (QA chips, `rejected[]` shown,
-variants as a radio); degrade-loudly badges; History + the publish→`meta_ad_id` loop.
+1. **Decide branch completion** — run `superpowers:finishing-a-development-branch` (verify + summary,
+   **no push** without explicit per-instance permission). Eventual: merge `improve/creative` → main → deploy from main.
+2. **Paid end-to-end sim run (~$4.78 real fal)** — user's call, NOT triggered. Bring the sim up
+   (`docker compose -f docker-compose.sim.yml up -d --wait --build`; migrate once; `./infra/sim-smoke.sh`;
+   open http://localhost:8080; connect Meta with the real key), walk brief+direction → concepts
+   (QA/rejected/cost) → persona+voice → plan ($0 quote) → render 3 clips → video+QA banner. Ports:
+   web 8080, api 3100, ai-layer 8000.
 
-## Resolved decisions (baked into the spec)
+## Deferred (honest, documented — NOT faked in the UI)
 
-1. `n_shots` = **3, FIXED** — no UI control. 2. **Single-tenant** now; multi-tenant credits deferred.
-3. Progress feed = **polling**. 4. QA false-positives (caption@48px, cut_alignment) **NOT shown** —
-internal marker only. 5. Voice preview = **backend endpoint**.
+- **Variant A/B + publish→stamp→learn BACK HALF** — the front (prior/graph/harvest panel) IS built.
+  The back half needs `apps/api /video/generate` to forward `variant_axis`/`variant_values` and
+  surface the ai-layer job's `variants[]`+`variant_id`s. T12 renders a visible "follow-up" note, no
+  fake control. The 4 loop routes are already proxied (callable), just not driven by the UI yet.
+- **Minor design-copy gaps** (non-blocking, from the final review): §3.1 pin_face explainer copy +
+  §7 "persona seed dropped" badge absent (the seed-drop shout lands in the video job's `progress[]`
+  but Zone D doesn't render that feed/badge — only real honesty gap, mitigated by pin_face being
+  off-by-default experimental); QA-passed green pill has no expand-to-checks; guard-off badge
+  duplicates a "Balance check off" line; `VideoPlan.script?: {…}|any` no-op union (script never
+  shown on quote); `aiJob`/`videoJob` signals untyped `any` (read by 2 components).
+- **Spec §11 deferrals (unchanged):** URL-analyze prefill (`/analyze-url` off dead Anthropic →
+  ai-layer, ts-wiring #5); graph visualization; brand-kit viewer; `<a download>` cross-origin fix;
+  multi-tenant credits.
 
-## I/O contract (source of truth = `dev_reports/ai_serv/creative/`)
+## Constraints (still in effect)
 
-9 routes under `/creative` (X-API-Key; per-user Meta token via `X-Meta-Token`). USER provides: brief
-{brand,product,description,audience,features?,price?}, `direction`, formats, persona, toggles,
-`meta_ad_id` at publish. SYSTEM sources: brand kit+copy (Gemini/OpenRouter), Meta winners/losers
-grounding, Shopify bestseller, voice, cost. OUTPUT job: {status, stage, progress[], assets[],
-brand_kit, winners[], video{url}, variants[], qa_passed(+evidence), cost_usd, rejected[], error};
-video ships as `video_captioned.mp4`. **Always call `/video/plan` (free quote) before paid
-`/video/generate`.** Cost: static ~$0.60-0.81; grounded video ~$1.42/clip; 3-clip ~$4.78; 402 if
-balance short. Full detail: the redesign spec §10 endpoint map + the creative docs.
-
-## Environment / platform state (all green for a run)
-
-- **Split env done:** `apps/ai-layer/.env` is the single superset for the merged Railway-B service
-  (ai-layer + connectors in one process); `apps/api/.env`, `apps/web` build args. `apps/connectors/.env`
-  deleted (redundant), `.env.example` kept. Root `.env`/`.env.example` consolidated by service.
-- **Meta:** real ad account wired for **grounded** runs. `META_AD_ACCOUNT_ID`+`META_AD_ACCOUNT` set in
-  `apps/ai-layer/.env`. `TOKEN_ENCRYPTION_KEY` set. **Meta OAuth is wired** (`/auth/meta-oauth/exchange`,
-  `META_OAUTH_ENABLED=true`) — clicking **Connect Meta** in Settings stores the token encrypted with
-  the key and clears the dashboard 500s.
-- **Neon:** demo branch migrated (9 `ai_layer` tables). **R2:** built (Mode-2 delivery), assets survive
-  redeploy. **fal:** `FAL_KEY` live (paid renders enabled; `guard_balance` refuses if balance short —
-  keep params minimal; a real generate spends, e.g. ~$4.78 for 3 clips).
-
-## Run the sim (validated green 2026-07-21)
-
-```
-docker compose -f docker-compose.sim.yml run --rm migrate     # once (idempotent)
-docker compose -f docker-compose.sim.yml up -d --wait --build
-./infra/sim-smoke.sh          # → open http://localhost:8080
-```
-Ports: web 8080, **api 3100** (host 3000 is a stuck Docker-Desktop phantom reservation — nothing
-holds it, only a Docker Desktop restart clears it; 3100 is transparent since web bakes
-`API_BASE_URL=http://localhost:3100`), ai-layer 8000. The compose injects a sim-only throwaway
-`TOKEN_ENCRYPTION_KEY` (real one on Railway A).
-
-## Constraints / leave-as-is
-
-- **Dead TS surfaces stay untouched:** Creative Cockpit, Director Lab, Creative Engine (legacy,
-  still routed, not the ai-layer). Only `ugc-studio` (Creative Studio) is the live surface.
-- **Deferred (logged):** `/analyze-url` off dead Anthropic → ai-layer (`ts-wiring.md #5`); multi-tenant
-  credits (spec decision #2); TS-R2 client (`2026-07-19-ts-r2-client-future-work.md`); `<a download>`
-  cross-origin fix (`ts-wiring #7`); creative↔connectors convergence
-  (`2026-07-21-creative-connectors-convergence-debt.md`).
-- Single-tenant demo (Pratap Sons). ponytail; no push without per-instance permission; no AI attribution.
+Ponytail; single-tenant (Pratap Sons); `n_shots`=3 fixed; no push without per-instance permission;
+no AI attribution / no Co-Authored-By; QA false-positives internal-only. Token usage this run ~1.7M.
