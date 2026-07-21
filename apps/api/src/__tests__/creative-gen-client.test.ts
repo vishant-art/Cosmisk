@@ -47,4 +47,27 @@ describe('creative-gen-client', () => {
     expect(body.hero_with_creator).toBe(true);
     expect(body.sfx).toBe(false);
   });
+
+  it('markPublished POSTs meta_ad_id to the variant route', async () => {
+    mockFetch.mockResolvedValueOnce(ok({ status: 'published' }));
+    const { markPublished } = await import('../services/creative-gen-client.js');
+    await markPublished('var_9', '2384');
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe('http://ai-layer:8000/creative/variants/var_9/published');
+    expect(JSON.parse(opts.body)).toEqual({ meta_ad_id: '2384' });
+  });
+
+  it('getPrior GETs the prior route', async () => {
+    mockFetch.mockResolvedValueOnce(ok({ brief: '', n_observed: 0 }));
+    const { getPrior } = await import('../services/creative-gen-client.js');
+    await getPrior('act_123');
+    expect(mockFetch.mock.calls[0][0]).toBe('http://ai-layer:8000/creative/prior/act_123');
+  });
+
+  it('learn passes the Meta token header', async () => {
+    mockFetch.mockResolvedValueOnce(ok({ account_id: 'act_123', brief: '' }));
+    const { learn } = await import('../services/creative-gen-client.js');
+    await learn('act_123', 'tok');
+    expect(mockFetch.mock.calls[0][1].headers['X-Meta-Token']).toBe('tok');
+  });
 });

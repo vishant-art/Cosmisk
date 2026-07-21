@@ -10,7 +10,7 @@ import { extractText } from '../utils/claude-helpers.js';
 import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 import {
   creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset, fetchCreativeAssetUrl,
-  videoPlan, videoGenerate,
+  videoPlan, videoGenerate, markPublished, learn, getPrior, getGraph,
 } from '../services/creative-gen-client.js';
 import { pollVideoJob } from '../services/video-job-poller.js';
 import { getMetaTokenForUser } from '../boot/meta-helpers.js';
@@ -358,6 +358,40 @@ Return ONLY valid JSON, no markdown.`,
   app.get('/video/job/:jobId', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { jobId } = request.params as { jobId: string };
     try { return { success: true, job: await getCreativeJob(jobId) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // POST /variants/:variantId/published — stamp the Meta ad a variant became (THE JOIN).
+  app.post('/variants/:variantId/published', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { variantId } = request.params as { variantId: string };
+    const { meta_ad_id } = request.body as { meta_ad_id?: string };
+    if (!meta_ad_id) return reply.status(400).send({ success: false, error: 'meta_ad_id is required' });
+    try { return { success: true, ...(await markPublished(variantId, meta_ad_id)) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // POST /learn — harvest published-ad outcomes for an account, rebuild the prior.
+  app.post('/learn', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { account_id } = request.body as { account_id?: string };
+    if (!account_id) return reply.status(400).send({ success: false, error: 'account_id is required' });
+    try {
+      const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
+      return { success: true, result: await learn(account_id, metaToken || undefined) };
+    } catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // GET /prior/:acct — what this account has actually proven.
+  app.get('/prior/:acct', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { acct } = request.params as { acct: string };
+    try { return { success: true, prior: await getPrior(acct) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // GET /graph/:acct — structural winner-vs-loser correlations (list-only in the UI).
+  app.get('/graph/:acct', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { acct } = request.params as { acct: string };
+    try { return { success: true, graph: await getGraph(acct) }; }
     catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
   });
 }

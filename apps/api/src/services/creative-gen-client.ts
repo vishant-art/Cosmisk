@@ -207,3 +207,53 @@ export async function videoGenerate(jobId: string, opts: VideoGenOpts, metaToken
   if (!res.ok) throw new AiLayerError(`video/generate failed: ${await res.text()}`, res.status);
   return res.json() as Promise<{ job_id: string; status: string; clips: number }>;
 }
+
+// ─── The closed loop: publish → learn → prior/graph ─────────────────────────
+
+function jsonHeaders(metaToken?: string): Record<string, string> {
+  const h: Record<string, string> = { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey };
+  if (metaToken) h['X-Meta-Token'] = metaToken;
+  return h;
+}
+
+/** POST /creative/variants/{id}/published — stamp which Meta ad a variant became. */
+export async function markPublished(variantId: string, metaAdId: string): Promise<{ status: string }> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const res = await fetch(`${base()}/creative/variants/${encodeURIComponent(variantId)}/published`, {
+    method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ meta_ad_id: metaAdId }),
+    signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new AiLayerError(`published failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<{ status: string }>;
+}
+
+/** POST /creative/learn — harvest realized performance, rebuild the prior. */
+export async function learn(accountId: string, metaToken?: string): Promise<Record<string, unknown>> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const res = await fetch(`${base()}/creative/learn`, {
+    method: 'POST', headers: jsonHeaders(metaToken), body: JSON.stringify({ account_id: accountId }),
+    signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new AiLayerError(`learn failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<Record<string, unknown>>;
+}
+
+/** GET /creative/prior/{acct} — what this account has proven. */
+export async function getPrior(accountId: string): Promise<Record<string, unknown>> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const res = await fetch(`${base()}/creative/prior/${encodeURIComponent(accountId)}`, {
+    method: 'GET', headers: { 'X-API-Key': config.aiLayerApiKey }, signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new AiLayerError(`prior failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<Record<string, unknown>>;
+}
+
+/** GET /creative/graph/{acct} — structural winner-vs-loser correlations. */
+export async function getGraph(accountId: string): Promise<Record<string, unknown>> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const res = await fetch(`${base()}/creative/graph/${encodeURIComponent(accountId)}`, {
+    method: 'GET', headers: { 'X-API-Key': config.aiLayerApiKey }, signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new AiLayerError(`graph failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<Record<string, unknown>>;
+}
