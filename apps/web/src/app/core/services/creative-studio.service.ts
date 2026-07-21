@@ -69,8 +69,17 @@ export interface StudioGeneration {
   brand_kit?: Record<string, any> | null;   // AI brand kit (palette/tone/logo)
   winners?: { url: string }[]; // Meta winning creatives we conditioned on
   outputs?: StudioOutput[];
+  rejected?: string[];
+  cost_usd?: number;
+  qa_passed?: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CreatorKit {
+  name?: string; age_range?: string; gender?: string;
+  appearance?: string; wardrobe?: string; setting?: string;
+  energy?: string; voice_id?: string;
 }
 
 export interface VideoQuote {
@@ -79,7 +88,9 @@ export interface VideoQuote {
 }
 export interface VideoPlan {
   job_id: string; shots: number; duration_s: number; grounded: boolean;
-  storyboard: { shots: { title?: string; description?: string }[] }; quote: VideoQuote;
+  script?: { hook?: string; demo?: string; cta?: string } | any;
+  storyboard: { shots: { title?: string; description?: string; duration_s?: number; camera?: string; subject?: string; dialogue?: string }[] };
+  quote: VideoQuote;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -90,8 +101,8 @@ export class CreativeStudioService {
     return this.api.post('creative-studio/analyze-url', { url });
   }
 
-  generate(brief: StudioBrief, formats: string[], metaAccountId?: string): Observable<{ success: boolean; generation_id: string }> {
-    return this.api.post('creative-studio/generate', { brief, formats, meta_account_id: metaAccountId });
+  generate(brief: StudioBrief, formats: string[], opts?: { metaAccountId?: string; direction?: string }): Observable<{ success: boolean; generation_id: string }> {
+    return this.api.post('creative-studio/generate', { brief, formats, meta_account_id: opts?.metaAccountId, direction: opts?.direction });
   }
 
   getGeneration(id: string): Observable<{ success: boolean; generation: StudioGeneration }> {
@@ -110,17 +121,33 @@ export class CreativeStudioService {
     return this.api.get('creative-studio/accuracy');
   }
 
-  videoPlan(generationId: string, opts: { seconds?: number; direction?: string; n_shots?: number }):
+  videoPlan(generationId: string, opts: { seconds?: number; direction?: string; n_shots?: number; creator?: CreatorKit }):
     Observable<{ success: boolean; plan: VideoPlan; error?: string }> {
     return this.api.post('creative-studio/video/plan', { generation_id: generationId, ...opts });
   }
 
-  videoGenerate(generationId: string, opts: { voiceover?: boolean; captions?: boolean; sfx?: boolean }):
+  videoGenerate(generationId: string, opts: { voiceover?: boolean; captions?: boolean; sfx?: boolean; direction?: string; creator?: CreatorKit; pin_face?: boolean; hero_with_creator?: boolean }):
     Observable<{ success: boolean; status: string; clips: number; error?: string }> {
     return this.api.post('creative-studio/video/generate', { generation_id: generationId, ...opts });
   }
 
   getVideoJob(jobId: string): Observable<{ success: boolean; job: any }> {
     return this.api.get(`creative-studio/video/job/${jobId}`);
+  }
+
+  markPublished(variantId: string, metaAdId: string): Observable<{ success: boolean; status: string; error?: string }> {
+    return this.api.post(`creative-studio/variants/${variantId}/published`, { meta_ad_id: metaAdId });
+  }
+  learn(accountId: string): Observable<{ success: boolean; result: any; error?: string }> {
+    return this.api.post('creative-studio/learn', { account_id: accountId });
+  }
+  getPrior(accountId: string): Observable<{ success: boolean; prior: any }> {
+    return this.api.get(`creative-studio/prior/${accountId}`);
+  }
+  getGraph(accountId: string): Observable<{ success: boolean; graph: any }> {
+    return this.api.get(`creative-studio/graph/${accountId}`);
+  }
+  voicePreview(voiceId?: string, text?: string): Observable<{ success: boolean; url: string; error?: string }> {
+    return this.api.post('creative-studio/voice/preview', { voice_id: voiceId, text });
   }
 }
