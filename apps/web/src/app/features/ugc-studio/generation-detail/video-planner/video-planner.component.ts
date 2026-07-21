@@ -21,15 +21,32 @@ const N_SHOTS = 3;
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
           <div>
             <label class="block text-xs text-gray-500 mb-1">Age range</label>
-            <input [(ngModel)]="creator.age_range" class="w-full rounded-lg bg-input-bg px-2 py-1.5 text-sm font-body" />
+            <select [(ngModel)]="creator.age_range" class="w-full rounded-lg bg-input-bg px-2 py-1.5 text-sm font-body">
+              <option value="18-24">18-24</option>
+              <option value="25-34">25-34</option>
+              <option value="35-44">35-44</option>
+              <option value="45-54">45-54</option>
+              <option value="55+">55+</option>
+            </select>
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">Gender</label>
-            <input [(ngModel)]="creator.gender" class="w-full rounded-lg bg-input-bg px-2 py-1.5 text-sm font-body" />
+            <select [(ngModel)]="creator.gender" class="w-full rounded-lg bg-input-bg px-2 py-1.5 text-sm font-body">
+              <option value="woman">woman</option>
+              <option value="man">man</option>
+              <option value="nonbinary">nonbinary</option>
+              <option value="unspecified">unspecified</option>
+            </select>
           </div>
           <div>
             <label class="block text-xs text-gray-500 mb-1">Energy</label>
-            <input [(ngModel)]="creator.energy" class="w-full rounded-lg bg-input-bg px-2 py-1.5 text-sm font-body" />
+            <select [(ngModel)]="creator.energy" class="w-full rounded-lg bg-input-bg px-2 py-1.5 text-sm font-body">
+              <option value="calm">calm</option>
+              <option value="warm">warm</option>
+              <option value="upbeat">upbeat</option>
+              <option value="deadpan">deadpan</option>
+              <option value="intense">intense</option>
+            </select>
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-1">
