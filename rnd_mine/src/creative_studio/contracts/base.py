@@ -10,6 +10,9 @@ def new_id(prefix: str) -> str:
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+class CamelModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="allow")
+
 class ContractBase(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="allow")
     schema_version: str = "2.0"

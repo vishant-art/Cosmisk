@@ -1,18 +1,14 @@
 # src/creative_studio/contracts/shot_spec.py
 from __future__ import annotations
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic.alias_generators import to_camel
-from .base import ContractBase
+from pydantic import Field, model_validator
+from .base import ContractBase, CamelModel
 
-class _Camel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="allow")
-
-class Timing(_Camel):
+class Timing(CamelModel):
     total_duration: float
     shot_durations: list[float]
 
-class Shot(_Camel):
+class Shot(CamelModel):
     shot_number: int
     purpose: Literal["Hook", "Product", "CTA"]
     duration: float
