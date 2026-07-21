@@ -147,7 +147,7 @@ const MILESTONES: { label: string; match: RegExp }[] = [
 
         <!-- Video: storyboard planner, quote before render -->
         @if (generation()!.status === 'completed') {
-          <app-video-planner [generationId]="generation()!.id" />
+          <app-video-planner [generationId]="generation()!.id" [aiJobId]="generation()!.ai_job_id || ''" />
         }
       }
 
