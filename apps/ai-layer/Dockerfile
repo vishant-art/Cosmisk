@@ -26,13 +26,27 @@ RUN if [ "$INSTALL_GOOGLE" = "1" ]; then \
 
 # Scratch dir for transient creative output only. The facts store and cost ledger are
 # durable in Neon (ai_layer schema) — the service is STATELESS, no volume required (#29).
-RUN mkdir -p /app/data
+# Owned by a non-root user; deps are installed system-wide above and stay world-readable.
+RUN mkdir -p /app/data \
+    && useradd -r -u 10001 appuser \
+    && chown -R appuser /app/data
+# The package installs into site-packages (root-owned, read-only for appuser). Point the
+# creative scratch dir + the SQLite store fallback at the writable /app/data, else the
+# non-root process hits PermissionError trying to mkdir under site-packages on boot.
+ENV CREATIVE_OUTPUT_DIR=/app/data/creative_output \
+    AI_LAYER_STORE_PATH=/app/data/store.sqlite
+USER appuser
 
 EXPOSE 8000
+# slim base has no curl/wget; use stdlib urllib. Honors ${PORT} the same way CMD does.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://localhost:%s/health' % os.environ.get('PORT','8000'))" || exit 1
 # Config via env: OPENROUTER_API_KEY, META_ACCESS_TOKEN (or per-request X-Meta-Token),
 # AI_LAYER_API_KEY (caller auth), DATABASE_URL + MIGRATION_DATABASE_URL (REQUIRED — Neon
 # pooled + direct; the facts store and cost ledger live in the ai_layer schema, no SQLite),
 # connector creds per apps/connectors/.env.example, CONNECTOR_CACHE_TTL_S (default 3600).
 # Apply migrations out-of-band before/at deploy: `python -m ai_layer.db.migrate` (never on boot).
-# Shell form so ${PORT} expands: Railway (and most PaaS) inject $PORT; fall back to 8000 locally.
-CMD uvicorn ai_layer.api:app --host 0.0.0.0 --port ${PORT:-8000}
+# JSON exec-form + `exec` so ${PORT} still expands (Railway/PaaS inject $PORT; fall back to
+# 8000 locally) AND uvicorn becomes PID 1 — SIGTERM from `docker stop` reaches it for a
+# graceful shutdown instead of dying to the 10s SIGKILL timeout as a shell child.
+CMD ["sh", "-c", "exec uvicorn ai_layer.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

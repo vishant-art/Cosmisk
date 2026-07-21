@@ -1,11 +1,15 @@
-node_modules
-server/node_modules
+# Depth-agnostic (**/) so nested workspace copies are excluded too — the web image builds
+# from repo-root context and would otherwise pull apps/web/.angular (~300M), node_modules, etc.
+**/node_modules
 server/data
-server/dist
-dist
-.angular
+**/dist
+**/.angular
+**/.turbo
+**/coverage
 .git
-.env
+# No .env* in any image — services read env at runtime from compose-supplied apps/<svc>/.env.
+.env*
+**/.env*
 *.log
 .venv
 **/__pycache__

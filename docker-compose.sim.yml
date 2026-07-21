@@ -1,0 +1,75 @@
+# Local simulation of the split deploy: web (Vercel) + api (Railway A) + ai-layer (Railway B).
+# ai-layer bundles the connectors package in-process, so its env_file is the single superset.
+#
+#   1. one-off, BEFORE first run — apply Neon migrations for the ai_layer schema:
+#        docker compose -f docker-compose.sim.yml run --rm migrate
+#   2. bring the stack up (rebuilds if a Dockerfile changed):
+#        docker compose -f docker-compose.sim.yml up --build
+#   3. smoke it (health of all three + a $0 api->ai-layer round-trip):
+#        ./infra/sim-smoke.sh
+#
+# Cost: paid fal renders are ENABLED (FAL_KEY from apps/ai-layer/.env). guard_balance refuses a
+# render the live balance can't cover; keep generate params minimal to keep spend small.
+name: cosmisk-sim
+
+services:
+  ai-layer:                       # Railway B — FastAPI + connectors, owns R2
+    image: cosmisk-ai
+    build:
+      context: .
+      dockerfile: apps/ai-layer/Dockerfile
+    env_file: [apps/ai-layer/.env]
+    environment:
+      PORT: "8000"
+      # Full run: FAL_KEY comes from apps/ai-layer/.env — paid renders ENABLED. guard_balance
+      # still refuses any render the live fal balance can't cover; keep generate params minimal
+      # (few images / one short clip / low res) to cap spend.
+    ports: ["8000:8000"]
+    mem_limit: 1g
+    cpus: 1.5
+    restart: "no"                 # surface crashes instead of masking them (this is a test)
+    # HEALTHCHECK (GET /health) is baked into the image
+
+  api:                            # Railway A — Fastify, browser-facing
+    image: cosmisk-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: [apps/api/.env]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      AI_LAYER_URL: http://ai-layer:8000    # in-network name (overrides any env_file value)
+      FRONTEND_URL: http://localhost:8080   # let the web origin through CORS (config.ts corsOrigins)
+      # Sim-only throwaway: satisfies the production boot guard (TOKEN_ENCRYPTION_KEY must not be
+      # the dev default). It's commented out in apps/api/.env. NOT a real key — set a real 32-byte
+      # value on Railway A. Tokens encrypted here won't decrypt elsewhere (fine for the sim).
+      TOKEN_ENCRYPTION_KEY: "sim-throwaway-token-key-not-for-production-use"
+    ports: ["3100:3000"]    # 3000 is a stuck phantom reservation in Docker Desktop; 3100 is clean
+    mem_limit: 512m
+    cpus: 1.0
+    restart: "no"
+    depends_on:
+      ai-layer: { condition: service_healthy }
+
+  web:                            # Vercel — Angular static via nginx
+    image: cosmisk-web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_BASE_URL: http://localhost:3100   # browser (host) -> api's host-mapped port
+        META_OAUTH_ENABLED: "true"
+    ports: ["8080:80"]
+    mem_limit: 128m
+    cpus: 0.5
+    restart: "no"
+    depends_on:
+      api: { condition: service_healthy }
+
+  migrate:                        # one-off: apply Neon ai_layer-schema migrations (never on boot)
+    image: cosmisk-ai
+    env_file: [apps/ai-layer/.env]
+    profiles: ["tools"]           # excluded from `up`; run explicitly with `run --rm migrate`
+    command: ["python", "-m", "ai_layer.db.migrate"]
+    restart: "no"

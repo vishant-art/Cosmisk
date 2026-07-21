@@ -1,0 +1,8 @@
+# Effective only for a `docker build apps/web` context. The production build uses REPO ROOT
+# context (see apps/web/Dockerfile) where the repo-root /.dockerignore governs instead.
+node_modules
+dist
+.angular
+.turbo
+coverage
+.env*
