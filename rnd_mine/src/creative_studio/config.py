@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     shopify_api_version: str = "2026-07"
     meta_access_token: str = ""
     meta_ad_account: str = ""
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
     database_url: str
     migration_database_url: str
     storage_endpoint: str
