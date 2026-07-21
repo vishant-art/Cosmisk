@@ -64,15 +64,14 @@ export interface StudioGeneration {
   formats: string[];
   meta_account_id: string | null;
   status: string;
+  ai_job_id?: string | null;   // durable link to the ai-layer job (rejected[]/cost_usd/qa_passed live there, not here)
+  cost_cents?: number;         // rolled-up run cost (display only)
   stage?: string | null;       // live milestone while generating ("Brand kit decided", ...)
   progress?: string[];         // all milestones so far
   error_message?: string | null; // set on status: failed
   brand_kit?: Record<string, any> | null;   // AI brand kit (palette/tone/logo)
   winners?: { url: string }[]; // Meta winning creatives we conditioned on
   outputs?: StudioOutput[];
-  rejected?: string[];
-  cost_usd?: number;
-  qa_passed?: boolean | null;
   created_at: string;
   updated_at: string;
 }

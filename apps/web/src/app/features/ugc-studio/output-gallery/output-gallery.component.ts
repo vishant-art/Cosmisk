@@ -195,6 +195,12 @@ import { FeedbackService } from '../../../core/services/feedback.service';
                       </a>
                     }
                   </div>
+                  @if (img.headline) {
+                    <p (click)="copyText(img.headline)" title="Click to copy"
+                      class="text-[11px] text-navy font-body m-0 mt-1 px-1 cursor-pointer hover:text-accent transition-colors line-clamp-2">
+                      {{ img.headline }}
+                    </p>
+                  }
                 </div>
               }
             }
@@ -297,10 +303,35 @@ import { FeedbackService } from '../../../core/services/feedback.service';
         }
       }
     </div>
+
+    <!-- Evidence-forward footer: rejected concepts + run cost (spec §6.1) — proud, not hidden -->
+    @if (rejected().length > 0) {
+      <div class="mt-4">
+        <button type="button" (click)="rejectedExpanded = !rejectedExpanded"
+          class="flex items-center gap-1 text-xs font-body text-gray-500 hover:text-navy transition-colors">
+          <lucide-icon name="info" [size]="12"></lucide-icon>
+          We rejected {{ rejected().length }} concept{{ rejected().length > 1 ? 's' : '' }} that failed QA
+          <span>{{ rejectedExpanded ? '▾' : '▸' }}</span>
+        </button>
+        @if (rejectedExpanded) {
+          <ul class="mt-1.5 ml-5 space-y-0.5 list-disc">
+            @for (title of rejected(); track title) {
+              <li class="text-xs text-gray-500 font-body">{{ title }}</li>
+            }
+          </ul>
+        }
+      </div>
+    }
+    @if (costUsd() != null) {
+      <p class="text-xs text-gray-400 font-body mt-2 mb-0">Run cost: {{ '$' + costUsd()!.toFixed(2) }} (estimate)</p>
+    }
   `,
 })
 export class OutputGalleryComponent {
   outputs = input.required<any[]>();
+  rejected = input<string[]>([]);
+  costUsd = input<number | null>(null);
+  rejectedExpanded = false;
   private feedback = inject(FeedbackService);
   rated = signal<Record<string, -1 | 1>>({});
 

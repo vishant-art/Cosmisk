@@ -142,7 +142,7 @@ const MILESTONES: { label: string; match: RegExp }[] = [
 
         <!-- Gallery -->
         @if (generation()!.outputs && generation()!.outputs!.length > 0) {
-          <app-output-gallery [outputs]="generation()!.outputs!" />
+          <app-output-gallery [outputs]="generation()!.outputs!" [rejected]="aiJob()?.rejected || []" [costUsd]="costUsd()" />
         }
 
         <!-- Video: storyboard planner, quote before render -->
@@ -169,9 +169,18 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
 
   generation = signal<StudioGeneration | null>(null);
   loading = signal(true);
+  /** Full ai-layer job — carries rejected[]/cost_usd/qa_passed, none of which live on the generation row. */
+  aiJob = signal<any | null>(null);
 
   ungrounded = computed(() =>
     (this.generation()?.progress ?? []).some(p => /UNGROUNDED|GROUNDING UNAVAILABLE/i.test(p)));
+
+  /** cost_cents on the run record is authoritative (zero extra call); the ai-layer job's cost_usd is the fallback. */
+  costUsd = computed(() => {
+    const gen = this.generation();
+    if (gen?.cost_cents != null) return gen.cost_cents / 100;
+    return this.aiJob()?.cost_usd ?? null;
+  });
 
   milestones = computed(() => {
     const stage = this.generation()?.stage ?? '';
@@ -210,16 +219,21 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
       next: (res) => {
         this.generation.set(res.generation);
         this.loading.set(false);
+        if (res.generation.ai_job_id) this.fetchAiJob(res.generation.ai_job_id);
 
         // Poll if still generating
         if (res.generation.status === 'generating' && !this.pollTimer) {
           this.pollTimer = setInterval(() => {
             this.studioService.getGeneration(id).subscribe({
               next: (pollRes) => {
+                const wasCompleted = this.generation()?.status === 'completed';
                 this.generation.set(pollRes.generation);
                 if (pollRes.generation.status !== 'generating') {
                   clearInterval(this.pollTimer);
                   this.pollTimer = null;
+                }
+                if (!wasCompleted && pollRes.generation.status === 'completed' && pollRes.generation.ai_job_id) {
+                  this.fetchAiJob(pollRes.generation.ai_job_id);
                 }
               },
             });
@@ -229,6 +243,13 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
       error: () => {
         this.loading.set(false);
       },
+    });
+  }
+
+  private fetchAiJob(aiJobId: string) {
+    this.studioService.getVideoJob(aiJobId).subscribe({
+      next: (res) => this.aiJob.set(res.job),
+      error: () => {},
     });
   }
 }
