@@ -152,7 +152,18 @@ export async function fetchCreativeAssetUrl(jobId: string, path: string): Promis
 
 // ─── Storyboard UGC-video track: quote (free) then paid render ──────────────
 
-export interface VideoPlanOpts { seconds?: number; direction?: string; n_shots?: number; }
+export interface CreatorKit {
+  name?: string;
+  age_range?: string;
+  gender?: string;
+  appearance?: string;
+  wardrobe?: string;
+  setting?: string;
+  energy?: string;
+  voice_id?: string;
+}
+
+export interface VideoPlanOpts { seconds?: number; direction?: string; n_shots?: number; creator?: CreatorKit; }
 export interface VideoGenOpts { voiceover?: boolean; captions?: boolean; sfx?: boolean; }
 export interface VideoQuote {
   clips: number; estimated_usd: number; balance_usd: number | null;
@@ -170,7 +181,7 @@ export async function videoPlan(jobId: string, opts: VideoPlanOpts, metaToken?: 
   if (metaToken) headers['X-Meta-Token'] = metaToken;
   const res = await fetch(`${base()}/creative/video/plan`, {
     method: 'POST', headers,
-    body: JSON.stringify({ job_id: jobId, seconds: opts.seconds, direction: opts.direction, n_shots: opts.n_shots }),
+    body: JSON.stringify({ job_id: jobId, seconds: opts.seconds, direction: opts.direction, n_shots: opts.n_shots, creator: opts.creator }),
   });
   if (!res.ok) throw new AiLayerError(`video/plan failed: ${await res.text()}`, res.status);
   return res.json() as Promise<VideoPlan>;

@@ -22,4 +22,14 @@ describe('creative-gen-client', () => {
     expect(url).toBe('http://ai-layer:8000/creative/generate');
     expect(JSON.parse(opts.body).direction).toBe('tall blonde, rooftop');
   });
+
+  it('videoPlan forwards creator + n_shots + seconds', async () => {
+    mockFetch.mockResolvedValueOnce(ok({ job_id: 'j1', shots: 3, duration_s: 24, grounded: true, storyboard: {}, quote: {} }));
+    const { videoPlan } = await import('../services/creative-gen-client.js');
+    await videoPlan('j1', { seconds: 24, direction: 'cozy', n_shots: 3, creator: { name: 'Maya', gender: 'woman' } });
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.job_id).toBe('j1');
+    expect(body.n_shots).toBe(3);
+    expect(body.creator).toEqual({ name: 'Maya', gender: 'woman' });
+  });
 });

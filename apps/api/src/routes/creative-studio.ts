@@ -309,8 +309,8 @@ Return ONLY valid JSON, no markdown.`,
 
   // POST /video/plan — $0 quote. 409 (no brand kit) surfaces as a clean message.
   app.post('/video/plan', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { generation_id, seconds, direction, n_shots } = request.body as {
-      generation_id: string; seconds?: number; direction?: string; n_shots?: number;
+    const { generation_id, seconds, direction, n_shots, creator } = request.body as {
+      generation_id: string; seconds?: number; direction?: string; n_shots?: number; creator?: import('../services/creative-gen-client.js').CreatorKit;
     };
     const db = getDbAdapter();
     const gen = await db.get<{ ai_job_id: string | null }>(
@@ -318,7 +318,7 @@ Return ONLY valid JSON, no markdown.`,
     if (!gen?.ai_job_id) return reply.status(409).send({ success: false, error: 'Generate static ads first, then plan the video.' });
     try {
       const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
-      const plan = await videoPlan(gen.ai_job_id, { seconds, direction, n_shots }, metaToken || undefined);
+      const plan = await videoPlan(gen.ai_job_id, { seconds, direction, n_shots, creator }, metaToken || undefined);
       return { success: true, plan };
     } catch (err: any) {
       return reply.status(err.status ?? 500).send({ success: false, error: err.message });
