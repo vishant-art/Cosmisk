@@ -110,6 +110,24 @@ def generate_voiceover(text: str, out_path, *, voice=None, log=print) -> dict:
             "path": str(out), "cost_usd": ledger.tts_cost(len(text))}
 
 
+def voice_preview(voice_id: str | None, text: str) -> dict:
+    """A short TTS sample for the persona voice picker. Returns the fal-hosted audio URL
+    directly (no download, no run dir) — the browser plays it straight from fal.
+
+    ponytail: no cache; a preview is a few cents of TTS and the sample text is short.
+    Add a content-addressed cache only if preview spend ever shows up on a bill.
+    """
+    import fal_client  # lazy
+    args = {"text": text[:200],
+            "voice_setting": {"voice_id": voice_id or config.VIDEO_TTS_VOICE}}
+    res = fal_client.subscribe(config.VIDEO_TTS_MODEL, arguments=args, with_logs=False)
+    audio = res.get("audio") or res.get("audio_file") or {}
+    url = audio.get("url") or res.get("url")
+    if not url:
+        raise RuntimeError("tts returned no audio url")
+    return {"url": url}
+
+
 def transcribe_words(audio_path, *, log=print) -> tuple[list[dict], float]:
     """Word-level ASR via fal Whisper. Returns ([{text,start,end}], cost_usd).
 

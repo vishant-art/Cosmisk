@@ -70,4 +70,14 @@ describe('creative-gen-client', () => {
     await learn('act_123', 'tok');
     expect(mockFetch.mock.calls[0][1].headers['X-Meta-Token']).toBe('tok');
   });
+
+  it('voicePreview POSTs voice_id + text and returns the url', async () => {
+    mockFetch.mockResolvedValueOnce(ok({ url: 'https://fal.media/x.mp3' }));
+    const { voicePreview } = await import('../services/creative-gen-client.js');
+    const out = await voicePreview('abc', 'Hi');
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe('http://ai-layer:8000/creative/voice/preview');
+    expect(JSON.parse(opts.body)).toEqual({ voice_id: 'abc', text: 'Hi' });
+    expect(out.url).toBe('https://fal.media/x.mp3');
+  });
 });

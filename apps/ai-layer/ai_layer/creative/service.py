@@ -105,6 +105,11 @@ class CreativeRequest(BaseModel):
     direction: str | None = Field(None, description="art-direction guide; casts one person across ads + video")
 
 
+class VoicePreviewRequest(BaseModel):
+    voice_id: str | None = None
+    text: str = "Wait — this anarkali has actual pockets."
+
+
 class VideoPlanRequest(BaseModel):
     """$0. LLM only: script -> storyboard, plus what the render would cost."""
     job_id: str = Field(..., description="an existing run (from /creative/generate)")
@@ -655,3 +660,14 @@ def video_generate(req: VideoRenderRequest, background: BackgroundTasks):
     _save(job)
     background.add_task(_run_video_job, req.job_id, req)
     return {"job_id": req.job_id, "status": "queued", "clips": len(board.shots)}
+
+
+@router.post("/voice/preview")
+def voice_preview(req: VoicePreviewRequest):
+    """A short spoken sample of the persona's voice, so the picker is a guarantee you can
+    HEAR before you pay. Returns the fal-hosted audio URL; the browser plays it directly."""
+    from ai_layer.creative import video_providers
+    try:
+        return video_providers.voice_preview(req.voice_id, req.text)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"voice preview failed: {e}") from e

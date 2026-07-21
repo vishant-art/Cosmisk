@@ -435,3 +435,11 @@ def test_a_db_outage_never_fails_a_run(monkeypatch):
     status = _poll(job_id)
     assert status["status"] == "complete"       # the run still finished
     assert len(status["assets"]) == 1
+
+
+def test_voice_preview_returns_url(monkeypatch):
+    import ai_layer.creative.video_providers as vp
+    monkeypatch.setattr(vp, "voice_preview", lambda voice_id, text: {"url": "https://fal.media/x.mp3"})
+    r = client.post("/creative/voice/preview", json={"voice_id": "abc", "text": "Hi there"})
+    assert r.status_code == 200
+    assert r.json()["url"] == "https://fal.media/x.mp3"

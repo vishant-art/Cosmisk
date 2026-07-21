@@ -257,3 +257,15 @@ export async function getGraph(accountId: string): Promise<Record<string, unknow
   if (!res.ok) throw new AiLayerError(`graph failed: ${await res.text()}`, res.status);
   return res.json() as Promise<Record<string, unknown>>;
 }
+
+/** POST /creative/voice/preview — a short TTS sample; returns the fal audio URL. */
+export async function voicePreview(voiceId?: string, text?: string): Promise<{ url: string }> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const res = await fetch(`${base()}/creative/voice/preview`, {
+    method: 'POST', headers: jsonHeaders(),
+    body: JSON.stringify({ voice_id: voiceId, text }),
+    signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new AiLayerError(`voice preview failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<{ url: string }>;
+}

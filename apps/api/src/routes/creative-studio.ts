@@ -10,7 +10,7 @@ import { extractText } from '../utils/claude-helpers.js';
 import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 import {
   creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset, fetchCreativeAssetUrl,
-  videoPlan, videoGenerate, markPublished, learn, getPrior, getGraph,
+  videoPlan, videoGenerate, markPublished, learn, getPrior, getGraph, voicePreview,
 } from '../services/creative-gen-client.js';
 import { pollVideoJob } from '../services/video-job-poller.js';
 import { getMetaTokenForUser } from '../boot/meta-helpers.js';
@@ -392,6 +392,14 @@ Return ONLY valid JSON, no markdown.`,
   app.get('/graph/:acct', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { acct } = request.params as { acct: string };
     try { return { success: true, graph: await getGraph(acct) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // POST /voice/preview — a short spoken sample of a persona voice (before you pay).
+  app.post('/voice/preview', { preHandler: [app.authenticate], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { voice_id, text } = request.body as { voice_id?: string; text?: string };
+    try { return { success: true, ...(await voicePreview(voice_id, text)) }; }
     catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
   });
 }
