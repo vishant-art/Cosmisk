@@ -1,5 +1,5 @@
 const _BUILD_VER = '2026-04-01-v2';
-import { Component, signal, inject, OnInit } from '@angular/core';
+import { Component, signal, computed, effect, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -8,6 +8,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { UgcService, UgcProjectSummary } from '../../core/services/ugc.service';
 import { CreativeStudioService, StudioGeneration } from '../../core/services/creative-studio.service';
 import { MetaOAuthService } from '../../core/services/meta-oauth.service';
+import { AdAccountService } from '../../core/services/ad-account.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { DegradeBadgeComponent } from './shared/degrade-badge.component';
 
@@ -209,6 +210,55 @@ import { DegradeBadgeComponent } from './shared/degrade-badge.component';
           </div>
         }
       </div>
+
+      <!-- What this account has proven -->
+      <div class="card !p-6">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <div>
+            <h3 class="text-sm font-display text-navy m-0">What this account has proven</h3>
+            <p class="text-[11px] text-gray-400 font-body m-0 mt-0.5">Learned from published, stamped ads &mdash; not a guess.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              (click)="harvest()"
+              [disabled]="!metaAccountId() || harvesting()"
+              class="px-4 py-2 bg-navy text-white rounded-xl text-xs font-body font-semibold hover:bg-navy/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+              @if (harvesting()) {
+                <span class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                Harvesting...
+              } @else {
+                <lucide-icon name="refresh-cw" [size]="14"></lucide-icon>
+                Harvest results
+              }
+            </button>
+            @if (harvestResult()) {
+              <span class="text-xs font-body text-gray-500">{{ harvestResult() }}</span>
+            }
+          </div>
+        </div>
+
+        @if (!metaAccountId() || (!prior()?.brief && !graph()?.brief)) {
+          <app-degrade-badge
+            tone="neutral"
+            text="New account — no prior yet"
+            detail="Publish and stamp ads to start building proof." />
+        } @else {
+          <div class="grid md:grid-cols-2 gap-4">
+            @if (prior()?.brief) {
+              <div>
+                <p class="text-xs font-body font-semibold text-gray-700 m-0 mb-1.5">Proven</p>
+                <div class="text-xs font-body text-gray-600 whitespace-pre-line leading-relaxed">{{ prior().brief }}</div>
+              </div>
+            }
+            @if (graph()?.brief) {
+              <div>
+                <p class="text-xs font-body font-semibold text-gray-700 m-0 mb-1.5">Structural correlations</p>
+                <div class="text-xs font-body text-gray-600 whitespace-pre-line leading-relaxed">{{ graph().brief }}</div>
+              </div>
+            }
+          </div>
+        }
+      </div>
     </div>
   `
 })
@@ -218,6 +268,7 @@ export default class UgcStudioComponent implements OnInit {
   private studioService = inject(CreativeStudioService);
   private router = inject(Router);
   metaOAuth = inject(MetaOAuthService);
+  private adAccountService = inject(AdAccountService);
 
   formatOptions = [
     { id: '1:1', label: '1:1' }, { id: '4:5', label: '4:5' },
@@ -226,12 +277,26 @@ export default class UgcStudioComponent implements OnInit {
 
   // State
   direction = '';
-  metaAccountId = signal<string | null>(null);
+  metaAccountId = computed(() => this.adAccountService.currentAccount()?.id ?? null);
   selectedFormats = signal<string[]>(['1:1', '4:5', '9:16']);
   generating = signal(false);
   loading = signal(false);
   generations = signal<StudioGeneration[]>([]);
   legacyProjects = signal<UgcProjectSummary[]>([]);
+
+  // History loop: what this account has proven (prior + graph) + harvest
+  prior = signal<any | null>(null);
+  graph = signal<any | null>(null);
+  harvesting = signal(false);
+  harvestResult = signal('');
+
+  // Accounts load async (AdAccountService fetches on app start), so re-fetch whenever the
+  // resolved account id changes rather than once at ngOnInit — otherwise a still-loading
+  // account silently leaves the panel on the empty state forever.
+  private proofEffect = effect(() => {
+    this.metaAccountId();
+    this.fetchProven();
+  }, { allowSignalWrites: true });
 
   brief = {
     brand_name: '',
@@ -302,6 +367,27 @@ export default class UgcStudioComponent implements OnInit {
       this.loading.set(false);
       this.loadCount = 0;
     }
+  }
+
+  private fetchProven() {
+    const acct = this.metaAccountId();
+    if (!acct) return;
+    this.studioService.getPrior(acct).subscribe({ next: r => this.prior.set(r.prior), error: () => {} });
+    this.studioService.getGraph(acct).subscribe({ next: r => this.graph.set(r.graph), error: () => {} });
+  }
+
+  harvest() {
+    const acct = this.metaAccountId();
+    if (!acct) return;
+    this.harvesting.set(true);
+    this.studioService.learn(acct).subscribe({
+      next: (r) => {
+        this.harvesting.set(false);
+        this.harvestResult.set(r.result?.brief ? 'Prior updated.' : 'No new outcomes cleared the bar.');
+        this.fetchProven();
+      },
+      error: (e) => { this.harvesting.set(false); this.harvestResult.set(e?.error?.error || 'Harvest failed.'); },
+    });
   }
 
   viewFullGeneration(id: string) {
