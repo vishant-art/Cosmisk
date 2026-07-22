@@ -60,7 +60,7 @@ export interface StudioOutput {
 export interface StudioGeneration {
   id: string;
   user_id: string;
-  brief: StudioBrief;
+  brief: StudioBrief | null;   // null in campaign mode ("generate from winners" — no manual brief)
   formats: string[];
   meta_account_id: string | null;
   status: string;
@@ -97,12 +97,14 @@ export interface VideoPlan {
 export class CreativeStudioService {
   private api = inject(ApiService);
 
-  analyzeUrl(url: string): Observable<{ success: boolean; analysis: UrlAnalysis }> {
-    return this.api.post('creative-studio/analyze-url', { url });
-  }
+  // DISCONNECTED (ai-layer-only): legacy TS URL analyzer — see dev_reports/ai_serv/creative/DISCONNECTED_TS_MODULES.md
+  // analyzeUrl(url: string): Observable<{ success: boolean; analysis: UrlAnalysis }> {
+  //   return this.api.post('creative-studio/analyze-url', { url });
+  // }
 
-  generate(brief: StudioBrief, formats: string[], opts?: { metaAccountId?: string; direction?: string }): Observable<{ success: boolean; generation_id: string }> {
-    return this.api.post('creative-studio/generate', { brief, formats, meta_account_id: opts?.metaAccountId, direction: opts?.direction });
+  // brief is optional — null runs "generate from winners" (campaign mode; grounds on the account).
+  generate(brief: StudioBrief | null, formats: string[], opts?: { metaAccountId?: string; direction?: string }): Observable<{ success: boolean; generation_id: string }> {
+    return this.api.post('creative-studio/generate', { brief: brief ?? undefined, formats, meta_account_id: opts?.metaAccountId, direction: opts?.direction });
   }
 
   getGeneration(id: string): Observable<{ success: boolean; generation: StudioGeneration }> {
@@ -113,13 +115,13 @@ export class CreativeStudioService {
     return this.api.get('creative-studio/generations');
   }
 
-  scoreCreative(body: { format: string; hook_type?: string; script_text?: string; meta_account_id?: string }): Observable<{ success: boolean; score: CreativeScore }> {
-    return this.api.post('creative-studio/score', body);
-  }
-
-  getAccuracy(): Observable<{ success: boolean; totalPredictions: number; resolvedPredictions: number; meanAbsoluteError: number | null; trend: string }> {
-    return this.api.get('creative-studio/accuracy');
-  }
+  // DISCONNECTED (ai-layer-only): legacy TS scorer + accuracy — see dev_reports/ai_serv/creative/DISCONNECTED_TS_MODULES.md
+  // scoreCreative(body: { format: string; hook_type?: string; script_text?: string; meta_account_id?: string }): Observable<{ success: boolean; score: CreativeScore }> {
+  //   return this.api.post('creative-studio/score', body);
+  // }
+  // getAccuracy(): Observable<{ success: boolean; totalPredictions: number; resolvedPredictions: number; meanAbsoluteError: number | null; trend: string }> {
+  //   return this.api.get('creative-studio/accuracy');
+  // }
 
   videoPlan(generationId: string, opts: { seconds?: number; direction?: string; n_shots?: number; creator?: CreatorKit }):
     Observable<{ success: boolean; plan: VideoPlan; error?: string }> {
