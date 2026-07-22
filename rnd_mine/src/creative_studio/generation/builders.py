@@ -209,9 +209,11 @@ def build_image_prompt(shot: Shot, sheet: CharacterSheet, spec: CreativeSpec, pr
 
     # Scene: what's happening, from the narrative summary plus the
     # character's action (capitalized so it reads as its own sentence).
+    # Pass as separate entries to _assemble so the standard ". " seam
+    # handles punctuation uniformly, preventing run-ons when summary
+    # lacks trailing punctuation.
     summary = narrative.get("summary") or ""
     action = character.get("action") or ""
-    scene = _join_clauses([summary, _upper_first(action)], sep=" ")
 
     # Character: identity + hair (shared with the portrait builder) plus
     # this shot's own expression -- never the advertised garment.
@@ -256,7 +258,7 @@ def build_image_prompt(shot: Shot, sheet: CharacterSheet, spec: CreativeSpec, pr
     quality = "ultra realistic, high detail, professional photography, cinematic, sharp focus"
 
     prompt = _assemble([
-        scene, character_block, camera_block, environment,
+        summary, _upper_first(action), character_block, camera_block, environment,
         lighting_block, style_block, composition_block, placeholder, quality,
     ])
 

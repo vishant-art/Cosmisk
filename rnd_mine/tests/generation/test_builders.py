@@ -368,3 +368,30 @@ def test_missing_fields_skip_cleanly():
         assert "None" not in text
         assert "  " not in text
         assert not re.search(r",\s*,", text)
+
+
+def test_scene_summary_without_punctuation_gets_seam():
+    """Regression test: when narrative.summary lacks trailing punctuation,
+    the seam between summary and action uses ". " uniformly, not a bare space.
+    This prevents run-ons like "blazer Adjusts" and ensures "blazer. Adjusts".
+    """
+    spec = make_spec()
+    sheet = make_sheet()
+    product = make_product()
+
+    # Shot with summary lacking trailing punctuation
+    shot = make_shot(
+        1, "Hook", 3,
+        narrative={"summary": "Character notices the blazer"},  # No period
+        camera={"shotType": "Medium", "angle": "Eye Level"},
+        character={"expression": "Interested", "action": "adjusts the cuff"},
+        product={"visibility": "High", "placement": "Worn"},
+        dialogue={"spokenText": "Nice fit."},
+        composition={"background": "Modern office"},
+    )
+
+    result = build_image_prompt(shot, sheet, spec, product)
+
+    # Assert the seam is ". " not bare space
+    assert "Character notices the blazer. Adjusts the cuff" in result.prompt
+    assert "blazer Adjusts" not in result.prompt
