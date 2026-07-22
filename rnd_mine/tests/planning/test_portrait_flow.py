@@ -109,16 +109,25 @@ async def test_live_finalize(fake_r2):
 
 
 # ---------------------------------------------------------------------------
-# The returned sheet must independently re-validate (model_copy alone does
+# The returned sheet must internally re-validate (model_copy alone does
 # not re-run validators -- finalize_character must revalidate explicitly).
+# Spy on the call to detect if someone drops the internal validation.
 # ---------------------------------------------------------------------------
 
-async def test_finalized_sheet_revalidates(fake_r2):
+async def test_finalize_invokes_contract_revalidation(monkeypatch, fake_r2):
     sheet = _draft_sheet()
     adapter = _FakeAdapter()
+    calls = {"n": 0}
+    original = CharacterSheet.model_validate
 
+    def counting(data, *a, **kw):
+        calls["n"] += 1
+        return original(data, *a, **kw)
+
+    monkeypatch.setattr(CharacterSheet, "model_validate", counting)
     finalized = await finalize_character(sheet, adapter, fake_r2, generation_id="gen1", live=True)
 
-    revalidated = CharacterSheet.model_validate(finalized.to_doc())
-    assert revalidated.status == "completed"
-    assert revalidated.reference_assets["primaryPortrait"]["r2Uri"] == finalized.reference_assets["primaryPortrait"]["r2Uri"]
+    assert calls["n"] >= 1, "CharacterSheet.model_validate was not called internally"
+    assert isinstance(finalized, CharacterSheet)
+    assert finalized.status == "completed"
+    assert finalized.reference_assets["primaryPortrait"]["r2Uri"] == "r2://test-bucket/creative-studio/runs/gen1/portraits/primary.png"
