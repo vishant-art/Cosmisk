@@ -261,10 +261,25 @@ def test_context_builder_budget():
 
     assert result_tiny.endswith("...[truncated]")
     assert len(result_tiny) <= tiny_budget
+    assert len(result_tiny) == tiny_budget or "...[truncated]" in result_tiny
 
     # Deterministic: same inputs, same output.
     result_tiny_again = build_context(brand, product, campaigns, preference, max_chars=tiny_budget)
     assert result_tiny == result_tiny_again
+
+
+def test_context_builder_hard_floor():
+    """Verify hard truncation never exceeds max_chars, even for tiny budgets < suffix length."""
+    brand = _brand()
+    product = _product()
+    campaigns = [_campaign(name=f"Campaign {i}") for i in range(1, 6)]
+    preference = "Make it feel festive and premium"
+
+    # Test with max_chars=10: smaller than the 14-char suffix.
+    result = build_context(brand, product, campaigns, preference, max_chars=10)
+
+    assert len(result) <= 10
+    assert "...[truncated]" in result or len(result) == 10
 
 
 async def test_prompt_render_receives_context():

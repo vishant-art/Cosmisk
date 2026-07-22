@@ -117,4 +117,4 @@ def build_context(
         return text
 
     cut = max(max_chars - 15, 0)
-    return text[:cut] + _TRUNCATION_SUFFIX
+    return (text[:cut] + _TRUNCATION_SUFFIX)[:max_chars]
