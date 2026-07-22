@@ -1,0 +1,26 @@
+# Editable brand identity seed. Fields the Shopify API cannot provide.
+# Merged into BrandContext by build_brand_context(); edit freely and re-run sync.
+branding:
+  positioning: "Premium Indian ethnic menswear"
+  toneOfVoice: "Warm, confident, heritage-proud"
+  personality: ["Regal", "Festive", "Craftsmanship-first"]
+  values: ["Craftsmanship", "Heritage", "Perfect fit"]
+audience:
+  primaryAgeRange: "24-40"
+  gender: "male"
+  locations: ["India", "USA"]
+  interests: ["Ethnic fashion", "Weddings", "Festive wear"]
+  incomeLevel: "Mid Premium"
+creativeGuidelines:
+  preferredStyles: ["Festive UGC", "Rich warm tones", "Occasion-led storytelling"]
+  avoidStyles: ["Dark moody grading", "Fast glitch cuts"]
+  preferredPlatforms: ["Instagram"]
+  preferredLighting: "Warm natural"
+  preferredCameraStyle: "Handheld"
+  preferredColorMood: "Warm"
+userPreferences:
+  defaultAspectRatio: "9:16"
+  defaultLanguage: "English"
+  defaultPlatform: "Instagram"
+  allowExperimentalStyles: false
+  defaultVoiceGender: "Female"
