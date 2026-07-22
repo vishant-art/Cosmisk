@@ -39,7 +39,7 @@ def _normalize_performance(metrics: dict) -> dict[str, Any]:
     if metrics.get("clicks") is not None:
         performance["clicks"] = int(float(metrics["clicks"]))
     if metrics.get("ctr") is not None:
-        performance["ctr"] = float(metrics["ctr"])
+        performance["ctr"] = round(float(metrics["ctr"]) * 100, 2)  # canonical unit: percent (Meta reports percent natively; Google reports a ratio)
     if metrics.get("conversions") is not None:
         performance["conversions"] = int(float(metrics["conversions"]))
     if metrics.get("costMicros") is not None:

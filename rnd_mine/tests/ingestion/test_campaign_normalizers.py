@@ -30,7 +30,8 @@ def test_meta_normalize_campaign_from_fixture():
     assert isinstance(campaign, Campaign)
     assert campaign.campaign_info["objective"] == raw["objective"]
     assert isinstance(campaign.performance["conversions"], int)
-    assert campaign.performance["conversions"] > 0
+    assert campaign.performance["conversions"] == 968
+    assert campaign.performance["ctr"] == 5.4
     assert campaign.creative_summary["primaryHook"]
     assert campaign.platforms["meta"] is True
     assert campaign.creative_summary["cta"] == "Shop Now"
@@ -73,6 +74,7 @@ def test_google_normalize_campaign_from_fixture():
     assert campaign.platforms["googleAds"] is True
     assert campaign.campaign_info["objective"] == "Performance Max"
     assert campaign.performance["spend"] == 438912.5
+    assert campaign.performance["ctr"] == 5.2
     assert campaign.creative_summary["primaryHook"] == raw["headlines"][0]
     assert campaign.products == ["product_003"]
     assert campaign.source == "google"

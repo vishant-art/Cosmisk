@@ -102,7 +102,7 @@ def _normalize_performance(row: dict) -> dict[str, Any]:
     if row.get("clicks") is not None:
         performance["clicks"] = int(float(row["clicks"]))
     if row.get("ctr") is not None:
-        performance["ctr"] = float(row["ctr"])
+        performance["ctr"] = float(row["ctr"])  # canonical unit: percent (Graph API ctr is already percentage-scaled)
     if row.get("spend") is not None:
         performance["spend"] = float(row["spend"])
 
