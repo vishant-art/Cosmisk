@@ -39,7 +39,13 @@ const MILESTONES: { label: string; match: RegExp }[] = [
         <!-- Header -->
         <div class="flex items-center justify-between">
           <div>
-            <h1 class="text-page-title font-display text-navy m-0">{{ generation()!.brief.brand_name }} — {{ generation()!.brief.product_name }}</h1>
+            <h1 class="text-page-title font-display text-navy m-0">
+              @if (generation()!.brief) {
+                {{ generation()!.brief!.brand_name }}@if (generation()!.brief!.product_name) { — {{ generation()!.brief!.product_name }} }
+              } @else {
+                Generated from winning ads
+              }
+            </h1>
             <p class="text-sm text-gray-500 font-body mt-1 mb-0">
               Generated {{ generation()!.created_at | date:'medium' }}
             </p>
@@ -111,43 +117,51 @@ const MILESTONES: { label: string; match: RegExp }[] = [
           </div>
         }
 
-        <!-- Brief summary -->
-        <div class="card !p-5">
-          <h3 class="text-sm font-display text-navy m-0 mb-3">Brief</h3>
-          <div class="grid md:grid-cols-2 gap-3 text-sm font-body">
-            <div>
-              <span class="text-gray-400 text-xs">Product</span>
-              <p class="text-navy m-0">{{ generation()!.brief.product_description }}</p>
-            </div>
-            <div>
-              <span class="text-gray-400 text-xs">Target Audience</span>
-              <p class="text-navy m-0">{{ generation()!.brief.target_audience }}</p>
-            </div>
-            @if (generation()!.brief.price) {
+        <!-- Brief summary (manual brief) — or the campaign-mode note (generate from winners) -->
+        @if (generation()!.brief) {
+          <div class="card !p-5">
+            <h3 class="text-sm font-display text-navy m-0 mb-3">Brief</h3>
+            <div class="grid md:grid-cols-2 gap-3 text-sm font-body">
               <div>
-                <span class="text-gray-400 text-xs">Price</span>
-                <p class="text-navy m-0">{{ generation()!.brief.price }}</p>
+                <span class="text-gray-400 text-xs">Product</span>
+                <p class="text-navy m-0">{{ generation()!.brief!.product_description }}</p>
               </div>
-            }
-            <div>
-              <span class="text-gray-400 text-xs">Formats</span>
-              <div class="flex gap-1.5 mt-0.5">
-                @for (f of generation()!.formats; track f) {
-                  <span class="px-2 py-0.5 bg-accent/10 text-accent text-[10px] font-semibold rounded capitalize">{{ f }}</span>
-                }
+              <div>
+                <span class="text-gray-400 text-xs">Target Audience</span>
+                <p class="text-navy m-0">{{ generation()!.brief!.target_audience }}</p>
               </div>
+              @if (generation()!.brief!.price) {
+                <div>
+                  <span class="text-gray-400 text-xs">Price</span>
+                  <p class="text-navy m-0">{{ generation()!.brief!.price }}</p>
+                </div>
+              }
             </div>
           </div>
-        </div>
+        } @else {
+          <div class="card !p-5 flex items-center gap-2.5">
+            <lucide-icon name="sparkles" [size]="16" class="text-accent"></lucide-icon>
+            <p class="text-sm text-gray-600 font-body m-0">Grounded on your winning ads — brand, product and structure were learned from your top performers.</p>
+          </div>
+        }
 
         <!-- Gallery -->
         @if (generation()!.outputs && generation()!.outputs!.length > 0) {
           <app-output-gallery [outputs]="generation()!.outputs!" [rejected]="aiJob()?.rejected || []" [costUsd]="costUsd()" />
         }
 
-        <!-- Video: storyboard planner, quote before render -->
+        <!-- Video: storyboard planner, quote before render. Shown immediately when the run's
+             Output choice was Video/Both; otherwise offered behind a $0 reveal. Never auto-renders. -->
         @if (generation()!.status === 'completed') {
-          <app-video-planner [generationId]="generation()!.id" [aiJobId]="generation()!.ai_job_id || ''" />
+          @if (showPlanner()) {
+            <app-video-planner [generationId]="generation()!.id" [aiJobId]="generation()!.ai_job_id || ''" />
+          } @else {
+            <button type="button" (click)="showPlanner.set(true)"
+              class="card !p-4 w-full flex items-center justify-center gap-2 text-sm font-body font-semibold text-accent hover:bg-accent/5 transition-colors">
+              <lucide-icon name="video" [size]="16"></lucide-icon>
+              Plan a UGC video from these concepts &middot; $0 to quote
+            </button>
+          }
         }
       }
 
@@ -169,6 +183,8 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
 
   generation = signal<StudioGeneration | null>(null);
   loading = signal(true);
+  /** Video planner visibility — driven by the entry's Output choice (?plan=video|both). */
+  showPlanner = signal(false);
   /** Full ai-layer job — carries rejected[]/cost_usd/qa_passed, none of which live on the generation row. */
   aiJob = signal<any | null>(null);
 
@@ -199,6 +215,8 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
       this.router.navigate(['/app/ugc-studio']);
       return;
     }
+    const plan = this.route.snapshot.queryParamMap.get('plan');
+    this.showPlanner.set(plan === 'video' || plan === 'both');
     this.fetchGeneration(id);
   }
 
