@@ -1,0 +1,42 @@
+[
+  {
+    "campaign": {
+      "id": "18443221987",
+      "name": "Pratap Sons: Wedding Sherwani PMax",
+      "status": "ENABLED",
+      "advertisingChannelType": "PERFORMANCE_MAX"
+    },
+    "metrics": {
+      "impressions": "498120",
+      "clicks": "25896",
+      "ctr": 0.052,
+      "conversions": 611.62,
+      "costMicros": "438912500000"
+    },
+    "headlines": [
+      "Perfect Wedding Sherwanis",
+      "Handcrafted Jodhpuri Suits",
+      "Book Your Fitting Today"
+    ]
+  },
+  {
+    "campaign": {
+      "id": "18443222091",
+      "name": "Pratap Sons: Festive Kurta Search",
+      "status": "PAUSED",
+      "advertisingChannelType": "SEARCH"
+    },
+    "metrics": {
+      "impressions": "184230",
+      "clicks": "9850",
+      "ctr": 0.0535,
+      "conversions": 245.3,
+      "costMicros": "128470000000"
+    },
+    "headlines": [
+      "Festive Kurtas, Diwali Ready",
+      "Chikankari and Banarasi Sets",
+      "New Festive Collection"
+    ]
+  }
+]

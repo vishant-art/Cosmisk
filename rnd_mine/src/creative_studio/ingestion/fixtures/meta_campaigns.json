@@ -1,0 +1,93 @@
+[
+  {
+    "id": "120211987654321011",
+    "name": "Pratap Sons: Wedding Sherwani Season",
+    "objective": "OUTCOME_SALES",
+    "status": "ACTIVE",
+    "start_time": "2026-05-01T00:00:00+0530",
+    "stop_time": "2026-08-15T23:59:59+0530",
+    "insights": {
+      "data": [
+        {
+          "impressions": "812340",
+          "clicks": "43854",
+          "ctr": "5.40",
+          "spend": "612480.75",
+          "purchase_roas": [
+            {"action_type": "omni_purchase", "value": "6.85"}
+          ],
+          "actions": [
+            {"action_type": "landing_page_view", "value": "52210"},
+            {"action_type": "purchase", "value": "968"}
+          ]
+        }
+      ]
+    },
+    "adcreatives": {
+      "data": [
+        {
+          "title": "POV: You finally found the perfect sherwani",
+          "body": "Handwoven Jodhpuri sherwanis crafted for your wedding day. Book a private fitting in Mumbai, Delhi and Bengaluru.",
+          "call_to_action_type": "SHOP_NOW"
+        },
+        {
+          "title": "The groom's sherwani, done right",
+          "body": "Zari embroidery, tailored fit, delivered in 10 days. Pratap Sons wedding collection.",
+          "call_to_action_type": "LEARN_MORE"
+        }
+      ]
+    },
+    "targeting_summary": {
+      "age_min": 24,
+      "age_max": 40,
+      "genders": ["male"],
+      "locations": ["India", "USA"],
+      "interests": ["Wedding Fashion", "Sherwani", "Groom Fashion", "Ethnic Menswear"]
+    }
+  },
+  {
+    "id": "120211987654322022",
+    "name": "Pratap Sons: Festive Kurta Drop",
+    "objective": "OUTCOME_SALES",
+    "status": "PAUSED",
+    "start_time": "2026-09-01T00:00:00+0530",
+    "stop_time": "2026-10-20T23:59:59+0530",
+    "insights": {
+      "data": [
+        {
+          "impressions": "634812",
+          "clicks": "34908",
+          "ctr": "5.50",
+          "spend": "418960.30",
+          "purchase_roas": [
+            {"action_type": "omni_purchase", "value": "5.92"}
+          ],
+          "actions": [
+            {"action_type": "purchase", "value": "1140"}
+          ]
+        }
+      ]
+    },
+    "adcreatives": {
+      "data": [
+        {
+          "title": "Festive kurtas your father-in-law will compliment",
+          "body": "Chikankari and Banarasi kurta sets for Diwali gifting and family functions.",
+          "call_to_action_type": "SHOP_NOW"
+        },
+        {
+          "title": "Diwali just got sharper",
+          "body": "New Jodhpuri bandhgalas and kurta-pajama sets, festive delivery guaranteed before Diwali.",
+          "call_to_action_type": "SHOP_NOW"
+        }
+      ]
+    },
+    "targeting_summary": {
+      "age_min": 22,
+      "age_max": 45,
+      "genders": ["male", "female"],
+      "locations": ["India"],
+      "interests": ["Festive Fashion", "Kurta", "Diwali Shopping", "Ethnic Wear"]
+    }
+  }
+]
