@@ -1,0 +1,260 @@
+[
+  {
+    "id": "gid://shopify/Product/8593172824351",
+    "title": "Mustard Yellow Chanderi Silk Kurta Pant Set With Embroidery",
+    "handle": "mustard-yellow-chanderi-silk-kurta-pant-set-with-embroidery",
+    "descriptionHtml": "<ul>\n<li>Chanderi silk kurta pant set ad net dupatta with thread gota and tube work.</li>\n<li>Apt for semi Formal Wear.</li>\n</ul>",
+    "vendor": "Pratapsons usa",
+    "productType": "",
+    "tags": [
+      "Best Seller",
+      "flat_30",
+      "made_to_order",
+      "MTO022",
+      "Yellow"
+    ],
+    "status": "ACTIVE",
+    "featuredMedia": {
+      "id": "gid://shopify/MediaImage/35228746973471",
+      "image": {
+        "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486",
+        "width": 900,
+        "height": 1350
+      }
+    },
+    "media": {
+      "nodes": [
+        {
+          "id": "gid://shopify/MediaImage/35228746973471",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486",
+            "width": 900,
+            "height": 1350
+          }
+        },
+        {
+          "id": "gid://shopify/MediaImage/35228747039007",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8609.jpg?v=1754912486",
+            "width": 900,
+            "height": 1350
+          }
+        },
+        {
+          "id": "gid://shopify/MediaImage/35228747071775",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8610.jpg?v=1754912487",
+            "width": 900,
+            "height": 1350
+          }
+        },
+        {
+          "id": "gid://shopify/MediaImage/35228747104543",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8611.jpg?v=1754912487",
+            "width": 900,
+            "height": 1350
+          }
+        },
+        {
+          "id": "gid://shopify/MediaImage/35228747006239",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8606.jpg?v=1754912487",
+            "width": 900,
+            "height": 1350
+          }
+        },
+        {
+          "id": "gid://shopify/MediaImage/35228747170079",
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8613.jpg?v=1754912487",
+            "width": 900,
+            "height": 1350
+          }
+        }
+      ]
+    },
+    "variants": {
+      "nodes": [
+        {
+          "id": "gid://shopify/ProductVariant/46666077143327",
+          "sku": "KTEB-MY-S-G597-MTO3A-CSI-M-CZ91",
+          "title": "S / Silk Chanderi / Made To Order 30 - 45 Days",
+          "price": "10358.00",
+          "selectedOptions": [
+            {
+              "name": "Size",
+              "value": "S"
+            },
+            {
+              "name": "Fabric",
+              "value": "Silk Chanderi"
+            },
+            {
+              "name": "Availability",
+              "value": "Made To Order 30 - 45 Days"
+            }
+          ],
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486"
+          }
+        },
+        {
+          "id": "gid://shopify/ProductVariant/46666077176095",
+          "sku": "KTEB-MY-M-G597-MTO3A-CSI-M-CZ91",
+          "title": "M / Silk Chanderi / Made To Order 30 - 45 Days",
+          "price": "10358.00",
+          "selectedOptions": [
+            {
+              "name": "Size",
+              "value": "M"
+            },
+            {
+              "name": "Fabric",
+              "value": "Silk Chanderi"
+            },
+            {
+              "name": "Availability",
+              "value": "Made To Order 30 - 45 Days"
+            }
+          ],
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486"
+          }
+        },
+        {
+          "id": "gid://shopify/ProductVariant/46666077208863",
+          "sku": "KTEB-MY-L-G597-MTO3A-CSI-M-CZ91",
+          "title": "L / Silk Chanderi / Made To Order 30 - 45 Days",
+          "price": "10358.00",
+          "selectedOptions": [
+            {
+              "name": "Size",
+              "value": "L"
+            },
+            {
+              "name": "Fabric",
+              "value": "Silk Chanderi"
+            },
+            {
+              "name": "Availability",
+              "value": "Made To Order 30 - 45 Days"
+            }
+          ],
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486"
+          }
+        },
+        {
+          "id": "gid://shopify/ProductVariant/46666077241631",
+          "sku": "KTEB-MY-XL-G597-MTO3A-CSI-M-CZ91",
+          "title": "XL / Silk Chanderi / Made To Order 30 - 45 Days",
+          "price": "10358.00",
+          "selectedOptions": [
+            {
+              "name": "Size",
+              "value": "XL"
+            },
+            {
+              "name": "Fabric",
+              "value": "Silk Chanderi"
+            },
+            {
+              "name": "Availability",
+              "value": "Made To Order 30 - 45 Days"
+            }
+          ],
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486"
+          }
+        },
+        {
+          "id": "gid://shopify/ProductVariant/46666077274399",
+          "sku": "KTEB-MY-XXL-G597-MTO3A-CSI-M-CZ91",
+          "title": "XXL / Silk Chanderi / Made To Order 30 - 45 Days",
+          "price": "10358.00",
+          "selectedOptions": [
+            {
+              "name": "Size",
+              "value": "XXL"
+            },
+            {
+              "name": "Fabric",
+              "value": "Silk Chanderi"
+            },
+            {
+              "name": "Availability",
+              "value": "Made To Order 30 - 45 Days"
+            }
+          ],
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486"
+          }
+        },
+        {
+          "id": "gid://shopify/ProductVariant/46666077307167",
+          "sku": "KTEB-MY-3XL-G597-MTO3A-CSI-M-CZ91",
+          "title": "XXXL / Silk Chanderi / Made To Order 30 - 45 Days",
+          "price": "11910.00",
+          "selectedOptions": [
+            {
+              "name": "Size",
+              "value": "XXXL"
+            },
+            {
+              "name": "Fabric",
+              "value": "Silk Chanderi"
+            },
+            {
+              "name": "Availability",
+              "value": "Made To Order 30 - 45 Days"
+            }
+          ],
+          "image": {
+            "url": "https://cdn.shopify.com/s/files/1/0821/3381/1487/files/089A8607.jpg?v=1754912486"
+          }
+        }
+      ]
+    },
+    "collections": {
+      "nodes": [
+        {
+          "title": "Kurtis And Kurta Sets"
+        },
+        {
+          "title": "All Products"
+        },
+        {
+          "title": "Made To Order"
+        },
+        {
+          "title": "new site"
+        },
+        {
+          "title": "Anarkali"
+        },
+        {
+          "title": "new-done-products"
+        },
+        {
+          "title": "All Products"
+        },
+        {
+          "title": "Wedding Guest Edit"
+        },
+        {
+          "title": "Yellow"
+        },
+        {
+          "title": "Festive Bazaar"
+        }
+      ]
+    },
+    "priceRangeV2": {
+      "minVariantPrice": {
+        "amount": "10358.0",
+        "currencyCode": "INR"
+      }
+    }
+  }
+]
