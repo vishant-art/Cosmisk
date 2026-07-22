@@ -72,11 +72,16 @@ async def test_generate_image_sends_exact_arguments_and_stores_result(fake_r2):
     assert adapter.calls == [(
         MODEL_IDS["image"],
         {
-            "prompt": "A woman in a blazer\n\nMust NOT appear in the image: watermark, text, logo.",
+            "prompt": "A woman in a blazer",
             "image_size": {"width": 1080, "height": 1920},
             "output_format": "png",
         },
     )]
+    # Regression: forbidden tokens must NOT be named in the prompt sent to FLUX
+    # (naming them can prime the draw; FLUX ignores negative phrasing anyway).
+    sent_prompt = adapter.calls[0][1]["prompt"]
+    assert "watermark" not in sent_prompt
+    assert "logo" not in sent_prompt
     assert adapter.download_urls == ["https://fal.media/files/x/img.png"]
     assert uri == "r2://test-bucket/creative-studio/runs/g1/keyframes/shot1/raw.png"
     assert meta == {"modelId": MODEL_IDS["image"], "seed": 42}

@@ -28,14 +28,6 @@ from creative_studio.storage.r2 import R2Store
 _CONTENT_TYPE_DEFAULT = "image/png"
 
 
-def _suppress(prompt: str, negative: str) -> str:
-    """Fold the negative-prompt guidance into the prompt tail as a hard
-    suppression instruction -- flux-2-flex has no negative_prompt parameter
-    (see module docstring). Verbatim wording from the working
-    `image_providers.py::_suppress`."""
-    return prompt if not negative else f"{prompt}\n\nMust NOT appear in the image: {negative}."
-
-
 async def generate_image(adapter: FalAdapter, r2: R2Store, prompt: ImagePrompt, key: str) -> tuple[str, dict]:
     """Generate one image from `prompt` and store it in R2 at `key`.
 
@@ -43,8 +35,12 @@ async def generate_image(adapter: FalAdapter, r2: R2Store, prompt: ImagePrompt, 
     fal's result includes a `seed`, that too.
     """
     model_id = MODEL_IDS["image"]
+    # FLUX ignores negative-prompt phrasing and naming forbidden tokens can prime
+    # the draw, so the negative list is deliberately NOT folded into the prompt.
+    # The negative_prompt field flows through the signature for future use if the
+    # model or a wrapper gains a real negative-channel, but is not sent to FLUX.
     arguments: dict = {
-        "prompt": _suppress(prompt.prompt, prompt.negative_prompt),
+        "prompt": prompt.prompt,
         "image_size": {"width": prompt.width, "height": prompt.height},
         "output_format": "png",
     }
