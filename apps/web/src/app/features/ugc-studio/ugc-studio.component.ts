@@ -110,7 +110,12 @@ type OutputType = 'static' | 'video' | 'both';
               <lucide-icon name="sparkles" [size]="28" class="text-accent/60"></lucide-icon>
             </div>
             <h3 class="text-card-title font-display text-navy mb-1">No runs yet</h3>
-            <p class="text-sm text-gray-500 font-body m-0">Generate from your winning ads to see runs here</p>
+            <p class="text-sm text-gray-500 font-body m-0 mb-3">Generate from your winning ads to see runs here</p>
+            <button type="button" (click)="viewPreview()"
+              class="text-xs font-body font-semibold text-accent hover:underline inline-flex items-center gap-1">
+              <lucide-icon name="eye" [size]="13"></lucide-icon>
+              Preview the results & video screens (sample) →
+            </button>
           </div>
         }
 
@@ -308,5 +313,10 @@ export default class UgcStudioComponent implements OnInit {
 
   viewGeneration(id: string) {
     this.router.navigate(['/app/ugc-studio/gen', id]);
+  }
+
+  /** Local visual-preview: sample run/results/planner screens (no backend). Marked "sample" in the UI. */
+  viewPreview() {
+    this.router.navigate(['/app/ugc-studio/gen/preview'], { queryParams: { plan: 'both' } });
   }
 }
