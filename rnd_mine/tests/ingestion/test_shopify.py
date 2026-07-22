@@ -113,3 +113,107 @@ async def test_fetch_shop_live():
     shop = await client.fetch_shop()
 
     assert shop["name"]
+
+
+# ---------------------------------------------------------------------------
+# Mirror asset tests: no network, no real R2.
+# ---------------------------------------------------------------------------
+
+async def test_mirror_partial_failure_keeps_pending(monkeypatch):
+    """Test that mirror_product_assets preserves pending URIs for failed images."""
+    import httpx
+    from creative_studio.ingestion.shopify import mirror_product_assets, _fetch_bytes
+
+    # Build a Product with 3 images
+    raw = {
+        "id": "gid://shopify/Product/test123",
+        "title": "Test Product",
+        "handle": "test-product",
+        "status": "ACTIVE",
+        "featuredMedia": {
+            "id": "gid://shopify/MediaImage/1",
+            "image": {"url": "https://cdn.example/img0.png", "width": 800, "height": 800},
+        },
+        "media": {
+            "nodes": [
+                {
+                    "id": "gid://shopify/MediaImage/1",
+                    "image": {"url": "https://cdn.example/img0.png", "width": 800, "height": 800},
+                },
+                {
+                    "id": "gid://shopify/MediaImage/2",
+                    "image": {"url": "https://cdn.example/img1.png", "width": 800, "height": 800},
+                },
+                {
+                    "id": "gid://shopify/MediaImage/3",
+                    "image": {"url": "https://cdn.example/img2.png", "width": 800, "height": 800},
+                },
+            ]
+        },
+        "priceRangeV2": {
+            "minVariantPrice": {"amount": "19.99", "currencyCode": "USD"}
+        }
+    }
+
+    product = normalize_product(raw)
+    original_images = product.original_assets["images"]
+    assert len(original_images) == 3
+
+    # Mock _fetch_bytes: img0 succeeds, img1 fails, img2 succeeds
+    call_count = [0]
+
+    async def mock_fetch_bytes(client, url):
+        idx = call_count[0]
+        call_count[0] += 1
+
+        if idx == 0:
+            return b"ok0", "image/png"
+        elif idx == 1:
+            raise httpx.HTTPError("download boom")
+        else:  # idx == 2
+            return b"ok2", "image/png"
+
+    monkeypatch.setattr("creative_studio.ingestion.shopify._fetch_bytes", mock_fetch_bytes)
+
+    # Mock R2: img0 succeeds, img2 fails
+    class FakeR2:
+        def __init__(self):
+            self.upload_count = 0
+
+        def put_bytes(self, key, data, content_type):
+            count = self.upload_count
+            self.upload_count += 1
+
+            if count == 0:
+                return f"r2://bucket/{key}"
+            else:  # count == 1 (img2)
+                raise RuntimeError("upload failed")
+
+    fake_r2 = FakeR2()
+
+    # Call mirror_product_assets
+    result = await mirror_product_assets(product, fake_r2, "brand123")
+
+    # Assert: function returns a Product (no raise)
+    assert isinstance(result, Product)
+
+    result_images = result.original_assets["images"]
+    assert len(result_images) == 3
+
+    # img0: download succeeded, upload succeeded -> r2Uri changed
+    assert result_images[0]["r2Uri"].startswith("r2://")
+    assert not result_images[0]["r2Uri"].startswith("pending:")
+
+    # img1: download failed -> r2Uri still pending
+    assert result_images[1]["r2Uri"].startswith("pending:")
+
+    # img2: download succeeded, upload failed -> r2Uri still pending
+    assert result_images[2]["r2Uri"].startswith("pending:")
+
+    # Featured flag unchanged
+    assert result_images[0]["featured"] is True
+    assert result_images[1]["featured"] is False
+    assert result_images[2]["featured"] is False
+
+    # Original product unmutated
+    assert product.original_assets["images"] == original_images

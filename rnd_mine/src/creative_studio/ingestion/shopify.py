@@ -301,6 +301,17 @@ def _guess_extension(url: str, content_type: str | None) -> str:
     return ".jpg"
 
 
+async def _fetch_bytes(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
+    """Download image bytes and content-type from URL.
+
+    Raises httpx.HTTPError on network failure.
+    """
+    response = await client.get(url)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "image/jpeg")
+    return response.content, content_type
+
+
 async def mirror_product_assets(product: Product, r2: R2Store, brand_id: str) -> Product:
     """Download every `pending:` original image and re-upload it to R2.
 
@@ -320,8 +331,7 @@ async def mirror_product_assets(product: Product, r2: R2Store, brand_id: str) ->
 
             source_url = uri[len("pending:"):]
             try:
-                response = await client.get(source_url)
-                response.raise_for_status()
+                data, content_type = await _fetch_bytes(client, source_url)
             except httpx.HTTPError as exc:
                 logger.warning(
                     "mirror_product_assets: failed to download image %d for product %s: %s",
@@ -330,10 +340,17 @@ async def mirror_product_assets(product: Product, r2: R2Store, brand_id: str) ->
                 new_images.append(image)
                 continue
 
-            content_type = response.headers.get("content-type", "image/jpeg")
             ext = _guess_extension(source_url, content_type)
-            key = key_for("product_original", brand_id=brand_id, product_id=product.id, filename=f"img{i}{ext}")
-            r2_uri = r2.put_bytes(key, response.content, content_type)
+            try:
+                key = key_for("product_original", brand_id=brand_id, product_id=product.id, filename=f"img{i}{ext}")
+                r2_uri = r2.put_bytes(key, data, content_type)
+            except Exception as exc:
+                logger.warning(
+                    "mirror_product_assets: failed to upload image %d for product %s (url: %s): %s",
+                    i, product.id, source_url, exc,
+                )
+                new_images.append(image)
+                continue
 
             updated_image = dict(image)
             updated_image["r2Uri"] = r2_uri
