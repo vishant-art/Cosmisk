@@ -5,6 +5,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { errorInterceptor } from './core/interceptors/error.interceptor';
+import { creativeStudioMockInterceptor } from './core/mock/creative-studio-mock.interceptor';
 import {
   LucideAngularModule,
   // Navigation & Layout
@@ -35,7 +36,8 @@ export const appConfig: ApplicationConfig = {
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideRouter(routes, withViewTransitions()),
     provideHttpClient(
-      withInterceptors([authInterceptor, errorInterceptor])
+      // creativeStudioMockInterceptor is inert unless localStorage.cosmisk_mock==='1' (local preview only)
+      withInterceptors([creativeStudioMockInterceptor, authInterceptor, errorInterceptor])
     ),
     importProvidersFrom(
       LucideAngularModule.pick({
