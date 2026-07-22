@@ -19,14 +19,16 @@ def _resolve_migration_dsn() -> str:
 async def repo_pool():
     dsn = asyncpg_dsn(_resolve_migration_dsn())
     schema = f"creative_studio_test_{secrets.token_hex(4)}"
-    await _run_migrations_async(dsn, schema)
-    pool = await db.create_pool(dsn)
+    pool = None
     try:
+        await _run_migrations_async(dsn, schema)
+        pool = await db.create_pool(dsn)
         yield pool, schema
     finally:
-        await pool.close()
+        if pool is not None:
+            await pool.close()
         conn = await db.connect(dsn)
         try:
-            await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         finally:
             await conn.close()
