@@ -192,8 +192,8 @@ export class TopbarComponent implements OnInit, OnDestroy {
 
   private routeTitles: Record<string, { title: string; breadcrumb?: string }> = {
     '/app/dashboard': { title: 'Dashboard' },
-    '/app/creative-cockpit': { title: 'Creative Cockpit', breadcrumb: 'Command' },
-    '/app/director-lab': { title: 'Director Lab', breadcrumb: 'Command' },
+    '/app/creative-cockpit': { title: 'Creative Cockpit (inactive)', breadcrumb: 'Command' },
+    '/app/director-lab': { title: 'Director Lab (inactive)', breadcrumb: 'Command' },
     '/app/ugc-studio': { title: 'Creative Studio', breadcrumb: 'Command' },
     '/app/brain': { title: 'Brain', breadcrumb: 'Intelligence' },
     '/app/analytics': { title: 'Analytics', breadcrumb: 'Intelligence' },
@@ -207,7 +207,7 @@ export class TopbarComponent implements OnInit, OnDestroy {
     '/app/attribution': { title: 'Attribution', breadcrumb: 'Optimize' },
     '/app/audit': { title: 'Account Audit', breadcrumb: 'Optimize' },
     '/app/automations': { title: 'Automations', breadcrumb: 'Optimize' },
-    '/app/creative-engine': { title: 'Creative Engine', breadcrumb: 'Command' },
+    '/app/creative-engine': { title: 'Creative Engine (inactive)', breadcrumb: 'Command' },
     '/app/autopilot': { title: 'Autopilot', breadcrumb: 'Intelligence' },
     '/app/competitor-spy': { title: 'Competitor Spy', breadcrumb: 'Intelligence' },
     '/app/content-bank': { title: 'Content Bank', breadcrumb: 'Create' },

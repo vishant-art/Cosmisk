@@ -43,9 +43,9 @@ import { environment } from '../../../environments/environment';
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
           <a routerLink="/app/creative-engine"
-            class="px-6 py-3 bg-white text-[#312e81] rounded-xl text-sm font-body font-bold hover:bg-indigo-50 transition-all no-underline flex items-center gap-2 shadow-lg">
+            class="px-6 py-3 bg-white text-[#312e81] rounded-xl text-sm font-body font-bold hover:bg-indigo-50 transition-all no-underline flex items-center gap-2 shadow-lg opacity-60">
             <lucide-icon name="rocket" [size]="18"></lucide-icon>
-            Creative Engine
+            Creative Engine (inactive)
           </a>
           <a routerLink="/app/ugc-studio"
             class="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-body font-semibold hover:bg-white/20 transition-all no-underline flex items-center gap-2 backdrop-blur-sm">
@@ -672,7 +672,7 @@ export default class DashboardComponent implements OnInit {
   }, { allowSignalWrites: true });
 
   quickActions = [
-    { icon: 'rocket', title: 'Creative Engine', description: 'Batch generate 100+ creatives', route: '/app/creative-engine', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
+    { icon: 'rocket', title: 'Creative Engine (inactive)', description: 'Batch generate 100+ creatives', route: '/app/creative-engine', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
     { icon: 'video', title: 'UGC Scripts', description: 'AI-powered ad scripts', route: '/app/ugc-studio', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
     { icon: 'image', title: 'Static Ads', description: 'Graphics & carousels', route: '/app/graphic-studio', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
     { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-chat', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
