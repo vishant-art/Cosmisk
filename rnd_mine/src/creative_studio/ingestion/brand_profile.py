@@ -1,5 +1,6 @@
 # src/creative_studio/ingestion/brand_profile.py
 from pathlib import Path
+import copy
 import yaml
 from creative_studio.contracts import BrandContext, new_id
 
@@ -21,6 +22,9 @@ def load_brand_profile(path: Path | None = None) -> dict:
 
     with open(path, "r") as f:
         profile = yaml.safe_load(f)
+
+    if not isinstance(profile, dict):
+        raise ValueError(f"brand profile at {path} must be a YAML mapping, got {type(profile).__name__}")
 
     required_keys = {"branding", "audience", "creativeGuidelines", "userPreferences"}
     missing_keys = required_keys - set(profile.keys())
@@ -58,11 +62,11 @@ def build_brand_context(shop_meta: dict, profile: dict, connections: dict) -> Br
     brand_ctx = BrandContext(
         id=new_id("brand"),
         business=business,
-        branding=profile["branding"],
-        audience=profile["audience"],
-        creative_guidelines=profile["creativeGuidelines"],
-        user_preferences=profile["userPreferences"],
-        platform_connections=connections,
+        branding=copy.deepcopy(profile["branding"]),
+        audience=copy.deepcopy(profile["audience"]),
+        creative_guidelines=copy.deepcopy(profile["creativeGuidelines"]),
+        user_preferences=copy.deepcopy(profile["userPreferences"]),
+        platform_connections=copy.deepcopy(connections),
         source="ingestion",
     )
 

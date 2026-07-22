@@ -2,7 +2,8 @@
 from pathlib import Path
 import pytest
 import yaml
-from creative_studio.contracts import BrandContext, new_id
+from pydantic import ValidationError
+from creative_studio.contracts import BrandContext
 from creative_studio.ingestion.brand_profile import load_brand_profile, build_brand_context
 
 
@@ -29,6 +30,16 @@ def test_profile_missing_section_raises(tmp_path):
     yaml_file = tmp_path / "incomplete.yaml"
     with open(yaml_file, "w") as f:
         yaml.dump(incomplete_yaml, f)
+
+    with pytest.raises(ValueError):
+        load_brand_profile(yaml_file)
+
+
+def test_profile_non_mapping_yaml_raises(tmp_path):
+    """Non-mapping YAML (list) raises ValueError."""
+    yaml_file = tmp_path / "list.yaml"
+    with open(yaml_file, "w") as f:
+        f.write("- a\n- b\n")
 
     with pytest.raises(ValueError):
         load_brand_profile(yaml_file)
@@ -69,5 +80,5 @@ def test_build_brand_context_requires_connection():
     profile = load_brand_profile()
     connections = {}  # No connections
 
-    with pytest.raises(Exception):  # pydantic ValidationError
+    with pytest.raises(ValidationError):
         build_brand_context(shop_meta, profile, connections)
