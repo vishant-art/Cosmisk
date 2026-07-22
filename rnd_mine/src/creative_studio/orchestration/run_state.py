@@ -105,6 +105,7 @@ class RunStateStore:
     async def mark(self, state: RunState, step: str, **updates) -> RunState:
         if step not in state.steps:
             raise ValueError(f"unknown step: {step!r}")
-        state.steps[step] = state.steps[step].model_copy(update=updates)
+        updated_step = state.steps[step].model_copy(update=updates)
+        state.steps[step] = StepState.model_validate(updated_step.model_dump(mode="json", by_alias=True))
         await self.save(state)
         return state

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import pytest
+from pydantic import ValidationError
 from creative_studio.config import get_settings
 from creative_studio.contracts.base import new_id
 from creative_studio.orchestration.run_state import (
@@ -117,6 +118,18 @@ async def test_mark_unknown_step_raises(store):
     state = make_state()
     with pytest.raises(ValueError):
         await store.mark(state, "not_a_real_step", status="done")
+
+@asyncio_session
+async def test_mark_invalid_status_rejected_before_persist(store):
+    state = make_state()
+    await store.save(state)
+
+    with pytest.raises(ValidationError):
+        await store.mark(state, "shot2_video", status="not-a-real-status")
+
+    # Verify nothing was persisted
+    reloaded = await store.load(state.id)
+    assert reloaded.steps["shot2_video"].status == "pending"
 
 @pytest.mark.parametrize("bad_shot", [0, 4, -1, 99])
 def test_reset_bad_shot_raises(bad_shot):
