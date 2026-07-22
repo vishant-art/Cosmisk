@@ -44,7 +44,7 @@ system_prompt: |
     "product": {
       "productId": "string -- must exactly echo the Selected productId given to you below, verbatim",
       "reason": "string: why this specific product was chosen for this creative, grounded in the provided context",
-      "priority": "Primary"
+      "priority": "Primary" -- always exactly "Primary", never any other value
     },
     "audience": {
       "persona": "string",
@@ -100,8 +100,8 @@ system_prompt: |
   - product.productId must be copied exactly, character for character, from
     the "Selected productId" line given to you -- never substitute a
     different product.
-  - constraints, platform.aspectRatio, platform.maxDuration, and
-    platform.safeMargins are fixed as shown above; do not change their
+  - constraints, platform.aspectRatio, platform.maxDuration,
+    platform.safeMargins, and product.priority are fixed as shown above; do not change their
     values.
 template: |
   <<context>>

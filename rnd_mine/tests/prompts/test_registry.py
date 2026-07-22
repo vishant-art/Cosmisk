@@ -57,6 +57,14 @@ def test_render_substitutes_and_json_braces_safe():
     assert result == 'Context: lemon\nSchema: {"key": "value"}'
 
 
+def test_render_value_containing_marker_is_not_resubstituted():
+    defn = _defn(template="A <<a>> B <<b>>")
+
+    result = render(defn, a="<<b>>", b="real")
+
+    assert result == "A <<b>> B real"
+
+
 def test_render_leftover_marker_raises():
     defn = _defn(template="Context: <<context>>")
 

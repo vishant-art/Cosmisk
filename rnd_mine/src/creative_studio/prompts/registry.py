@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
-_PLACEHOLDER_RE = re.compile(r"<<(\w+)>>")
+_PLACEHOLDER_RE = re.compile(r"<<([a-zA-Z_][a-zA-Z0-9_]*)>>")
 
 
 class PromptDefinition(BaseModel):
@@ -63,13 +63,23 @@ def render(defn: PromptDefinition, **vars: object) -> str:
     Extra supplied vars that don't appear in the template are ignored.
     Any `<<name>>` marker still present after substitution raises `ValueError`
     naming every leftover marker.
-    """
-    text = defn.template
-    for name, value in vars.items():
-        text = text.replace(f"<<{name}>>", str(value))
 
-    leftover = sorted(set(_PLACEHOLDER_RE.findall(text)))
+    Substitution is single-pass: a value containing a literal `<<...>>` marker
+    is treated as inert text and not re-substituted.
+    """
+    # Find all placeholder names that are not in vars before doing any substitution
+    all_placeholders = _PLACEHOLDER_RE.findall(defn.template)
+    leftover = sorted(set(name for name in all_placeholders if name not in vars))
+
     if leftover:
         raise ValueError(f"Unresolved template placeholder(s): {', '.join(leftover)}")
 
+    # Single-pass substitution: values are treated as inert text
+    def _sub(match: re.Match) -> str:
+        name = match.group(1)
+        if name in vars:
+            return str(vars[name])
+        return match.group(0)
+
+    text = _PLACEHOLDER_RE.sub(_sub, defn.template)
     return text
