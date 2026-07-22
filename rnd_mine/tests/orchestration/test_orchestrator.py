@@ -35,6 +35,7 @@ from creative_studio.orchestration.orchestrator import (
     compile_generation_task,
 )
 from creative_studio.orchestration.run_state import STEP_NAMES, RunStateStore
+from creative_studio.storage.repositories import make_repositories
 
 
 # ---------------------------------------------------------------------------
@@ -62,10 +63,19 @@ def store(repo_pool) -> RunStateStore:
 
 
 @pytest.fixture
-def services(store) -> Services:
-    # Dry-run orchestration only touches `run_store`; adapter/r2/repos/settings
-    # are never reached because the injected workers are fakes.
-    return Services(adapter=None, r2=None, repos=None, run_store=store, settings=None)
+def services(repo_pool, store, fake_r2) -> Services:
+    # FlakyFakeWorkers-driven tests never touch adapter/r2/repos/settings (the
+    # injected workers are fakes). `test_real_workers_dry_e2e` below drives the
+    # REAL `RealWorkers.qa` (Task 23), which persists a QAReport through
+    # `repos.qa_reports` -- so `repos` must be the real, Postgres-backed
+    # repository set sharing the same pool/schema as `run_store` (`r2` stays a
+    # `FakeR2`: a dry run never produces a real r2:// uri, so qa's asset
+    # checks never call it for real either way).
+    pool, schema = repo_pool
+    return Services(
+        adapter=None, r2=fake_r2, repos=make_repositories(pool, schema),
+        run_store=store, settings=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -560,14 +570,18 @@ def _worker_key(step_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# RealWorkers, driven through the orchestrator in DRY mode: no adapter / R2 /
-# money touched, but the real worker bodies run and a full 14-step dry-run
-# e2e must complete (with the correct dry stub uris + Task 22-24 markers).
+# RealWorkers, driven through the orchestrator in DRY mode: no paid adapter
+# call and no real r2:// uri anywhere, but the real worker bodies run --
+# including the real `qa` (Task 23), which persists an actual QAReport
+# through `services.repos.qa_reports`. compose/export remain Task 24 stubs.
 # ---------------------------------------------------------------------------
 
 @skip_no_db
 @asyncio_session
 async def test_real_workers_dry_e2e(services):
+    """A dry run must still complete all 14 steps, but `qa`'s own artifacts
+    are now a real, Postgres-persisted `QAReport` (fetched back below), not
+    the old `"pending": "Task 22-24"` marker."""
     from creative_studio.generation.workers import RealWorkers
 
     spec, sheet, shot_spec, product = make_spec(), make_sheet(), make_shot_spec(), make_product()
@@ -588,6 +602,25 @@ async def test_real_workers_dry_e2e(services):
     assert state.steps["shot2_replace"].artifacts["uri"] == "dry-run:replaced2"
     assert state.steps["shot3_video"].artifacts["uri"] == "dry-run:clip3"
     assert state.steps["voice"].artifacts["uri"] == "dry-run:voice"
-    for name in ("compose", "qa", "export"):
+    for name in ("compose", "export"):
         assert state.steps[name].artifacts["uri"] == f"dry-run:{name}"
         assert state.steps[name].artifacts["pending"] == "Task 22-24"
+
+    # qa: a real QAReport, approved (every artifact is an expected dry-run
+    # stub) and actually persisted through the real repos.qa_reports.
+    qa_artifacts = state.steps["qa"].artifacts
+    assert qa_artifacts["approved"] is True
+    report_id = qa_artifacts["qaReportId"]
+    assert report_id.startswith("qa_")
+
+    persisted = await services.repos.qa_reports.get(report_id)
+    assert persisted is not None
+    assert persisted.creative_spec_id == spec.id
+    assert persisted.overall_result["approvedForExport"] is True
+    assert persisted.compliance == {
+        "threeShots": True,
+        "tenSecondDuration": True,
+        "hookPresent": True,
+        "ctaPresent": True,
+        "productVisibleEveryShot": True,
+    }

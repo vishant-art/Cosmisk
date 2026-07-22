@@ -14,16 +14,22 @@ configuration and `context.generationId`. The portrait step is the one place
 `self.sheet` is replaced at runtime -- with the completed, portrait-bearing
 sheet -- so later live keyframes can reference the character portrait.
 
-compose / qa / export are deliberately still dry stubs in this task; Tasks
-22-24 replace their bodies with the real ffmpeg compositor, VLM QA, and
-export. They carry a `"pending"` marker so a dry end-to-end run still walks
-all 14 steps to completion.
+compose / export are deliberately still dry stubs in this task; a later task
+replaces their bodies with the real ffmpeg compositor and export. `qa` (Task
+23) is now real: deterministic technical/asset checks (`creative_studio.qa`)
+build and persist a `QAReport` through `services.repos.qa_reports`. The VLM
+critic (subjective framing/brand/product-truth judgment) is explicitly out
+of scope for `qa` here -- deferred by design, not a placeholder. compose/
+export still carry a `"pending"` marker so a dry end-to-end run walks all 14
+steps to completion.
 """
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from creative_studio.composition.ffmpeg import srt_for
 from creative_studio.generation.adapters.fal_image import generate_image
 from creative_studio.generation.adapters.fal_tts import synthesize_voice
 from creative_studio.generation.adapters.fal_video import generate_clip
@@ -33,6 +39,8 @@ from creative_studio.generation.builders import (
     build_voice_request,
 )
 from creative_studio.planning.character_generator import finalize_character
+from creative_studio.qa.checks import run_asset_checks, run_technical_checks
+from creative_studio.qa.report import build_qa_report
 from creative_studio.storage.r2 import key_for
 
 if TYPE_CHECKING:  # avoid any import cycle; these are only type hints
@@ -131,13 +139,77 @@ class RealWorkers:
         uri, meta = await synthesize_voice(self.services.adapter, self.services.r2, voice_request, key)
         return {"uri": uri, "meta": meta}
 
-    # compose / qa / export -- dry stubs until Tasks 22-24 fill them in.
+    # compose / export -- dry stubs until a later task fills them in.
 
     async def compose(self, task, artifacts: dict, mode: "RunMode") -> dict:
         return {"uri": "dry-run:compose", "pending": "Task 22-24"}
 
+    @staticmethod
+    def _plan_compliance(shot_spec: "ShotSpec") -> dict:
+        """Structural facts derived from the APPROVED PLAN itself (not the
+        generated artifacts) -- always computable, dry run or live. `three
+        Shots`/`tenSecondDuration`/`hookPresent`/`ctaPresent` are actually
+        guaranteed True for any contract-valid `ShotSpec` (its own validator
+        already enforces exactly 3 shots in Hook/Product/CTA order and a 10s
+        +/- 0.5 total); `productVisibleEveryShot` is the one flag that can
+        genuinely vary, since nothing in the contract requires a truthy
+        `product.visibility` on every shot."""
+        shots = shot_spec.shots
+        purposes = [shot.purpose for shot in shots]
+        total = shot_spec.timing.total_duration
+        return {
+            "threeShots": len(shots) == 3,
+            "tenSecondDuration": 9.5 <= total <= 10.5,
+            "hookPresent": bool(purposes) and purposes[0] == "Hook",
+            "ctaPresent": bool(purposes) and purposes[-1] == "CTA",
+            "productVisibleEveryShot": all(bool(shot.product.get("visibility")) for shot in shots),
+        }
+
     async def qa(self, task, artifacts: dict, mode: "RunMode") -> dict:
-        return {"uri": "dry-run:qa", "pending": "Task 22-24"}
+        """Deterministic QA (Task 23): build and persist a real `QAReport`.
+
+        `artifacts` is the orchestrator's `_done_artifacts` snapshot -- every
+        finished step's own artifact dict, keyed by step name. Asset checks
+        always run against whatever uri each step actually produced. When
+        every uri is still a `"dry-run:*"` stub (the whole run was dry),
+        that's the full picture -- informational issues only. Otherwise
+        (some step went live) ALSO look for a real composed final video at
+        `artifacts["compose"]["localPath"]`; when the orchestrator's compose
+        step is later wired to produce one (plus per-clip local paths), the
+        technical checks below start actually running -- until then this
+        branch is a no-op by construction, since nothing produces those
+        local paths yet.
+        """
+        uris = {
+            name: step_artifacts["uri"]
+            for name, step_artifacts in artifacts.items()
+            if step_artifacts.get("uri")
+        }
+        issues = run_asset_checks(self.services.r2, uris)
+        compliance = self._plan_compliance(self.shot_spec)
+
+        all_dry = all(uri.startswith("dry-run:") for uri in uris.values())
+        if not all_dry:
+            local_path = artifacts.get("compose", {}).get("localPath")
+            if local_path:
+                final_video = Path(local_path)
+                if final_video.exists():
+                    shots = self.shot_spec.shots
+                    shot_durations = list(self.shot_spec.timing.shot_durations)
+                    srt_text = srt_for(shots, shot_durations)
+                    clip_paths = [
+                        Path(artifacts[f"shot{n}_video"]["localPath"])
+                        for n in range(1, len(shots) + 1)
+                        if artifacts.get(f"shot{n}_video", {}).get("localPath")
+                    ]
+                    if len(clip_paths) == len(shots):
+                        issues = issues + run_technical_checks(
+                            final_video, clip_paths, shot_durations, srt_text,
+                        )
+
+        report = build_qa_report(self.spec, issues, compliance=compliance)
+        await self.services.repos.qa_reports.insert(report)
+        return {"qaReportId": report.id, "approved": report.overall_result.get("approvedForExport")}
 
     async def export(self, task, artifacts: dict, mode: "RunMode") -> dict:
         return {"uri": "dry-run:export", "pending": "Task 22-24"}
