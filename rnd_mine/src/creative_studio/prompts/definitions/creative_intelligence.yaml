@@ -44,7 +44,7 @@ system_prompt: |
     "product": {
       "productId": "string -- must exactly echo the Selected productId given to you below, verbatim",
       "reason": "string: why this specific product was chosen for this creative, grounded in the provided context",
-      "priority": "Primary" -- always exactly "Primary", never any other value
+      "priority": "Primary"
     },
     "audience": {
       "persona": "string",
