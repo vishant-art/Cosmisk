@@ -78,7 +78,7 @@ export async function startCreativeGen(
     images: req.images ?? 2,
     with_video: req.withVideo ?? false,
     voiceover: req.voiceover ?? false,
-    ground: req.ground ?? false,
+    ground: req.ground ?? true,   // ai-layer default; grounds on Meta winners, degrades loudly to UNGROUNDED without creds
     no_logo: req.noLogo ?? false,
     direction: req.direction ?? null,
   };
