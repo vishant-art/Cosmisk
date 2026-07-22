@@ -51,8 +51,13 @@ def read_balance(settings) -> float | None:
             logger.warning("fal balance read failed: HTTP %s", response.status_code)
             return None
         body = response.json()
+        if not isinstance(body, dict):
+            logger.warning("fal balance read failed: unexpected body shape (expected dict, got %s)", type(body).__name__)
+            return None
+        value = (body.get("credits") or {}).get("current_balance")
+        if value is not None:
+            return float(value)
+        return None
     except Exception as exc:  # advisory read, never blocks a caller
         logger.warning("fal balance read failed: %s", exc)
         return None
-
-    return (body.get("credits") or {}).get("current_balance")

@@ -199,3 +199,16 @@ def test_read_balance_connect_error_returns_none_and_warns(monkeypatch, caplog):
 
     assert result is None
     assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_read_balance_malformed_200_body_returns_none(monkeypatch, caplog):
+    def fake_get(url, *, headers=None, params=None, timeout=None):
+        return httpx.Response(200, json=[])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    with caplog.at_level(logging.WARNING, logger="creative_studio.generation"):
+        result = read_balance(_FakeSettings(fal_admin_key="admin-key-abc"))
+
+    assert result is None
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
