@@ -120,7 +120,7 @@ export class WelcomeTourComponent {
       route: '/app/dashboard',
     },
     {
-      title: 'Ask what\'s working',
+      title: 'Ask what\'s working (ai-chat for now)',
       description: 'Ask the AI why your ads win or lose — it reads your creative performance and explains the patterns behind what\'s working.',
       icon: 'dna',
       route: '/app/ai-chat',

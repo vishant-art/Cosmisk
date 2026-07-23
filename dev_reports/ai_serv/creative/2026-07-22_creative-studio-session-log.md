@@ -23,8 +23,14 @@ Branch `improve/creative`. Goal: make Creative Studio honest, ai-layer-only, and
 - **`efad362`** — `/app/ugc-studio/gen/preview` renders banner-marked sample data so the run/results/planner screens are viewable without a backend.
 - **`071ce6c`** — an HTTP interceptor (active only when `localStorage.cosmisk_mock==='1'`, set by the preview `enter.html`) returns timed sample responses for the whole flow (grounded → generate → streaming progress → results → plan → quote → render → QA → publish → harvest). Inert in any real deployment. The one thing it can't fake: rendered video bytes (`<video src>` is a native fetch, not HttpClient).
 
-### 6. Sidebar — dormant surfaces marked
-- **`3bc67cc`** — Creative Cockpit, Director Lab, Creative Engine tagged **(inactive)** and dimmed in the sidebar.
+### 6. Dormant surfaces — marked (inactive) + dead CTAs re-pointed
+- **`3bc67cc` / `f274de1`** — Creative Cockpit, Director Lab, Creative Engine tagged **(inactive)** in the sidebar, command palette (page entries), and topbar titles + dimmed. **Named page-entries stay inactive** (they name the dead page).
+- **`46fcabc`** — *functional* CTAs/actions that targeted a dead surface were re-pointed to the live replacement:
+  - Creative **generation** (dashboard "Creative Engine"/"Create Brief" CTAs, quick-action tile, command-palette "Generate Ads from Winners" action, welcome-tour "Creative Engine" step) → **Creative Studio** (`/app/ugc-studio`).
+  - Creative **insight** (Creative Cockpit KPI cards, "Top Creatives" link, DNA tour step) → **AI Chat** (`/app/ai-chat`).
+
+> **Provisional routing — `(ai-chat for now)`.** The creative-insight destinations point to **AI Chat as a stopgap** (Creative Cockpit's real insight home isn't rebuilt). These are labeled **`(ai-chat for now)`** in the UI (dashboard "Ask what's working" link, the Active Creatives KPI card, the welcome-tour step) so the temporary routing is explicit. Revisit when a dedicated creative-insight surface exists.
+> **ROAS KPI → Analytics** (not AI Chat): a pure metric belongs in Analytics (`/app/analytics`), per the user. Revenue/ROAS KPI cards both route there.
 
 ## Gates
 - apps/api `tsc --noEmit` baseline-only (`billing.ts:4` stripe) · apps/api suite **436 pass / 2 skip** · apps/web `ng build` clean (3 pre-existing NG8107 warnings, not ours).

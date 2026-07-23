@@ -235,7 +235,7 @@ import { environment } from '../../../environments/environment';
             [sparkline]="kpi().revenue.sparkline"
             color="green" />
         </a>
-        <a routerLink="/app/ai-chat" class="no-underline">
+        <a routerLink="/app/analytics" class="no-underline">
           <app-kpi-card
             title="ROAS"
             [value]="kpi().roas.value"
@@ -249,7 +249,7 @@ import { environment } from '../../../environments/environment';
           <app-kpi-card
             title="Active Creatives"
             [value]="kpi().activeCreatives.value"
-            [subtitle]="kpi().activeCreatives.winning + ' winning · ' + kpi().activeCreatives.stable + ' stable · ' + kpi().activeCreatives.fatiguing + ' fatiguing'" />
+            [subtitle]="kpi().activeCreatives.winning + ' winning · ' + kpi().activeCreatives.stable + ' stable · ' + kpi().activeCreatives.fatiguing + ' fatiguing  (ai-chat for now)'" />
         </a>
       }
     </div>
@@ -462,7 +462,7 @@ import { environment } from '../../../environments/environment';
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-card-title font-display text-navy m-0">Top Performing Creatives</h3>
         <a routerLink="/app/ai-chat" class="text-sm text-accent font-body font-semibold hover:underline no-underline">
-          Ask what's working <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
+          Ask what's working <span class="text-gray-400 font-normal">(ai-chat for now)</span> <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
 
