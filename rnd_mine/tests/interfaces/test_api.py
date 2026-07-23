@@ -314,6 +314,52 @@ def test_generate_live_with_confirm_header_202(monkeypatch):
     assert live_images is False and live_video is True
 
 
+def test_generate_live_without_ffmpeg_400(monkeypatch):
+    """Final-review Fix 5: a live flag must also require ffmpeg/ffprobe on
+    PATH, checked (like the spend gate) BEFORE lineage resolution or
+    spawning -- `shutil.which` monkeypatched to report neither binary
+    present."""
+    from creative_studio import config as config_module
+
+    spec = make_spec()
+    sheet = make_sheet(spec.id)
+    shot_spec = make_shot_spec(spec.id, sheet.id)
+    product = make_product()
+    app = build_app(monkeypatch, repos=_planning_repos(spec, sheet, shot_spec, product))
+    monkeypatch.setattr(config_module.shutil, "which", lambda exe: None)
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/generate",
+            json={"creativeSpecId": spec.id, "liveVideo": True},
+            headers={"X-Confirm-Spend": "yes"},
+        )
+
+    assert resp.status_code == 400
+    assert "ffmpeg" in resp.json()["detail"]
+    # never spawned
+    assert not FakeOrchestrator.started.wait(0.3)
+    assert FakeOrchestrator.calls == []
+
+
+def test_generate_dry_unaffected_by_missing_ffmpeg(monkeypatch):
+    """A dry request never touches `require_ffmpeg()` at all -- missing
+    ffmpeg must not block it."""
+    from creative_studio import config as config_module
+
+    spec = make_spec()
+    sheet = make_sheet(spec.id)
+    shot_spec = make_shot_spec(spec.id, sheet.id)
+    product = make_product()
+    app = build_app(monkeypatch, repos=_planning_repos(spec, sheet, shot_spec, product))
+    monkeypatch.setattr(config_module.shutil, "which", lambda exe: None)
+
+    with TestClient(app) as client:
+        resp = client.post("/generate", json={"creativeSpecId": spec.id})
+        assert resp.status_code == 202
+        assert FakeOrchestrator.started.wait(2.0), "orchestrator.run never executed"
+
+
 def test_generate_unknown_spec_404(monkeypatch):
     app = build_app(monkeypatch, repos=make_repos())
     with TestClient(app) as client:

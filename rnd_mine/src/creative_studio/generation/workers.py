@@ -104,13 +104,31 @@ class RealWorkers:
         self.sheet = completed
         return {"uri": completed.reference_assets["primaryPortrait"]["r2Uri"]}
 
-    async def keyframe(self, task, shot_number: int, mode: "RunMode") -> dict:
+    async def keyframe(self, task, shot_number: int, portrait_artifacts: dict, mode: "RunMode") -> dict:
+        """`portrait_artifacts` is the portrait step's own persisted artifacts
+        (`state.steps["portrait"].artifacts`), threaded in by the
+        orchestrator on every call -- not just the first. `self.sheet` only
+        gains its generated portrait when THIS worker instance's own
+        `portrait()` call ran (it mutates `self.sheet` in place); on a
+        resume where the portrait step is already `done`/`skipped`,
+        `self.sheet` stays the portrait-less planning sheet, so relying on it
+        alone would silently drop the reference image for every remaining
+        live keyframe. Priority order for the reference uri: a real `r2://`
+        uri on `portrait_artifacts` (the freshest, this-run truth), else the
+        sheet's own portrait (set when portrait ran this call), else the
+        task's compiled `asset_references` (the lineage-resolved fallback).
+        """
         shot = self.shot_spec.shots[shot_number - 1]
         prompt = build_image_prompt(shot, self.sheet, self.spec, self.product)
         if not mode.live_images:
             return {"uri": f"dry-run:keyframe{shot_number}", "promptText": prompt.prompt}
 
-        portrait_uri = (self.sheet.reference_assets.get("primaryPortrait") or {}).get("r2Uri")
+        artifact_uri = (portrait_artifacts or {}).get("uri")
+        portrait_uri = (
+            (artifact_uri if artifact_uri and artifact_uri.startswith("r2://") else None)
+            or (self.sheet.reference_assets.get("primaryPortrait") or {}).get("r2Uri")
+            or task.asset_references.get("characterPortrait")
+        )
         presigned = self._presign_uri(portrait_uri)
         if presigned:
             prompt = dataclasses.replace(prompt, reference_image_urls=(presigned,))
@@ -121,10 +139,8 @@ class RealWorkers:
     async def replace(self, task, shot_number: int, artifacts: dict, mode: "RunMode") -> dict:
         if not mode.live_images:
             return {"uri": f"dry-run:replaced{shot_number}"}
-        try:
-            from creative_studio.replacement.pipeline import replace_on_keyframe
-        except ImportError as exc:  # module lands in Task 21
-            raise NotImplementedError("replacement pipeline lands in Task 21") from exc
+        from creative_studio.replacement.pipeline import replace_on_keyframe
+
         uri = await replace_on_keyframe(
             self.services.adapter, self.services.r2, artifacts["uri"],
             self.product, self._generation_id(task), shot_number,
@@ -208,6 +224,13 @@ class RealWorkers:
             "uri": uri,
             "localPath": str(final_path),
             "thumbnailLocalPath": str(thumb_path),
+            # Published so `qa`'s live-technical-checks branch can find the
+            # per-clip local files -- production never puts a `localPath` on
+            # the `shot{n}_video` step artifacts themselves (video uploads
+            # straight to R2); `compose` is the one step that actually
+            # downloads the clips to disk, so it's the one that must publish
+            # where they landed.
+            "clipLocalPaths": {str(n): str(workdir / f"shot{n}.mp4") for n in (1, 2, 3)},
         }
 
     @staticmethod
@@ -236,14 +259,20 @@ class RealWorkers:
 
         `artifacts` is the orchestrator's `_done_artifacts` snapshot -- every
         finished step's own artifact dict, keyed by step name. Asset checks
-        always run against whatever uri each step actually produced. When
-        every uri is still a `"dry-run:*"` stub (the whole run was dry),
-        that's the full picture -- informational issues only. Otherwise
-        (some step went live) ALSO look for a real composed final video at
-        `artifacts["compose"]["localPath"]` (Task 24's live `compose` now
-        produces one, plus per-clip local paths, whenever `mode.live_video`);
-        the technical checks below run whenever that local video and all 3
-        clip local paths are actually present.
+        always run against whatever uri each step actually produced.
+
+        The live-technical-checks branch is gated on `compose`'s OWN
+        artifacts being real (a `uri` that isn't a `"dry-run:*"` stub) --
+        i.e. `RealWorkers.compose`'s live path actually ran. Local media
+        paths are read from `compose`'s own artifacts (`localPath`, plus
+        per-clip `clipLocalPaths` -- `compose` is the one step that actually
+        downloads the shot clips to disk; production's `shot{n}_video` step
+        artifacts never carry a `localPath`, since video uploads straight to
+        R2). If compose went real but that local media is missing or
+        nonexistent on disk (a production misconfiguration, not an ordinary
+        dry run), QA does NOT silently skip the technical checks -- it
+        appends a WARNING issue so a real run's QA report always shows that
+        technical checks did not run, rather than quietly omitting them.
         """
         uris = {
             name: step_artifacts["uri"]
@@ -253,24 +282,37 @@ class RealWorkers:
         issues = run_asset_checks(self.services.r2, uris)
         compliance = self._plan_compliance(self.shot_spec)
 
-        all_dry = all(uri.startswith("dry-run:") for uri in uris.values())
-        if not all_dry:
-            local_path = artifacts.get("compose", {}).get("localPath")
-            if local_path:
-                final_video = Path(local_path)
-                if final_video.exists():
-                    shots = self.shot_spec.shots
-                    shot_durations = list(self.shot_spec.timing.shot_durations)
-                    srt_text = srt_for(shots, shot_durations)
-                    clip_paths = [
-                        Path(artifacts[f"shot{n}_video"]["localPath"])
-                        for n in range(1, len(shots) + 1)
-                        if artifacts.get(f"shot{n}_video", {}).get("localPath")
-                    ]
-                    if len(clip_paths) == len(shots):
-                        issues = issues + run_technical_checks(
-                            final_video, clip_paths, shot_durations, srt_text,
-                        )
+        compose_artifacts = artifacts.get("compose") or {}
+        compose_uri = compose_artifacts.get("uri") or ""
+        compose_is_real = bool(compose_uri) and not compose_uri.startswith("dry-run:")
+
+        if compose_is_real:
+            shots = self.shot_spec.shots
+            local_path = compose_artifacts.get("localPath")
+            clip_local_paths = compose_artifacts.get("clipLocalPaths") or {}
+            clip_paths = [
+                Path(clip_local_paths[str(n)])
+                for n in range(1, len(shots) + 1)
+                if clip_local_paths.get(str(n))
+            ]
+            media_available = (
+                bool(local_path)
+                and Path(local_path).exists()
+                and len(clip_paths) == len(shots)
+                and all(path.exists() for path in clip_paths)
+            )
+            if media_available:
+                shot_durations = list(self.shot_spec.timing.shot_durations)
+                srt_text = srt_for(shots, shot_durations)
+                issues = issues + run_technical_checks(
+                    Path(local_path), clip_paths, shot_durations, srt_text,
+                )
+            else:
+                issues = issues + [{
+                    "severity": "warning",
+                    "category": "composition",
+                    "message": "technical checks skipped: local media unavailable",
+                }]
 
         report = build_qa_report(self.spec, issues, compliance=compliance)
         await self.services.repos.qa_reports.insert(report)

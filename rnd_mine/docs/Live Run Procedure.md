@@ -26,8 +26,16 @@ creative-quality choices that only a live render can confirm (see Cautions).
 ```
 
 `--live-images` gates the portrait, keyframes, and product replacement;
-`--live-video` gates the three Seedance clips **and** the voice track. Omitting
-one keeps that stage dry.
+`--live-video` gates the three Seedance clips **and** the voice track.
+
+**Run the full live command in ONE invocation.** A step that completes DRY
+cannot be upgraded to live later: `resume`/`regen` will see it already
+`done`, skip it outright, and now refuse the whole invocation with a clear
+error rather than spend on the steps that follow and fail once a live step
+(e.g. `compose`) hits a dry-run stub it can't actually process. There is no
+staged dry -> live path -- if you want a live portrait/keyframes AND live
+video, pass both flags together on the very first `generate`. Only ever omit
+a flag when you intend that stage to STAY dry for the life of the run.
 
 ## What the confirmation shows
 

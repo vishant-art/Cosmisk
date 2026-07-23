@@ -12,12 +12,17 @@ Routes:
   POST /generate  -- body `{creativeSpecId, liveImages?, liveVideo?}`. A live
                      flag (`liveImages`/`liveVideo`) requires header
                      `X-Confirm-Spend: yes`, else 402 -- the HTTP analogue of
-                     the CLI's typed-`y` spend gate. Resolves the creative
-                     spec's lineage (the SAME `cli.resolve_lineage` scan the CLI
-                     uses), compiles the `GenerationTask`, and spawns
-                     `Orchestrator.run(...)` as a fire-and-forget task so the
-                     (minutes-long) run outlives the request; returns 202
-                     `{runId}`. An unknown or unresolvable spec -> 404.
+                     the CLI's typed-`y` spend gate. A live flag also requires
+                     `ffmpeg`/`ffprobe` on PATH (`config.require_ffmpeg()`,
+                     the same check the CLI's generate/resume/regen run at
+                     their own top) -- missing either binary -> 400, checked
+                     BEFORE lineage resolution or spawning, same as the spend
+                     gate. Resolves the creative spec's lineage (the SAME
+                     `cli.resolve_lineage` scan the CLI uses), compiles the
+                     `GenerationTask`, and spawns `Orchestrator.run(...)` as a
+                     fire-and-forget task so the (minutes-long) run outlives
+                     the request; returns 202 `{runId}`. An unknown or
+                     unresolvable spec -> 404.
   GET  /runs/{id}          -- the `RunState` as camelCase JSON, or 404.
   GET  /runs/{id}/manifest -- the `AssetManifest` whose
                               `references.generationId` matches, or 404.
@@ -33,6 +38,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Request
 
+from creative_studio.config import require_ffmpeg
 from creative_studio.contracts.base import CamelModel
 from creative_studio.generation.workers import RealWorkers
 from creative_studio.interfaces.cli import (
@@ -89,6 +95,16 @@ def create_app(services_factory=None) -> FastAPI:
             raise HTTPException(
                 status_code=402, detail="spend not confirmed; set X-Confirm-Spend: yes"
             )
+
+        # A live run's compose step shells out to ffmpeg/ffprobe (via
+        # RealWorkers, same as the CLI's generate/resume/regen) -- fail fast
+        # with a clear 400 here rather than minutes into a spawned background
+        # run that can only ever reach a "failed" compose step.
+        if body.live_images or body.live_video:
+            try:
+                require_ffmpeg()
+            except RuntimeError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         resolved = await resolve_lineage(services.repos, body.creative_spec_id)
         if isinstance(resolved, str):

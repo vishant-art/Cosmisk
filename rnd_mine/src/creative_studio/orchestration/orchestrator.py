@@ -51,6 +51,21 @@ from creative_studio.orchestration.run_state import STEP_NAMES, RunState, reset_
 # portrait, the nine shot steps, and voice (STEP_NAMES[:11]).
 _COMPOSE_PREREQS: tuple[str, ...] = STEP_NAMES[:11]
 
+# The steps a `live_images` resume/regen depends on: a `"dry-run:*"` stub
+# left `done` on any of these under a live mode is the dry->live upgrade
+# trap (Task-26-review Fix 3) -- see `_refuse_dry_to_live_upgrade` below.
+_IMAGE_MODE_DEPENDENCIES: tuple[str, ...] = (
+    "portrait",
+    "shot1_keyframe", "shot2_keyframe", "shot3_keyframe",
+    "shot1_replace", "shot2_replace", "shot3_replace",
+)
+# `live_video` depends on everything `live_images` does PLUS the clips and
+# voice track (a live clip renders from a keyframe/replace image; a dry stub
+# there is not a valid conditioning image).
+_VIDEO_MODE_DEPENDENCIES: tuple[str, ...] = _IMAGE_MODE_DEPENDENCIES + (
+    "shot1_video", "shot2_video", "shot3_video", "voice",
+)
+
 
 @dataclass
 class RunMode:
@@ -63,6 +78,46 @@ class RunMode:
 
     live_images: bool = False
     live_video: bool = False
+
+
+def _refuse_dry_to_live_upgrade(state: RunState, mode: RunMode) -> None:
+    """Refuse a `resume`/`regen_shot` that would silently upgrade a dry-
+    completed step to live in place.
+
+    A step already `done` with a `"dry-run:*"` stub artifact is, to
+    `_step`, simply finished -- resuming/regenerating with `mode.live_images`
+    or `mode.live_video` set would skip straight past it (never re-running
+    it live) and then spend real money on whatever steps ARE still pending,
+    before failing downstream once a live step (e.g. `compose`) hits a stub
+    uri it can't actually download. There is no safe in-place upgrade path:
+    the only sanctioned fix is a fresh `generate` with the desired live
+    flags from the start.
+
+    Checks exactly the steps the REQUESTED mode depends on (`_VIDEO_MODE_
+    DEPENDENCIES` when `mode.live_video`, else `_IMAGE_MODE_DEPENDENCIES`
+    when `mode.live_images`); a dry run (`mode` all-False) never checks
+    anything, since it can never be "upgrading" to live.
+    """
+    if mode.live_video:
+        steps_to_check = _VIDEO_MODE_DEPENDENCIES
+    elif mode.live_images:
+        steps_to_check = _IMAGE_MODE_DEPENDENCIES
+    else:
+        return
+
+    for name in steps_to_check:
+        step = state.steps.get(name)
+        if step is None or step.status != "done":
+            continue
+        uri = (step.artifacts or {}).get("uri")
+        if isinstance(uri, str) and uri.startswith("dry-run:"):
+            raise RuntimeError(
+                f"cannot resume/regenerate run {state.id!r} live: step {name!r} "
+                f"is already 'done' with a dry-run stub artifact ({uri!r}), and "
+                "a dry artifact cannot be upgraded to live in place. Start a "
+                "fresh 'generate' with the desired --live-images/--live-video "
+                "flags in ONE invocation instead."
+            )
 
 
 @dataclass
@@ -182,10 +237,16 @@ class Orchestrator:
     async def resume(self, generation_id: str, task: GenerationTask, mode: RunMode) -> RunState:
         """Resume an existing run: re-run only pending/failed steps, continuing
         each step's retry budget against the `task` passed here. Errors if the
-        run was never persisted."""
+        run was never persisted.
+
+        Under a live mode, refuses outright (`_refuse_dry_to_live_upgrade`) if
+        any step that mode depends on is already `done` with a dry-run stub --
+        `resume` would otherwise skip straight past it, never re-running it
+        live."""
         state = await self.services.run_store.load(generation_id)
         if state is None:
             raise ValueError(f"cannot resume unknown run: {generation_id!r}")
+        _refuse_dry_to_live_upgrade(state, mode)
         return await self._execute(state, task, mode)
 
     async def regen_shot(
@@ -193,11 +254,18 @@ class Orchestrator:
     ) -> RunState:
         """Regenerate exactly one shot: reset its three steps plus
         compose/qa/export, persist the reset, then run the flow (which now
-        re-runs only that shot chain and the tail)."""
+        re-runs only that shot chain and the tail).
+
+        The dry->live upgrade check runs AFTER `reset_shot` so the shot being
+        regenerated (now back to `pending`, about to be legitimately re-run
+        under `mode`) never triggers it -- only some OTHER step the requested
+        mode depends on (portrait, another shot's keyframe/replace, voice)
+        left `done` with a dry-run stub does."""
         state = await self.services.run_store.load(generation_id)
         if state is None:
             raise ValueError(f"cannot regenerate a shot of unknown run: {generation_id!r}")
         reset_shot(state, shot_number)
+        _refuse_dry_to_live_upgrade(state, mode)
         async with self._lock:
             await self.services.run_store.save(state)
         return await self._execute(state, task, mode)
@@ -271,7 +339,18 @@ class Orchestrator:
     ) -> None:
         keyframe, replace, video = f"shot{n}_keyframe", f"shot{n}_replace", f"shot{n}_video"
 
-        await self._step(state, keyframe, lambda: self.workers.keyframe(task, n, mode), max_attempts)
+        # Threaded in fresh on every call (not cached from an earlier step in
+        # this same run) so a keyframe worker always sees the portrait step's
+        # CURRENT persisted artifacts -- on resume the portrait step is
+        # already `done`/`skipped` and the worker's own `self.sheet` never
+        # regains the generated portrait, so this is the only way a resumed
+        # live keyframe still gets a reference image.
+        portrait_artifacts = dict(state.steps["portrait"].artifacts)
+        await self._step(
+            state, keyframe,
+            lambda: self.workers.keyframe(task, n, portrait_artifacts, mode),
+            max_attempts,
+        )
         if state.steps[keyframe].status != "done":
             return
 
@@ -305,6 +384,17 @@ class Orchestrator:
         artifacts = self._done_artifacts(state)
         await self._step(state, "qa", lambda: self.workers.qa(task, artifacts, mode), max_attempts)
         if state.steps["qa"].status != "done":
+            return
+
+        # QA's verdict gates export: an explicit `approved: False` blocks it
+        # outright (a deliverable built on a failed QA report is worse than no
+        # deliverable). `approved` missing/None (a fake worker with no verdict
+        # opinion, or any pre-existing state written before this gate existed)
+        # keeps the old behavior -- export still runs.
+        if state.steps["qa"].artifacts.get("approved") is False:
+            await self._mark(
+                state, "export", status="skipped", error="blocked by QA: not approved",
+            )
             return
 
         artifacts = self._done_artifacts(state)

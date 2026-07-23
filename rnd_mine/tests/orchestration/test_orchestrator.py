@@ -242,7 +242,7 @@ class FlakyFakeWorkers:
         self._fire("portrait")
         return self._art("portrait", "dry-run:portrait")
 
-    async def keyframe(self, task, shot_number, mode) -> dict:
+    async def keyframe(self, task, shot_number, portrait_artifacts, mode) -> dict:
         key = f"keyframe{shot_number}"
         self._fire(key)
         return self._art(key, f"dry-run:keyframe{shot_number}")

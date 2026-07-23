@@ -172,15 +172,20 @@ def make_task():
 
 class GateWorkers:
     """Dry-stub workers that count generation-stage calls and can be programmed
-    to fail the portrait step."""
+    to fail the portrait step, or to have `qa` return a specific verdict."""
 
-    def __init__(self, fail_portrait: bool = False) -> None:
+    def __init__(self, fail_portrait: bool = False, qa_approved: bool | None = True) -> None:
         self.fail_portrait = fail_portrait
+        # None => qa's own artifacts carry no "approved" key at all (mirrors
+        # every OTHER fake-worker test in this module and test_orchestrator.py
+        # written before Fix 2 existed) -- back-compat, export still runs.
+        self.qa_approved = qa_approved
         self.portrait_calls = 0
         self.keyframe_calls = 0
         self.replace_calls = 0
         self.video_calls = 0
         self.voice_calls = 0
+        self.export_calls = 0
 
     async def portrait(self, task, mode) -> dict:
         self.portrait_calls += 1
@@ -188,7 +193,7 @@ class GateWorkers:
             raise RuntimeError("programmed portrait failure")
         return {"uri": "dry-run:portrait"}
 
-    async def keyframe(self, task, n, mode) -> dict:
+    async def keyframe(self, task, n, portrait_artifacts, mode) -> dict:
         self.keyframe_calls += 1
         return {"uri": f"dry-run:keyframe{n}"}
 
@@ -208,9 +213,14 @@ class GateWorkers:
         return {"uri": "dry-run:compose"}
 
     async def qa(self, task, artifacts, mode) -> dict:
-        return {"uri": "dry-run:qa"}
+        result = {"uri": "dry-run:qa"}
+        if self.qa_approved is not None:
+            result["approved"] = self.qa_approved
+            result["qaReportId"] = "qa_x"
+        return result
 
     async def export(self, task, artifacts, mode) -> dict:
+        self.export_calls += 1
         return {"uri": "dry-run:export"}
 
 
@@ -219,7 +229,7 @@ class SlowWorkers(GateWorkers):
     persistence raises, the sibling chains are genuinely suspended and their
     cancellation is observable."""
 
-    async def keyframe(self, task, n, mode) -> dict:
+    async def keyframe(self, task, n, portrait_artifacts, mode) -> dict:
         self.keyframe_calls += 1
         await asyncio.sleep(0.05)
         return {"uri": f"dry-run:keyframe{n}"}
@@ -408,3 +418,167 @@ async def test_run_refuses_when_already_running(services, store):
     assert resumed.status == "completed"
     for name in STEP_NAMES:
         assert resumed.steps[name].status == "done", name
+
+
+# ---------------------------------------------------------------------------
+# Final-review Fix 2: export is gated on QA's own verdict
+# ---------------------------------------------------------------------------
+
+@skip_no_db
+@asyncio_session
+async def test_qa_not_approved_blocks_export_and_fails_run(services):
+    task = make_task()
+    gen_id = task.context["generationId"]
+    workers = GateWorkers(qa_approved=False)
+    orch = Orchestrator(services, workers)
+
+    state = await orch.run(gen_id, task, RunMode())
+
+    # export worker itself is NEVER invoked.
+    assert workers.export_calls == 0
+    assert state.steps["export"].status == "skipped"
+    assert state.steps["export"].error == "blocked by QA: not approved"
+    # a skipped (not done) export means the overall run cannot be "completed".
+    assert state.status == "failed"
+
+    loaded = await services.run_store.load(gen_id)
+    assert loaded.steps["export"].status == "skipped"
+    assert loaded.status == "failed"
+
+
+@skip_no_db
+@asyncio_session
+async def test_qa_approved_export_runs_normally(services):
+    """Control for the gate above: an explicit `approved: True` verdict runs
+    export exactly as before."""
+    task = make_task()
+    gen_id = task.context["generationId"]
+    workers = GateWorkers(qa_approved=True)
+    orch = Orchestrator(services, workers)
+
+    state = await orch.run(gen_id, task, RunMode())
+
+    assert workers.export_calls == 1
+    assert state.steps["export"].status == "done"
+    assert state.status == "completed"
+
+
+# ---------------------------------------------------------------------------
+# Final-review Fix 3: dry->live upgrade trap on resume/regen_shot
+# ---------------------------------------------------------------------------
+
+class _RealStubWorkers(GateWorkers):
+    """Like `GateWorkers`, but every generation-stage artifact carries a
+    real-looking `r2://` uri instead of a `"dry-run:*"` stub -- stands in
+    for a run whose steps actually completed LIVE, without any real
+    provider/R2 traffic. `compose`/`qa`/`export` stay `GateWorkers`' plain
+    dry stubs (irrelevant to the dry->live guard, which only ever looks at
+    the generation-stage steps)."""
+
+    async def portrait(self, task, mode) -> dict:
+        self.portrait_calls += 1
+        return {"uri": "r2://bucket/runs/g/portraits/primary.png"}
+
+    async def keyframe(self, task, n, portrait_artifacts, mode) -> dict:
+        self.keyframe_calls += 1
+        return {"uri": f"r2://bucket/runs/g/keyframes/shot{n}/raw.png"}
+
+    async def replace(self, task, n, artifacts, mode) -> dict:
+        self.replace_calls += 1
+        return {"uri": f"r2://bucket/runs/g/keyframes/shot{n}/replaced.png"}
+
+    async def video(self, task, n, artifacts, mode) -> dict:
+        self.video_calls += 1
+        return {"uri": f"r2://bucket/runs/g/clips/shot{n}.mp4"}
+
+    async def voice(self, task, mode) -> dict:
+        self.voice_calls += 1
+        return {"uri": "r2://bucket/runs/g/voice/narration.wav"}
+
+
+@skip_no_db
+@asyncio_session
+async def test_resume_refuses_dry_to_live_upgrade(services):
+    task = make_task()
+    gen_id = task.context["generationId"]
+
+    # A fully dry, fully completed run: every generation-stage step is
+    # "done" with a "dry-run:*" stub artifact.
+    first = await Orchestrator(services, GateWorkers()).run(gen_id, task, RunMode())
+    assert first.status == "completed"
+
+    fresh_workers = GateWorkers()
+    orch = Orchestrator(services, fresh_workers)
+    with pytest.raises(RuntimeError, match="dry-run stub"):
+        await orch.resume(gen_id, task, RunMode(live_images=True, live_video=True))
+
+    # refused BEFORE any worker call or persistence -- zero spend, state untouched.
+    assert fresh_workers.portrait_calls == 0
+    assert fresh_workers.keyframe_calls == 0
+    loaded = await services.run_store.load(gen_id)
+    assert loaded.status == "completed"
+
+
+@skip_no_db
+@asyncio_session
+async def test_resume_allows_fully_live_completed_state(services):
+    """The still-allowed case: nothing to "upgrade" when every dependency
+    the mode checks is already a real (non-dry) artifact."""
+    task = make_task()
+    gen_id = task.context["generationId"]
+
+    first = await Orchestrator(services, _RealStubWorkers()).run(
+        gen_id, task, RunMode(live_images=True, live_video=True)
+    )
+    assert first.status == "completed"
+
+    resumed = await Orchestrator(services, GateWorkers()).resume(
+        gen_id, task, RunMode(live_images=True, live_video=True)
+    )
+    assert resumed.status == "completed"
+
+
+@skip_no_db
+@asyncio_session
+async def test_regen_shot_refuses_dry_to_live_upgrade_for_other_steps(services):
+    """Regenerating shot 2 live must still refuse when SOME OTHER step the
+    mode depends on (portrait, shot1/shot3, voice) is `done` with a dry-run
+    stub -- reset_shot only clears shot 2's own steps, so it alone can never
+    make the guard a no-op."""
+    task = make_task()
+    gen_id = task.context["generationId"]
+
+    first = await Orchestrator(services, GateWorkers()).run(gen_id, task, RunMode())
+    assert first.status == "completed"
+
+    fresh_workers = GateWorkers()
+    orch = Orchestrator(services, fresh_workers)
+    with pytest.raises(RuntimeError, match="dry-run stub"):
+        await orch.regen_shot(gen_id, 2, task, RunMode(live_video=True))
+
+    assert fresh_workers.keyframe_calls == 0
+    loaded = await services.run_store.load(gen_id)
+    assert loaded.status == "completed"  # the in-memory reset was never persisted
+
+
+@skip_no_db
+@asyncio_session
+async def test_regen_shot_allows_fully_live_completed_state(services):
+    """The still-allowed case for regen_shot: regenerating a shot of an
+    already-fully-live run under the same live mode is never blocked by its
+    OWN prior artifacts (reset_shot clears them before the guard runs), and
+    nothing else in this run is a dry stub."""
+    task = make_task()
+    gen_id = task.context["generationId"]
+
+    first = await Orchestrator(services, _RealStubWorkers()).run(
+        gen_id, task, RunMode(live_images=True, live_video=True)
+    )
+    assert first.status == "completed"
+
+    regen_workers = _RealStubWorkers()
+    regened = await Orchestrator(services, regen_workers).regen_shot(
+        gen_id, 2, task, RunMode(live_images=True, live_video=True)
+    )
+    assert regened.status == "completed"
+    assert regen_workers.keyframe_calls == 1

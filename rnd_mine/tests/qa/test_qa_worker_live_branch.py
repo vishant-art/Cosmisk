@@ -11,6 +11,14 @@ checks` monkeypatched exactly as `tests/qa/test_checks.py` does -- only real
 (empty) tmp files under the artifacts' localPath keys, so the module's own
 `Path.exists()` gate behaves as it would against real media without needing
 one.
+
+Final-review Fix 1: production never publishes a `localPath` on the
+`shot{n}_video` step artifacts (video uploads straight to R2); only
+`compose` -- which downloads the clips to run ffmpeg -- ever has them on
+disk, so it is the one that publishes `clipLocalPaths` (keyed by shot
+number, as a string). The fixtures below now carry that REAL shape; the two
+new tests at the bottom pin the WARNING QA appends (instead of silently
+skipping) when that local media isn't actually there.
 """
 from __future__ import annotations
 
@@ -81,10 +89,12 @@ def _touch(path: Path) -> Path:
 
 def _live_artifacts(tmp_path: Path) -> dict:
     """Mirrors `Orchestrator._done_artifacts` for a run where compose
-    actually produced a real final video + real per-clip localPaths (Task
-    24's live compose wiring) -- every uri is a real `r2://` stand-in so
-    `run_asset_checks`'s `all_dry` short-circuit does NOT trigger and the
-    live-technical-checks branch actually runs."""
+    actually produced a real final video + real per-clip local paths (Task
+    24's live compose wiring, updated by the final-review Fix 1 to publish
+    `clipLocalPaths` on `compose` ITSELF rather than on each `shot{n}_video`
+    step -- production never puts a `localPath` there). Every uri is a real
+    `r2://` stand-in so `compose`'s own uri is not a `"dry-run:*"` stub and
+    the live-technical-checks branch actually runs."""
     final_video = _touch(tmp_path / "ad_final.mp4")
     clip1 = _touch(tmp_path / "shot1.mp4")
     clip2 = _touch(tmp_path / "shot2.mp4")
@@ -93,18 +103,19 @@ def _live_artifacts(tmp_path: Path) -> dict:
         "portrait": {"uri": f"r2://{_BUCKET}/runs/g1/portraits/primary.png"},
         "shot1_keyframe": {"uri": f"r2://{_BUCKET}/runs/g1/keyframes/shot1/raw.png"},
         "shot1_replace": {"uri": f"r2://{_BUCKET}/runs/g1/keyframes/shot1/replaced.png"},
-        "shot1_video": {"uri": f"r2://{_BUCKET}/runs/g1/clips/shot1.mp4", "localPath": str(clip1)},
+        "shot1_video": {"uri": f"r2://{_BUCKET}/runs/g1/clips/shot1.mp4"},
         "shot2_keyframe": {"uri": f"r2://{_BUCKET}/runs/g1/keyframes/shot2/raw.png"},
         "shot2_replace": {"uri": f"r2://{_BUCKET}/runs/g1/keyframes/shot2/replaced.png"},
-        "shot2_video": {"uri": f"r2://{_BUCKET}/runs/g1/clips/shot2.mp4", "localPath": str(clip2)},
+        "shot2_video": {"uri": f"r2://{_BUCKET}/runs/g1/clips/shot2.mp4"},
         "shot3_keyframe": {"uri": f"r2://{_BUCKET}/runs/g1/keyframes/shot3/raw.png"},
         "shot3_replace": {"uri": f"r2://{_BUCKET}/runs/g1/keyframes/shot3/replaced.png"},
-        "shot3_video": {"uri": f"r2://{_BUCKET}/runs/g1/clips/shot3.mp4", "localPath": str(clip3)},
+        "shot3_video": {"uri": f"r2://{_BUCKET}/runs/g1/clips/shot3.mp4"},
         "voice": {"uri": f"r2://{_BUCKET}/runs/g1/voice/narration.wav"},
         "compose": {
             "uri": f"r2://{_BUCKET}/runs/g1/final/ad.mp4",
             "localPath": str(final_video),
             "thumbnailLocalPath": str(tmp_path / "thumb.jpg"),
+            "clipLocalPaths": {"1": str(clip1), "2": str(clip2), "3": str(clip3)},
         },
     }
 
@@ -181,14 +192,15 @@ async def test_technical_checks_wrong_dims_blocks_approval(fake_r2, tmp_path, mo
     assert report.composition_qa["score"] < 100
 
 
-async def test_missing_clip_local_path_skips_technical_checks(fake_r2, tmp_path, monkeypatch):
-    """If even one shot's `localPath` is missing, the live branch's own
-    length guard (`len(clip_paths) == len(shots)`) must skip
-    `run_technical_checks` entirely rather than crash or partially check --
-    unaffected by dims/duration probes, which are patched to fail loudly if
-    reached."""
+async def test_missing_clip_local_path_skips_technical_checks_and_warns(fake_r2, tmp_path, monkeypatch):
+    """If even one shot's local path is missing from `compose.clipLocalPaths`,
+    the live branch's own length guard (`len(clip_paths) == len(shots)`)
+    must skip `run_technical_checks` entirely rather than crash or partially
+    check (unaffected by dims/duration probes, which are patched to fail
+    loudly if reached) -- but, per the final-review fix, it must no longer
+    skip SILENTLY: a WARNING issue is appended instead."""
     artifacts = _live_artifacts(tmp_path)
-    del artifacts["shot2_video"]["localPath"]
+    del artifacts["compose"]["clipLocalPaths"]["2"]
     _put_all(fake_r2, artifacts)
 
     def _boom(path):
@@ -201,6 +213,40 @@ async def test_missing_clip_local_path_skips_technical_checks(fake_r2, tmp_path,
 
     result = await workers.qa(task=None, artifacts=artifacts, mode=RunMode())
 
-    # no technical-check issues at all (only would-be asset-check issues,
-    # and every asset is present here), so it still approves.
+    # a WARNING alone never blocks approval (only a CRITICAL does).
     assert result["approved"] is True
+    report = qa_reports.docs[result["qaReportId"]]
+    assert any(
+        issue["severity"] == "warning"
+        and issue["category"] == "composition"
+        and issue["message"] == "technical checks skipped: local media unavailable"
+        for issue in report.issues
+    )
+
+
+async def test_missing_clip_local_paths_key_entirely_emits_warning(fake_r2, tmp_path, monkeypatch):
+    """Same guarantee when `compose` carries no `clipLocalPaths` key at all
+    (not just one shot's entry) -- production shape drift must still surface
+    as a WARNING, never a silent skip."""
+    artifacts = _live_artifacts(tmp_path)
+    del artifacts["compose"]["clipLocalPaths"]
+    _put_all(fake_r2, artifacts)
+
+    def _boom(path):
+        raise AssertionError(f"probe_dims should not be called: {path}")
+
+    monkeypatch.setattr(checks, "probe_dims", _boom)
+
+    qa_reports = _FakeQaReportsRepo()
+    workers = _make_workers(fake_r2, qa_reports)
+
+    result = await workers.qa(task=None, artifacts=artifacts, mode=RunMode())
+
+    assert result["approved"] is True
+    report = qa_reports.docs[result["qaReportId"]]
+    assert any(
+        issue["severity"] == "warning"
+        and issue["category"] == "composition"
+        and issue["message"] == "technical checks skipped: local media unavailable"
+        for issue in report.issues
+    )
