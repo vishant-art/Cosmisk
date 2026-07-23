@@ -170,9 +170,13 @@ async def _find_latest(repo, creative_spec_id: str):
     return None
 
 
-async def _resolve_planning_contracts(repos, creative_spec_id: str):
+async def resolve_lineage(repos, creative_spec_id: str):
     """Return `(spec, sheet, shot_spec, product)` for `creative_spec_id`, or
-    a helpful error message string if any piece is missing."""
+    a helpful error message string if any piece is missing.
+
+    The single lineage-scan used by BOTH the CLI (`generate`/`resume`/`regen`)
+    and the FastAPI facade (`interfaces/api.py::POST /generate`), so the two
+    front ends resolve a creative spec's full planning graph identically."""
     spec = await repos.creative_specs.get(creative_spec_id)
     if spec is None:
         return f"error: creative spec not found: {creative_spec_id}"
@@ -232,6 +236,10 @@ def _print_run_state_table(state) -> None:
 
 
 def _report_run_result(state) -> int:
+    # Print the run id first so `generate`/`resume`/`regen` surface the handle a
+    # follow-up `status --run`/`resume --run`/`regen --run` needs (a fresh
+    # `generate` mints a new generation id that is otherwise not shown anywhere).
+    echo(f"run: {state.id}")
     echo(f"status: {state.status}")
     _print_run_state_table(state)
     return 0 if state.status == "completed" else 1
@@ -403,7 +411,7 @@ async def cmd_generate(args, services_factory=None) -> int:
     build = services_factory or _build_services
     services = await build()
     try:
-        resolved = await _resolve_planning_contracts(services.repos, args.spec)
+        resolved = await resolve_lineage(services.repos, args.spec)
         if isinstance(resolved, str):
             echo(resolved)
             return 1
@@ -442,7 +450,7 @@ async def cmd_resume(args, services_factory=None) -> int:
             echo(f"error: run not found: {args.run}")
             return 1
 
-        resolved = await _resolve_planning_contracts(services.repos, run_state.creative_spec_id)
+        resolved = await resolve_lineage(services.repos, run_state.creative_spec_id)
         if isinstance(resolved, str):
             echo(resolved)
             return 1
@@ -472,7 +480,7 @@ async def cmd_regen(args, services_factory=None) -> int:
             echo(f"error: run not found: {args.run}")
             return 1
 
-        resolved = await _resolve_planning_contracts(services.repos, run_state.creative_spec_id)
+        resolved = await resolve_lineage(services.repos, run_state.creative_spec_id)
         if isinstance(resolved, str):
             echo(resolved)
             return 1

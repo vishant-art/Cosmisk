@@ -159,8 +159,22 @@ class Orchestrator:
     # -- public entry points -------------------------------------------------
 
     async def run(self, generation_id: str, task: GenerationTask, mode: RunMode) -> RunState:
-        """Start (or transparently continue) a run for `generation_id`."""
+        """Start (or transparently continue a non-running) run for `generation_id`.
+
+        Refuses a run whose persisted status is already `"running"`: that means
+        either a live run is genuinely in flight or a prior run crashed mid-flight
+        without reaching a terminal status. Either way, starting over would double
+        up on spend and race two writers on one `RunState`. `resume()` is the
+        sanctioned way to continue such a run (it re-runs only pending/failed
+        steps); this guard applies to `run()` only, never `resume()`.
+        """
         state = await self.services.run_store.load(generation_id)
+        if state is not None and state.status == "running":
+            raise RuntimeError(
+                f"run {generation_id!r} is already marked 'running' -- either a run "
+                f"is in progress or a previous one crashed mid-flight. Use resume() "
+                f"to continue it; run() refuses to start over a 'running' run."
+            )
         if state is None:
             state = RunState.new(generation_id, task.creative_spec_id)
         return await self._execute(state, task, mode)
@@ -198,13 +212,15 @@ class Orchestrator:
         # portrait first (all keyframes reference it)
         await self._step(state, "portrait", lambda: self.workers.portrait(task, mode), max_attempts)
 
-        # three shot chains + voice, concurrently
-        await asyncio.gather(
-            self._shot_chain(state, 1, task, mode, max_attempts),
-            self._shot_chain(state, 2, task, mode, max_attempts),
-            self._shot_chain(state, 3, task, mode, max_attempts),
-            self._step(state, "voice", lambda: self.workers.voice(task, mode), max_attempts),
-        )
+        # Portrait gate: every keyframe conditions on the character portrait, so
+        # a portrait that did not complete dooms the run. Rather than spend on
+        # three keyframe->replace->video chains (and the voice track) that can
+        # never yield a usable ad, skip the whole concurrent generation stage --
+        # its steps stay `pending`, resumable once portrait succeeds. In a dry
+        # run the portrait worker returns a stub and can't fail, so this never
+        # triggers there.
+        if state.steps["portrait"].status == "done":
+            await self._generation_stage(state, task, mode, max_attempts)
 
         # compose -> qa -> export, sequential, each gated on its prerequisites
         await self._tail(state, task, mode, max_attempts)
@@ -212,6 +228,44 @@ class Orchestrator:
         final = "completed" if all(s.status == "done" for s in state.steps.values()) else "failed"
         await self._set_status(state, final)
         return state
+
+    async def _generation_stage(
+        self, state: RunState, task: GenerationTask, mode: RunMode, max_attempts: int
+    ) -> None:
+        """Run the three shot chains + the voice track concurrently.
+
+        The chains are launched as explicit `asyncio.Task`s (not bare coroutines
+        handed straight to `gather`) precisely so a fault that ESCAPES a chain
+        can be contained. `_step` swallows worker failures, but a persistence
+        failure (a `run_store` save raising) is not a worker failure: it escapes
+        the chain. Bare `gather` would then propagate that exception while
+        leaving the sibling chains running in the background over a run still
+        marked `"running"`. Instead: cancel the siblings, await their
+        cancellation so nothing leaks, persist a terminal `"failed"` status, and
+        re-raise the original fault.
+        """
+        tasks = [
+            asyncio.create_task(self._shot_chain(state, 1, task, mode, max_attempts)),
+            asyncio.create_task(self._shot_chain(state, 2, task, mode, max_attempts)),
+            asyncio.create_task(self._shot_chain(state, 3, task, mode, max_attempts)),
+            asyncio.create_task(
+                self._step(state, "voice", lambda: self.workers.voice(task, mode), max_attempts)
+            ),
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except BaseException:
+            for t in tasks:
+                t.cancel()
+            # Drain the cancellations before touching the store, so no sibling
+            # write can land after our terminal "failed" write.
+            await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                await self._set_status(state, "failed")
+            finally:
+                # Re-raise the original fault even if persisting "failed" also
+                # fails (e.g. the store itself is what broke).
+                raise
 
     async def _shot_chain(
         self, state: RunState, n: int, task: GenerationTask, mode: RunMode, max_attempts: int

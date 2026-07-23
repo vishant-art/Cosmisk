@@ -9,9 +9,12 @@ against fal's own published schema for `fal-ai/flux-2-flex` (fetched July
 the original task plan (which specced `{"prompt", "negative_prompt",
 "image_size", "num_images"}`):
 
-  - `negative_prompt` is folded into the prompt as a hard suppression
-    sentence instead (mirrors `image_providers.py::_suppress`) -- flux-2-flex
-    has no negative-prompt channel to send it to.
+  - Only the raw positive `prompt` is sent. The negative list carried on
+    `ImagePrompt` is deliberately NOT folded into the prompt text: FLUX
+    ignores negative-prompt phrasing, and naming the forbidden tokens inline
+    tends to PRIME the draw toward them rather than suppress them. The
+    `negative_prompt` field stays on the prompt object for a future model or
+    wrapper that gains a real negative channel, but it never reaches FLUX here.
   - `num_images` is omitted entirely; a single image is Flux's default and
     the working code never sets it.
 
