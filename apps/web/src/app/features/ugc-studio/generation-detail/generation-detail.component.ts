@@ -72,12 +72,14 @@ const MILESTONES: { label: string; match: RegExp }[] = [
         </div>
       }
 
+      <!-- SCAFFOLDING (uncomment with the /gen/preview handler): sample-data banner
       @if (generation()?.id === 'preview') {
         <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-body font-semibold">
           <lucide-icon name="eye" [size]="14"></lucide-icon>
           Preview — sample data, not a real run. For layout review only.
         </div>
       }
+      -->
 
       @if (!loading() && generation()) {
         <!-- Header -->
@@ -261,14 +263,16 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
     }
     const plan = this.route.snapshot.queryParamMap.get('plan');
     this.showPlanner.set(plan === 'video' || plan === 'both');
+    /* SCAFFOLDING — /gen/preview renders sample data with no backend. Uncomment (with the
+       banner in the template + PREVIEW_GEN/PREVIEW_JOB below) to walk the screens offline.
     if (id === 'preview') {
-      // Local visual-preview — sample data, no backend. See PREVIEW_GEN.
       this.generation.set(PREVIEW_GEN);
       this.aiJob.set(PREVIEW_JOB);
       this.showPlanner.set(true);
       this.loading.set(false);
       return;
     }
+    */
     this.fetchGeneration(id);
   }
 
