@@ -1,0 +1,1 @@
+ALTER TABLE "studio_generations" ALTER COLUMN "brief_json" DROP NOT NULL;

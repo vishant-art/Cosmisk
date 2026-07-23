@@ -509,7 +509,7 @@ export const urlAnalysisCache = pgTable('url_analysis_cache', {
 export const studioGenerations = pgTable('studio_generations', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
-  briefJson: text('brief_json').notNull(),
+  briefJson: text('brief_json'),   // nullable: campaign mode ("generate from winners") has no manual brief
   formats: text('formats').notNull(),
   metaAccountId: text('meta_account_id'),
   status: text('status').notNull().default('generating'),
