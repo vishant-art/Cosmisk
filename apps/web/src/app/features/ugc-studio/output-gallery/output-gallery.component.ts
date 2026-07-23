@@ -2,6 +2,7 @@ import { Component, input, output, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { LucideAngularModule } from 'lucide-angular';
 import { FeedbackService } from '../../../core/services/feedback.service';
+import { resolveAssetUrl } from '../../../core/services/creative-studio.service';
 
 @Component({
   selector: 'app-output-gallery',
@@ -69,7 +70,7 @@ import { FeedbackService } from '../../../core/services/feedback.service';
               @for (img of out.output; track $index) {
                 <div class="card !p-2 group hover:shadow-md transition-shadow">
                   @if (img.image_url) {
-                    <img [src]="img.image_url" [alt]="img.aspect_ratio"
+                    <img [src]="asset(img.image_url)" [alt]="img.aspect_ratio"
                       class="w-full rounded-lg mb-2 bg-gray-100" loading="lazy" />
                   } @else if (img.status === 'processing') {
                     <div class="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center">
@@ -86,7 +87,7 @@ import { FeedbackService } from '../../../core/services/feedback.service';
                   <div class="flex items-center justify-between px-1">
                     <span class="text-[10px] text-gray-400 font-body">{{ img.aspect_ratio }}</span>
                     @if (img.image_url) {
-                      <a [href]="img.image_url" target="_blank" download
+                      <a [href]="asset(img.image_url)" target="_blank" download
                         class="text-[10px] text-accent font-body font-semibold hover:underline no-underline">
                         Download
                       </a>
@@ -108,7 +109,7 @@ import { FeedbackService } from '../../../core/services/feedback.service';
               @for (slide of out.output; track $index) {
                 <div class="card !p-2 group hover:shadow-md transition-shadow">
                   @if (slide.image_url) {
-                    <img [src]="slide.image_url" [alt]="'Slide ' + slide.slide_number"
+                    <img [src]="asset(slide.image_url)" [alt]="'Slide ' + slide.slide_number"
                       class="w-full rounded-lg mb-2 bg-gray-100" loading="lazy" />
                   } @else if (slide.status === 'processing') {
                     <div class="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center">
@@ -234,4 +235,7 @@ export class OutputGalleryComponent {
   copyText(text: string) {
     navigator.clipboard.writeText(text);
   }
+
+  /** Resolve an asset proxy path against the api base (302→R2 in prod, byte-proxy in dev/sim). */
+  asset(u: string): string { return resolveAssetUrl(u); }
 }

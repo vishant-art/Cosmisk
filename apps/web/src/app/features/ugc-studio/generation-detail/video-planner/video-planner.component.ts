@@ -1,7 +1,7 @@
 import { Component, Input, OnDestroy, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { CreativeStudioService, VideoPlan } from '../../../../core/services/creative-studio.service';
+import { CreativeStudioService, VideoPlan, resolveAssetUrl } from '../../../../core/services/creative-studio.service';
 import { DegradeBadgeComponent } from '../../shared/degrade-badge.component';
 
 const CLIP_USD = 1.2222;
@@ -269,7 +269,7 @@ export class VideoPlannerComponent implements OnDestroy {
 
   videoUrl(): string {
     const url = this.videoJob()?.video?.url;
-    return url ? `/api/creative-studio/asset/${this.aiJobId}/${url.split('/').pop()}` : '';
+    return url ? resolveAssetUrl(`/api/creative-studio/asset/${this.aiJobId}/${url.split('/').pop()}`) : '';
   }
   // Known false-positives on edited clips (caption drift, cut alignment) are internal-only signal.
   visibleChecks(job: any): Array<{ name: string; passed: boolean; detail?: string }> {

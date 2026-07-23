@@ -1,6 +1,18 @@
 import { Injectable, inject } from '@angular/core';
 import { ApiService } from './api.service';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+
+/**
+ * Resolve an ai-layer asset proxy path ('/api/creative-studio/asset/...') against the configured
+ * API base so it reaches apps/api — which 302s the browser straight to R2 (prod, $0 egress) or
+ * byte-proxies from local disk (dev/sim, R2 off). Without this the raw '/api/...' path resolves to
+ * the web origin (nginx/Vercel), which doesn't serve it → broken image.
+ */
+export function resolveAssetUrl(path: string | null | undefined): string {
+  if (!path) return '';
+  return path.startsWith('/api') ? environment.API_BASE_URL + path.slice(4) : path;
+}
 
 export interface UrlAnalysis {
   brand_name: string;
