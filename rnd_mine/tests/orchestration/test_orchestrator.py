@@ -579,9 +579,12 @@ def _worker_key(step_name: str) -> str:
 @skip_no_db
 @asyncio_session
 async def test_real_workers_dry_e2e(services):
-    """A dry run must still complete all 14 steps, but `qa`'s own artifacts
-    are now a real, Postgres-persisted `QAReport` (fetched back below), not
-    the old `"pending": "Task 22-24"` marker."""
+    """A dry run must still complete all 14 steps. `qa`'s own artifacts are a
+    real, Postgres-persisted `QAReport` (fetched back below); `compose` is a
+    plain dry stub with no `"pending"` marker (Task 24 dropped it); `export`
+    is a real, Postgres-persisted `AssetManifest` (also fetched back below)
+    whose primaryVideo uri equals compose's own dry-run uri, since nothing
+    live ever ran."""
     from creative_studio.generation.workers import RealWorkers
 
     spec, sheet, shot_spec, product = make_spec(), make_sheet(), make_shot_spec(), make_product()
@@ -602,9 +605,9 @@ async def test_real_workers_dry_e2e(services):
     assert state.steps["shot2_replace"].artifacts["uri"] == "dry-run:replaced2"
     assert state.steps["shot3_video"].artifacts["uri"] == "dry-run:clip3"
     assert state.steps["voice"].artifacts["uri"] == "dry-run:voice"
-    for name in ("compose", "export"):
-        assert state.steps[name].artifacts["uri"] == f"dry-run:{name}"
-        assert state.steps[name].artifacts["pending"] == "Task 22-24"
+
+    # compose: dry stub, no "pending" marker (Task 22-24 stub retired).
+    assert state.steps["compose"].artifacts == {"uri": "dry-run:compose"}
 
     # qa: a real QAReport, approved (every artifact is an expected dry-run
     # stub) and actually persisted through the real repos.qa_reports.
@@ -624,3 +627,19 @@ async def test_real_workers_dry_e2e(services):
         "ctaPresent": True,
         "productVisibleEveryShot": True,
     }
+
+    # export: a real AssetManifest, persisted through the real
+    # repos.asset_manifests, whose primaryVideo uri is compose's own dry uri.
+    export_artifacts = state.steps["export"].artifacts
+    assert export_artifacts["uri"] == "dry-run:compose"
+    manifest_id = export_artifacts["assetManifestId"]
+    assert manifest_id.startswith("manifest_")
+
+    persisted_manifest = await services.repos.asset_manifests.get(manifest_id)
+    assert persisted_manifest is not None
+    assert persisted_manifest.creative_spec_id == spec.id
+    assert persisted_manifest.references["qaReportId"] == report_id
+    assert persisted_manifest.deliverables["primaryVideo"]["r2Uri"] == "dry-run:compose"
+    assert persisted_manifest.deliverables["primaryImage"]["r2Uri"] == "dry-run:replaced2"
+    assert len(persisted_manifest.video_assets) == 3
+    assert len([a for a in persisted_manifest.image_assets if a["type"] == "keyframe"]) == 3

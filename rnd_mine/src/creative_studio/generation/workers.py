@@ -14,22 +14,27 @@ configuration and `context.generationId`. The portrait step is the one place
 `self.sheet` is replaced at runtime -- with the completed, portrait-bearing
 sheet -- so later live keyframes can reference the character portrait.
 
-compose / export are deliberately still dry stubs in this task; a later task
-replaces their bodies with the real ffmpeg compositor and export. `qa` (Task
-23) is now real: deterministic technical/asset checks (`creative_studio.qa`)
-build and persist a `QAReport` through `services.repos.qa_reports`. The VLM
-critic (subjective framing/brand/product-truth judgment) is explicitly out
-of scope for `qa` here -- deferred by design, not a placeholder. compose/
-export still carry a `"pending"` marker so a dry end-to-end run walks all 14
-steps to completion.
+`qa` (Task 23) and compose/export (Task 24) are now all real. compose
+downloads its shot clips (+ voice, if real) from R2, runs the real ffmpeg
+compositor (`creative_studio.composition.ffmpeg.compose_ad`) off the event
+loop, and uploads the final video; export assembles and persists the
+`AssetManifest` via `creative_studio.export.exporter.export_run`. `qa`:
+deterministic technical/asset checks (`creative_studio.qa`) build and
+persist a `QAReport` through `services.repos.qa_reports`. The VLM critic
+(subjective framing/brand/product-truth judgment) is explicitly out of scope
+for `qa` here -- deferred by design, not a placeholder.
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from creative_studio.composition.ffmpeg import srt_for
+from creative_studio.composition.ffmpeg import compose_ad, srt_for
+from creative_studio.composition.ffmpeg import thumbnail as render_thumbnail
+from creative_studio.config import REPO_ROOT
+from creative_studio.export.exporter import export_run
 from creative_studio.generation.adapters.fal_image import generate_image
 from creative_studio.generation.adapters.fal_tts import synthesize_voice
 from creative_studio.generation.adapters.fal_video import generate_clip
@@ -47,6 +52,9 @@ if TYPE_CHECKING:  # avoid any import cycle; these are only type hints
     from creative_studio.contracts import CharacterSheet, CreativeSpec, Product, ShotSpec
     from creative_studio.orchestration.orchestrator import RunMode, Services
 
+_DEFAULT_WORKDIR_ROOT = REPO_ROOT / "rnd_mine" / "data" / "runs"
+_FINAL_VIDEO_CONTENT_TYPE = "video/mp4"
+
 
 class RealWorkers:
     """Production implementation of the orchestrator's worker protocol."""
@@ -58,12 +66,16 @@ class RealWorkers:
         sheet: "CharacterSheet",
         shot_spec: "ShotSpec",
         product: "Product",
+        workdir_root: Path | None = None,
+        compose_dims: tuple[int, int] = (1080, 1920),
     ) -> None:
         self.services = services
         self.spec = spec
         self.sheet = sheet
         self.shot_spec = shot_spec
         self.product = product
+        self.workdir_root = workdir_root if workdir_root is not None else _DEFAULT_WORKDIR_ROOT
+        self.compose_dims = compose_dims
 
     # -- helpers -------------------------------------------------------------
 
@@ -139,10 +151,64 @@ class RealWorkers:
         uri, meta = await synthesize_voice(self.services.adapter, self.services.r2, voice_request, key)
         return {"uri": uri, "meta": meta}
 
-    # compose / export -- dry stubs until a later task fills them in.
+    # compose / export -- both real as of Task 24.
 
     async def compose(self, task, artifacts: dict, mode: "RunMode") -> dict:
-        return {"uri": "dry-run:compose", "pending": "Task 22-24"}
+        if not mode.live_video:
+            return {"uri": "dry-run:compose"}
+
+        shots = self.shot_spec.shots
+        durations = list(self.shot_spec.timing.shot_durations)
+        clip_uris = [
+            (artifacts.get(f"shot{n}_video") or {}).get("uri")
+            for n in range(1, len(shots) + 1)
+        ]
+        clip_uris = [uri for uri in clip_uris if uri]
+
+        # Guard BEFORE any download/compose work: a mismatched clip/duration/
+        # shot count silently zip-truncates otherwise (flagged in Task 22's
+        # review) rather than failing loudly.
+        if not (len(clip_uris) == len(durations) == len(shots) == 3):
+            raise ValueError(
+                "compose requires exactly 3 clip artifacts, shot durations, and "
+                f"shots (got clips={len(clip_uris)}, durations={len(durations)}, "
+                f"shots={len(shots)})"
+            )
+
+        generation_id = self._generation_id(task)
+        workdir = self.workdir_root / generation_id
+        workdir.mkdir(parents=True, exist_ok=True)
+
+        clip_paths = []
+        for n, uri in enumerate(clip_uris, start=1):
+            data = self.services.r2.get_bytes(self.services.r2.key_from_uri(uri))
+            clip_path = workdir / f"shot{n}.mp4"
+            clip_path.write_bytes(data)
+            clip_paths.append(clip_path)
+
+        voice_uri = (artifacts.get("voice") or {}).get("uri")
+        voice_path = None
+        if voice_uri and voice_uri.startswith("r2://"):
+            voice_data = self.services.r2.get_bytes(self.services.r2.key_from_uri(voice_uri))
+            voice_path = workdir / "voice.mp3"
+            voice_path.write_bytes(voice_data)
+
+        width, height = self.compose_dims
+        final_path = await asyncio.to_thread(
+            compose_ad, workdir, clip_paths, durations, voice_path, shots, width, height,
+        )
+
+        thumb_path = workdir / "thumb.jpg"
+        await asyncio.to_thread(render_thumbnail, final_path, thumb_path)
+
+        key = key_for("final_video", generation_id=generation_id)
+        uri = self.services.r2.put_bytes(key, final_path.read_bytes(), _FINAL_VIDEO_CONTENT_TYPE)
+
+        return {
+            "uri": uri,
+            "localPath": str(final_path),
+            "thumbnailLocalPath": str(thumb_path),
+        }
 
     @staticmethod
     def _plan_compliance(shot_spec: "ShotSpec") -> dict:
@@ -174,11 +240,10 @@ class RealWorkers:
         every uri is still a `"dry-run:*"` stub (the whole run was dry),
         that's the full picture -- informational issues only. Otherwise
         (some step went live) ALSO look for a real composed final video at
-        `artifacts["compose"]["localPath"]`; when the orchestrator's compose
-        step is later wired to produce one (plus per-clip local paths), the
-        technical checks below start actually running -- until then this
-        branch is a no-op by construction, since nothing produces those
-        local paths yet.
+        `artifacts["compose"]["localPath"]` (Task 24's live `compose` now
+        produces one, plus per-clip local paths, whenever `mode.live_video`);
+        the technical checks below run whenever that local video and all 3
+        clip local paths are actually present.
         """
         uris = {
             name: step_artifacts["uri"]
@@ -212,4 +277,22 @@ class RealWorkers:
         return {"qaReportId": report.id, "approved": report.overall_result.get("approvedForExport")}
 
     async def export(self, task, artifacts: dict, mode: "RunMode") -> dict:
-        return {"uri": "dry-run:export", "pending": "Task 22-24"}
+        lineage = {
+            "characterSheetId": self.sheet.id,
+            "shotSpecId": self.shot_spec.id,
+            "productId": self.product.id,
+        }
+        manifest = await export_run(
+            self.services.r2,
+            self.services.repos,
+            self.spec,
+            artifacts=artifacts,
+            generation_id=self._generation_id(task),
+            run_status="running",
+            lineage=lineage,
+            thumbnail_local=(artifacts.get("compose") or {}).get("thumbnailLocalPath"),
+        )
+        return {
+            "assetManifestId": manifest.id,
+            "uri": manifest.deliverables["primaryVideo"]["r2Uri"],
+        }
