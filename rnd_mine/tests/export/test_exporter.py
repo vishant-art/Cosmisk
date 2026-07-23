@@ -74,7 +74,7 @@ async def test_dry_artifacts_produce_valid_persisted_manifest(fake_r2):
         fake_r2, repos, spec,
         artifacts=_ALL_DRY_ARTIFACTS,
         generation_id="gen_1",
-        run_status="running",
+        run_status="completed",
         lineage=_LINEAGE,
     )
 
@@ -96,7 +96,7 @@ async def test_dry_artifacts_produce_valid_persisted_manifest(fake_r2):
     assert manifest.deliverables["primaryVideo"]["r2Uri"] == "dry-run:compose"
     # the Product shot's (shot 2) replaced keyframe is the static deliverable
     assert manifest.deliverables["primaryImage"]["r2Uri"] == "dry-run:replaced2"
-    assert manifest.deliverables["thumbnail"] == "dry-run:thumbnail"
+    assert manifest.deliverables["thumbnail"]["r2Uri"] == "dry-run:thumbnail"
 
     assert manifest.audio_assets == [{"type": "voiceover", "r2Uri": "dry-run:voice"}]
 
@@ -111,7 +111,7 @@ async def test_dry_artifacts_produce_valid_persisted_manifest(fake_r2):
     assert manifest.source_references["productId"] == "product_1"
 
     assert manifest.generation_summary["generationId"] == "gen_1"
-    assert manifest.generation_summary["status"] == "running"
+    assert manifest.generation_summary["status"] == "completed"
     assert manifest.generation_summary["language"] == "English"
     assert manifest.generation_summary["shots"] == 3
 
@@ -131,7 +131,7 @@ async def test_missing_step_uris_fall_back_to_dry_run_stub(fake_r2):
         fake_r2, repos, spec,
         artifacts={},
         generation_id="gen_2",
-        run_status="running",
+        run_status="completed",
         lineage={},
     )
 
@@ -152,12 +152,12 @@ async def test_real_thumbnail_local_file_uploads_and_is_referenced(fake_r2, tmp_
         fake_r2, repos, spec,
         artifacts=_ALL_DRY_ARTIFACTS,
         generation_id="gen_3",
-        run_status="running",
+        run_status="completed",
         lineage=_LINEAGE,
         thumbnail_local=str(thumb_path),
     )
 
-    thumbnail_uri = manifest.deliverables["thumbnail"]
+    thumbnail_uri = manifest.deliverables["thumbnail"]["r2Uri"]
     assert thumbnail_uri.startswith("r2://")
     key = fake_r2.key_from_uri(thumbnail_uri)
     assert (key, "image/jpeg") in fake_r2.put_calls
@@ -176,9 +176,9 @@ async def test_missing_thumbnail_local_file_falls_back_to_dry_run(fake_r2, tmp_p
         fake_r2, repos, spec,
         artifacts=_ALL_DRY_ARTIFACTS,
         generation_id="gen_4",
-        run_status="running",
+        run_status="completed",
         lineage=_LINEAGE,
         thumbnail_local=str(tmp_path / "never_created.jpg"),
     )
 
-    assert manifest.deliverables["thumbnail"] == "dry-run:thumbnail"
+    assert manifest.deliverables["thumbnail"]["r2Uri"] == "dry-run:thumbnail"

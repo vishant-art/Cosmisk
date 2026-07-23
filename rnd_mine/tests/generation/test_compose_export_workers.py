@@ -269,4 +269,4 @@ async def test_export_threads_real_thumbnail_from_compose_artifacts(fake_r2, tmp
     result = await workers.export(task=_Task("gen_export_2"), artifacts=artifacts, mode=RunMode())
 
     manifest = repo.docs[result["assetManifestId"]]
-    assert manifest.deliverables["thumbnail"].startswith("r2://")
+    assert manifest.deliverables["thumbnail"]["r2Uri"].startswith("r2://")

@@ -82,7 +82,7 @@ async def export_run(
     deliverables = {
         "primaryVideo": {"r2Uri": _uri(artifacts, "compose")},
         "primaryImage": {"r2Uri": _uri(artifacts, "shot2_replace")},
-        "thumbnail": thumbnail_uri,
+        "thumbnail": {"r2Uri": thumbnail_uri},
     }
 
     generation_summary = {

@@ -282,13 +282,14 @@ class RealWorkers:
             "shotSpecId": self.shot_spec.id,
             "productId": self.product.id,
         }
+        # A manifest only exists when the pipeline reached export successfully, so completed is truthful
         manifest = await export_run(
             self.services.r2,
             self.services.repos,
             self.spec,
             artifacts=artifacts,
             generation_id=self._generation_id(task),
-            run_status="running",
+            run_status="completed",
             lineage=lineage,
             thumbnail_local=(artifacts.get("compose") or {}).get("thumbnailLocalPath"),
         )
