@@ -350,6 +350,43 @@ async def test_gather_escape_cancels_and_persists_failed(services, store, monkey
 
 @skip_no_db
 @asyncio_session
+async def test_gather_escape_double_fault_surfaces_original(services, store, monkeypatch):
+    """When the escape handler's terminal save ALSO fails, the original mid-chains
+    fault must propagate (not the terminal-save exception). The persisted status
+    remains 'running' since the terminal save never succeeded."""
+    task = make_task()
+    gen_id = task.context["generationId"]
+    workers = SlowWorkers()
+    orch = Orchestrator(services, workers)
+
+    original_save = store.save
+    flag = {"raised": False}
+
+    async def persistently_failing_save(state):
+        # Let portrait saves succeed, then fail once a shot keyframe enters running
+        if (not flag["raised"]
+                and state.steps["portrait"].status == "done"
+                and any(state.steps[f"shot{n}_keyframe"].status == "running" for n in (1, 2, 3))):
+            flag["raised"] = True
+            raise RuntimeError("boom: original mid-chains failure")
+        # After first trigger, ALL subsequent saves fail (including terminal status save)
+        if flag["raised"]:
+            raise RuntimeError("boom: terminal save failed")
+        return await original_save(state)
+
+    monkeypatch.setattr(store, "save", persistently_failing_save)
+
+    # The original exception must escape, not the terminal-save exception
+    with pytest.raises(RuntimeError, match="boom: original mid-chains failure"):
+        await orch.run(gen_id, task, RunMode())
+
+    # The run status remains 'running' in the store (terminal save failed)
+    loaded = await store.load(gen_id)
+    assert loaded.status == "running"
+
+
+@skip_no_db
+@asyncio_session
 async def test_run_refuses_when_already_running(services, store):
     task = make_task()
     gen_id = task.context["generationId"]

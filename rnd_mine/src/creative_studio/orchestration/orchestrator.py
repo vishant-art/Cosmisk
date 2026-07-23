@@ -262,10 +262,9 @@ class Orchestrator:
             await asyncio.gather(*tasks, return_exceptions=True)
             try:
                 await self._set_status(state, "failed")
-            finally:
-                # Re-raise the original fault even if persisting "failed" also
-                # fails (e.g. the store itself is what broke).
-                raise
+            except BaseException:
+                pass  # best-effort terminal save; must never mask the original fault
+            raise
 
     async def _shot_chain(
         self, state: RunState, n: int, task: GenerationTask, mode: RunMode, max_attempts: int
