@@ -132,16 +132,16 @@ def confirm_spend(mode: RunMode, settings, assume_yes: bool) -> bool:
 
     echo("Paid generation requested. Estimated spend:")
     if mode.live_images:
-        echo("  portrait 1 + keyframes 3 ≈ $0.20-0.60; BiRefNet+BRIA ≈ $0.15")
+        echo("  portrait 1 + keyframes 3 ~ $0.20-0.60; BiRefNet+BRIA ~ $0.15")
     if mode.live_video:
-        echo("  3 Seedance clips × ≈$1.21 = ≈$3.63; TTS ≈ $0.10")
+        echo("  3 Seedance clips x ~$1.21 = ~$3.63; TTS ~ $0.10")
 
     if mode.live_images and mode.live_video:
-        echo("  total ≈ $4-5")
+        echo("  total ~ $4-5")
     elif mode.live_video:
-        echo("  total ≈ $3.73")
+        echo("  total ~ $3.73")
     else:
-        echo("  total ≈ $0.35-0.75")
+        echo("  total ~ $0.35-0.75")
 
     balance = read_balance(settings)
     if balance is not None:
@@ -283,7 +283,7 @@ async def cmd_sync_shopify(args, services_factory=None) -> int:
         # estimate is phrased against the requested --limit, not an actual
         # fetched count.
         if args.live_images:
-            echo(f"BiRefNet cutout extraction ≈ $0.01-0.05/product x up to {args.limit} products")
+            echo(f"BiRefNet cutout extraction ~ $0.01-0.05/product x up to {args.limit} products")
             balance = read_balance(settings)
             if balance is not None:
                 echo(f"current fal balance: ${balance:.2f}")
