@@ -35,7 +35,7 @@ from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from ai_layer import meta_live, storage
-from ai_layer.creative import config, fal_billing, pipeline
+from ai_layer.creative import config, fal_billing, pipeline, thumbs
 from ai_layer.creative.schemas import CreatorKit, Storyboard, UGCStyle
 
 log = logging.getLogger("ai_layer.creative.service")
@@ -179,18 +179,47 @@ _CT = {".png": "image/png", ".jpg": "image/jpeg", ".mp4": "video/mp4",
        ".mp3": "audio/mpeg", ".json": "application/json"}
 
 
+def _add_thumbs(job_id: str, run_dir: Path, assets: list[dict]) -> None:
+    """Best-effort ~512px JPEG thumbnails for image assets; adds `thumb_url` to each dict so
+    the grid loads small and fetches full-res only on open. A failed thumb just leaves the
+    field unset (the UI falls back to `url`); it never fails the job."""
+    for a in assets:
+        try:
+            src = run_dir / Path(a["url"]).name
+            dst = run_dir / "thumbs" / (src.stem + ".jpg")
+            thumbs.image_thumb(src, dst)
+            a["thumb_url"] = f"/creative/assets/{job_id}/thumbs/{dst.name}"
+        except Exception:  # noqa: BLE001 -- a thumbnail is never worth failing a run over
+            log.warning("thumb skipped for %s", a.get("url"), exc_info=True)
+
+
+def _add_poster(job_id: str, run_dir: Path, video: dict | None) -> None:
+    """Best-effort poster frame for a video dict; adds `poster_url`. Same fail-open contract."""
+    if not (video and video.get("url")):
+        return
+    try:
+        src = run_dir / Path(video["url"]).name
+        dst = run_dir / "thumbs" / (src.stem + ".jpg")
+        thumbs.video_poster(src, dst)
+        video["poster_url"] = f"/creative/assets/{job_id}/thumbs/{dst.name}"
+    except Exception:  # noqa: BLE001 -- a poster is never worth failing a run over
+        log.warning("poster skipped for %s", video.get("url"), exc_info=True)
+
+
 def _publish_assets(job_id: str, run_dir: Path) -> None:
     """Mirror the run's delivered files to R2 under {job_id}/{relpath}. No-op when storage
     is off (local disk stays the source of truth). Best-effort: an upload failure must never
     fail a job whose bytes already exist on disk.
 
     ponytail: glob the delivered set only — top-level ad_*.png (NOT concept/logo/cutout
-    scratch), *.mp4, winners/*.png, and the variant tree — so scratch never leaves disk.
+    scratch), *.mp4, winners/*.png, thumbs/*.jpg, and the variant tree — so scratch never
+    leaves disk.
     """
     if not storage.enabled():
         return
     delivered = [*run_dir.glob("ad_*.png"), *run_dir.glob("*.mp4"),
-                 *run_dir.glob("winners/*.png"), *run_dir.glob("variants/*.mp4"),
+                 *run_dir.glob("winners/*.png"), *run_dir.glob("thumbs/*.jpg"),
+                 *run_dir.glob("variants/*.mp4"),
                  *run_dir.glob("variants/*.script.json"), *run_dir.glob("variants_*.json")]
     for f in delivered:
         try:
@@ -293,6 +322,8 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
                 if v is not None:
                     job["video"] = {"url": _asset_url(job_id, v.path)}
 
+        _add_thumbs(job_id, run_dir, job["assets"])
+        _add_poster(job_id, run_dir, job.get("video"))
         _publish_assets(job_id, run_dir)
         stage("Done")
         job["status"] = "complete"
@@ -428,6 +459,7 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
 
         job["cost_usd"] = _run_cost(run_dir)
         job["actuals"] = _read_json(run_dir / "fal_actuals.json")
+        _add_poster(job_id, run_dir, job.get("video"))
         _publish_assets(job_id, run_dir)
         stage("Done")
         job["status"] = "complete"

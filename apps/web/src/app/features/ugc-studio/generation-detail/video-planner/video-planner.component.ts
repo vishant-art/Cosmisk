@@ -181,7 +181,7 @@ const N_SHOTS = 3;
                 }
               </div>
             }
-            <video [src]="videoUrl()" controls class="w-full rounded-lg"></video>
+            <video [src]="videoUrl()" [poster]="posterUrl()" controls class="w-full rounded-lg"></video>
           </div>
         }
       }
@@ -270,6 +270,14 @@ export class VideoPlannerComponent implements OnDestroy {
   videoUrl(): string {
     const url = this.videoJob()?.video?.url;
     return url ? resolveAssetUrl(`/api/creative-studio/asset/${this.aiJobId}/${url.split('/').pop()}`) : '';
+  }
+  /** Poster lives under thumbs/ — strip the ai-layer prefix but keep the subdir (a bare
+   *  basename would drop 'thumbs/' and 404). Mirrors the api's proxy() rewrite. */
+  posterUrl(): string {
+    const p = this.videoJob()?.video?.poster_url;
+    if (!p) return '';
+    const sub = p.replace(/^\/creative\/assets\/[^/]+\//, '');
+    return resolveAssetUrl(`/api/creative-studio/asset/${this.aiJobId}/${sub}`);
   }
   // Known false-positives on edited clips (caption drift, cut alignment) are internal-only signal.
   visibleChecks(job: any): Array<{ name: string; passed: boolean; detail?: string }> {

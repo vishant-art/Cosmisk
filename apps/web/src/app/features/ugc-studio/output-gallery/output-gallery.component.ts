@@ -70,7 +70,7 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
               @for (img of out.output; track $index) {
                 <div class="card !p-2 group hover:shadow-md transition-shadow">
                   @if (img.image_url) {
-                    <img [src]="asset(img.image_url)" [alt]="img.aspect_ratio"
+                    <img [src]="asset(img.thumb_url || img.image_url)" [alt]="img.aspect_ratio"
                       class="w-full rounded-lg mb-2 bg-gray-100" loading="lazy" />
                   } @else if (img.status === 'processing') {
                     <div class="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center">
@@ -109,7 +109,7 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
               @for (slide of out.output; track $index) {
                 <div class="card !p-2 group hover:shadow-md transition-shadow">
                   @if (slide.image_url) {
-                    <img [src]="asset(slide.image_url)" [alt]="'Slide ' + slide.slide_number"
+                    <img [src]="asset(slide.thumb_url || slide.image_url)" [alt]="'Slide ' + slide.slide_number"
                       class="w-full rounded-lg mb-2 bg-gray-100" loading="lazy" />
                   } @else if (slide.status === 'processing') {
                     <div class="w-full aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center">

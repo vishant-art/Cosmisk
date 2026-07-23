@@ -28,6 +28,7 @@ export interface CreativeGenAsset {
   concept: string | null;
   fmt: string;
   url: string;             // ai-layer-relative, e.g. /creative/assets/<job>/<file>
+  thumb_url?: string | null; // ~512px JPEG for the grid; absent -> UI falls back to url
   copy: { headline?: string; subhead?: string; cta_label?: string } | null;
 }
 
@@ -38,7 +39,7 @@ export interface CreativeGenJob {
   progress: string[];      // all milestones so far
   run_id: string | null;
   assets: CreativeGenAsset[];
-  video: { url: string } | null;
+  video: { url: string; poster_url?: string | null } | null;
   qa?: { verdict: string; checks?: unknown[]; retry_hint?: string } | null;
   brand_kit: Record<string, unknown> | null;
   winners: { url: string }[];

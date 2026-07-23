@@ -708,12 +708,17 @@ async function processGenerationViaAiLayer(
 
     const images = job.assets.map(a => ({
       image_url: proxy(jobId, a.url),
+      thumb_url: a.thumb_url ? proxy(jobId, a.thumb_url) : null,
       aspect_ratio: a.fmt,
       status: 'completed',
       headline: a.copy?.headline ?? null,
       concept: a.concept,
     }));
-    const videoOut = job.video ? { video_url: proxy(jobId, job.video.url), status: 'completed' } : null;
+    const videoOut = job.video ? {
+      video_url: proxy(jobId, job.video.url),
+      poster_url: job.video.poster_url ? proxy(jobId, job.video.poster_url) : null,
+      status: 'completed',
+    } : null;
     const costCents = Math.round((job.cost_usd || 0) * 100);
 
     // "Everything -> Python": the video format gets the clip; every other requested
