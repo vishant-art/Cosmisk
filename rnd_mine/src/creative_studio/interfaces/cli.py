@@ -244,7 +244,12 @@ def _report_run_result(state) -> int:
 
 async def cmd_migrate(args, services_factory=None) -> int:
     settings = get_settings()
-    applied = run_migrations(settings.migration_database_url)
+    # `run_migrations` is a sync wrapper that itself calls `asyncio.run(...)`.
+    # `main()` already drives every handler via `asyncio.run(...)`, so calling
+    # it directly here would raise "asyncio.run() cannot be called from a
+    # running event loop". `asyncio.to_thread` gives it a fresh thread with
+    # no running loop of its own.
+    applied = await asyncio.to_thread(run_migrations, settings.migration_database_url)
     if applied:
         echo(f"applied migrations: {', '.join(str(v) for v in applied)}")
     else:
@@ -262,17 +267,15 @@ async def cmd_sync_shopify(args, services_factory=None) -> int:
     services = await build()
     try:
         settings = services.settings
-        client = ShopifyClient(settings)
 
-        shop_meta = await client.fetch_shop()
-        profile = load_brand_profile()
-        brand = build_brand_context(shop_meta, profile, {"shopify": {"connected": True}})
-        await services.repos.brand_contexts.upsert(brand)
-
-        raw_products = await client.fetch_products(limit=args.limit)
-
-        if args.live_images and raw_products:
-            echo(f"BiRefNet cutout extraction ≈ $0.01-0.05/product x {len(raw_products)} products")
+        # The --live-images confirmation gate runs FIRST, before any Shopify
+        # fetch, brand/product upsert, or r2 mirror work -- a decline aborts
+        # the whole command with zero side effects (nothing fetched, nothing
+        # written). Product count isn't known yet at this point, so the
+        # estimate is phrased against the requested --limit, not an actual
+        # fetched count.
+        if args.live_images:
+            echo(f"BiRefNet cutout extraction ≈ $0.01-0.05/product x up to {args.limit} products")
             balance = read_balance(settings)
             if balance is not None:
                 echo(f"current fal balance: ${balance:.2f}")
@@ -281,6 +284,15 @@ async def cmd_sync_shopify(args, services_factory=None) -> int:
                 if answer.strip().lower() != "y":
                     echo("aborted: no paid calls were made")
                     return 1
+
+        client = ShopifyClient(settings)
+
+        shop_meta = await client.fetch_shop()
+        profile = load_brand_profile()
+        brand = build_brand_context(shop_meta, profile, {"shopify": {"connected": True}})
+        await services.repos.brand_contexts.upsert(brand)
+
+        raw_products = await client.fetch_products(limit=args.limit)
 
         rows = []
         for raw in raw_products:
@@ -544,7 +556,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_regen = subparsers.add_parser("regen", help="regenerate one shot of a run")
     p_regen.add_argument("--run", required=True)
-    p_regen.add_argument("--shot", type=int, required=True)
+    p_regen.add_argument("--shot", type=int, choices=[1, 2, 3], required=True)
     p_regen.add_argument("--live-images", action="store_true")
     p_regen.add_argument("--live-video", action="store_true")
     p_regen.add_argument("--yes", action="store_true")

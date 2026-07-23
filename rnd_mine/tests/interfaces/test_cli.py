@@ -332,6 +332,194 @@ def test_migrate_prints_up_to_date_when_nothing_applied(monkeypatch, capsys):
     assert "up to date" in capsys.readouterr().out
 
 
+def test_migrate_real_wrapper_survives_event_loop(monkeypatch, capsys):
+    """Regression for the CRITICAL finding: `main()` drives every handler via
+    `asyncio.run(...)`, and the REAL `run_migrations` (never monkeypatched
+    here) itself calls `asyncio.run(...)` internally. Pre-fix, `cmd_migrate`
+    called `run_migrations` directly from inside that running loop and blew
+    up with `RuntimeError: asyncio.run() cannot be called from a running
+    event loop`. Post-fix, `cmd_migrate` runs it via `asyncio.to_thread`,
+    which gives the sync wrapper a fresh thread with no running loop, so this
+    passes. Only the innermost async implementation is faked (to avoid a
+    real Postgres connection); the sync wrapper executes for real."""
+    from creative_studio.storage import migrations_runner
+
+    async def fake_run_migrations_async(dsn, schema="creative_studio"):
+        return [1]
+
+    monkeypatch.setattr(migrations_runner, "_run_migrations_async", fake_run_migrations_async)
+
+    fake_settings = FakeSettings(migration_database_url="postgres://fake-migration-dsn")
+    monkeypatch.setattr(cli, "get_settings", lambda: fake_settings)
+    # Deliberately NOT monkeypatching cli.run_migrations -- the real sync
+    # wrapper must execute for this regression test to mean anything.
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["migrate"])
+
+    assert exc.value.code == 0
+    assert "1" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# sync-shopify: the --live-images gate runs BEFORE any fetch/upsert/mirror
+# work, so a decline aborts the whole command with zero side effects.
+# ---------------------------------------------------------------------------
+
+
+def test_sync_live_images_decline_aborts_everything(monkeypatch, capsys):
+    class FakeShopifyClient:
+        calls: list[str] = []
+
+        def __init__(self, settings) -> None:
+            FakeShopifyClient.calls.append("init")
+
+        async def fetch_shop(self):
+            FakeShopifyClient.calls.append("fetch_shop")
+            return {}
+
+        async def fetch_products(self, limit):
+            FakeShopifyClient.calls.append("fetch_products")
+            return []
+
+    prepare_calls: list[str] = []
+
+    async def fake_prepare(adapter, r2, product, brand_id):
+        prepare_calls.append(product.id)
+        return product
+
+    repos = make_empty_repos()
+    make_services_factory(monkeypatch, repos=repos, run_store=FakeRunStore())
+    monkeypatch.setattr(cli, "ShopifyClient", FakeShopifyClient)
+    monkeypatch.setattr(cli, "prepare_product_assets", fake_prepare)
+    monkeypatch.setattr(cli, "read_balance", lambda settings: None)
+    monkeypatch.setattr(cli, "input", lambda prompt="": "n")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["sync-shopify", "--live-images"])
+
+    assert exc.value.code == 1
+    assert FakeShopifyClient.calls == []
+    assert prepare_calls == []
+    assert repos.brand_contexts._items == {}
+    assert repos.products._items == {}
+    assert "aborted" in capsys.readouterr().out
+
+
+def test_sync_live_images_yes_runs_prepare(monkeypatch, capsys):
+    from creative_studio.contracts import BrandContext
+
+    raw_products = [{"id": "raw1"}, {"id": "raw2"}]
+    products_by_raw_id = {"raw1": make_product("product_1"), "raw2": make_product("product_2")}
+
+    class FakeShopifyClient:
+        def __init__(self, settings) -> None:
+            pass
+
+        async def fetch_shop(self):
+            return {"name": "Test Shop", "url": "https://test.myshopify.com", "currencyCode": "USD"}
+
+        async def fetch_products(self, limit):
+            return raw_products
+
+    def fake_normalize_product(raw):
+        return products_by_raw_id[raw["id"]]
+
+    async def fake_mirror(product, r2, brand_id):
+        return product
+
+    prepare_calls: list[str] = []
+
+    async def fake_prepare(adapter, r2, product, brand_id):
+        prepare_calls.append(product.id)
+        return product.model_copy(update={"derived_assets": {"transparentCutout": "r2://fake/cutout.png"}})
+
+    brand = BrandContext(
+        id=new_id("brand"),
+        business={"brandName": "Test Brand", "industry": "Fashion & Apparel"},
+        branding={}, audience={}, creative_guidelines={}, user_preferences={},
+        platform_connections={"shopify": {"connected": True}},
+    )
+
+    repos = make_empty_repos()
+    make_services_factory(monkeypatch, repos=repos, run_store=FakeRunStore())
+    monkeypatch.setattr(cli, "ShopifyClient", FakeShopifyClient)
+    monkeypatch.setattr(cli, "normalize_product", fake_normalize_product)
+    monkeypatch.setattr(cli, "mirror_product_assets", fake_mirror)
+    monkeypatch.setattr(cli, "prepare_product_assets", fake_prepare)
+    monkeypatch.setattr(cli, "load_brand_profile", lambda: {})
+    monkeypatch.setattr(cli, "build_brand_context", lambda shop_meta, profile, connections: brand)
+    monkeypatch.setattr(cli, "read_balance", lambda settings: 10.0)
+
+    def _boom(prompt: str = "") -> str:
+        raise AssertionError("input() must not be called when --yes is passed")
+
+    monkeypatch.setattr(cli, "input", _boom)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["sync-shopify", "--live-images", "--yes"])
+
+    assert exc.value.code == 0
+    assert prepare_calls == ["product_1", "product_2"]
+    assert len(repos.products._items) == 2
+    out = capsys.readouterr().out
+    assert "yes" in out
+
+
+def test_sync_dry_never_prompts(monkeypatch, capsys):
+    from creative_studio.contracts import BrandContext
+
+    raw_products = [{"id": "raw1"}]
+    product = make_product("product_1")
+
+    class FakeShopifyClient:
+        def __init__(self, settings) -> None:
+            pass
+
+        async def fetch_shop(self):
+            return {"name": "Test Shop", "url": "https://test.myshopify.com", "currencyCode": "USD"}
+
+        async def fetch_products(self, limit):
+            return raw_products
+
+    async def fake_mirror(product_, r2, brand_id):
+        return product_
+
+    prepare_calls: list[str] = []
+
+    async def fake_prepare(adapter, r2, product_, brand_id):
+        prepare_calls.append(product_.id)
+        return product_
+
+    brand = BrandContext(
+        id=new_id("brand"),
+        business={"brandName": "Test Brand", "industry": "Fashion & Apparel"},
+        branding={}, audience={}, creative_guidelines={}, user_preferences={},
+        platform_connections={"shopify": {"connected": True}},
+    )
+
+    repos = make_empty_repos()
+    make_services_factory(monkeypatch, repos=repos, run_store=FakeRunStore())
+    monkeypatch.setattr(cli, "ShopifyClient", FakeShopifyClient)
+    monkeypatch.setattr(cli, "normalize_product", lambda raw: product)
+    monkeypatch.setattr(cli, "mirror_product_assets", fake_mirror)
+    monkeypatch.setattr(cli, "prepare_product_assets", fake_prepare)
+    monkeypatch.setattr(cli, "load_brand_profile", lambda: {})
+    monkeypatch.setattr(cli, "build_brand_context", lambda shop_meta, profile, connections: brand)
+
+    def _boom(prompt: str = "") -> str:
+        raise AssertionError("input() must not be called without --live-images")
+
+    monkeypatch.setattr(cli, "input", _boom)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["sync-shopify"])
+
+    assert exc.value.code == 0
+    assert prepare_calls == []
+    assert len(repos.products._items) == 1
+
+
 # ---------------------------------------------------------------------------
 # test_dry_generate_skips_prompt
 # ---------------------------------------------------------------------------
@@ -547,6 +735,12 @@ def test_regen_calls_orchestrator_regen_shot(monkeypatch, capsys):
     assert kind == "regen_shot"
     assert generation_id == "existing_run_2"
     assert shot_number == 2
+
+
+def test_regen_shot_choice_rejected():
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["regen", "--run", "x", "--shot", "4"])
+    assert exc.value.code == 2
 
 
 # ---------------------------------------------------------------------------
