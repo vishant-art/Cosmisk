@@ -289,6 +289,9 @@ Return ONLY valid JSON, no markdown.`,
     const { jobId } = request.params as { jobId: string };
     const file = (request.params as Record<string, string>)['*'];  // may include a subdir
     if (file.includes('..')) return reply.status(400).send({ success: false, error: 'bad path' });
+    // Embedded cross-origin by design (web origin ≠ api origin in sim & prod); the jobId is the
+    // capability. Override helmet's global CORP: same-origin so <img>/<video> can render the 302→R2.
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     // Storage on: 302 the browser straight to a presigned R2 URL the ai-layer minted
     // (bytes flow browser<->R2, $0 Railway egress; apps/api holds no R2 creds).
     try {
