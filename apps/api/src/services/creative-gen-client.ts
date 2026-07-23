@@ -59,6 +59,25 @@ const START_TIMEOUT_MS = 15_000;   // returns a job_id immediately
 const POLL_TIMEOUT_MS = 20_000;
 const ASSET_TIMEOUT_MS = 60_000;
 
+type AiFetchOpts = { body?: unknown; metaToken?: string; timeoutMs?: number };
+
+/** Shared ai-layer call: enabled-guard, X-API-Key (+ optional Meta token), JSON in/out,
+ *  uniform `${label} failed: <body>` error. `timeoutMs` omitted = no timeout (long LLM
+ *  planning). The richer start/poll paths below keep their own network-catch + {detail}. */
+async function aiFetch<T>(method: string, path: string, label: string, opts: AiFetchOpts = {}): Promise<T> {
+  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
+  const headers: Record<string, string> = { 'X-API-Key': config.aiLayerApiKey };
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.metaToken) headers['X-Meta-Token'] = opts.metaToken;
+  const res = await fetch(`${base()}${path}`, {
+    method, headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
+  });
+  if (!res.ok) throw new AiLayerError(`${label} failed: ${await res.text()}`, res.status);
+  return res.json() as Promise<T>;
+}
+
 /** POST /creative/generate -> { job_id }. */
 export async function startCreativeGen(
   req: CreativeGenRequest,
@@ -177,95 +196,54 @@ export interface VideoPlan {
   storyboard: unknown; quote: VideoQuote;
 }
 
-/** POST /creative/video/plan — $0, LLM only. 409 if the run has no brand kit. */
-export async function videoPlan(jobId: string, opts: VideoPlanOpts, metaToken?: string): Promise<VideoPlan> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey };
-  if (metaToken) headers['X-Meta-Token'] = metaToken;
-  const res = await fetch(`${base()}/creative/video/plan`, {
-    method: 'POST', headers,
-    body: JSON.stringify({ job_id: jobId, seconds: opts.seconds, direction: opts.direction, n_shots: opts.n_shots, creator: opts.creator }),
+/** POST /creative/video/plan — $0, LLM only. 409 if the run has no brand kit. No timeout: LLM planning. */
+export function videoPlan(jobId: string, opts: VideoPlanOpts, metaToken?: string): Promise<VideoPlan> {
+  return aiFetch('POST', '/creative/video/plan', 'video/plan', {
+    metaToken,
+    body: { job_id: jobId, seconds: opts.seconds, direction: opts.direction, n_shots: opts.n_shots, creator: opts.creator },
   });
-  if (!res.ok) throw new AiLayerError(`video/plan failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<VideoPlan>;
 }
 
-/** POST /creative/video/generate — PAID. 409 without a storyboard, 402 if balance can't cover. */
-export async function videoGenerate(jobId: string, opts: VideoGenOpts, metaToken?: string): Promise<{ job_id: string; status: string; clips: number }> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey };
-  if (metaToken) headers['X-Meta-Token'] = metaToken;
-  const res = await fetch(`${base()}/creative/video/generate`, {
-    method: 'POST', headers,
-    body: JSON.stringify({
+/** POST /creative/video/generate — PAID. 409 without a storyboard, 402 if balance can't cover. No timeout: render kickoff. */
+export function videoGenerate(jobId: string, opts: VideoGenOpts, metaToken?: string): Promise<{ job_id: string; status: string; clips: number }> {
+  return aiFetch('POST', '/creative/video/generate', 'video/generate', {
+    metaToken,
+    body: {
       job_id: jobId,
       voiceover: opts.voiceover ?? true, captions: opts.captions ?? true, sfx: opts.sfx ?? true,
       direction: opts.direction, creator: opts.creator,
       pin_face: opts.pin_face ?? false, hero_with_creator: opts.hero_with_creator ?? false,
-    }),
+    },
   });
-  if (!res.ok) throw new AiLayerError(`video/generate failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<{ job_id: string; status: string; clips: number }>;
 }
 
 // ─── The closed loop: publish → learn → prior/graph ─────────────────────────
 
-function jsonHeaders(metaToken?: string): Record<string, string> {
-  const h: Record<string, string> = { 'Content-Type': 'application/json', 'X-API-Key': config.aiLayerApiKey };
-  if (metaToken) h['X-Meta-Token'] = metaToken;
-  return h;
-}
-
 /** POST /creative/variants/{id}/published — stamp which Meta ad a variant became. */
-export async function markPublished(variantId: string, metaAdId: string): Promise<{ status: string }> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const res = await fetch(`${base()}/creative/variants/${encodeURIComponent(variantId)}/published`, {
-    method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ meta_ad_id: metaAdId }),
-    signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
+export function markPublished(variantId: string, metaAdId: string): Promise<{ status: string }> {
+  return aiFetch('POST', `/creative/variants/${encodeURIComponent(variantId)}/published`, 'published', {
+    body: { meta_ad_id: metaAdId }, timeoutMs: POLL_TIMEOUT_MS,
   });
-  if (!res.ok) throw new AiLayerError(`published failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<{ status: string }>;
 }
 
 /** POST /creative/learn — harvest realized performance, rebuild the prior. */
-export async function learn(accountId: string, metaToken?: string): Promise<Record<string, unknown>> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const res = await fetch(`${base()}/creative/learn`, {
-    method: 'POST', headers: jsonHeaders(metaToken), body: JSON.stringify({ account_id: accountId }),
-    signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
+export function learn(accountId: string, metaToken?: string): Promise<Record<string, unknown>> {
+  return aiFetch('POST', '/creative/learn', 'learn', {
+    body: { account_id: accountId }, metaToken, timeoutMs: ASSET_TIMEOUT_MS,
   });
-  if (!res.ok) throw new AiLayerError(`learn failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<Record<string, unknown>>;
 }
 
-/** GET /creative/prior/{acct} — what this account has proven. */
-export async function getPrior(accountId: string): Promise<Record<string, unknown>> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const res = await fetch(`${base()}/creative/prior/${encodeURIComponent(accountId)}`, {
-    method: 'GET', headers: { 'X-API-Key': config.aiLayerApiKey }, signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new AiLayerError(`prior failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<Record<string, unknown>>;
+/** GET /creative/prior|graph/{acct} — what this account has proven / structural correlations. */
+export function getPrior(accountId: string): Promise<Record<string, unknown>> {
+  return aiFetch('GET', `/creative/prior/${encodeURIComponent(accountId)}`, 'prior', { timeoutMs: POLL_TIMEOUT_MS });
 }
-
-/** GET /creative/graph/{acct} — structural winner-vs-loser correlations. */
-export async function getGraph(accountId: string): Promise<Record<string, unknown>> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const res = await fetch(`${base()}/creative/graph/${encodeURIComponent(accountId)}`, {
-    method: 'GET', headers: { 'X-API-Key': config.aiLayerApiKey }, signal: AbortSignal.timeout(POLL_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new AiLayerError(`graph failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<Record<string, unknown>>;
+export function getGraph(accountId: string): Promise<Record<string, unknown>> {
+  return aiFetch('GET', `/creative/graph/${encodeURIComponent(accountId)}`, 'graph', { timeoutMs: POLL_TIMEOUT_MS });
 }
 
 /** POST /creative/voice/preview — a short TTS sample; returns the fal audio URL. */
-export async function voicePreview(voiceId?: string, text?: string): Promise<{ url: string }> {
-  if (!creativeGenEnabled()) throw new AiLayerError('creative-gen not configured (AI_LAYER_URL)', 503);
-  const res = await fetch(`${base()}/creative/voice/preview`, {
-    method: 'POST', headers: jsonHeaders(),
-    body: JSON.stringify({ voice_id: voiceId, text }),
-    signal: AbortSignal.timeout(ASSET_TIMEOUT_MS),
+export function voicePreview(voiceId?: string, text?: string): Promise<{ url: string }> {
+  return aiFetch('POST', '/creative/voice/preview', 'voice preview', {
+    body: { voice_id: voiceId, text }, timeoutMs: ASSET_TIMEOUT_MS,
   });
-  if (!res.ok) throw new AiLayerError(`voice preview failed: ${await res.text()}`, res.status);
-  return res.json() as Promise<{ url: string }>;
 }
