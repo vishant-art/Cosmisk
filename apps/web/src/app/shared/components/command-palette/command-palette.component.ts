@@ -230,7 +230,7 @@ export class CommandPaletteComponent implements AfterViewChecked {
     { id: 'nav-agency', label: 'Agency Command Center', category: 'Pages', icon: '&#127970;', route: '/app/agency' },
     // Actions
     { id: 'act-campaign', label: 'Create New Campaign', category: 'Actions', icon: '&#10133;', route: '/app/campaigns' },
-    { id: 'act-creative', label: 'Generate Creative Brief', category: 'Actions', icon: '&#9997;', route: '/app/director-lab' },
+    { id: 'act-creative', label: 'Generate Ads from Winners', category: 'Actions', icon: '&#9997;', route: '/app/ugc-studio' },
     { id: 'act-report', label: 'Generate Report', category: 'Actions', icon: '&#128200;', route: '/app/reports' },
     { id: 'act-audit', label: 'Run Account Audit', category: 'Actions', icon: '&#128737;', route: '/app/audit' },
     { id: 'act-watchdog', label: 'Run AI Watchdog', category: 'Actions', icon: '&#129454;', route: '/app/autopilot' },

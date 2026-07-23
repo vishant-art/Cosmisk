@@ -42,20 +42,20 @@ import { environment } from '../../../environments/environment';
           </p>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
-          <a routerLink="/app/creative-engine"
-            class="px-6 py-3 bg-white text-[#312e81] rounded-xl text-sm font-body font-bold hover:bg-indigo-50 transition-all no-underline flex items-center gap-2 shadow-lg opacity-60">
+          <a routerLink="/app/ugc-studio"
+            class="px-6 py-3 bg-white text-[#312e81] rounded-xl text-sm font-body font-bold hover:bg-indigo-50 transition-all no-underline flex items-center gap-2 shadow-lg">
             <lucide-icon name="rocket" [size]="18"></lucide-icon>
-            Creative Engine (inactive)
+            Creative Studio
           </a>
           <a routerLink="/app/ugc-studio"
             class="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-body font-semibold hover:bg-white/20 transition-all no-underline flex items-center gap-2 backdrop-blur-sm">
             <lucide-icon name="sparkles" [size]="18"></lucide-icon>
             Generate Ads
           </a>
-          <a routerLink="/app/director-lab"
+          <a routerLink="/app/ugc-studio"
             class="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-body font-semibold hover:bg-white/20 transition-all no-underline flex items-center gap-2 backdrop-blur-sm">
             <lucide-icon name="wand-2" [size]="18"></lucide-icon>
-            Create Brief
+            Add Directions
           </a>
         </div>
       </div>
@@ -235,7 +235,7 @@ import { environment } from '../../../environments/environment';
             [sparkline]="kpi().revenue.sparkline"
             color="green" />
         </a>
-        <a routerLink="/app/creative-cockpit" class="no-underline">
+        <a routerLink="/app/ai-chat" class="no-underline">
           <app-kpi-card
             title="ROAS"
             [value]="kpi().roas.value"
@@ -245,7 +245,7 @@ import { environment } from '../../../environments/environment';
             [sparkline]="kpi().roas.sparkline"
             [color]="kpi().roas.value >= 3 ? 'green' : kpi().roas.value >= 2 ? 'yellow' : 'red'" />
         </a>
-        <a routerLink="/app/creative-cockpit" class="no-underline">
+        <a routerLink="/app/ai-chat" class="no-underline">
           <app-kpi-card
             title="Active Creatives"
             [value]="kpi().activeCreatives.value"
@@ -461,8 +461,8 @@ import { environment } from '../../../environments/environment';
     <div class="card mb-8">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-card-title font-display text-navy m-0">Top Performing Creatives</h3>
-        <a routerLink="/app/creative-cockpit" class="text-sm text-accent font-body font-semibold hover:underline no-underline">
-          View All <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
+        <a routerLink="/app/ai-chat" class="text-sm text-accent font-body font-semibold hover:underline no-underline">
+          Ask what's working <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
 
@@ -672,7 +672,7 @@ export default class DashboardComponent implements OnInit {
   }, { allowSignalWrites: true });
 
   quickActions = [
-    { icon: 'rocket', title: 'Creative Engine (inactive)', description: 'Batch generate 100+ creatives', route: '/app/creative-engine', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
+    { icon: 'rocket', title: 'Creative Studio', description: 'Generate ads from your winning creatives', route: '/app/ugc-studio', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
     { icon: 'video', title: 'UGC Scripts', description: 'AI-powered ad scripts', route: '/app/ugc-studio', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
     { icon: 'image', title: 'Static Ads', description: 'Graphics & carousels', route: '/app/graphic-studio', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
     { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-chat', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
