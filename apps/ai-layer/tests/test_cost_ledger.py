@@ -13,13 +13,18 @@ def _use_db(db_session):
 
 
 def _entries():
+    """NEWEST FIRST, so [0] is the row the calling test just wrote. An unordered select
+    took [0] = the oldest row in the table, which only worked on a pristine branch: point
+    the harness at a branch the app has actually used and the assertions read someone
+    else's real cost row instead."""
     from sqlalchemy import select
     from ai_layer.db import engine, models as m
     with engine.get_session() as s:
         return [{"model": r.model, "op": r.op, "account": r.account_id,
                  "cost_usd": r.cost_usd, "priced": r.priced,
                  "cache_discount_usd": r.cache_discount_usd}
-                for r in s.execute(select(m.CostLedgerEntry)).scalars().all()]
+                for r in s.execute(select(m.CostLedgerEntry)
+                                   .order_by(m.CostLedgerEntry.id.desc())).scalars().all()]
 
 
 def test_estimate_used_when_no_actual():
