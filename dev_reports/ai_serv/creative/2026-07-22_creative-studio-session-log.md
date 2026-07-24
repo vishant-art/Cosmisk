@@ -69,3 +69,45 @@ Full campaign-mode path validated end-to-end in containers: winning-ads-first en
 
 ## Durable carry (from `[[pending-tasks]]` memory, non-creative)
 - Docker rehearsal + push (#29 done/green); #31/32/33/34/48 pending; frontend↔ai-layer gaps; user-actions #46/39/40/41 + rotate the leaked test-branch password.
+
+---
+
+# 2026-07-24 — ponytail cuts + R2 thumbnails + CORP fix (3 commits, gates green, no push)
+
+Branch `improve/creative`, now 227 ahead of main. Commits: `ad95a98` (ponytail), `2b6ee9a` (thumbnails), `acd99dd` (CORP). apps/api `tsc` baseline-only; creative-gen-client tests 7/7; ai-layer creative service+editor 29 passed; thumbs.py self-check ok; `ng build` clean.
+
+## Ponytail audit → applied (`ad95a98`)
+- **#1 `creative-gen-client.ts`** — one `aiFetch(method, path, label, opts)` helper collapses the 7 uniform calls (videoPlan/videoGenerate/markPublished/learn/getPrior/getGraph/voicePreview); dropped `jsonHeaders`. `startCreativeGen`/`getCreativeJob` keep their richer network-catch + `{detail}`. **No-timeout preserved** on the two long LLM video calls (a naive default would have broken them).
+- **#2 `generation-detail.component.ts`** — `swatch`/`PREVIEW_GEN`/`PREVIEW_JOB` were referenced only by commented-out `/gen/preview` scaffolding; line-commented so the whole preview path re-enables as one unit instead of shipping dead module consts.
+
+## R2 thumbnails (`2b6ee9a`)
+- **ai-layer** `creative/thumbs.py` — `image_thumb` (PIL ~512px JPEG) + `video_poster` (bundled-ffmpeg first frame); both already deps, **$0 fal**. `service.py` `_add_thumbs`/`_add_poster` run **fail-open** before the R2 publish in both job paths (a bad thumb never fails a run); `thumbs/*.jpg` joins the delivered set → R2 mirrors them; `thumb_url`/`poster_url` added to the manifest.
+- **api** — `thumb_url`/`poster_url` typed and proxied through `proxy()`.
+- **web** — grid `<img [src]>` = `asset(img.thumb_url || img.image_url)` (full-res stays on open/download); `<video [poster]>` with a **subdir-preserving rebase** (a bare basename would drop the `thumbs/` prefix and 404).
+- Verified live in the sim: thumb **27 KB vs 755 KB** full-res, `302 → R2 → 200`.
+
+## CORP bug + fix (`acd99dd`)
+- **Symptom:** thumbs fetched (all `302`) but `net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` in the console → blank grid.
+- **Root cause:** `@fastify/helmet` (`index.ts:88`) sets `Cross-Origin-Resource-Policy: same-origin` globally; the `/asset` `302` is cross-origin (web `:8080` vs api `:3100` in sim; `cosmisk.com` vs `api.cosmisk.com` in prod) → the browser blocks the `<img>` embed. R2's response has no CORP (fine).
+- **Fix:** per-route `reply.header('Cross-Origin-Resource-Policy','cross-origin')` on the `/asset` route only; every other endpoint keeps helmet's strict `same-origin`. The per-route header wins over helmet's global hook (no `onSend` fallback needed). Confirmed by curl. **This was a pre-existing prod bug** — full-res in-grid embeds hit it too.
+
+## Backfill for historical runs (data only, no code)
+- 3 completed runs (`2d3dc29c`/`8aaf7e0a`/`22be8608`) predated the feature → no `thumb_url`. Generated **18 thumbs** from the R2 originals → uploaded `{job}/thumbs/`; patched `studio_outputs.output_json` to add `thumb_url` (**5 rows / 30 images**). $0. Scripts kept in scratchpad (`bf_thumbs.py`, `bf_patch.cjs`). Note: the `studio` reads are frozen `output_json` (not re-fetched from ai-layer), so a backfill must patch both R2 **and** the stored JSON.
+
+## Prod determinism (CSP check)
+- `vercel.json` sets `X-Frame-Options`/`X-Content-Type-Options`/`Referrer-Policy` but **no CSP and no CORP**; no CSP anywhere in `apps/web`. Prod chain = web (no CSP) → api `/asset` (CORP now `cross-origin`) → R2 (no CORP) → renders. **Deterministic at the app layer**; residual risk is infra only (Railway/CF stripping/adding CORP), unverifiable pre-deploy.
+
+## New findings logged (not fixed)
+- `output-gallery` `@switch` has no case for `9:16`/`4:5`/`1:1` formats → old multi-format-row runs (`9a06710b`) render **nothing**. Latent bug, older per-format-row schema.
+- `creative-studio.ts:540/591` (non-ai-layer image/carousel write paths) omit `thumb_url` — matters only if those branches are still reachable (likely dead post-disconnect; verify).
+
+## Security
+- **ROTATE the Neon `neondb_owner` password** — an env-check shell bug printed the full `DATABASE_URL` (with password) into the session transcript.
+
+## Pending (updated 2026-07-24)
+1. Rotate Neon password (user action).
+2. Concept-gen JSON retry · Meta `code=1` backfill · run-cost accuracy (ai-layer robustness, held).
+3. Strip or delete the now-commented preview scaffolding before merge.
+4. `output-gallery` format-switch gap; write-path `thumb_url` gap (verify reachability).
+5. Deploy/merge to main: apply migration `0005` to prod Neon, green gates, PR → Vercel + Railway. No push without permission.
+6. `finishing-a-development-branch`; paid full sim (user's call).
