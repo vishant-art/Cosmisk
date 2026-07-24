@@ -4,12 +4,7 @@ paid), returned as strict JSON and validated against the schemas.
 """
 from __future__ import annotations
 
-import json
-import sys
-from pathlib import Path
-
-from ai_layer.creative import config
-from ai_layer.creative import ledger
+from ai_layer.creative import brain
 from ai_layer.creative.schemas import AdConcept, BrandKit, CopySet  # noqa: E402
 
 _KIT_SYSTEM = (
@@ -88,58 +83,20 @@ def generate_vo_script(client, kit: BrandKit, hook: str, cta: str = "",
     user = (f"BRAND: {kit.brand_name} -- tone: {kit.tone}. "
             f"HOOK: {hook}. CALL TO ACTION: {cta or 'shop now'}.")
     try:
-        data, cost = _chat_json(client, system, user)
+        data, cost = brain.chat_json(client, system, user)
         script = (data.get("script") or "").strip()
     except Exception:                              # noqa: BLE001 -- never block the video
         script, cost = "", 0.0
     return (script or f"{hook}. {cta}".strip(" .") + ".", cost)
 
 
-def _chat_json(client, system: str, user, *, attempts: int = 3) -> tuple[dict, float]:
-    """One OpenRouter call constrained to a JSON object; tolerant of stray fences.
-    Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost.
-    The model occasionally returns truncated/invalid JSON, so retry the parse a few
-    times (temperature > 0 gives fresh output each attempt)."""
-    last = None
-    for _ in range(max(1, attempts)):
-        resp = client.chat.completions.create(
-            model=config.TEXT_MODEL,
-            temperature=config.TEXT_TEMPERATURE,
-            response_format={"type": "json_object"},
-            extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user}],
-        )
-        text = (resp.choices[0].message.content or "").strip()
-        if text.startswith("```"):
-            text = text.strip("`")
-            text = text[text.find("{"):text.rfind("}") + 1]
-        try:
-            return json.loads(text), ledger.response_cost(resp)
-        except json.JSONDecodeError as e:
-            last = e
-    raise last
-
-
-def _vision_user(summary: str, image_paths: list[str], instruction: str):
-    """A multimodal user message: the summary text plus real winning-ad images so the
-    brain grounds the kit in what actually converts (palette/style/product)."""
-    import base64
-    from pathlib import Path as _P
-    parts = [{"type": "text", "text": f"{instruction}\n\n{summary}"}]
-    for p in (image_paths or [])[:6]:
-        data = base64.b64encode(_P(p).read_bytes()).decode()
-        parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{data}"}})
-    return parts
-
-
 def generate_brand_kit(client, summary: str, ground_images: list[str] | None = None
                        ) -> tuple[BrandKit, float]:
-    user = summary if not ground_images else _vision_user(
+    user = summary if not ground_images else brain.vision_user(
         summary, ground_images,
         "Ground the brand identity in these REAL winning ads from this account -- infer the "
         "actual palette, visual style, and product look from them, not just the numbers.")
-    data, cost = _chat_json(client, _KIT_SYSTEM, user)
+    data, cost = brain.chat_json(client, _KIT_SYSTEM, user)
     return BrandKit.model_validate(data), cost
 
 
@@ -148,7 +105,7 @@ def generate_concepts(client, kit: BrandKit, summary: str, n: int) -> tuple[list
         f"BRAND KIT:\n{kit.model_dump_json(indent=2)}\n\n"
         f"ACCOUNT CONTEXT:\n{summary}\n\nPropose exactly {n} concepts."
     )
-    data, cost = _chat_json(client, _CONCEPTS_SYSTEM.replace("{n}", str(n)), user)
+    data, cost = brain.chat_json(client, _CONCEPTS_SYSTEM.replace("{n}", str(n)), user)
     concepts = [AdConcept.model_validate(c) for c in data.get("concepts", [])]
     if not concepts:
         concepts = [AdConcept(title=f"Concept {i+1}", scene=kit.visual_style,

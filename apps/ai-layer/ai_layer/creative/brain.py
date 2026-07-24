@@ -20,23 +20,36 @@ from ai_layer.creative import config  # noqa: E402
 from ai_layer.creative import ledger  # noqa: E402
 
 
-def chat_json(client, system: str, user, *, temperature: float | None = None
-              ) -> tuple[dict, float]:
+def chat_json(client, system: str, user, *, temperature: float | None = None,
+              attempts: int = 3) -> tuple[dict, float]:
     """One OpenRouter call constrained to a JSON object; tolerant of stray fences.
-    Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost."""
-    resp = client.chat.completions.create(
-        model=config.TEXT_MODEL,
-        temperature=config.TEXT_TEMPERATURE if temperature is None else temperature,
-        response_format={"type": "json_object"},
-        extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
-        messages=[{"role": "system", "content": system},
-                  {"role": "user", "content": user}],
-    )
-    text = (resp.choices[0].message.content or "").strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text[text.find("{"):text.rfind("}") + 1]
-    return json.loads(text), ledger.response_cost(resp)
+    Returns (parsed, cost_usd) -- cost is OpenRouter's authoritative usage.cost.
+
+    `response_format=json_object` is best-effort across routed models: the response
+    still comes back truncated or fenced-wrong often enough to have killed a live run,
+    and a parse failure here aborts the whole job. So re-roll the CALL (temperature > 0
+    gives fresh output each attempt). Only JSONDecodeError retries -- a network or API
+    error is not made better by asking three times, just slower.
+    """
+    last = None
+    for _ in range(max(1, attempts)):
+        resp = client.chat.completions.create(
+            model=config.TEXT_MODEL,
+            temperature=config.TEXT_TEMPERATURE if temperature is None else temperature,
+            response_format={"type": "json_object"},
+            extra_body={"usage": {"include": True}},   # return usage.cost / cost_details
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": user}],
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text[text.find("{"):text.rfind("}") + 1]
+        try:
+            return json.loads(text), ledger.response_cost(resp)
+        except json.JSONDecodeError as e:
+            last = e
+    raise last
 
 
 def vision_user(summary: str, image_paths: list[str], instruction: str):
