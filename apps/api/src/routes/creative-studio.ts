@@ -3,9 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
-import { safeFetch, safeJson } from '../utils/safe-fetch.js';
+import { safeFetch } from '../utils/safe-fetch.js';
 import { createMessage } from '../services/llm-gateway.js';
-import { FluxProvider } from '../services/api-providers.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 import {
@@ -171,7 +170,7 @@ Return ONLY valid JSON, no markdown.`,
       reply.send({ success: true, generation_id: generationId });
 
       // Kick off async generation (don't await). ai-layer only — the legacy TS
-      // processGeneration path is DISCONNECTED (see DISCONNECTED_TS_MODULES.md).
+      // processGeneration path was deleted here (see DISCONNECTED_TS_MODULES.md).
       const background = processGenerationViaAiLayer(generationId, brief ?? null, formats, outputIds, userId, meta_account_id, direction);
       background.catch(err => {
         logger.error({ err: err.message, generationId }, 'Background generation failed');
@@ -430,217 +429,6 @@ Return ONLY valid JSON, no markdown.`,
     try { return { success: true, ...(await voicePreview(voice_id, text)) }; }
     catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
   });
-}
-
-/* ------------------------------------------------------------------ */
-/*  Background generation processor                                    */
-/* ------------------------------------------------------------------ */
-
-async function processGeneration(
-  generationId: string,
-  brief: Brief,
-  formats: string[],
-  outputIds: Record<string, string>,
-): Promise<void> {
-  const db = getDbAdapter();
-  const now = () => new Date().toISOString();
-
-  // Look up userId from generation record
-  const genRow = await db.get<{ user_id: string; meta_account_id: string | null }>('SELECT user_id, meta_account_id FROM studio_generations WHERE id = ?', [generationId]);
-  const userId = genRow?.user_id || '';
-  const metaAccountId = genRow?.meta_account_id || undefined;
-
-  const updateOutput = async (outputId: string, status: string, outputJson?: string, errorMessage?: string, costCents?: number) => {
-    await db.run(`
-      UPDATE studio_outputs SET status = ?, output_json = ?, error_message = ?, cost_cents = ?, updated_at = ?
-      WHERE id = ?
-    `, [status, outputJson || null, errorMessage || null, costCents || 0, now(), outputId]);
-  };
-
-  const briefContext = [
-    `Brand: ${brief.brand_name}`,
-    `Product: ${brief.product_name}`,
-    `Description: ${brief.product_description}`,
-    `Target Audience: ${brief.target_audience}`,
-    brief.key_features?.length ? `Key Features: ${brief.key_features.join(', ')}` : '',
-    brief.price ? `Price: ${brief.price}` : '',
-  ].filter(Boolean).join('\n');
-
-  for (const format of formats) {
-    const outputId = outputIds[format];
-
-    try {
-      switch (format) {
-        case 'scripts': {
-          const response = await createMessage({
-            userId,
-            operation: 'creative-studio.scripts',
-            request: {
-              model: 'claude-sonnet-4-6',
-              max_tokens: 4096,
-              system: `You are an expert ad creative strategist. Generate 6 UGC video ad scripts for the following product. Each script should have a unique angle and hook style. Return ONLY a valid JSON array of scripts, no markdown.
-
-Each script object must have:
-- title: descriptive script name
-- hook: the opening 3 seconds (attention grabber)
-- body: the main content (15-25 seconds)
-- cta: the call to action
-- visual_notes: production guidance for the creator`,
-              messages: [{
-                role: 'user',
-                content: `Generate 6 UGC ad scripts for:\n\n${briefContext}`,
-              }],
-            },
-          });
-
-          const rawText = extractText(response, '[]');
-          const cleanText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-          const scripts = JSON.parse(cleanText);
-
-          // Score each script
-          const scoredScripts = await Promise.all(scripts.map(async (script: any) => {
-            try {
-              const score = await scoreCreative({
-                userId,
-                format: 'scripts',
-                scriptText: [script.hook, script.body, script.cta, script.visual_notes].filter(Boolean).join('\n'),
-                platform: 'meta',
-                metaAccountId,
-              });
-              // Insert prediction record
-              await db.run(`
-                INSERT INTO score_predictions (id, user_id, studio_output_id, format, dna_tags, predicted_score, predicted_roas_mid, score_breakdown, confidence)
-                VALUES (?, ?, ?, 'scripts', ?, ?, ?, ?, ?)
-              `, [
-                randomUUID(), userId, outputId,
-                JSON.stringify(score.matchedPatterns),
-                score.total,
-                score.predictedRoasRange?.p50 || null,
-                JSON.stringify(score.dimensions),
-                score.confidence,
-              ]);
-              return { ...script, score };
-            } catch {
-              return script; // scoring failed — return unscored
-            }
-          }));
-
-          const scoreJson = JSON.stringify(scoredScripts.map((s: any) => s.score).filter(Boolean));
-          await updateOutput(outputId, 'completed', JSON.stringify(scoredScripts), undefined, 5);
-          await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [scoreJson, outputId]);
-          break;
-        }
-
-        case 'static': {
-          const flux = new FluxProvider();
-          const aspectRatios = ['1:1', '9:16', '16:9', '4:5'];
-          const images: Array<{ image_url?: string; job_id?: string; aspect_ratio: string; prompt: string; status: string }> = [];
-
-          const imagePrompt = `Professional product advertisement for ${brief.brand_name} ${brief.product_name}. ${brief.product_description}. Clean, modern, high-quality commercial photography style.`;
-
-          for (const ar of aspectRatios) {
-            const result = await flux.generate({ format: 'static', prompt: imagePrompt, aspect_ratio: ar });
-            images.push({
-              image_url: result.output_url,
-              job_id: result.job_id,
-              aspect_ratio: ar,
-              prompt: imagePrompt,
-              status: result.status,
-            });
-          }
-
-          // Score the static format
-          try {
-            const staticScore = await scoreCreative({
-              userId, format: 'static', platform: 'meta', metaAccountId,
-            });
-            await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [JSON.stringify([staticScore]), outputId]);
-            await db.run(`
-              INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
-              VALUES (?, ?, ?, 'static', ?, ?, ?, ?)
-            `, [randomUUID(), userId, outputId, staticScore.total, staticScore.predictedRoasRange?.p50 || null, JSON.stringify(staticScore.dimensions), staticScore.confidence]);
-          } catch { /* scoring non-critical */ }
-
-          await updateOutput(outputId, 'completed', JSON.stringify(images), undefined, 16);
-          break;
-        }
-
-        case 'carousel': {
-          const flux = new FluxProvider();
-
-          // Generate 5 slide prompts with Claude Haiku
-          const slideResponse = await createMessage({
-            userId,
-            operation: 'creative-studio.carousel-prompts',
-            request: {
-              model: 'claude-haiku-4-5',
-              max_tokens: 1024,
-              system: 'You are a visual ad designer. Generate 5 image prompts for a carousel ad. Each prompt should create a visually cohesive slide that tells a story. Return ONLY a valid JSON array of 5 strings, no markdown.',
-              messages: [{
-                role: 'user',
-                content: `Create 5 carousel slide image prompts for:\n\n${briefContext}`,
-              }],
-            },
-          });
-
-          const slidesRaw = extractText(slideResponse, '[]');
-          const slidesClean = slidesRaw.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-          const slidePrompts: string[] = JSON.parse(slidesClean);
-
-          const slides: Array<{ image_url?: string; job_id?: string; prompt: string; slide_number: number; status: string }> = [];
-
-          for (let i = 0; i < slidePrompts.length; i++) {
-            const result = await flux.generate({ format: 'carousel', prompt: slidePrompts[i], aspect_ratio: '1:1' });
-            slides.push({
-              image_url: result.output_url,
-              job_id: result.job_id,
-              prompt: slidePrompts[i],
-              slide_number: i + 1,
-              status: result.status,
-            });
-          }
-
-          // Score the carousel format
-          try {
-            const carouselScore = await scoreCreative({
-              userId, format: 'carousel', platform: 'meta', metaAccountId,
-            });
-            await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [JSON.stringify([carouselScore]), outputId]);
-            await db.run(`
-              INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
-              VALUES (?, ?, ?, 'carousel', ?, ?, ?, ?)
-            `, [randomUUID(), userId, outputId, carouselScore.total, carouselScore.predictedRoasRange?.p50 || null, JSON.stringify(carouselScore.dimensions), carouselScore.confidence]);
-          } catch { /* scoring non-critical */ }
-
-          await updateOutput(outputId, 'completed', JSON.stringify(slides), undefined, 100);
-          break;
-        }
-
-        case 'video': {
-          // Video requires HeyGen which is async — mark as pending with info
-          await updateOutput(outputId, 'pending', JSON.stringify({
-            message: 'Video generation requires HeyGen integration. Use the UGC Studio or sprint pipeline for video creation.',
-            suggestion: 'Scripts have been generated above — use them with HeyGen or your preferred video tool.',
-          }));
-          break;
-        }
-
-        default: {
-          await updateOutput(outputId, 'failed', undefined, `Unsupported format: ${format}`);
-        }
-      }
-    } catch (err: any) {
-      logger.error({ err: err.message, format, generationId }, `Studio generation failed for format: ${format}`);
-      await updateOutput(outputId, 'failed', undefined, err.message);
-    }
-  }
-
-  // Update generation status
-  const allOutputs = await db.all<{ status: string }>('SELECT status FROM studio_outputs WHERE generation_id = ?', [generationId]);
-  const allFailed = allOutputs.every(o => o.status === 'failed');
-  const finalStatus = allFailed ? 'failed' : 'completed';
-
-  await db.run('UPDATE studio_generations SET status = ?, updated_at = ? WHERE id = ?', [finalStatus, new Date().toISOString(), generationId]);
 }
 
 /* ------------------------------------------------------------------ */
