@@ -35,7 +35,7 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
 
     <div class="grid gap-4" [ngClass]="activeFilter === 'scripts' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'">
       @for (out of filteredOutputs(); track out.id) {
-        @switch (out.format) {
+        @switch (fmt(out)) {
           @case ('scripts') {
             @if (out.status === 'completed' && out.output) {
               @for (script of scriptsOf(out); track $index) {
@@ -162,7 +162,7 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
         }
 
         <!-- Error state for any format -->
-        @if (out.status === 'failed' && out.format !== 'video') {
+        @if (out.status === 'failed' && fmt(out) !== 'video') {
           <div class="card !p-4 border border-red-100">
             <div class="flex items-center gap-2 mb-1">
               <lucide-icon name="alert-circle" [size]="14" class="text-red-500"></lucide-icon>
@@ -222,10 +222,19 @@ export class OutputGalleryComponent {
 
   activeFilter = 'all';
 
+  /** Runs made before the entry redesign stored the ASPECT RATIO in `format` ('9:16',
+   *  '4:5', '1:1'); runs made since store the output kind. The stored output_json is the
+   *  same image array either way, so treat anything unrecognised as a static row — the
+   *  switch below has no default, and those history rows would otherwise render nothing
+   *  but their orphaned rating buttons. */
+  fmt(out: any): string {
+    return ['scripts', 'carousel', 'video'].includes(out.format) ? out.format : 'static';
+  }
+
   filteredOutputs() {
     const outs = this.outputs();
     if (this.activeFilter === 'all') return outs;
-    return outs.filter(o => o.format === this.activeFilter);
+    return outs.filter(o => this.fmt(o) === this.activeFilter);
   }
 
   scriptsOf(out: any): any[] {
