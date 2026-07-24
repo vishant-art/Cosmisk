@@ -111,3 +111,28 @@ Branch `improve/creative`, now 227 ahead of main. Commits: `ad95a98` (ponytail),
 4. `output-gallery` format-switch gap; write-path `thumb_url` gap (verify reachability).
 5. Deploy/merge to main: apply migration `0005` to prod Neon, green gates, PR → Vercel + Railway. No push without permission.
 6. `finishing-a-development-branch`; paid full sim (user's call).
+
+---
+
+# 2026-07-24 (later) — remote check + next-task decision point
+
+State: `improve/creative` @ `b043d22`, **228 ahead of `origin/main`, 41 unpushed**. Session log committed. All containers stopped (Docker Desktop off).
+
+## Remote fetch — one new branch, ZERO conflicts
+- **`origin/new/creative_v2`** (author `dryayeet`, tip `f1e81c1`, 2026-07-23): a **from-scratch v2 Creative Studio**, entirely inside a new top-level **`rnd_mine/`** package (`src/creative_studio/`, own `pyproject.toml`, 37 test files, 3 design docs). **108 files, +14,682 lines, pure additions.**
+- Branched from our same base `56db2f1`. Diverged: **they +46 / we +41**, but **0 overlapping files** (they touch only `rnd_mine/`; we touch `apps/`, `dev_reports/`, `infra/`). Merge is mechanically conflict-free.
+- Contents: planning layer, fal adapters + balance reader, golden-tested prompt builders, durable run state, asyncio orchestrator w/ resume + selective regen, product-truth (birefnet+bria), ffmpeg composition, deterministic QA/QAReport, exporter + AssetManifest, CLI w/ dry-run + spend gates, FastAPI facade. Docs/adapters reference `apps/ai-layer`.
+- **`origin/main` unchanged** — nothing to pull. `origin/improve/creative` is merely behind us.
+
+## ⚠ BLOCKING STRATEGIC QUESTION (for user + dryayeet)
+**Does `rnd_mine/creative_studio` supersede the `apps/ai-layer` creative module our Creative Studio frontend serves?** If yes, further polish on the `apps/` creative path is largely throwaway and the merge-to-main plan needs a convergence step first. Not answerable from the code. See memory `[[creative-v2-parallel-branch]]`.
+
+## Next-task options + tradeoffs (user deciding)
+| Option | Upside | Downside |
+|---|---|---|
+| **A.** Fix 2 pre-merge gaps (`output-gallery` format-switch; write-path `thumb_url`) | Clears last *known* correctness bugs before merge | Low real impact — format bug hits only **legacy** per-format rows; write-path may be **dead code** (check reachability first) |
+| **B. (recommended)** Concept-gen JSON robustness — `brain.chat_json` retry + tolerant parse | Highest reliability value: a malformed Gemini response **actually killed a live run**; protects *all* `chat_json` callers; **$0** to verify via unit test, no Docker | Full end-to-end confidence would want a real run |
+| **C.** Deploy/merge to main | Ships real value (thumbnails + CORP prod fix); branch drift risk is real, now with a sibling branch | Highest risk: ships A's gaps, needs migration `0005` on prod Neon, scaffolding decision, **push permission**, and CORP infra-layer behavior only verifiable post-deploy |
+
+## User action outstanding
+- **Rotate the Neon `neondb_owner` password** — the full `DATABASE_URL` (with password) was printed into the 2026-07-24 session transcript by an env-check shell bug. User will do it later.
