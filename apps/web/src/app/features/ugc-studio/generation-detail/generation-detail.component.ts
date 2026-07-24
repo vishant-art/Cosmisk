@@ -8,42 +8,6 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
 import { VideoPlannerComponent } from './video-planner/video-planner.component';
 import { DegradeBadgeComponent } from '../shared/degrade-badge.component';
 
-// SCAFFOLDING — local visual-preview sample data for /gen/preview (no backend). Dead unless the
-// `id === 'preview'` branch, banner, and viewPreview() below are uncommented; kept here so the whole
-// preview path re-enables as one unit. `swatch` = a saree-toned gradient data-URI placeholder.
-// const swatch = (a: string, b: string) =>
-//   `data:image/svg+xml,${encodeURIComponent(
-//     `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="400" height="500" fill="url(#g)"/></svg>`)}`;
-// const PREVIEW_GEN = {
-//   id: 'preview', user_id: 'demo', brief: null, formats: ['static'],
-//   meta_account_id: 'act_demo', status: 'completed', ai_job_id: 'preview-job', cost_cents: 62,
-//   stage: 'Static ads done',
-//   progress: [
-//     'Applying 3 learned finding(s) from past ads',
-//     'Applying 5 structural pattern(s) from 12 winners vs 5 losers',
-//     'Pulled 4 winning creative(s) from Meta',
-//     'Sourced the product from Shopify: Banarasi Silk Saree',
-//     'Designing the brand kit', 'Brand kit decided',
-//     "Tore down the winning ad's structure", 'Planned 4 ad concept(s)',
-//     'Ad 1/4 generated — "The saree she\'ll be asked about all night"',
-//     'Ad 2/4 rejected by quality gate',
-//     'Ad 3/4 generated — "Woven in Banaras. Worn where it matters"',
-//     'Static ads done',
-//   ],
-//   outputs: [{
-//     id: 'o1', generation_id: 'preview', format: 'static', status: 'completed',
-//     output: [
-//       { image_url: swatch('#7C3AED', '#DB2777'), aspect_ratio: '4:5', headline: "The saree she'll be asked about all night" },
-//       { image_url: swatch('#B45309', '#DC2626'), aspect_ratio: '1:1', headline: 'Woven in Banaras. Worn where it matters' },
-//       { image_url: swatch('#0F766E', '#4F46E5'), aspect_ratio: '9:16', headline: 'Handloom heritage, everyday drape' },
-//     ],
-//     output_json: '', score_json: null, cost_cents: 62, error_message: null,
-//     created_at: '2026-07-22T14:22:00Z', updated_at: '2026-07-22T14:24:00Z',
-//   }],
-//   created_at: '2026-07-22T14:22:00Z',
-// } as unknown as StudioGeneration;
-// const PREVIEW_JOB = { rejected: ['Loud festive collage — failed legibility', 'Flat-lay with no model'], cost_usd: 0.62, qa_passed: true };
-
 /** Static-track milestone rail — a small fixed set of human-named phases (spec §5), not a state machine. */
 const MILESTONES: { label: string; match: RegExp }[] = [
   { label: 'Learn the brand', match: /brand/i },
@@ -70,15 +34,6 @@ const MILESTONES: { label: string; match: RegExp }[] = [
           <app-loading-spinner />
         </div>
       }
-
-      <!-- SCAFFOLDING (uncomment with the /gen/preview handler): sample-data banner
-      @if (generation()?.id === 'preview') {
-        <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 text-amber-700 text-xs font-body font-semibold">
-          <lucide-icon name="eye" [size]="14"></lucide-icon>
-          Preview — sample data, not a real run. For layout review only.
-        </div>
-      }
-      -->
 
       @if (!loading() && generation()) {
         <!-- Header -->
@@ -262,16 +217,6 @@ export default class GenerationDetailComponent implements OnInit, OnDestroy, Aft
     }
     const plan = this.route.snapshot.queryParamMap.get('plan');
     this.showPlanner.set(plan === 'video' || plan === 'both');
-    /* SCAFFOLDING — /gen/preview renders sample data with no backend. Uncomment (with the
-       banner in the template + PREVIEW_GEN/PREVIEW_JOB below) to walk the screens offline.
-    if (id === 'preview') {
-      this.generation.set(PREVIEW_GEN);
-      this.aiJob.set(PREVIEW_JOB);
-      this.showPlanner.set(true);
-      this.loading.set(false);
-      return;
-    }
-    */
     this.fetchGeneration(id);
   }
 

@@ -111,13 +111,6 @@ type OutputType = 'static' | 'video' | 'both';
             </div>
             <h3 class="text-card-title font-display text-navy mb-1">No runs yet</h3>
             <p class="text-sm text-gray-500 font-body m-0">Generate from your winning ads to see runs here</p>
-            <!-- SCAFFOLDING (uncomment with viewPreview() to walk the result/video screens without a backend):
-            <button type="button" (click)="viewPreview()"
-              class="text-xs font-body font-semibold text-accent hover:underline inline-flex items-center gap-1 mt-3">
-              <lucide-icon name="eye" [size]="13"></lucide-icon>
-              Preview the results & video screens (sample) &rarr;
-            </button>
-            -->
           </div>
         }
 
@@ -316,11 +309,4 @@ export default class UgcStudioComponent implements OnInit {
   viewGeneration(id: string) {
     this.router.navigate(['/app/ugc-studio/gen', id]);
   }
-
-  /* SCAFFOLDING — local visual-preview of the run/results/planner screens (no backend).
-     Uncomment together with the preview link in the template above.
-  viewPreview() {
-    this.router.navigate(['/app/ugc-studio/gen/preview'], { queryParams: { plan: 'both' } });
-  }
-  */
 }
