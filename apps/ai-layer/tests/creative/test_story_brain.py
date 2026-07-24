@@ -43,7 +43,7 @@ def test_concepts_fallback_when_empty(brand_kit):
 # --- casting: operator direction -> one concrete person (audit fix) -----------
 
 def test_creator_from_direction_casts_a_person(fake_client, brand_kit):
-    creator = story_brain.creator_from_direction(fake_client, "tall blonde woman", kit=brand_kit)
+    creator, _cost = story_brain.creator_from_direction(fake_client, "tall blonde woman", kit=brand_kit)
     assert creator.name == "Ava"
     assert "blonde" in creator.appearance
     assert creator.wardrobe and creator.setting

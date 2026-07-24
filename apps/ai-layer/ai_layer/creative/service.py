@@ -295,6 +295,7 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             for a in m.ads
         ]
         job["cost_usd"] = m.total_cost_usd
+        job["ledger"] = _run_ledger(run_dir)
         job["brand_kit"] = m.brand_kit.model_dump() if m.brand_kit else None
         wdir = run_dir / "winners"
         job["winners"] = ([{"url": f"/creative/assets/{job_id}/winners/{p.name}"}
@@ -458,6 +459,7 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
             _save_variants(vset, job.get("account_id"))
 
         job["cost_usd"] = _run_cost(run_dir)
+        job["ledger"] = _run_ledger(run_dir)
         job["actuals"] = _read_json(run_dir / "fal_actuals.json")
         _add_poster(job_id, run_dir, job.get("video"))
         _publish_assets(job_id, run_dir)
@@ -476,6 +478,7 @@ def _run_video_job(job_id: str, req: VideoRenderRequest) -> None:
             job["qa"] = {"verdict": "fail", "checks": [],
                          "retry_hint": f"render did not complete cleanly: {e}"}
             job["cost_usd"] = _run_cost(run_dir)
+            job["ledger"] = _run_ledger(run_dir)
             job["actuals"] = _read_json(run_dir / "fal_actuals.json")
             _publish_assets(job_id, run_dir)
             job["error"] = None
@@ -523,7 +526,8 @@ def _salvage_partial(job_id: str) -> dict | None:
 
 
 def _run_cost(run_dir: Path) -> float:
-    """The run's estimated spend, from the ledger's TOTAL rows."""
+    """The run's estimated spend: the sum of the ledger's per-op rows. Deliberately NOT
+    the TOTAL row -- a run that crashed or resumed may never have been finalized."""
     led = run_dir / "ledger.jsonl"
     if not led.exists():
         return 0.0
@@ -538,6 +542,26 @@ def _run_cost(run_dir: Path) -> float:
         if row.get("op") != "TOTAL":
             total += row.get("cost_usd", 0.0)
     return round(total, 6)
+
+
+def _run_ledger(run_dir: Path) -> dict | None:
+    """The finalized TOTAL row -- grand total plus the per-op breakdown. Rides to Neon on
+    the job's `ledger` key (repository maps it to creative_jobs.ledger_json), because
+    ledger.jsonl lives on the run's ephemeral disk and does not survive a redeploy. That
+    is what makes 'was the displayed run cost right?' answerable after the fact."""
+    led = run_dir / "ledger.jsonl"
+    if not led.exists():
+        return None
+    for line in reversed(led.read_text("utf-8").splitlines()):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("op") == "TOTAL":
+            return row
+    return None
 
 
 # --- the closed loop (T11): publish -> stamp -> harvest -> prior ----------------

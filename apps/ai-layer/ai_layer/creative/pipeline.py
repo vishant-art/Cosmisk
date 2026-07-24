@@ -266,7 +266,8 @@ def run(*, run_id: str, data_path: str | None = None, strategy="top-roas", n_cam
     if direction and direction.strip():
         _write_direction(run_dir, direction)
         try:
-            creator = story_brain.creator_from_direction(client, direction, kit=kit)
+            creator, cast_cost = story_brain.creator_from_direction(client, direction, kit=kit)
+            led.record("cast", "openrouter", config.TEXT_MODEL, cast_cost)
             _write_creator(run_dir, creator)
             log(f"[cast] {creator.name}: {creator.appearance[:80]}")
         except Exception as e:  # noqa: BLE001 -- casting is best-effort; the run proceeds uncast
@@ -679,7 +680,8 @@ def plan_story(*, run_id: str, data_path: str | None = None, summary: str | None
     # a block, exactly as before.
     if creator is None and (direction or "").strip():
         try:
-            creator = story_brain.creator_from_direction(client, direction, kit=kit)
+            creator, cast_cost = story_brain.creator_from_direction(client, direction, kit=kit)
+            led.record("cast", "openrouter", config.TEXT_MODEL, cast_cost)
         except Exception as e:  # noqa: BLE001 -- casting is best-effort
             creator = None
             log(f"[story] direction not elaborated ({e!s:.80})")

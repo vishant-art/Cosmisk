@@ -104,3 +104,29 @@ def test_finalize_appends_total_row(tmp_path):
     assert last["op"] == "TOTAL"
     assert last["cost_usd"] == round(0.05 + 0.0001, 6)
     assert len(lines) == 3                                # two steps + the total
+
+
+# --- the TOTAL row is what reaches Neon (creative_jobs.ledger_json) -----------
+
+def test_run_ledger_reads_back_the_total_row(tmp_path):
+    """service._run_ledger lifts the finalized breakdown off the run's ephemeral disk so it
+    survives a redeploy. _run_cost deliberately sums the per-op rows instead, so an
+    unfinalized (crashed/resumed) run still reports a cost."""
+    from ai_layer.creative import service
+
+    led = ledger.Ledger(tmp_path)
+    led.record("background", "fal", "flux-2-flex", 0.05, concept="A")
+    led.record("concepts", "openrouter", "gemini", 0.01)
+    led.finalize()
+
+    row = service._run_ledger(tmp_path)
+    assert row["op"] == "TOTAL"
+    assert row["cost_usd"] == 0.06
+    assert row["by_op"] == {"background": 0.05, "concepts": 0.01}
+    assert service._run_cost(tmp_path) == 0.06          # per-op sum agrees with the total
+
+
+def test_run_ledger_is_none_without_a_ledger(tmp_path):
+    from ai_layer.creative import service
+    assert service._run_ledger(tmp_path) is None
+    assert service._run_cost(tmp_path) == 0.0

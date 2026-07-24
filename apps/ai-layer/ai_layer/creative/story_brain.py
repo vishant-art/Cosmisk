@@ -50,7 +50,7 @@ _CAST_SYSTEM = (
 )
 
 
-def creator_from_direction(client, direction: str, *, kit: BrandKit) -> CreatorKit:
+def creator_from_direction(client, direction: str, *, kit: BrandKit) -> tuple[CreatorKit, float]:
     """Elaborate the operator's free-text direction into ONE concrete, reusable CreatorKit, so
     the SAME person casts the concepts, the script, the storyboard and every shot. Without it
     the direction lands only as a tail token and each stage casts a different generic person
@@ -60,13 +60,13 @@ def creator_from_direction(client, direction: str, *, kit: BrandKit) -> CreatorK
     user = (f"BRAND: {kit.brand_name} -- {kit.visual_style}. Tone: {kit.tone}.\n"
             f"OPERATOR DIRECTION: {direction.strip()}\n"
             "Cast one person who fits this direction and this brand.")
-    data, _cost = brain.chat_json(client, _CAST_SYSTEM, user)
+    data, cost = brain.chat_json(client, _CAST_SYSTEM, user)
     return CreatorKit(
         name=(str(data.get("name") or "").strip() or "Creator"),
         appearance=str(data.get("appearance") or "").strip(),
         wardrobe=str(data.get("wardrobe") or "").strip(),
         setting=str(data.get("setting") or "").strip(),
-    )
+    ), cost
 
 
 # --- concepts (T5) --------------------------------------------------------------
