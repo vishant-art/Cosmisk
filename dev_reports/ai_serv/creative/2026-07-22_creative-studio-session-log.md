@@ -136,3 +136,104 @@ State: `improve/creative` @ `b043d22`, **228 ahead of `origin/main`, 41 unpushed
 
 ## User action outstanding
 - **Rotate the Neon `neondb_owner` password** — the full `DATABASE_URL` (with password) was printed into the 2026-07-24 session transcript by an env-check shell bug. User will do it later.
+
+---
+
+# 2026-07-25 — pre-ship hardening: JSON retry, dead-code purge, cost breakdown, ship plan
+
+Decision (user): **ship `apps/ai-layer` only; leave `rnd_mine/` (origin/new/creative_v2) alone.**
+The parallel v2 branch does NOT gate this ship (0 overlapping files). Plan verified by a
+ponytail-enabled Fable agent before building — it corrected 4 of my calls (see below).
+
+## Commits (branch `improve/creative`, now `d1e0e9a`+, 235+ ahead of origin/main, UNPUSHED)
+- `40e8ff6` **chat_json JSON retry + transport dedup.** A malformed Gemini response killed a live
+  run: `brain.chat_json` did a bare `json.loads`. The retry already existed as a near-duplicate in
+  `brand_brain._chat_json` — its 3 callers were protected, `chat_json`'s 7 story_brain callers were
+  not. Moved the `attempts=3` loop into `chat_json`, deleted the copy + `_vision_user` copy, all 10
+  callers now protected. **Only JSONDecodeError retries** (a 502 is not retried — Fable's guardrail).
+  New `test_brain.py` (retry / exhaust-raise / no-retry-on-RuntimeError).
+- `e5255e4` **deleted the dead `processGeneration` path** (−211 lines + orphan FluxProvider/safeJson
+  imports). No caller/test/export; `/generate` hard-503s without the ai-layer. Fable upgraded this
+  from "drop the task" to "delete it". `DISCONNECTED_TS_MODULES.md` updated.
+- `bdfd802` **output-gallery `fmt()` normalize** — legacy history rows whose `format` is an aspect
+  ratio (`9:16`/`4:5`/`1:1`) rendered nothing but orphaned rating buttons (the rating block sits
+  OUTSIDE the `@switch`). One-line map to `static`; also fixes the filter chips. New runs only send
+  `['static']`, so this is history-only. **USER-VERIFIED in the sim** on runs `9a06710b`/`c961965d`.
+- `de696a6` **deleted the preview scaffolding** (mock interceptor 138 lines + 6 commented blocks).
+  Bundle byte-identical (584.23 kB) — it was never in the import graph. Its own header said "remove
+  before merge".
+- `becc613` **persist the run cost breakdown to Neon.** `creative_jobs.ledger_json` existed since
+  migration 0001 and save_job/load_job already mapped the `ledger` key — but nothing ever set it, so
+  it was NULL since creation and `Ledger.finalize()`'s return was discarded at all 9 call sites. New
+  `_run_ledger` lifts the finalized TOTAL (grand total + by_op) off the run's ephemeral disk on all
+  3 completion paths (incl. salvage). No schema change, no R2, no new table. Also: `creator_from_
+  direction` discarded its cost → now returns `(kit, cost)`, recorded as a `cast` op. `_run_cost`
+  docstring corrected (sums per-op rows, deliberately NOT the TOTAL — survives an unfinalized run).
+- `d1e0e9a` **test(ai-layer): `_entries()` reads newest cost_ledger row, not oldest.** Latent
+  test-isolation bug (NOT mine): unordered `select()[0]` assumed an empty table; on a *used* branch
+  it read a real id=1 row (0.005597) and 2 tests failed. `order_by(id.desc())`. Green on both a used
+  and a clean branch. Matters because the post-rotation test target won't be pristine.
+
+## Gate sweep — ALL GREEN
+apps/api `tsc` baseline-only · `madge` 0 cycles · apps/api **436p/2s** · `ng build` clean 584.23 kB ·
+ai-layer **599 passed / 7 skipped** on BOTH a used (.env) and a clean (.env.test) Neon branch.
+Running the ai-layer suite needs `PG*`/`PG*_POOL` (absent from all `.env`) — derive from a
+test-branch URL: `PG*`←direct, `PG*_POOL`←pooled, `+PGSSLMODE=require +PGCHANNELBINDING=require`.
+Without them → 108 collection ERRORS that are pure env, not code (this fooled an earlier read).
+
+## Sim verification — $0, no credits spent
+Rebuilt all 3 images from `becc613`, brought up docker-compose.sim.yml, smoke PASS. Verified the new
+code is IN the images (chat_json retry, _run_ledger, creator tuple sig, 0 processGeneration in the
+api bundle, 0 preview refs in web). CORP header survived the rebuild (asset route `cross-origin`,
+/health `same-origin`). **Cost breakdown proven by STUBBING ONLY `pipeline.run`** (the entire paid
+boundary) and running the REAL completion path: `ledger_json` landed in Neon with by_op summing
+exactly to cost_usd ($0.104588), incl. the `cast` cost that used to vanish; R2 mirrored ad_*.png +
+thumbs/. Two real prior rows in the same table show `ledger_json=NULL` — the before/after in one
+query. **Stub fully cleaned up** (4 R2 objs + 1 Neon row + local dir deleted, verified 0 left).
+Containers since stopped by the user.
+
+## Ship-to-prod CHECKLIST (task tracker, deliberately UNCOMMITTED)
+`dev_reports/ai_serv/creative/2026-07-24-ship-to-prod-checklist.md` — a working tracker until ship,
+NOT committed by design. Key durable decisions captured here so they survive /compact:
+
+- **`INSTALL_GOOGLE=0`** set in `apps/ai-layer/Dockerfile` (committed). **Why 0 for the demo ship:**
+  Google Ads is blocked on #39/#40/#41 (OAuth consent + login-customer-id + account owner), so the
+  connector can't ground on Google data even with the dep present. `funnel.py:135` imports it
+  lazily → absence is a graceful `skipped`, not a boot failure. Drops the heavy google-ads gRPC dep
+  → smaller/faster demo image. **Flip back to 1 when #39/40/41 land.**
+- **`META_ACCESS_TOKEN` must be UNSET on BOTH prod services.** It is a dev/CLI fallback that leaked
+  into every `.env`, not a shared credential. Prod is per-request (`getMetaTokenForUser` →
+  `X-Meta-Token`). Left set on Service B, `service.py:348` (`x_meta_token or META_ACCESS_TOKEN`) makes
+  any header-less request silently ground on the OPERATOR's account — wrong brand, no error. Unsetting
+  turns silent corruption into the designed loud failure. Cost: loses dev "demo mode" + ai-layer CLI
+  in prod (neither is shipped product).
+- **`API_BASE_URL` → set in Vercel to Railway A's generated URL** (no custom domain yet). The
+  committed default `api.cosmisk.com` is dead; `apply-env.mjs` overrides from the env var at build.
+  Do NOT change the committed default (it's the eventual custom-domain target; a Railway hostname
+  would couple the repo to infra). Railway's generated domain is stable across redeploys.
+- **`FRONTEND_URL` NOT needed.** The churning URL is Vercel's per-DEPLOY preview URL; production
+  uses the stable alias `cosmisk.vercel.app`, already whitelisted in `config.ts:77-84` (with the
+  custom domains). Omit the var.
+- **Meta OAuth redirect URIs MUST be whitelisted before ship.** The URI is browser-derived
+  (`${window.location.origin}/app/settings/meta-callback`, meta-oauth.service.ts:57); localhost does
+  NOT cover prod, and Meta checks it at BOTH dialog and token-exchange (exact match). Add one entry
+  per origin users can reach (cosmisk.com AND www.cosmisk.com are distinct). Then set Vercel
+  `META_OAUTH_ENABLED=true`.
+- **Migration**: one `ALTER TABLE studio_generations ALTER COLUMN brief_json DROP NOT NULL` via
+  **psql directly** (NOT drizzle-kit — prod journal may be empty from manual M1 → could replay from
+  0000). Backward-compatible; apply before the code lands.
+- **Two SILENT env failures on Service B**: `AI_LAYER_API_KEY` unset ⇒ open unauthenticated
+  generation endpoint (api.py:48-51); `STORAGE_BUCKET` unset ⇒ publish no-ops, next redeploy 404s
+  every past run's images (storage.py:18).
+- **Do NOT remove `mkdir ./data`** from the api Dockerfile even though ElevenLabs is out of scope —
+  `index.ts:232` mkdirs it unconditionally at boot as non-root → EACCES without it.
+
+## Ship order (from the checklist)
+rotate Neon pw (+ update apps/api/.env.test) → psql ALTER → whitelist OAuth URIs → Service B env
+(AI_LAYER_API_KEY first, META_ACCESS_TOKEN unset) → Service A env (AI_LAYER_URL last) → PR to main
+(needs push permission) → repoint 3 deploys to main + Vercel META_OAUTH_ENABLED=true → post-deploy:
+curl the /asset CORP header, load a history run, one real run to confirm ledger_json.
+
+## Still outstanding (user)
+Rotate the Neon password (leaked to a 2026-07-24 transcript); push permission; the manual ship
+steps above. Nothing pushed.

@@ -11,7 +11,12 @@ WORKDIR /app
 
 # 1 = include the Google Ads connector dep (google-ads, heavy gRPC).
 # 0 = lean Meta+Shopify image; the Google connector lazy-imports and stays `skipped`.
-ARG INSTALL_GOOGLE=1
+# Default 0 for the demo ship (2026-07-25): Google Ads is blocked on OAuth consent + the
+# login-customer-id + account-owner tasks (#39/#40/#41), so the connector could not ground
+# on Google data even if the dep were present. funnel.py imports GoogleConnector lazily
+# (funnel.py:135), so its absence is a graceful `skipped`, not a boot failure. Flip back to
+# 1 once #39/#40/#41 land and Google grounding is wanted.
+ARG INSTALL_GOOGLE=0
 
 COPY apps/connectors/pyproject.toml apps/connectors/README.md ./apps/connectors/
 COPY apps/connectors/connectors ./apps/connectors/connectors
