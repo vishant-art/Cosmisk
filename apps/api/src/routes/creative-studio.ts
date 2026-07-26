@@ -3,10 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
-import { safeFetch } from '../utils/safe-fetch.js';
-import { createMessage } from '../services/llm-gateway.js';
-import { extractText } from '../utils/claude-helpers.js';
-import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
 import {
   creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset, fetchCreativeAssetUrl,
   videoPlan, videoGenerate, markPublished, learn, getPrior, getGraph, voicePreview,
@@ -287,7 +283,9 @@ Return ONLY valid JSON, no markdown.`,
   app.get('/asset/:jobId/*', async (request, reply) => {
     const { jobId } = request.params as { jobId: string };
     const file = (request.params as Record<string, string>)['*'];  // may include a subdir
-    if (file.includes('..')) return reply.status(400).send({ success: false, error: 'bad path' });
+    // jobId is a real uuid4().hex; without this it's a raw R2 key-prefix selector, so an anon
+    // caller could presign any object in the bucket. Guard the capability token at the boundary.
+    if (!/^[0-9a-f]{32}$/.test(jobId) || file.includes('..')) return reply.status(400).send({ success: false, error: 'bad path' });
     // Embedded cross-origin by design (web origin ≠ api origin in sim & prod); the jobId is the
     // capability. Override helmet's global CORP: same-origin so <img>/<video> can render the 302→R2.
     reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -384,6 +382,9 @@ Return ONLY valid JSON, no markdown.`,
   // GET /video/job/:jobId — live stage/progress passthrough for a user who stays on the page.
   app.get('/video/job/:jobId', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { jobId } = request.params as { jobId: string };
+    // authenticate proves a user, not THE user — scope the job to the caller like /video/plan does.
+    const owned = await getDbAdapter().get('SELECT id FROM studio_generations WHERE ai_job_id = ? AND user_id = ?', [jobId, request.user.id]);
+    if (!owned) return reply.status(404).send({ success: false, error: 'not found' });
     try { return { success: true, job: await getCreativeJob(jobId) }; }
     catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
   });

@@ -16,6 +16,7 @@ Run:  uvicorn ai_layer.api:app --reload
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -295,7 +296,9 @@ def creative_asset_url(job_id: str, path: str):
     """A presigned R2 GET URL for a finished asset. apps/api calls this and 302s the browser
     to the returned URL, so the bytes flow browser<->R2 directly ($0 egress) and apps/api
     never holds R2 creds. 404 when storage is off -> the caller byte-proxies the local copy."""
-    if ".." in path:
+    # job_id is a uuid4().hex; without this it's a raw R2 key-prefix selector. Don't trust the
+    # caller (apps/api) to have validated it — guard the backend boundary too.
+    if not re.fullmatch(r"[0-9a-f]{32}", job_id) or ".." in path:
         raise HTTPException(status_code=400, detail="bad path")
     if not _storage.enabled():
         raise HTTPException(status_code=404, detail="storage disabled")
