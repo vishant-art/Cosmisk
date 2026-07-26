@@ -17,7 +17,7 @@ Scope: `apps/*` only. `rnd_mine/` (`origin/new/creative_v2`) is explicitly **out
 |---|---|
 | apps/api `tsc --noEmit` | baseline-only (`billing.ts:4` stripe, pre-existing) |
 | apps/api `madge --circular` | 0 cycles |
-| apps/api suite | 436 passed / 2 skipped |
+| apps/api suite | 441 passed / 2 skipped (was 436; +5 review-response tests, commit `c2cf9ce`) |
 | apps/web `ng build` | clean, 584.23 kB, 3 pre-existing NG8107 warnings |
 | ai-layer full suite | **599 passed / 7 skipped** on both a used and a clean Neon branch |
 | sim smoke | 3 healthchecks + api→ai-layer round-trip PASS |
@@ -382,3 +382,17 @@ regex verified.
 | `trustProxy` for correct per-IP keying | Pre-existing, all routes; deploy-config decision. | At deploy (§8.7). |
 | Python deps unpinned (`>=`, no lock) | Non-reproducible images, but not a demo blocker. | `pip freeze`/lock before the next deploy. |
 | Optional pydantic `max_length=300` on the voice-preview field | Cost already capped at the provider. | Only if boundary rejection is wanted over truncation. |
+| `chat_json` total-failure cost leak — `raise last` drops the summed cost of all attempts | 3 consecutive malformed JSONs is rare (`response_format=json_object` almost always parses), $ is negligible, and ledgering it threads cost onto the exception across 10 call sites. A `logging.warning` breadcrumb was added (`brain.py`, commit `c2cf9ce`) so the path is observable. | If preview/render volume makes the unledgered spend material — carry cost on the exception and ledger in the caller. |
+
+### Follow-up correctness fixes — commit `c2cf9ce` (verified independently)
+
+Three review-response items landed after the security fixes, each independently verified (correct,
+gates green at 441/2):
+- **`video-job-poller`** — the 90m hard ceiling was only checked after a *successful* poll, so an
+  unreachable ai-layer polled every 15s forever, and `recoverVideoJobs()` re-spawned one such loop
+  per stuck row each boot. Moved the ceiling check to the loop top. Accepted trade: a job that would
+  have completed at 90:01 now detaches instead of getting that final poll — mitigated because the
+  ai-layer persists the render to Neon, so it resurfaces via boot-recovery or a refresh.
+- **`chat_json`** — retried (billed) attempts summed into the returned cost (was: only the last
+  attempt's). Total-failure path deferred as above.
+- **`/asset` jobId guard** — added the route tests that were missing for the §9-#1 security fix.
