@@ -237,3 +237,50 @@ curl the /asset CORP header, load a history run, one real run to confirm ledger_
 ## Still outstanding (user)
 Rotate the Neon password (leaked to a 2026-07-24 transcript); push permission; the manual ship
 steps above. Nothing pushed.
+
+---
+
+## 2026-07-26 — push, PR #10, security review, deploy prep
+
+### Merged into the branch and pushed
+- `79883e5` — ai-layer Dockerfile `uvicorn --host ::` (IPv6, Railway private-net reachability).
+- `537cebe` — **security fixes** (see below).
+- Branch **pushed**; **PR #10** opened (`improve/creative` → `main`), no-attribution body.
+
+### Migration applied
+`ALTER TABLE studio_generations ALTER COLUMN brief_json DROP NOT NULL` run against the DB in root
+`.env` via **psycopg** (box psql is a clientless `pg_wrapper`). Preflight `SELECT 1` passed;
+`brief_json` was already `is_nullable=YES` — a no-op. Idempotent, safe to re-run on a fresh target.
+
+### Security review response (fable ponytail re-verification)
+Review was clean on all injection classes; exposure was authorization-only. Fixed in `537cebe`:
+1. **Asset proxy presigned arbitrary bucket objects** — `jobId` was an unvalidated R2 key-prefix
+   selector. Added `^[0-9a-f]{32}$` guard at BOTH boundaries (apps/api route + ai-layer
+   `creative_asset_url`).
+2. **`GET /video/job/:jobId` cross-tenant read** — added `AND user_id = ?` ownership guard like its
+   sibling routes.
+3. **Dead imports** (`safeFetch` + 4 scorer/LLM fns whose only uses are in disconnected comment
+   blocks) deleted.
+
+Re-verification corrected two review findings as already-handled: a global 100/min/IP rate limiter
+already exists (`index.ts:120-124`); voice-preview text is already capped at the provider
+(`video_providers.py:121` → `text[:200]`).
+
+Gate: apps/api **436 passed / 2 skipped**, `tsc` baseline-only, ai-layer parse + guard verified.
+
+### Deferred (single-tenant demo), logged in checklist §9
+Account-level unscoped routes (`/learn`, `/prior`, `/graph`, `/variants/published`) · `arrayBuffer`
+byte-proxy streaming rewrite · `trustProxy: true` (deploy-config; per-IP limits collapse behind
+Railway's LB without it) · Python dep pinning.
+
+### Deploy decisions
+- **A→B over Railway private networking**: `AI_LAYER_URL=http://<service-b>.railway.internal:8000`
+  (needs the `--host ::` bind); remove B's public domain; browser 302s to R2 so nothing external
+  hits B.
+- Live services are still on stale **`ai-layer-adapter`** (source of the current `/health`
+  `db:error`); the ship merges PR #10 then repoints both to `main` with clean env.
+
+### Outstanding (user)
+Merge PR #10; propagate rotated Neon creds to Services A/B (+ `.env.test` when ready); Railway
+A/B/Vercel env + repoint to `main`; Meta OAuth prod redirect (if demoing connect); post-deploy
+verify `/health` `db:connected` + one real run writes `ledger_json`.
