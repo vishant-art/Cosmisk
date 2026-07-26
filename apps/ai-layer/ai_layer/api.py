@@ -16,6 +16,7 @@ Run:  uvicorn ai_layer.api:app --reload
 """
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -50,6 +51,17 @@ def require_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> 
     """Enforce the service API key when configured; open in local dev (no key set)."""
     if config.AI_LAYER_API_KEY and x_api_key != config.AI_LAYER_API_KEY:
         raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+
+
+# Fail CLOSED on deploys: with no AI_LAYER_API_KEY the guard above is a no-op and the whole
+# API — including /complete (arbitrary LLM completion billed to our OpenRouter account) —
+# serves unauthenticated. Railway injects RAILWAY_ENVIRONMENT_NAME into every deploy, so a
+# deploy that forgot the key dies HERE at import (healthcheck never goes green, the previous
+# release stays up) instead of running open; local dev and tests have no Railway env, so the
+# open-when-unset behaviour they rely on is unchanged.
+if not config.AI_LAYER_API_KEY and (
+        os.getenv("RAILWAY_ENVIRONMENT_NAME") or os.getenv("RAILWAY_ENVIRONMENT")):
+    raise RuntimeError("AI_LAYER_API_KEY unset in a Railway deploy — refusing to boot open")
 
 
 def caller_token(x_meta_token: str | None = Header(None, alias="X-Meta-Token")) -> str | None:

@@ -20,6 +20,9 @@ temp_docs
 cosmisk-wiki
 dev_reports
 docs
+# R&D scratch (~32k lines incl. a 17k-line mock JSON) — no COPY or import in either image
+# reaches it; ai-layer is the *packaging of* rnd/, not a dependent. Context upload only.
+rnd
 .superpowers
 .devcontainer
 .claude
