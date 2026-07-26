@@ -15,6 +15,7 @@ interface NavItem {
   badge?: 'autopilot';
   live?: boolean;
   newBadge?: boolean;
+  inactive?: boolean;   // dormant surface — shown but marked "(inactive)"
 }
 
 interface NavGroup {
@@ -76,10 +77,14 @@ interface NavGroup {
                     routerLinkActive="sidebar-active"
                     class="sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.06] transition-all duration-150 group no-underline relative"
                     [class.justify-center]="collapsed()"
+                    [class.opacity-50]="item.inactive"
                     [attr.data-tooltip]="item.label">
                     <lucide-icon [name]="item.icon" [size]="20" [strokeWidth]="1.75" class="shrink-0 sidebar-icon"></lucide-icon>
                     @if (!collapsed()) {
                       <span class="text-sm font-body font-medium truncate">{{ item.label }}</span>
+                      @if (item.inactive) {
+                        <span class="text-[10px] font-mono text-gray-500 ml-1 shrink-0">(inactive)</span>
+                      }
                       @if (item.badge === 'autopilot' && badgeService.unreadCount() > 0) {
                         <span class="ml-auto min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold font-mono bg-red-500 text-white rounded-full leading-none">
                           {{ badgeService.unreadCount() > 99 ? '99+' : badgeService.unreadCount() }}
@@ -237,21 +242,21 @@ export class SidebarComponent implements OnInit, OnDestroy {
       items: [
         { label: 'Dashboard', icon: 'layout-dashboard', route: '/app/dashboard' },
         { label: 'Ad Command', icon: 'command', route: '/app/ad-command', newBadge: true },
-        { label: 'Creative Cockpit', icon: 'palette', route: '/app/creative-cockpit' },
-        { label: 'Director Lab', icon: 'clapperboard', route: '/app/director-lab' },
+        { label: 'Creative Cockpit', icon: 'palette', route: '/app/creative-cockpit', inactive: true },
+        { label: 'Director Lab', icon: 'clapperboard', route: '/app/director-lab', inactive: true },
         { label: 'Creative Studio', icon: 'video', route: '/app/ugc-studio' },
-        { label: 'Creative Engine', icon: 'rocket', route: '/app/creative-engine' },
+        { label: 'Creative Engine', icon: 'rocket', route: '/app/creative-engine', inactive: true },
       ]
     },
     {
       title: 'Intelligence',
       items: [
         { label: 'Brain', icon: 'brain', route: '/app/brain', pro: true },
+        { label: 'AI Chat', icon: 'message-circle', route: '/app/ai-chat', live: true },
         { label: 'Autopilot', icon: 'zap', route: '/app/autopilot', pro: true, badge: 'autopilot' },
         { label: 'Watchdog', icon: 'scan-eye', route: '/app/agent', pro: true, live: true },
         { label: 'Competitor Spy', icon: 'search', route: '/app/competitor-spy', pro: true },
         { label: 'Analytics', icon: 'bar-chart-3', route: '/app/analytics' },
-        { label: 'AI Studio', icon: 'sparkles', route: '/app/ai-studio', live: true },
         { label: 'Reports', icon: 'file-text', route: '/app/reports' },
         { label: 'Creative Score', icon: 'target', route: '/app/score' },
       ]

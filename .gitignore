@@ -102,5 +102,33 @@ temp_reports/
 
 #venv
 cos/
+.venv/
+# connector live-smoke asset downloads (regenerable)
+connector_assets/
 #servers??
 server/
+
+#pycache
+rnd/__pycache__ 
+*/*/__pycache__
+
+#real data
+rnd/data/_real_sample.json
+
+# apps/ai-layer artifacts (mock_meta_ads.json IS synthetic, safe to commit)
+apps/ai-layer/**/__pycache__/
+apps/ai-layer/.pytest_cache/
+apps/ai-layer/*.egg-info/
+apps/ai-layer/build/
+apps/ai-layer/plots/
+# creative studio run artifacts (regenerable media; live_runs/ holds dry + live outputs)
+apps/ai-layer/live_runs/
+apps/ai-layer/ai_layer/data/creative_output/
+apps/ai-layer/data/_real_*.json
+apps/ai-layer/data/cost_ledger.jsonl
+apps/ai-layer/data/*.sqlite
+apps/ai-layer/data/*.sqlite-*
+# hand-off scratch docs (forwarded manually, never committed)
+temp_docs/
+# exported infra env dumps (secrets — never commit)
+railwayenv.txt

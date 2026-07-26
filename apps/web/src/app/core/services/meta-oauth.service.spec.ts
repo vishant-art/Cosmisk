@@ -149,5 +149,14 @@ describe('MetaOAuthService', () => {
 
       localStorage.removeItem('cosmisk_token');
     });
+
+    it('does NOT open a popup when oauthEnabled is false (fail-safe)', () => {
+      spyOn(window, 'open');
+      service.oauthEnabled = false;
+
+      service.openOAuthPopup();
+
+      expect(window.open).not.toHaveBeenCalled();
+    });
   });
 });

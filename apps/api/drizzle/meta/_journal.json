@@ -22,6 +22,27 @@
       "when": 1780407527097,
       "tag": "0002_eminent_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782851133364,
+      "tag": "0003_lowly_elektra",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784356515791,
+      "tag": "0004_dry_namorita",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784806957368,
+      "tag": "0005_natural_tony_stark",
+      "breakpoints": true
     }
   ]
 }

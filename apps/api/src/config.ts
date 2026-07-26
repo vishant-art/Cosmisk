@@ -65,6 +65,14 @@ export const config = {
   slackSigningSecret: env['SLACK_SIGNING_SECRET'] || '',
   n8nBriefingWebhook: env['N8N_BRIEFING_WEBHOOK'] || '',
   alertEmailFrom: env['ALERT_EMAIL_FROM'] || 'alerts@cosmisk.ai',
+  // ai-layer service (apps/ai-layer). Empty AI_LAYER_URL = feature OFF (routes skip).
+  aiLayerUrl: env['AI_LAYER_URL'] || '',
+  aiLayerApiKey: env['AI_LAYER_API_KEY'] || '',
+  // "Continue without Meta login" demo creds: the shared dev/testing Meta token.
+  // Empty in prod (so demo mode is a dev-only convenience). demoAccountId is the
+  // account used when the caller hasn't selected one.
+  metaAccessToken: env['META_ACCESS_TOKEN'] || '',
+  demoAccountId: env['DEMO_ACCOUNT_ID'] || 'act_1738503939658460',
   corsOrigins: [
     'http://localhost:4200',
     'https://cosmisk.ai',

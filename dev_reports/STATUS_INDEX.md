@@ -1,10 +1,27 @@
 # dev_reports — STATUS INDEX (master catalog)
 
-**Date:** 2026-05-31 · **Status:** 🔵 ACTIVE (regenerate when reports are added/superseded).
+> ⭐ **NEXT ACTION (2026-07-21):** [`2026-07-21-creative-studio-redesign-resume-note.md`](./2026-07-21-creative-studio-redesign-resume-note.md)
+> — Creative Studio UI redesign **IMPLEMENTATION COMPLETE** (14 commits on `improve/creative`,
+> `dddb396..b7a61c2`; gates green; final review READY-WITH-FOLLOWUPS + Important fixed). **Next:**
+> decide branch completion (`finishing-a-development-branch`, no push) + the paid end-to-end sim run.
+> Deferred: variants/publish back-half (needs apps/api `variant_axis`). **Read the resume note first.**
+>
+> **DONE this session (2026-07-21):** R2 shipped (Mode-2) & merged; env split per-service; demo Neon
+> migrated; Meta grounding + OAuth wired; dockerized split-deploy sim runs green; **Creative Studio
+> redesign built end-to-end (backend passthrough + Angular UI), apps/api 436p, ai-layer creative 487p.**
+> See the resume note.
+>
+> **PRIOR HANDOFF (2026-07-18):** [`ai_serv/2026-07-18-ai-engineer-handoff.md`](./ai_serv/2026-07-18-ai-engineer-handoff.md)
+> — demo-prep session shipped UGC video UI + async delivery, chat formatting, AI-Studio
+> retirement, and the `ai_feedback` capture layer. Google-Ads consumption untouched.
+
+**Date:** 2026-05-31 (index) · updated 2026-07-18 · **Status:** 🔵 ACTIVE (regenerate when reports are added/superseded).
 **What this is:** the single place to check "is this report still true?". Every non-log report carries a matching banner at its top. Terminology is canonical per [`VOCABULARY.md`](./VOCABULARY.md) (`M1…M5` = SoW milestones; the DB migration runs in stages **DB-1 / DB-1.5 / DB-2 / DB-3** inside M1).
 
 **Legend:** ✅ IMPLEMENTED · ❌ INVALIDATED · ♻️ SUPERSEDED · 🔵 ACTIVE · 📖 REFERENCE (durable) · 📓 LOG (untouched).
 **Untouched by rule:** every `log.md`, `session_log.md`, and per-folder `INDEX.md` — chronological/navigation records, left as the raw history.
+
+**2026-06-17 volume reduction:** the `05_05/` and `19_05/` report bodies were **compressed in-place** — redundant restatement removed; each file's unique essence + every externally-cited section retained; status banners and successor pointers unchanged. Logs (`05_05/log.md`, `19_05/log.md`, `19_05/INDEX.md`) left untouched. Folder sizes `05_05` 360K→164K, `19_05` 204K→152K. Full originals remain in git history. Operation log + per-file table: [`17_06/dev_reports_volume_reduction.md`](./17_06/dev_reports_volume_reduction.md).
 
 ---
 
@@ -23,6 +40,22 @@
 | `31_05/migration_0001_verification.md` | ✅ IMPLEMENTED | `0001` applied (79 tables) + verified |
 | `31_05/m1_postgres_migration_and_connectivity.md` | ✅ IMPLEMENTED | DB-1 done & verified |
 | `29_05/async_migration_call_site_audit.md` | 🔵 ACTIVE | **DB-2 source of truth** (635 sites). Its "M2" = DB-2 |
+
+## AI-layer / demo era (2026-06 → 07) — newest first
+
+| File | Status | Note |
+|---|---|---|
+| `2026-07-19-ts-r2-client-future-work.md` | 🔵 ACTIVE | **Deferred:** wire the TS (apps/api) S3 client to R2 if ever needed (triggers, gotchas, reactivation blueprint). Not on demo path |
+| `ai_serv/2026-07-18-asset-storage-r2-migration-plan.md` | ♻️ SUPERSEDED | Original TS-owns-S3 R2 design; superseded on the TS side by the decoupled plan. Kept as reactivation blueprint (see row above) |
+| `ai_serv/2026-07-19-ai-engineer-handoff-r2-storage.md` | ⭐ 🔵 ACTIVE | **Latest handoff** → ai-engineer. R2 object store is live: `ai_layer.storage` contract + how to read/write |
+| `ai_serv/2026-07-18-ai-engineer-handoff.md` | 🔵 ACTIVE | Prior handoff → ai-engineer. Session summary + `ai_feedback` contract |
+| `ai_serv/ai-studio-retired.md` | ✅ IMPLEMENTED | AI-Studio UI entry points removed; route kept for deep links |
+| `docs/superpowers/plans/2026-07-17-ugc-video-ui-async.md` | ✅ IMPLEMENTED | Video UI + poller + routes (Tasks 1–7 done; T8 → dryayeet) |
+| `docs/superpowers/plans/2026-07-17-chat-formatting-and-ai-studio-retirement.md` | ✅ IMPLEMENTED | Chat CSS + prompt + retirement |
+| `docs/superpowers/plans/2026-07-17-feedback-ai-feedback.md` | ✅ IMPLEMENTED | `ai_feedback` table + route + thumbs |
+| `ai_serv/creative/chat-to-studio-handoff-deferred.md` | 🔵 ACTIVE | Deferred design — chat→studio prefill handoff |
+| `2026-07-17-execution-resume-note.md` | ✅ IMPLEMENTED | Compact-survival note; all 3 plans now executed (compressed) |
+| `2026-07-17-ai-layer-demo-state-and-tasklist.md` | 🔵 ACTIVE | Demo state + per-route AI-serving map + persistence decisions |
 
 ## Durable reference (point-in-time facts, still accurate)
 

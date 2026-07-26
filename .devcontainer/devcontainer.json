@@ -1,25 +1,34 @@
 {
-  "name": "Cosmisk (lean)",
+  "name": "Cosmisk (full-stack dev)",
   "dockerComposeFile": "docker-compose.dev.yml",
   "service": "cosmisk-dev",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "forwardPorts": [3000],
+  "forwardPorts": [4200, 3000, 8077],
   "portsAttributes": {
+    "4200": {
+      "label": "Web UI (Angular ng serve)",
+      "onAutoForward": "openBrowser"
+    },
     "3000": {
-      "label": "Cosmisk (Fastify + built Angular bundle)",
+      "label": "API (Fastify)",
       "onAutoForward": "notify"
+    },
+    "8077": {
+      "label": "AI layer (FastAPI /docs)",
+      "onAutoForward": "silent"
     }
   },
   "remoteUser": "root",
   "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "echo 'Container up. Run: ./dev start   (or ./dev up the first time)'",
   "customizations": {
     "vscode": {
       "extensions": [
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "Angular.ng-template",
-        "qwtel.sqlite-viewer"
+        "ms-python.python"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash"

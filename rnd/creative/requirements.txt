@@ -1,0 +1,21 @@
+# Core (needed for the mock test suite — already in the cos venv)
+pandas>=2.0
+numpy>=1.24             # teardown frame differencing (arrived via pandas; now depended on directly)
+requests>=2.31
+python-dotenv>=1.0
+openai>=1.40
+pydantic>=2.0
+pytest>=8.0
+pillow>=10.1            # compositor (draw/auto-fit/scrim/logo) + image handling + contact sheet
+matplotlib>=3.7         # brain EDA plots + DejaVu Sans fallback font for the compositor
+
+# Promoted from "live only": the teardown decodes winner MP4s offline, and the test
+# suite synthesizes its own fixture clip with the bundled binary. No network, no spend.
+imageio-ffmpeg>=0.5     # bundled static ffmpeg: video copy overlay, frame reads, audio demux
+
+# Live generation only (lazy-imported; install before a real run)
+fal-client>=0.5         # the ONLY generation provider: FLUX.2 + Bria (image) + Seedance (video)
+                        # + fal-ai/whisper (word-level ASR for teardown + captions)
+
+# Optional: a sharper saliency model for text placement (Pillow edge-density is the default)
+# opencv-python-headless>=4.9

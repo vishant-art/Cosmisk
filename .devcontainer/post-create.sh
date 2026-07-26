@@ -1,44 +1,66 @@
 #!/usr/bin/env bash
+# First-time (and idempotent) bootstrap for the full-stack dev container.
+# Installs Node + Python deps, creates the cos venv, and seeds apps/api/.env.
+# Does NOT start services (use ./dev start) and does NOT migrate Neon.
 set -euo pipefail
 
 cd /workspace
 
-echo "==> Installing root (Angular) deps"
+echo "==> Installing root deps (Angular workspace + packages/*)"
 npm install --no-audit --no-fund
 
-echo "==> Installing server deps"
-(cd server && npm install --no-audit --no-fund)
+echo "==> Installing API deps (apps/api is not an npm workspace)"
+(cd apps/api && npm install --no-audit --no-fund)
 
-echo "==> Ensuring server/data exists"
-mkdir -p server/data
+# Python venv at /workspace/cos — the exact path apps/api/dev.mjs looks for
+# (cos/bin/python). It lives in a named Docker volume, so it's fast and never
+# shows up in the host tree.
+if [ ! -x cos/bin/python ]; then
+  echo "==> Creating Python venv at /workspace/cos"
+  python3 -m venv cos
+fi
+echo "==> Installing ai-layer into the venv"
+cos/bin/pip install --upgrade pip >/dev/null
+cos/bin/pip install -e apps/ai-layer
 
-if [ ! -f server/.env ]; then
-  echo "==> No server/.env found — copying from .env.example"
-  cp server/.env.example server/.env
+# connectors is optional: present (installable) on feat/data-connectors, absent
+# on feat/ai_analy. Guard on the manifest, not the dir — a branch switch can
+# leave behind an apps/connectors/ with only __pycache__/egg-info cruft and no
+# pyproject.toml, which would make `pip install -e` fail.
+if [ -f apps/connectors/pyproject.toml ]; then
+  echo "==> Installing connectors into the venv"
+  cos/bin/pip install -e apps/connectors
+else
+  echo "==> apps/connectors not installable on this branch — skipping (ok)"
+fi
+
+# API env — never clobber an existing .env.
+if [ ! -f apps/api/.env ]; then
+  echo "==> No apps/api/.env — copying from apps/api/.env.example"
+  cp apps/api/.env.example apps/api/.env
+  # Repair the known `.env.example` typo on the first line (`R PORT=` -> `PORT=`).
+  sed -i "s|^R PORT=|PORT=|" apps/api/.env || true
   JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
   TEK=$(openssl rand -hex 32 2>/dev/null || node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-  sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${JWT_SECRET}|" server/.env || true
-  sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=${TEK}|" server/.env || true
+  sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${JWT_SECRET}|" apps/api/.env || true
+  sed -i "s|^TOKEN_ENCRYPTION_KEY=.*|TOKEN_ENCRYPTION_KEY=${TEK}|" apps/api/.env || true
   echo "    generated JWT_SECRET and TOKEN_ENCRYPTION_KEY"
 fi
 
-echo "==> Building backend"
-(cd server && npm run build)
+# Neon is required — the API will not connect without DATABASE_URL.
+if ! grep -qE '^DATABASE_URL=.+' apps/api/.env; then
+  cat <<'WARN'
 
-echo "==> Building frontend (production bundle)"
-npx ng build --configuration development
+!! ============================================================
+!! apps/api/.env has NO DATABASE_URL set.
+!! The app is Postgres-only (Neon). The API will fail to serve
+!! data until you add your Neon connection strings to apps/api/.env:
+!!     DATABASE_URL=<neon pooled connection>
+!!     MIGRATION_DATABASE_URL=<neon direct connection>
+!! Then run:   ./dev migrate && ./dev restart
+!! ============================================================
 
-echo "==> Copying Angular bundle into server/public"
-mkdir -p server/public
-rm -rf server/public/*
-if [ -d dist/cosmisk/browser ]; then
-  cp -r dist/cosmisk/browser/* server/public/
-elif [ -d dist/cosmisk ]; then
-  cp -r dist/cosmisk/* server/public/
+WARN
 fi
 
-echo "==> Running one-off schema scripts"
-(cd server && npx tsx scripts/add-audit-tables.ts || true)
-(cd server && npx tsx scripts/add-shopify-tables.ts || true)
-
-echo "==> Done. Use './dev up' / './dev rebuild' / './dev logs' from the host, or 'cd server && npm start' inside the container."
+echo "==> Bootstrap done. Start the whole system with:  ./dev up"

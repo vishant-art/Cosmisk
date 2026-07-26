@@ -120,10 +120,10 @@ export class WelcomeTourComponent {
       route: '/app/dashboard',
     },
     {
-      title: 'Creative DNA Analysis',
-      description: 'Every ad is decoded into Hook DNA, Visual DNA, and Audio DNA — 100+ patterns that explain WHY ads work, not just how they perform.',
+      title: 'Ask what\'s working (ai-chat for now)',
+      description: 'Ask the AI why your ads win or lose — it reads your creative performance and explains the patterns behind what\'s working.',
       icon: 'dna',
-      route: '/app/creative-cockpit',
+      route: '/app/ai-chat',
     },
     {
       title: 'Autonomous AI Agents',
@@ -132,8 +132,8 @@ export class WelcomeTourComponent {
       route: '/app/autopilot',
     },
     {
-      title: 'Creative Engine',
-      description: 'Batch-generate 100+ creatives in under 60 seconds: UGC videos, statics, carousels. AI scores every creative before launch.',
+      title: 'Creative Studio',
+      description: 'Generate ads from your winning creatives — static concepts and UGC video, grounded on your top performers. Every render passes a quality gate.',
       icon: 'rocket',
       route: '/app/ugc-studio',
       shortcut: 'G+E',

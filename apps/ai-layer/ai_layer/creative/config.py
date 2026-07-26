@@ -1,0 +1,229 @@
+"""Central config for the creative experiment: env, paths, model IDs.
+
+Reads the repo-root `.env` (walks up the tree), same pattern as the ai-layer.
+Model IDs are constants HERE, not in env, so a vendor rename is a one-line edit.
+See dev_reports/ai_serv/creative/creative-vendor-research.md for the why behind
+each ID/price.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+SRC_DIR = Path(__file__).resolve().parent            # ai_layer/creative
+AILAYER_DIR = SRC_DIR.parent                          # ai_layer
+DATA_DIR = AILAYER_DIR / "data"
+CREATIVE_DIR = SRC_DIR                                # back-compat alias (used as a font dir root)
+# Generated runs land here; overridable so prod can point at a writable volume.
+OUTPUT_DIR = Path(os.getenv("CREATIVE_OUTPUT_DIR", str(DATA_DIR / "creative_output")))
+DEFAULT_DATA = DATA_DIR / "mock_meta_ads.json"
+
+
+def _find_env() -> Path | None:
+    for parent in Path(__file__).resolve().parents:
+        cand = parent / ".env"
+        if cand.exists():
+            return cand
+    return None
+
+
+_env = _find_env()
+if _env:
+    load_dotenv(_env)
+
+# --- keys -----------------------------------------------------------------------
+# Text brain + VLM verifier go through OpenRouter; ALL image/video generation goes
+# through fal (the only generation provider -- see the rebuild plan, decision D1).
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+FAL_KEY = os.getenv("FAL_KEY")                        # FLUX.2 + Bria + Seedance (fal-client)
+
+# Meta grounding. META_ACCESS_TOKEN pulls the winner cohort; META_AD_ACCOUNT is the
+# act_<id> to pull it from. When the account is set, a normal run attempts grounding by
+# default and degrades gracefully to UNGROUNDED if the token is missing/expired -- the
+# fetch never blocks a run. (Read from the same env vars as the top-level ai_layer config.)
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
+META_AD_ACCOUNT = os.getenv("META_AD_ACCOUNT")        # e.g. act_1234567890
+
+# Shopify product source. With both set, a run sources the product image from the store's
+# bestseller instead of fabricating one, and degrades gracefully to "no product" when
+# unset -- same posture as Meta grounding.
+SHOPIFY_STORE = os.getenv("SHOPIFY_STORE")            # e.g. my-shop.myshopify.com
+SHOPIFY_TOKEN = os.getenv("SHOPIFY_TOKEN")            # Admin API access token
+SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2026-07")
+
+# --- model IDs (verified June 2026; see vendor research doc) ------------------
+# Brain (text -> BrandKit/concepts) and the VLM critic go through OpenRouter.
+TEXT_MODEL = "google/gemini-2.5-flash"
+VISION_MODEL = "google/gemini-2.5-flash"             # verifier critic (multimodal)
+
+# Image (fal-only). flux-2-flex is the brand-scene primary (typography + up to 10
+# reference images); flux-2-pro is the simpler fallback; bria product-shot drops a
+# real product into a generated scene; flux fill outpaints one bg to other ratios.
+IMAGE_MODEL_FLEX = "fal-ai/flux-2-flex"
+IMAGE_MODEL_PRO = "fal-ai/flux-2-pro"
+IMAGE_MODEL_PRODUCT = "fal-ai/bria/product-shot"
+IMAGE_OUTPAINT_MODEL = "fal-ai/flux-pro/v1/fill"
+IMAGE_CUTOUT_MODEL = "fal-ai/birefnet/v2"            # background removal (product cutout)
+
+# Video (fal-only). Seedance 2.0: image-to-video (seed = the text-free background),
+# reference-to-video (product/brand refs), text-to-video (no seed; last resort).
+# Seedance emits synced native audio when generate_audio=true (default on, free).
+VIDEO_I2V = "bytedance/seedance-2.0/image-to-video"
+VIDEO_REF2V = "bytedance/seedance-2.0/reference-to-video"
+VIDEO_T2V = "bytedance/seedance-2.0/text-to-video"
+VIDEO_DURATION_DEFAULT = 10           # seconds (Seedance accepts ~4-15)
+
+# Voiceover audio (fal-hosted TTS, NOT ElevenLabs) + the fal muxer that lays an
+# audio track onto a video without re-rendering frames (~$0.0002/s).
+VIDEO_TTS_MODEL = "fal-ai/minimax/speech-02-hd"   # voice_id below; confirm live
+VIDEO_TTS_VOICE = "Wise_Woman"
+AUDIO_MERGE_MODEL = "fal-ai/ffmpeg-api/merge-audio-video"
+
+TEXT_TEMPERATURE = 0.7        # brand identity is creative; concepts vary run-to-run
+CLASSIFY_TEMPERATURE = 0.0    # teardown classification is a lookup, not a creative act
+
+# --- video clip durations (UGC pipeline) --------------------------------------
+# Seedance accepts a DISCRETE set of durations, not a range. 7, 9, 11, 13 and 14 are
+# rejected by the API. Verified against fal's model page, July 2026.
+VIDEO_ALLOWED_DURATIONS = (4, 5, 6, 8, 10, 12, 15)
+VIDEO_MIN_CLIP_SECONDS = 4            # the renderer's floor
+# Per-clip ceiling a Storyboard shot may request. NOT a hard-coded 8: Seedance 2.5
+# announces native 30s clips, and welding today's cap into the shot planner would
+# enshrine a constraint that is dissolving. Short shots are a PACING convention that
+# happens to agree with the cap. See roadmap decision UGC-D1.
+VIDEO_MAX_CLIP_SECONDS = 15
+
+# Speech-to-text: word-level timestamps drive caption burn-in (T3) and the teardown's
+# spoken-hook / WPM / CTA-timing fields (T4). `chunk_level="word"` is what makes it useful.
+ASR_MODEL = "fal-ai/whisper"
+ASR_CHUNK_LEVEL = "word"
+
+# --- teardown: frame-difference shot detection (T4) ---------------------------
+# No cv2, no scenedetect. Mean absolute inter-frame difference on a strided-down
+# grayscale frame, in 0-255 units. A hard cut lands far above this; camera motion
+# and lighting change land far below. Tuned against synthesized hard cuts in the
+# test suite, then sanity-checked on real winner MP4s.
+TEARDOWN_CUT_THRESHOLD = 18.0
+TEARDOWN_MIN_SHOT_SECONDS = 0.35   # below this, a "cut" is a flash/flicker, not a shot
+TEARDOWN_SAMPLE_FPS = 8            # temporal subsample; cuts survive, cost drops
+TEARDOWN_GRID = 48                 # strided-down frame edge (px) for the diff metric
+TEARDOWN_MAX_KEYFRAMES = 9         # contact-sheet tiles handed to the VLM (3x3)
+
+# --- script + storyboard (T6) --------------------------------------------------
+# Shot lengths are a PACING convention, not a model limit. Cutting every couple of
+# seconds is what the audience expects; VIDEO_MAX_CLIP_SECONDS is a separate, moving
+# ceiling imposed by whichever renderer is current. Keep the two ideas apart, or a
+# 30-second-native model arrives and the shot planner still thinks in 8s slices.
+STORY_DEFAULT_SECONDS = 20
+STORY_MIN_SHOT_SECONDS = 1.2
+STORY_TYPICAL_SHOT_MAX = 4.0    # what a director should aim for, not what a model allows
+STORY_MAX_SHOTS = 12
+
+# --- captions (T3, an editor operation per UGC-D8) ----------------------------
+# Burned-in per-word captions are the single strongest signal that a clip is creator
+# content rather than an ad. They are also the architecture's own thesis applied to
+# the time axis: the model never renders the text, the compositor does, deterministically,
+# and it is verified. A caption must match the audio to the word, and no video model
+# will ever do that.
+CAPTION_WORDS_PER_CUE = 3      # TikTok-native: 1-3 words on screen at a time
+CAPTION_MAX_GAP_S = 0.6        # a silence longer than this breaks the cue (sentence end)
+CAPTION_MAX_CUE_S = 2.0        # no cue lingers longer than this, even mid-phrase
+CAPTION_TAIL_S = 0.35          # how long the final cue holds after the last word ends
+CAPTION_FPS = 24               # caption overlay framerate (independent of the clip's)
+
+# Fail-closed caption/audio agreement. We ASR our OWN voiceover, so drift this large
+# means something is genuinely wrong (wrong audio file, wrong language, TTS failure),
+# not that Whisper had an off day. A caption that says something other than the audio
+# is worse than no caption. See verify_agreement().
+CAPTION_MAX_DRIFT = 0.35
+
+# --- audio/video sync (T7.5 finish + T9 gate) ---------------------------------
+# The voiceover is free-running TTS and the video is authored to a fixed length; when the
+# voiceover is longer, the mux truncates its tail (the CTA). finish_timeline speeds the
+# voiceover up to fit (atempo), but only to here -- past this speech sounds unnatural, so a
+# still-too-long take is left long and the QA gate below fails it rather than shipping a
+# clipped ad.
+AUDIO_FIT_MAX_TEMPO = 1.30    # max voiceover speed-up to fit the video
+AUDIO_FIT_TOL_S = 0.15        # within this, audio and video already end together
+# The guardrail. The voiceover and the video must end within this of each other, or the ad
+# is out of sync (usually: the CTA got cut). fail-closed, and NOT repairable -- re-rendering
+# a shot cannot change the length of the spoken track; the script or the fit is the fix.
+QA_AV_SYNC_TOL_S = 0.35
+
+# --- temporal QA gate (T9) ----------------------------------------------------
+# Four of five checks are arithmetic. That is the whole differentiator: every competitor
+# puts a human here, because verifying a temporal artifact is unsolved. It is only
+# tractable for us because the editor PLACED the cuts, wrote the captions, and knows
+# the shot durations. We are not detecting our own work; we are asserting it.
+QA_SHOT_DURATION_TOL_S = 0.15    # a rendered shot may drift this far from the plan
+QA_CUT_TOL_S = 0.30              # a detected cut may land this far from a planned one
+
+# Continuity across a cut, as the zero-mean normalized CORRELATION of the frames either
+# side. Correlation is affine-intensity invariant by construction, which is exactly the
+# invariance the question needs (a re-grade of the same footage still scores ~1.0).
+QA_STALL_CORR = 0.98        # at or above: nothing changed across the cut
+QA_CONTINUITY_MIN_CORR = 0.75   # below, in SEQUENTIAL mode: the model lost the thread
+
+# A frozen shot is measured against the shot's FIRST frame rather than each frame's
+# predecessor (consecutive frames of any real footage correlate above 0.98).
+QA_FROZEN_CORR = 0.99
+# A flat frame has zero variance, so correlation is undefined. Below this the continuity
+# comparison is INCONCLUSIVE, not failed: two different solid-colour scenes are a
+# legitimate cut that no correlation can see.
+QA_MIN_FRAME_STD = 2.0
+
+# Masked normalized cross-correlation of the product cutout against sampled frames.
+# Correlates GRADIENT MAGNITUDE, not luminance: a smooth product template correlates
+# with any smooth background, while its edge structure does not. Masked by the cutout's
+# alpha so the transparent surround contributes nothing.
+# Measured with this metric: product present = 0.61, absent = 0.18, unrelated = 0.18.
+QA_PRODUCT_MIN_SCORE = 0.35
+QA_PRODUCT_FRAME_WIDTH = 96      # frames are downscaled before matching
+QA_PRODUCT_SCALES = (0.30, 0.42, 0.55)   # template width as a fraction of the frame
+QA_PRODUCT_SAMPLE_FPS = 2
+
+# --- shot recovery (T9.5) ------------------------------------------------------
+# Escalate, do not loop. A model that produced a bad shot from a prompt will usually
+# produce another bad shot from the same prompt, so retrying more than once is paying
+# twice for the same mistake.
+#
+#   0 retry     the same prompt (models are stochastic; once is worth it)
+#   1 reprompt  the same shot, prompt seeded with the QA hint
+#   2 replan    a DIFFERENT shot serving the same beat purpose
+#   3 drop      remove the shot, redistribute its seconds across the neighbours
+#
+# Rung 3 is what stops one bad beat from burning the budget.
+RECOVERY_LADDER = ("retry", "reprompt", "replan", "drop")
+# A global ceiling across the whole board, so a systematically broken renderer costs a
+# bounded amount rather than N * ladder_depth.
+RECOVERY_MAX_TOTAL_RENDERS = 40
+
+# --- the closed loop / learned prior (T11) -------------------------------------
+# The bar a result must clear before the brain is told about it.
+#
+# thumb_stop_rate is a PROPORTION, and a proportion measured on a handful of impressions is
+# noise with a decimal point. An ad that got 40 impressions and a 12% thumb-stop tells you
+# nothing, and telling the brain "pattern_interrupt wins" on that basis is worse than
+# telling it nothing: it is a fabricated prior, indistinguishable at the point of use from
+# a measured one. Same discipline as the teardown's provenance rule.
+#
+# So: an arm below the floor is not reported at all, and a difference that fails a
+# two-proportion z-test is reported as UNDECIDED rather than as a winner.
+PRIOR_MIN_IMPRESSIONS = 1000     # per arm, before it may enter the prior at all
+PRIOR_Z = 1.96                   # two-sided 95%. A lift must beat this to be a "winner".
+
+# --- UGCStyle presets (T1) ----------------------------------------------------
+# The `prompt:` half are wishes the model may ignore. The `post:` half are ffmpeg/PIL
+# guarantees applied by the editor (T7.5). Presets live here, not in env, matching the
+# model-ID convention: a taste change is a one-line edit.
+UGC_STYLE_DEFAULT = {
+    "camera": "handheld", "lighting": "window", "framing": "imperfect",
+    "micro_shake": 1.5, "exposure_clip": 0.02, "grain": 0.04, "recompress": True,
+}
+STUDIO_STYLE = {          # the old default, kept for product/catalogue work
+    "camera": "tripod", "lighting": "ring_light", "framing": "centered",
+    "micro_shake": 0.0, "exposure_clip": 0.0, "grain": 0.0, "recompress": False,
+}

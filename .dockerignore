@@ -1,9 +1,28 @@
-node_modules
-server/node_modules
+# Depth-agnostic (**/) so nested workspace copies are excluded too — the web image builds
+# from repo-root context and would otherwise pull apps/web/.angular (~300M), node_modules, etc.
+**/node_modules
 server/data
-server/dist
-dist
-.angular
+**/dist
+**/.angular
+**/.turbo
+**/coverage
 .git
-.env
+# No .env* in any image — services read env at runtime from compose-supplied apps/<svc>/.env.
+.env*
+**/.env*
 *.log
+.venv
+**/__pycache__
+**/*.egg-info
+apps/ai-layer/data
+connector_assets
+temp_docs
+cosmisk-wiki
+dev_reports
+docs
+# R&D scratch (~32k lines incl. a 17k-line mock JSON) — no COPY or import in either image
+# reaches it; ai-layer is the *packaging of* rnd/, not a dependent. Context upload only.
+rnd
+.superpowers
+.devcontainer
+.claude

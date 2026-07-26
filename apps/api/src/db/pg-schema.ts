@@ -184,6 +184,20 @@ export const autopilotAlerts = pgTable('autopilot_alerts', {
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
 });
 
+// Human-taste feedback on AI outputs (thumbs + optional comment). Study data only —
+// kept SEPARATE from Meta performance; not blended into the intelligence graph.
+export const aiFeedback = pgTable('ai_feedback', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),               // 'chat' | 'creative'
+  refId: text('ref_id').notNull(),            // studio_outputs.id | `${sessionId}:${turn}` | sessionId
+  rating: integer('rating').notNull(),        // -1 | 0 | +1
+  comment: text('comment'),
+  promptText: text('prompt_text'),
+  responseText: text('response_text'),
+  createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ uniqUserKindRef: unique().on(t.userId, t.kind, t.refId) }));
+
 export const automations = pgTable('automations', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -495,10 +509,18 @@ export const urlAnalysisCache = pgTable('url_analysis_cache', {
 export const studioGenerations = pgTable('studio_generations', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),
-  briefJson: text('brief_json').notNull(),
+  briefJson: text('brief_json'),   // nullable: campaign mode ("generate from winners") has no manual brief
   formats: text('formats').notNull(),
   metaAccountId: text('meta_account_id'),
   status: text('status').notNull().default('generating'),
+  // Creative Studio (M4) — populated when generation runs through the ai-layer pipeline.
+  aiJobId: text('ai_job_id'),                          // durable link to the ai-layer job
+  stage: text('stage'),                                // latest milestone ("Brand kit decided")
+  progressJson: text('progress_json').default('[]'),   // all milestones (text JSON)
+  brandKitJson: text('brand_kit_json'),                // AI brand kit (palette/tone/logo)
+  winnersJson: text('winners_json'),                   // pulled Meta winning-creative refs
+  costCents: integer('cost_cents').default(0),         // rolled-up run cost (display only)
+  errorMessage: text('error_message'),
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
 });
@@ -511,6 +533,7 @@ export const studioOutputs = pgTable('studio_outputs', {
   outputJson: text('output_json'),
   costCents: integer('cost_cents').default(0),
   errorMessage: text('error_message'),
+  assetUrl: text('asset_url'),                         // first-class proxied URL (publish path)
   createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
   scoreJson: text('score_json'),

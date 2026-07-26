@@ -210,12 +210,11 @@ export class CommandPaletteComponent implements AfterViewChecked {
   allItems: CommandItem[] = [
     // Pages
     { id: 'nav-dashboard', label: 'Dashboard', category: 'Pages', icon: '&#9632;', route: '/app/dashboard' },
-    { id: 'nav-cockpit', label: 'Creative Cockpit', category: 'Pages', icon: '&#127912;', route: '/app/creative-cockpit' },
-    { id: 'nav-director', label: 'Director Lab', category: 'Pages', icon: '&#127916;', route: '/app/director-lab' },
+    { id: 'nav-cockpit', label: 'Creative Cockpit (inactive)', category: 'Pages', icon: '&#127912;', route: '/app/creative-cockpit' },
+    { id: 'nav-director', label: 'Director Lab (inactive)', category: 'Pages', icon: '&#127916;', route: '/app/director-lab' },
     { id: 'nav-ugc', label: 'Creative Studio', category: 'Pages', icon: '&#9654;', route: '/app/ugc-studio' },
     { id: 'nav-brain', label: 'Brain', category: 'Pages', icon: '&#129504;', route: '/app/brain' },
     { id: 'nav-analytics', label: 'Analytics', category: 'Pages', icon: '&#128202;', route: '/app/analytics' },
-    { id: 'nav-ai', label: 'AI Studio', category: 'Pages', icon: '&#128172;', route: '/app/ai-studio' },
     { id: 'nav-reports', label: 'Reports', category: 'Pages', icon: '&#128196;', route: '/app/reports' },
     { id: 'nav-campaigns', label: 'Campaign Builder', category: 'Pages', icon: '&#128227;', route: '/app/campaigns' },
     { id: 'nav-graphic', label: 'Graphic Studio', category: 'Pages', icon: '&#128444;', route: '/app/graphic-studio' },
@@ -231,7 +230,7 @@ export class CommandPaletteComponent implements AfterViewChecked {
     { id: 'nav-agency', label: 'Agency Command Center', category: 'Pages', icon: '&#127970;', route: '/app/agency' },
     // Actions
     { id: 'act-campaign', label: 'Create New Campaign', category: 'Actions', icon: '&#10133;', route: '/app/campaigns' },
-    { id: 'act-creative', label: 'Generate Creative Brief', category: 'Actions', icon: '&#9997;', route: '/app/director-lab' },
+    { id: 'act-creative', label: 'Generate Ads from Winners', category: 'Actions', icon: '&#9997;', route: '/app/ugc-studio' },
     { id: 'act-report', label: 'Generate Report', category: 'Actions', icon: '&#128200;', route: '/app/reports' },
     { id: 'act-audit', label: 'Run Account Audit', category: 'Actions', icon: '&#128737;', route: '/app/audit' },
     { id: 'act-watchdog', label: 'Run AI Watchdog', category: 'Actions', icon: '&#129454;', route: '/app/autopilot' },
@@ -347,8 +346,8 @@ export class CommandPaletteComponent implements AfterViewChecked {
           actions.push({ label: 'Run Audit', type: 'info', route: '/app/audit' });
         }
 
-        // Always offer to continue in AI Studio for deeper conversation
-        actions.push({ label: 'Continue in AI Studio', type: 'info', route: '/app/ai-studio' });
+        // Offer to continue in AI Chat for deeper conversation
+        actions.push({ label: 'Continue in AI Chat', type: 'info', route: '/app/ai-chat' });
         this.aiActions.set(actions);
       },
       error: () => {
@@ -408,7 +407,6 @@ export class CommandPaletteComponent implements AfterViewChecked {
     { keys: ['G', 'A'], desc: 'Go to Analytics' },
     { keys: ['G', 'B'], desc: 'Go to Brain' },
     { keys: ['G', 'C'], desc: 'Go to Creative Cockpit' },
-    { keys: ['G', 'S'], desc: 'Go to AI Studio' },
     { keys: ['G', 'E'], desc: 'Go to Creative Engine' },
     { keys: ['G', 'R'], desc: 'Go to Reports' },
     { keys: ['G', 'P'], desc: 'Go to Autopilot' },
@@ -422,7 +420,6 @@ export class CommandPaletteComponent implements AfterViewChecked {
     a: '/app/analytics',
     b: '/app/brain',
     c: '/app/creative-cockpit',
-    s: '/app/ai-studio',
     e: '/app/creative-engine',
     r: '/app/reports',
     p: '/app/autopilot',

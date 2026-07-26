@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { getDbAdapter } from '../db/adapter.js';
 import { logger } from '../utils/logger.js';
 import { internalError } from '../utils/error-response.js';
-import { safeFetch, safeJson } from '../utils/safe-fetch.js';
-import { createMessage } from '../services/llm-gateway.js';
-import { FluxProvider } from '../services/api-providers.js';
-import { extractText } from '../utils/claude-helpers.js';
-import { scoreCreative, getAccuracyStats, resolveScorePredictions } from '../services/creative-scorer.js';
+import {
+  creativeGenEnabled, startCreativeGen, getCreativeJob, fetchCreativeAsset, fetchCreativeAssetUrl,
+  videoPlan, videoGenerate, markPublished, learn, getPrior, getGraph, voicePreview,
+} from '../services/creative-gen-client.js';
+import { pollVideoJob } from '../services/video-job-poller.js';
+import { getMetaTokenForUser } from '../boot/meta-helpers.js';
 
 /* ------------------------------------------------------------------ */
 /*  Creative Studio Routes                                             */
@@ -27,13 +28,17 @@ interface Brief {
 }
 
 interface GenerateBody {
-  brief: Brief;
+  brief?: Brief;              // optional: brief-less "generate from winners" (campaign mode)
   formats: string[];
   meta_account_id?: string;
   url?: string;
+  direction?: string;
 }
 
+
 export async function creativeStudioRoutes(app: FastifyInstance) {
+  /* ─── DISCONNECTED (ai-layer-only): legacy TS URL→brief analyzer. Preserved, not deleted.
+         See dev_reports/ai_serv/creative/DISCONNECTED_TS_MODULES.md ───
   // POST /analyze-url
   app.post('/analyze-url', {
     preHandler: [app.authenticate],
@@ -104,16 +109,25 @@ Return ONLY valid JSON, no markdown.`,
       return reply.status(500).send({ success: false, error: err.message || 'Failed to analyze URL' });
     }
   });
+  ─── END DISCONNECTED /analyze-url ─── */
 
   // POST /generate
   app.post('/generate', {
     preHandler: [app.authenticate],
     config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
   }, async (request, reply) => {
-    const { brief, formats, meta_account_id } = request.body as GenerateBody;
+    const { brief, formats, meta_account_id, direction } = request.body as GenerateBody;
 
-    if (!brief || !formats || !Array.isArray(formats) || formats.length === 0) {
-      return reply.status(400).send({ success: false, error: 'brief and formats[] are required' });
+    if (!formats || !Array.isArray(formats) || formats.length === 0) {
+      return reply.status(400).send({ success: false, error: 'formats[] is required' });
+    }
+    // Brief-less "generate from winners" (campaign mode) needs a Meta account to ground on.
+    if (!brief && !meta_account_id) {
+      return reply.status(400).send({ success: false, error: 'brief or a connected Meta account is required' });
+    }
+    // Creative Studio is ai-layer-only — no legacy TS fallback.
+    if (!creativeGenEnabled()) {
+      return reply.status(503).send({ success: false, error: 'creative generation is not configured' });
     }
 
     try {
@@ -121,11 +135,21 @@ Return ONLY valid JSON, no markdown.`,
       const generationId = randomUUID();
       const userId = request.user.id;
 
-      // Create generation record
+      // Campaign mode grounds on the account's real winners, which needs the user's Meta
+      // token. Without it the ai-layer would silently fall back to bundled MOCK data, so
+      // refuse loudly rather than generate a wrong-brand run.
+      if (!brief) {
+        const tok = await getMetaTokenForUser(userId).catch(() => null);
+        if (!tok) {
+          return reply.status(400).send({ success: false, error: 'Connect Meta to generate from winners' });
+        }
+      }
+
+      // Create generation record (brief_json is null in campaign mode)
       await db.run(`
         INSERT INTO studio_generations (id, user_id, brief_json, formats, meta_account_id, status)
         VALUES (?, ?, ?, ?, ?, 'generating')
-      `, [generationId, userId, JSON.stringify(brief), JSON.stringify(formats), meta_account_id || null]);
+      `, [generationId, userId, brief ? JSON.stringify(brief) : null, JSON.stringify(formats), meta_account_id || null]);
 
       // Create output records for each format
       const outputIds: Record<string, string> = {};
@@ -141,8 +165,10 @@ Return ONLY valid JSON, no markdown.`,
       // Return immediately, process in background
       reply.send({ success: true, generation_id: generationId });
 
-      // Kick off async generation (don't await)
-      processGeneration(generationId, brief, formats, outputIds).catch(err => {
+      // Kick off async generation (don't await). ai-layer only — the legacy TS
+      // processGeneration path was deleted here (see DISCONNECTED_TS_MODULES.md).
+      const background = processGenerationViaAiLayer(generationId, brief ?? null, formats, outputIds, userId, meta_account_id, direction);
+      background.catch(err => {
         logger.error({ err: err.message, generationId }, 'Background generation failed');
       });
 
@@ -175,6 +201,10 @@ Return ONLY valid JSON, no markdown.`,
           ...generation,
           brief: JSON.parse(generation.brief_json),
           formats: JSON.parse(generation.formats),
+          stage: generation.stage ?? null,                   // live milestone (DB-backed)
+          progress: generation.progress_json ? JSON.parse(generation.progress_json) : [],
+          brand_kit: generation.brand_kit_json ? JSON.parse(generation.brand_kit_json) : null,
+          winners: generation.winners_json ? JSON.parse(generation.winners_json) : [],
           outputs: outputs.map(o => ({
             ...o,
             output: o.output_json ? JSON.parse(o.output_json) : null,
@@ -210,6 +240,8 @@ Return ONLY valid JSON, no markdown.`,
     }
   });
 
+  /* ─── DISCONNECTED (ai-layer-only): legacy TS creative scorer. Preserved, not deleted.
+         See dev_reports/ai_serv/creative/DISCONNECTED_TS_MODULES.md ───
   // POST /score — score a creative on demand
   app.post('/score', {
     preHandler: [app.authenticate],
@@ -243,7 +275,47 @@ Return ONLY valid JSON, no markdown.`,
       return internalError(reply, err, 'creative-studio/score failed');
     }
   });
+  ─── END DISCONNECTED /score ─── */
 
+  // GET /asset/:jobId/:file — proxy generated bytes from the ai-layer so the browser
+  // only ever talks to /api. Unauthenticated: the jobId is an unguessable capability
+  // token (matches how <img>/<video> tags fetch without the JWT header).
+  app.get('/asset/:jobId/*', async (request, reply) => {
+    const { jobId } = request.params as { jobId: string };
+    const file = (request.params as Record<string, string>)['*'];  // may include a subdir
+    // jobId is a real uuid4().hex; without this it's a raw R2 key-prefix selector, so an anon
+    // caller could presign any object in the bucket. Guard the capability token at the boundary.
+    if (!/^[0-9a-f]{32}$/.test(jobId) || file.includes('..')) return reply.status(400).send({ success: false, error: 'bad path' });
+    // Embedded cross-origin by design (web origin ≠ api origin in sim & prod); the jobId is the
+    // capability. Override helmet's global CORP: same-origin so <img>/<video> can render the 302→R2.
+    reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    // Storage on: 302 the browser straight to a presigned R2 URL the ai-layer minted
+    // (bytes flow browser<->R2, $0 Railway egress; apps/api holds no R2 creds).
+    try {
+      const signed = await fetchCreativeAssetUrl(jobId, file);
+      if (signed) return reply.redirect(signed, 302);
+    } catch (err: any) {
+      logger.warn({ err: err.message, jobId, file }, 'asset-url lookup failed; falling back to proxy');
+    }
+    // Storage off (dev / pre-deploy): byte-proxy from the ai-layer's ephemeral local disk.
+    try {
+      const upstream = await fetchCreativeAsset(jobId, file);
+      if (!upstream.ok) {
+        return reply.status(upstream.status || 404).send({ success: false, error: 'asset not found' });
+      }
+      const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      reply.header('Content-Type', ct);
+      reply.header('Cache-Control', 'public, max-age=3600');
+      return reply.send(buf);
+    } catch (err: any) {
+      logger.warn({ err: err.message, jobId, file }, 'creative-studio asset proxy failed');
+      return reply.status(502).send({ success: false, error: 'asset proxy failed' });
+    }
+  });
+
+  /* ─── DISCONNECTED (ai-layer-only): legacy TS score-accuracy stats. Preserved, not deleted.
+         See dev_reports/ai_serv/creative/DISCONNECTED_TS_MODULES.md ───
   // GET /accuracy — prediction accuracy stats
   app.get('/accuracy', {
     preHandler: [app.authenticate],
@@ -258,215 +330,213 @@ Return ONLY valid JSON, no markdown.`,
       return internalError(reply, err, 'creative-studio/accuracy failed');
     }
   });
+  ─── END DISCONNECTED /accuracy ─── */
+
+  // POST /video/plan — $0 quote. 409 (no brand kit) surfaces as a clean message.
+  app.post('/video/plan', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { generation_id, seconds, direction, n_shots, creator } = request.body as {
+      generation_id: string; seconds?: number; direction?: string; n_shots?: number; creator?: import('../services/creative-gen-client.js').CreatorKit;
+    };
+    const db = getDbAdapter();
+    const gen = await db.get<{ ai_job_id: string | null }>(
+      'SELECT ai_job_id FROM studio_generations WHERE id = ? AND user_id = ?', [generation_id, request.user.id]);
+    if (!gen?.ai_job_id) return reply.status(409).send({ success: false, error: 'Generate static ads first, then plan the video.' });
+    try {
+      const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
+      const plan = await videoPlan(gen.ai_job_id, { seconds, direction, n_shots, creator }, metaToken || undefined);
+      return { success: true, plan };
+    } catch (err: any) {
+      return reply.status(err.status ?? 500).send({ success: false, error: err.message });
+    }
+  });
+
+  // POST /video/generate — PAID. Starts the poller on success. 402 surfaces the top-up hint.
+  app.post('/video/generate', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { generation_id, voiceover, captions, sfx, direction, creator, pin_face, hero_with_creator } = request.body as {
+      generation_id: string; voiceover?: boolean; captions?: boolean; sfx?: boolean;
+      direction?: string; creator?: import('../services/creative-gen-client.js').CreatorKit;
+      pin_face?: boolean; hero_with_creator?: boolean;
+    };
+    const db = getDbAdapter();
+    const gen = await db.get<{ ai_job_id: string | null; brief_json: string; meta_account_id: string | null }>(
+      'SELECT ai_job_id, brief_json, meta_account_id FROM studio_generations WHERE id = ? AND user_id = ?',
+      [generation_id, request.user.id]);
+    if (!gen?.ai_job_id) return reply.status(409).send({ success: false, error: 'Plan the video first.' });
+    // Ensure a video output row exists to track against.
+    const outputId = randomUUID();
+    await db.run(`INSERT INTO studio_outputs (id, generation_id, format, status) VALUES (?, ?, 'video', 'generating')
+                  ON CONFLICT DO NOTHING`, [outputId, generation_id]);
+    try {
+      const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
+      const res = await videoGenerate(gen.ai_job_id, { voiceover, captions, sfx, direction, creator, pin_face, hero_with_creator }, metaToken || undefined);
+      const productName = (() => { try { return JSON.parse(gen.brief_json)?.product_name ?? 'your product'; } catch { return 'your product'; } })();
+      void pollVideoJob({ generationId: generation_id, aiJobId: gen.ai_job_id, userId: request.user.id,
+        videoOutputId: outputId, productName, accountId: gen.meta_account_id });
+      return { success: true, status: res.status, clips: res.clips };
+    } catch (err: any) {
+      return reply.status(err.status ?? 500).send({ success: false, error: err.message });
+    }
+  });
+
+  // GET /video/job/:jobId — live stage/progress passthrough for a user who stays on the page.
+  app.get('/video/job/:jobId', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { jobId } = request.params as { jobId: string };
+    // authenticate proves a user, not THE user — scope the job to the caller like /video/plan does.
+    const owned = await getDbAdapter().get('SELECT id FROM studio_generations WHERE ai_job_id = ? AND user_id = ?', [jobId, request.user.id]);
+    if (!owned) return reply.status(404).send({ success: false, error: 'not found' });
+    try { return { success: true, job: await getCreativeJob(jobId) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // POST /variants/:variantId/published — stamp the Meta ad a variant became (THE JOIN).
+  app.post('/variants/:variantId/published', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { variantId } = request.params as { variantId: string };
+    const { meta_ad_id } = request.body as { meta_ad_id?: string };
+    if (!meta_ad_id) return reply.status(400).send({ success: false, error: 'meta_ad_id is required' });
+    try { return { success: true, ...(await markPublished(variantId, meta_ad_id)) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // POST /learn — harvest published-ad outcomes for an account, rebuild the prior.
+  app.post('/learn', { preHandler: [app.authenticate], config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { account_id } = request.body as { account_id?: string };
+    if (!account_id) return reply.status(400).send({ success: false, error: 'account_id is required' });
+    try {
+      const metaToken = await getMetaTokenForUser(request.user.id).catch(() => null);
+      return { success: true, result: await learn(account_id, metaToken || undefined) };
+    } catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // GET /prior/:acct — what this account has actually proven.
+  app.get('/prior/:acct', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { acct } = request.params as { acct: string };
+    try { return { success: true, prior: await getPrior(acct) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // GET /graph/:acct — structural winner-vs-loser correlations (list-only in the UI).
+  app.get('/graph/:acct', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const { acct } = request.params as { acct: string };
+    try { return { success: true, graph: await getGraph(acct) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
+
+  // POST /voice/preview — a short spoken sample of a persona voice (before you pay).
+  app.post('/voice/preview', { preHandler: [app.authenticate], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+    const { voice_id, text } = request.body as { voice_id?: string; text?: string };
+    try { return { success: true, ...(await voicePreview(voice_id, text)) }; }
+    catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
+  });
 }
 
 /* ------------------------------------------------------------------ */
-/*  Background generation processor                                    */
+/*  Python pipeline processor (M4 Generative Engine via apps/ai-layer) */
 /* ------------------------------------------------------------------ */
 
-async function processGeneration(
+async function processGenerationViaAiLayer(
   generationId: string,
-  brief: Brief,
+  brief: Brief | null,        // null in campaign mode (brief-less "generate from winners")
   formats: string[],
   outputIds: Record<string, string>,
+  userId: string,
+  metaAccountId?: string,
+  direction?: string,
 ): Promise<void> {
   const db = getDbAdapter();
   const now = () => new Date().toISOString();
-
-  // Look up userId from generation record
-  const genRow = await db.get<{ user_id: string; meta_account_id: string | null }>('SELECT user_id, meta_account_id FROM studio_generations WHERE id = ?', [generationId]);
-  const userId = genRow?.user_id || '';
-  const metaAccountId = genRow?.meta_account_id || undefined;
-
-  const updateOutput = async (outputId: string, status: string, outputJson?: string, errorMessage?: string, costCents?: number) => {
-    await db.run(`
-      UPDATE studio_outputs SET status = ?, output_json = ?, error_message = ?, cost_cents = ?, updated_at = ?
-      WHERE id = ?
-    `, [status, outputJson || null, errorMessage || null, costCents || 0, now(), outputId]);
+  const setOutput = async (outputId: string, status: string, outputJson?: string, errorMessage?: string, costCents = 0, assetUrl?: string) => {
+    await db.run(
+      'UPDATE studio_outputs SET status = ?, output_json = ?, error_message = ?, cost_cents = ?, asset_url = ?, updated_at = ? WHERE id = ?',
+      [status, outputJson ?? null, errorMessage ?? null, costCents, assetUrl ?? null, now(), outputId],
+    );
   };
+  // Rewrite an ai-layer asset path (/creative/assets/<job>/<sub>) to the apps/api proxy
+  // (/api/creative-studio/asset/<job>/<sub>) so the browser only ever hits /api.
+  const proxy = (jobId: string, u: string) =>
+    `/api/creative-studio/asset/${jobId}/${u.replace(/^\/creative\/assets\/[^/]+\//, '')}`;
 
-  const briefContext = [
-    `Brand: ${brief.brand_name}`,
-    `Product: ${brief.product_name}`,
-    `Description: ${brief.product_description}`,
-    `Target Audience: ${brief.target_audience}`,
-    brief.key_features?.length ? `Key Features: ${brief.key_features.join(', ')}` : '',
-    brief.price ? `Price: ${brief.price}` : '',
-  ].filter(Boolean).join('\n');
+  try {
+    // Optional Meta token: conditions the brand kit on real winners when the user has
+    // connected an account; brief-only generation works without it.
+    const metaToken = await getMetaTokenForUser(userId).catch(() => null);
 
-  for (const format of formats) {
-    const outputId = outputIds[format];
+    const jobId = await startCreativeGen({
+      brief: brief as unknown as Record<string, unknown>,
+      accountId: metaAccountId,
+      images: 2,
+      formats: ['1:1', '4:5', '9:16'],
+      // The storyboard flow (/video/*) owns video now; do not fire the unquoted single-clip smoke.
+      withVideo: false,
+      noLogo: true,
+      direction,
+    }, metaToken || undefined);
+    await db.run('UPDATE studio_generations SET ai_job_id = ?, updated_at = ? WHERE id = ?', [jobId, now(), generationId]);
 
-    try {
-      switch (format) {
-        case 'scripts': {
-          const response = await createMessage({
-            userId,
-            operation: 'creative-studio.scripts',
-            request: {
-              model: 'claude-sonnet-4-6',
-              max_tokens: 4096,
-              system: `You are an expert ad creative strategist. Generate 6 UGC video ad scripts for the following product. Each script should have a unique angle and hook style. Return ONLY a valid JSON array of scripts, no markdown.
-
-Each script object must have:
-- title: descriptive script name
-- hook: the opening 3 seconds (attention grabber)
-- body: the main content (15-25 seconds)
-- cta: the call to action
-- visual_notes: production guidance for the creator`,
-              messages: [{
-                role: 'user',
-                content: `Generate 6 UGC ad scripts for:\n\n${briefContext}`,
-              }],
-            },
-          });
-
-          const rawText = extractText(response, '[]');
-          const cleanText = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-          const scripts = JSON.parse(cleanText);
-
-          // Score each script
-          const scoredScripts = await Promise.all(scripts.map(async (script: any) => {
-            try {
-              const score = await scoreCreative({
-                userId,
-                format: 'scripts',
-                scriptText: [script.hook, script.body, script.cta, script.visual_notes].filter(Boolean).join('\n'),
-                platform: 'meta',
-                metaAccountId,
-              });
-              // Insert prediction record
-              await db.run(`
-                INSERT INTO score_predictions (id, user_id, studio_output_id, format, dna_tags, predicted_score, predicted_roas_mid, score_breakdown, confidence)
-                VALUES (?, ?, ?, 'scripts', ?, ?, ?, ?, ?)
-              `, [
-                randomUUID(), userId, outputId,
-                JSON.stringify(score.matchedPatterns),
-                score.total,
-                score.predictedRoasRange?.p50 || null,
-                JSON.stringify(score.dimensions),
-                score.confidence,
-              ]);
-              return { ...script, score };
-            } catch {
-              return script; // scoring failed — return unscored
-            }
-          }));
-
-          const scoreJson = JSON.stringify(scoredScripts.map((s: any) => s.score).filter(Boolean));
-          await updateOutput(outputId, 'completed', JSON.stringify(scoredScripts), undefined, 5);
-          await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [scoreJson, outputId]);
-          break;
-        }
-
-        case 'static': {
-          const flux = new FluxProvider();
-          const aspectRatios = ['1:1', '9:16', '16:9', '4:5'];
-          const images: Array<{ image_url?: string; job_id?: string; aspect_ratio: string; prompt: string; status: string }> = [];
-
-          const imagePrompt = `Professional product advertisement for ${brief.brand_name} ${brief.product_name}. ${brief.product_description}. Clean, modern, high-quality commercial photography style.`;
-
-          for (const ar of aspectRatios) {
-            const result = await flux.generate({ format: 'static', prompt: imagePrompt, aspect_ratio: ar });
-            images.push({
-              image_url: result.output_url,
-              job_id: result.job_id,
-              aspect_ratio: ar,
-              prompt: imagePrompt,
-              status: result.status,
-            });
-          }
-
-          // Score the static format
-          try {
-            const staticScore = await scoreCreative({
-              userId, format: 'static', platform: 'meta', metaAccountId,
-            });
-            await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [JSON.stringify([staticScore]), outputId]);
-            await db.run(`
-              INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
-              VALUES (?, ?, ?, 'static', ?, ?, ?, ?)
-            `, [randomUUID(), userId, outputId, staticScore.total, staticScore.predictedRoasRange?.p50 || null, JSON.stringify(staticScore.dimensions), staticScore.confidence]);
-          } catch { /* scoring non-critical */ }
-
-          await updateOutput(outputId, 'completed', JSON.stringify(images), undefined, 16);
-          break;
-        }
-
-        case 'carousel': {
-          const flux = new FluxProvider();
-
-          // Generate 5 slide prompts with Claude Haiku
-          const slideResponse = await createMessage({
-            userId,
-            operation: 'creative-studio.carousel-prompts',
-            request: {
-              model: 'claude-haiku-4-5',
-              max_tokens: 1024,
-              system: 'You are a visual ad designer. Generate 5 image prompts for a carousel ad. Each prompt should create a visually cohesive slide that tells a story. Return ONLY a valid JSON array of 5 strings, no markdown.',
-              messages: [{
-                role: 'user',
-                content: `Create 5 carousel slide image prompts for:\n\n${briefContext}`,
-              }],
-            },
-          });
-
-          const slidesRaw = extractText(slideResponse, '[]');
-          const slidesClean = slidesRaw.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-          const slidePrompts: string[] = JSON.parse(slidesClean);
-
-          const slides: Array<{ image_url?: string; job_id?: string; prompt: string; slide_number: number; status: string }> = [];
-
-          for (let i = 0; i < slidePrompts.length; i++) {
-            const result = await flux.generate({ format: 'carousel', prompt: slidePrompts[i], aspect_ratio: '1:1' });
-            slides.push({
-              image_url: result.output_url,
-              job_id: result.job_id,
-              prompt: slidePrompts[i],
-              slide_number: i + 1,
-              status: result.status,
-            });
-          }
-
-          // Score the carousel format
-          try {
-            const carouselScore = await scoreCreative({
-              userId, format: 'carousel', platform: 'meta', metaAccountId,
-            });
-            await db.run('UPDATE studio_outputs SET score_json = ? WHERE id = ?', [JSON.stringify([carouselScore]), outputId]);
-            await db.run(`
-              INSERT INTO score_predictions (id, user_id, studio_output_id, format, predicted_score, predicted_roas_mid, score_breakdown, confidence)
-              VALUES (?, ?, ?, 'carousel', ?, ?, ?, ?)
-            `, [randomUUID(), userId, outputId, carouselScore.total, carouselScore.predictedRoasRange?.p50 || null, JSON.stringify(carouselScore.dimensions), carouselScore.confidence]);
-          } catch { /* scoring non-critical */ }
-
-          await updateOutput(outputId, 'completed', JSON.stringify(slides), undefined, 100);
-          break;
-        }
-
-        case 'video': {
-          // Video requires HeyGen which is async — mark as pending with info
-          await updateOutput(outputId, 'pending', JSON.stringify({
-            message: 'Video generation requires HeyGen integration. Use the UGC Studio or sprint pipeline for video creation.',
-            suggestion: 'Scripts have been generated above — use them with HeyGen or your preferred video tool.',
-          }));
-          break;
-        }
-
-        default: {
-          await updateOutput(outputId, 'failed', undefined, `Unsupported format: ${format}`);
-        }
-      }
-    } catch (err: any) {
-      logger.error({ err: err.message, format, generationId }, `Studio generation failed for format: ${format}`);
-      await updateOutput(outputId, 'failed', undefined, err.message);
+    // Poll the Python job (generation takes minutes), persisting its live stage milestones
+    // to the row so the UI shows progress mid-generation (crash-safe). Campaign-mode first
+    // runs add a Meta-envelope fetch + winner teardown, so cap generously (~12 min).
+    const deadline = Date.now() + 12 * 60_000;
+    const writeProgress = async (job: { stage: string; progress: string[] }) => {
+      await db.run('UPDATE studio_generations SET stage = ?, progress_json = ?, updated_at = ? WHERE id = ?',
+        [job.stage, JSON.stringify(job.progress ?? []), now(), generationId]).catch(() => { /* best-effort */ });
+    };
+    let job = await getCreativeJob(jobId);
+    await writeProgress(job);
+    while (job.status !== 'complete' && job.status !== 'failed' && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000));
+      job = await getCreativeJob(jobId);
+      await writeProgress(job);
     }
+
+    if (job.status !== 'complete') {
+      const msg = job.error || 'generation timed out';
+      for (const f of formats) await setOutput(outputIds[f], 'failed', undefined, msg);
+      await db.run('UPDATE studio_generations SET status = ?, error_message = ?, updated_at = ? WHERE id = ?', ['failed', msg, now(), generationId]);
+      return;
+    }
+
+    const images = job.assets.map(a => ({
+      image_url: proxy(jobId, a.url),
+      thumb_url: a.thumb_url ? proxy(jobId, a.thumb_url) : null,
+      aspect_ratio: a.fmt,
+      status: 'completed',
+      headline: a.copy?.headline ?? null,
+      concept: a.concept,
+    }));
+    const videoOut = job.video ? {
+      video_url: proxy(jobId, job.video.url),
+      poster_url: job.video.poster_url ? proxy(jobId, job.video.poster_url) : null,
+      status: 'completed',
+    } : null;
+    const costCents = Math.round((job.cost_usd || 0) * 100);
+
+    // "Everything -> Python": the video format gets the clip; every other requested
+    // format gets the multi-aspect image ads the pipeline produced.
+    for (const f of formats) {
+      const oid = outputIds[f];
+      if (f === 'video') {
+        if (videoOut) await setOutput(oid, 'completed', JSON.stringify(videoOut), undefined, costCents, videoOut.video_url);
+        else await setOutput(oid, 'pending', JSON.stringify({ message: 'No video produced for this run.' }));
+      } else {
+        await setOutput(oid, 'completed', JSON.stringify(images), undefined, costCents, images[0]?.image_url);
+      }
+    }
+
+    const winners = (job.winners ?? []).map(w => ({ url: proxy(jobId, w.url) }));
+    await db.run(
+      `UPDATE studio_generations SET status = ?, brand_kit_json = ?, winners_json = ?,
+       cost_cents = ?, stage = ?, progress_json = ?, updated_at = ? WHERE id = ?`,
+      ['completed', job.brand_kit ? JSON.stringify(job.brand_kit) : null,
+       JSON.stringify(winners), costCents, job.stage, JSON.stringify(job.progress ?? []),
+       now(), generationId]);
+  } catch (err: any) {
+    logger.error({ err: err.message, generationId }, 'ai-layer studio generation failed');
+    for (const f of formats) {
+      try { await setOutput(outputIds[f], 'failed', undefined, err.message); } catch { /* best-effort */ }
+    }
+    await db.run('UPDATE studio_generations SET status = ?, error_message = ?, updated_at = ? WHERE id = ?', ['failed', err.message, new Date().toISOString(), generationId]).catch(() => { /* best-effort */ });
   }
-
-  // Update generation status
-  const allOutputs = await db.all<{ status: string }>('SELECT status FROM studio_outputs WHERE generation_id = ?', [generationId]);
-  const allFailed = allOutputs.every(o => o.status === 'failed');
-  const finalStatus = allFailed ? 'failed' : 'completed';
-
-  await db.run('UPDATE studio_generations SET status = ?, updated_at = ? WHERE id = ?', [finalStatus, new Date().toISOString(), generationId]);
 }

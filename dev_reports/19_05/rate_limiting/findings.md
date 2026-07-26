@@ -1,113 +1,49 @@
 > **Status: 📖 REFERENCE (2026-05-31)** — post-ship snapshot of residual LLM call sites/bypasses.
 > _Body unchanged; status added in the 31_05 dev_reports consolidation. Terms per `dev_reports/VOCABULARY.md`._
+> _Body compressed 2026-06-17 (volume reduction): redundant restatement removed; unique essence retained below. Full original in git history; live restatement in the successor doc(s) above._
 
 # Rate-limiting — Findings — Refresh (2026-05-19/20)
 
-**Supersedes:** `dev_reports/rate_limiting/findings.md` (2026-05-02)
+**Supersedes:** `dev_reports/rate_limiting/findings.md` (2026-05-02). Original enumerated 24 call sites across 20 files + 19 client instantiations; **most now wrapped** by the gateway shipped in commit `1521cce`. This refresh records residual call sites and bypasses.
 
-> The original `findings.md` enumerated 24 call sites across 20 files and 19 client instantiations. **Most of those have been wrapped** by the gateway shipped in commit `1521cce`. This refresh records the residual call sites and bypasses.
+## Unique essence preserved
 
----
+### 1. Current LLM usage
+- **Direct `new Anthropic(...)`: 3 remain (was 19)** — `services/llm-gateway.ts` (canonical, 1); `services/competitor-creative-intel.ts` (bypass, 2,614 LOC, multiple expected); `services/comment-mining-agent.ts` (bypass, 1,818 LOC).
+- **Direct `@anthropic-ai/sdk` imports:** competitor-creative-intel.ts, comment-mining-agent.ts, `services/build-gate.ts`, llm-gateway.ts (canonical), `utils/claude-helpers.ts` (re-exports types? — needs inspection). build-gate.ts + claude-helpers.ts import SDK but unclear if they instantiate — **inspect both before adding the CI guard.**
+- **20 files use gateway `createMessage`.** Routes: ai, competitor-spy, content, creative-engine, creative-studio, google-ads, reports, score, tiktok-ads. Services: ad-watchdog, agent-memory, autopilot-engine, content-agent, creative-strategist, job-queue, morning-briefing, report-agent, sales-agent, sprint-planner. Plus `audit/audit-agent.ts` + bootstrap `index.ts`.
 
-## 1. Current state of LLM usage
+### 2. Daily-cost gate (duplicated)
+- `services/job-queue.ts` → `checkDailyLimit`: pre-gateway gated only creative job dispatch; still present, should be deduplicated.
+- `services/llm-gateway.ts` → `checkDailyLimit` (NEW): canonical; reads `cost_ledger`, applies plan-tier daily cap.
+- Two cap checks for the same ledger — pick one (recommend gateway's). See implementation_plan.md §2.4.
 
-### 1.1 Direct `new Anthropic(...)` instantiations
+### 3. Rate limiting (NEW since 2026-05-02)
+- Gateway uses `bottleneck`: **RPM** `minTime = 60000 / RPM` per model class; **ITPM** weighted reservoir, weight = pre-flight `countTokens` estimate.
+- Limits per model class per tier from `anthropic_rate_limits.md`. Default tier `1` unless `ANTHROPIC_TIER` env set.
+- **No rate limiting on the 3 bypass paths** (run with account-wide concurrency).
 
-```
-$ grep -l "new Anthropic\b" server/src --include='*.ts' | grep -v __tests__
-server/src/services/llm-gateway.ts            ← canonical (1 instantiation)
-server/src/services/competitor-creative-intel.ts   ← bypass (2,614 LOC; multiple instantiations expected)
-server/src/services/comment-mining-agent.ts        ← bypass (1,818 LOC)
-```
+### 4. Retry / backoff / circuit breaker
+- Gateway calls: SDK `maxRetries: 3` (429/5xx, respects `retry-after`).
+- Bypass calls (competitor-creative-intel, comment-mining-agent): **no retry, no backoff, no CB.**
+- Non-Anthropic fetches: `safeFetch` has timeout + AbortController, no retry/CB. **Risk C still applies** for non-Anthropic outbound (Meta, Google, Shopify, n8n, Stripe, Razorpay, Resend, ElevenLabs, Heygen, Kling, Creatify, Flux, NanoBanana).
 
-**3 instantiations remain.** Pre-gateway count was 19.
-
-### 1.2 Direct `@anthropic-ai/sdk` imports
-
-```
-$ grep -l "@anthropic-ai/sdk" server/src --include='*.ts' | grep -v __tests__
-server/src/services/competitor-creative-intel.ts
-server/src/services/comment-mining-agent.ts
-server/src/services/build-gate.ts
-server/src/services/llm-gateway.ts                 ← canonical
-server/src/utils/claude-helpers.ts                 ← needs inspection (re-exports types?)
-```
-
-`build-gate.ts` and `claude-helpers.ts` import the SDK but it's not clear they instantiate. Inspect both before adding the CI guard.
-
-### 1.3 Gateway-wrapped call sites (using `createMessage`)
-
-20 files import from `services/llm-gateway.js`. Routes: ai, competitor-spy, content, creative-engine, creative-studio, google-ads, reports, score, tiktok-ads. Services: ad-watchdog, agent-memory, autopilot-engine, content-agent, creative-strategist, job-queue, morning-briefing, report-agent, sales-agent, sprint-planner. Plus `audit/audit-agent.ts` and the bootstrap `index.ts`.
-
----
-
-## 2. Existing daily-cost gate (was: 1 path)
-
-| Location | Pre-gateway role | Post-gateway role |
-|---|---|---|
-| `services/job-queue.ts` → `checkDailyLimit` | Gated only creative job dispatch | Still present; should be deduplicated against the gateway's `checkDailyLimit` |
-| `services/llm-gateway.ts` → `checkDailyLimit` (NEW) | n/a | Canonical; reads `cost_ledger`, applies plan-tier daily cap |
-
-Two cap checks for the same ledger. Pick one (recommend the gateway's). See implementation_plan.md § 2.4.
-
----
-
-## 3. Rate limiting layer (NEW since 2026-05-02)
-
-The gateway uses `bottleneck`:
-
-- **RPM**: `minTime = 60000 / RPM` per model class.
-- **ITPM**: weighted reservoir, weight = pre-flight `countTokens` estimate.
-
-Limits per model class per tier from `anthropic_rate_limits.md`. Default tier is `1` unless `ANTHROPIC_TIER` env is set.
-
-Outside the gateway: **no rate limiting on the 3 remaining bypass paths.** They run with whatever Anthropic's account-wide concurrency happens to be.
-
----
-
-## 4. Retry / backoff / circuit breaker
-
-| Path | State |
-|---|---|
-| Gateway calls | SDK `maxRetries: 3` (handles 429/5xx, respects `retry-after`) |
-| Bypass calls (competitor-creative-intel, comment-mining-agent) | **No retry, no backoff, no CB** |
-| External fetches outside Anthropic | Same as pre-gateway: `safeFetch` has timeout + AbortController, but no retry or CB |
-
-Risk C still applies for non-Anthropic outbound (Meta, Google, Shopify, n8n, Stripe, Razorpay, Resend, ElevenLabs, Heygen, Kling, Creatify, Flux, NanoBanana).
-
----
-
-## 5. Model-string audit
-
-Three deprecated-alias strings cited in the original (`claude-sonnet-4-20250514` and similar date-suffixed forms). Status unchanged: the gateway's `PRICING` table uses the canonical names (`claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`), but the wrap calls still pass whatever the caller specifies. **Caller-side cleanup is required** in each of the 20 wrapped files.
-
-Greps to run during the M1 window:
-
+### 5. Model-string audit
+- 3 deprecated date-suffixed aliases (e.g. `claude-sonnet-4-20250514`). Gateway `PRICING` uses canonical names (`claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`) but wrap calls pass caller-specified strings — **caller-side cleanup required in all 20 wrapped files** (one line per call site).
+- M1-window greps:
 ```sh
 grep -rE "claude-(sonnet|opus|haiku)-[0-9]{1,2}-[0-9]{8}" server/src --include='*.ts'
 grep -rE "model:\s*['\"]claude-" server/src --include='*.ts'
 ```
 
-The fix is a one-line per call site once the canonical model is decided.
+### 6. Versioning
+- `@anthropic-ai/sdk@^0.78.0` unchanged · `bottleneck@^2.19.5` added by gateway commit · `@fastify/rate-limit@^10.3.0` unchanged (protects HTTP routes RPM per IP, not LLM RPM).
 
----
+## Cited & kept (referenced elsewhere)
+- **§7 Open finding — gateway `userId` required (3 corner cases)** — operator-script principal handling for the gateway, related to options.md §2.2 cited by 23_05/module_inventory.md:165:
+  1. **Operator scripts** — no `userId` from request context. See implementation_plan.md §2.2.
+  2. **Cron schedules** — same problem; some pass a "system" userId, some don't. Audit each of the **13 cron sites**.
+  3. **Boot-time work** — `seedReviewerAccount` etc. has no userId. Use reserved sentinel `system:boot`.
 
-## 6. Versioning
-
-- `@anthropic-ai/sdk@^0.78.0` — unchanged.
-- `bottleneck@^2.19.5` — added by the gateway commit.
-- `@fastify/rate-limit@^10.3.0` — unchanged; protects HTTP routes only (RPM per IP), not LLM RPM.
-
----
-
-## 7. Open finding: gateway's `userId` is required
-
-Today every wrapper call passes `userId`. **Three corner cases need handling:**
-
-1. **Operator scripts** — no `userId` from request context. See `implementation_plan.md` § 2.2.
-2. **Cron schedules** — same problem; some pass a "system" userId, some don't. Audit each of the 13 cron sites.
-3. **Boot-time work** — `seedReviewerAccount` etc. doesn't have a userId. Use a reserved sentinel (`system:boot`).
-
----
-
-**End of refresh.**
+## Pointer
+- DURABLE_REFERENCE -> see: rate-limit findings (this folder's README / anthropic_rate_limits.md / options.md / implementation_plan.md). SHIPPED rate limiter = commit 1521cce.

@@ -9,7 +9,7 @@ import { sendMorningBriefing } from './slack-interactive.js';
 import { recordEpisode } from './agent-memory.js';
 import { getQualityScore } from './quality-gate.js';
 import { generatePredictions, type Prediction } from './learning-engine.js';
-import { createMessage } from './llm-gateway.js';
+import { createViaAiLayer } from './ai-layer-client.js';
 import { extractText } from '../utils/claude-helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { MetaTokenRow, UserRow, AgentDecisionRow } from '../types/index.js';
@@ -258,7 +258,7 @@ ${sources.autopilot.map(a => `- [${a.severity}] ${a.title}`).join('\n')}`);
   }
 
   try {
-    const response = await createMessage({
+    const response = await createViaAiLayer({
       userId,
       operation: 'morning-briefing.synthesizeBriefing',
       // Cron job — give it more retry headroom than the SDK default.

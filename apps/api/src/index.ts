@@ -39,6 +39,7 @@ import { agentRoutes } from './routes/agent.js';
 import { swipeFileRoutes } from './routes/swipe-file.js';
 import { teamRoutes } from './routes/team.js';
 import { creativeStudioRoutes } from './routes/creative-studio.js';
+import { registerFeedbackRoutes } from './routes/feedback.js';
 import { auditRoutes } from './routes/audits.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { adCommandRoutes } from './routes/ad-command.js';
@@ -56,6 +57,7 @@ import { correlationStore } from './utils/request-context.js';
 import { registerPublicRoutes } from './boot/public-routes.js';
 import { registerMetaCreativeRoutes } from './boot/meta-creative-routes.js';
 import { registerAccountRoutes } from './boot/account-routes.js';
+import { registerAiLayerRoutes } from './boot/ai-layer-routes.js';
 
 if (process.env['SENTRY_DSN']) {
   Sentry.init({
@@ -213,6 +215,7 @@ await app.register(creativeScanRoutes, { prefix: '/creative-scan' });
 await app.register(quickWinsRoutes, { prefix: '/quick-wins' });
 await app.register(staticAdsRoutes, { prefix: '/static-ads' });
 await app.register(intelligenceRoutes);
+registerFeedbackRoutes(app);
 
 // Initialize audit scheduler
 try {
@@ -253,6 +256,7 @@ if (config.nodeEnv === 'production' && existsSync(frontendDir)) {
 
 registerMetaCreativeRoutes(app);
 registerAccountRoutes(app);
+registerAiLayerRoutes(app); // Phase 5: no-op unless AI_LAYER_URL is set
 
 // Request timing hook
 app.addHook('onResponse', (request, reply, done) => {
@@ -284,6 +288,10 @@ try {
   // Recover any sprints interrupted by previous server restart
   const { recoverInterruptedSprints } = await import('./services/job-queue.js');
   await recoverInterruptedSprints();
+
+  // Re-attach notifiers for video renders that were in-flight at restart
+  const { recoverVideoJobs } = await import('./services/video-job-poller.js');
+  await recoverVideoJobs();
 } catch (err: unknown) {
   logger.error(err);
   process.exit(1);

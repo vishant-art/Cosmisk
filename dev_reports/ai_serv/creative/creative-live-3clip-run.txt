@@ -1,0 +1,318 @@
+==============================================================================
+CREATIVE STUDIO — LIVE 3-CLIP UGC RUN (rnd/creative)
+run dir: C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip
+cap: $4.00   |   estimated spent (harness): $3.8480   |   video renders: 3
+fal balance: before 19.67  ->  after 15.89
+fal ACTUAL (invoice reconciliation): $3.77675 (est $3.849564, -1.93%)
+==============================================================================
+
+STAGE RESULTS
+  1_brand_kit            ok
+  1b_shopify_product     ok
+  3_creator              ok
+  4_5_plan_story         ok
+  5b_force_3_shots       ok
+  6_9_render             ok
+  9_qa                   ok
+  11_variants            ok
+  12_13_learn            ok
+
+ARTIFACTS WRITTEN
+  brand_kit.json
+  creator_kit.json
+  fal_actuals.json
+  ledger.jsonl
+  pickings.json
+  product_cutout.png
+  product_seeds
+  products
+  qa
+  qa_report.json
+  renders
+  repair_log.json
+  script.json
+  storyboard.json
+  storyboard_rendered.json
+  timeline.mp4
+  variants
+  variants_caption_style.json
+  video_captioned.mp4
+  voiceover.mp3
+
+LEDGER (a-priori estimates, ledger.jsonl)
+  script         openrouter/google/gemini-2.5-flash  $0.000551
+  storyboard     openrouter/google/gemini-2.5-flash  $0.001207
+  TOTAL: $0.001758   by_op={'script': 0.000551, 'storyboard': 0.001207}
+  shot_video     seedance/bytedance/seedance-2.0/text-to-video  $1.2096
+  product_seed   flux/fal-ai/flux-2-flex  $0.2
+  shot_video     seedance/bytedance/seedance-2.0/image-to-video  $1.2096
+  shot_video     seedance/bytedance/seedance-2.0/text-to-video  $1.2096
+  voiceover      minimax-tts/fal-ai/minimax/speech-02-hd  $0.0187
+  audio_merge    fal-ffmpeg/fal-ai/ffmpeg-api/merge-audio-video  $0.0002
+  asr            fal/fal-ai/whisper  $0.000106
+  TOTAL: $3.847806   by_op={'shot_video': 3.6288, 'product_seed': 0.2, 'voiceover': 0.0187, 'audio_merge': 0.0002, 'asr': 0.000106}
+  qa_asr         fal/fal-ai/whisper  $9.3e-05
+  qa_vlm         openrouter/google/gemini-2.5-flash  $0.000214
+  TOTAL: $0.000307   by_op={'qa_asr': 9.3e-05, 'qa_vlm': 0.000214}
+  variant_asr    fal/fal-ai/whisper  $9.3e-05
+  TOTAL: $9.3e-05   by_op={'variant_asr': 9.3e-05}
+
+==============================================================================
+EVERY PROMPT AND OUTPUT, IN ORDER
+==============================================================================
+
+--- [1] LLM ---------------------------------------------------------------
+SYSTEM:
+You are an elite brand strategist and art director. From the ad-account summary, FIRST infer the brand's category, its audience, and what the winning campaigns reveal about what those customers actually respond to. THEN design a distinctive, ownable brand identity that fits -- intuitive and strategically grounded, never generic, derivative, or stock. Return STRICT JSON only (no prose, no markdown fences). Schema:
+{
+  "brand_name": str, "tagline": str,
+  "palette": [{"role": "primary|secondary|accent|bg", "hex": "#RRGGBB"}],  // 3-5 colors
+  "typography": {"heading_style": str, "body_style": str},
+  "tone": str, "voice_keywords": [str],
+  "dos": [str], "donts": [str],
+  "visual_style": str,  // e.g. "clean studio, warm light, minimal props"
+  "logo": {"brief": str}  // ONE strong, renderable mark concept
+}
+Make it SMART, not safe:
+- Palette: intentional and category-right, with real contrast. Avoid the obvious cliche (default SaaS teal/orange, lazy luxury black+gold) unless it is genuinely the best call. Give a clear primary, a supporting secondary, one accent, and a background.
+- Tone, voice, dos, donts: specific to THIS brand and audience -- concrete and VISUAL (things an art director can act on), never interchangeable boilerplate or platitudes.
+- logo.brief: one memorable, reductive idea (a specific mark or monogram) -- no cliche swoosh, globe, generic leaf, or gradient blob.
+Every hex is a real 6-digit hex. Keep lists to 3-5 items.
+
+USER:
+ACCOUNT: premium apparel brand sourced from the connected Shopify store. Winning campaigns lean UGC and retargeting. Design a distinctive identity.
+
+--- [2] ART ---------------------------------------------------------------
+{
+  "name": "brand_kit.json",
+  "brand": "Kin & Thread",
+  "style": "Soft, natural-light photography with a focus on human connection and tactile textures. Imagery feels like a curated family album, warm and inviting, slightly desaturated with an emphasis on earthy tones."
+}
+
+--- [3] CUTOUT ------------------------------------------------------------
+{
+  "cost": 0.0,
+  "src": "C:\\Users\\91626\\OneDrive - Manipal Academy of Higher Education\\Desktop\\projects\\cosmisk\\rnd\\creative\\output\\live3clip\\products\\product_01.png"
+}
+
+--- [4] ART ---------------------------------------------------------------
+{
+  "name": "product_cutout.png + pickings.json",
+  "product": "Pastel Green Floral Embroidered Anarkali",
+  "revenue": 93100.0
+}
+
+--- [5] ART ---------------------------------------------------------------
+{
+  "name": "creator_kit.json",
+  "visual": "The same 25 to 34-year-old woman, dark hair in a low bun, minimal makeup, warm complexion, wearing the product, in a bright minimal apartment. Occasional natural hand gestures. The SAME person, unchanged, in every shot.",
+  "voice": "THE CREATOR SPEAKING: Aanya, a warm woman. Write in their voice: the odd filler word ('honestly', 'like'), the way people actually talk."
+}
+
+--- [6] DEGRADED ----------------------------------------------------------
+{
+  "stage": "grounding",
+  "reason": "Meta suspended: no teardown/prior/graph; script+storyboard from brand kit + persona + Shopify product"
+}
+
+--- [7] LLM ---------------------------------------------------------------
+SYSTEM:
+You are a direct-response copywriter who writes short-form video ads that do not look like ads. Write the SPOKEN script for a 10-second creator-style video, as ordered beats. Return STRICT JSON only:
+{"beats": [{"purpose": str, "text": str}]}
+`purpose` MUST be one of: hook, problem, agitate, demo, proof, objection, cta. Use each at most once, in a sensible order.
+The FIRST beat is always `hook`, and it must earn the next two seconds on its own: a real sentence a person would say out loud, not a slogan. No 'Introducing'. No 'Are you tired of'. No brand name in the hook.
+The LAST beat should be `cta` unless there is a strong reason otherwise.
+Total spoken length ~24 words MAX -- it has to FIT 10 seconds when read aloud at a natural pace. Write speech, not prose: contractions, short clauses, no stage directions, no narrator labels, no emoji.
+
+USER:
+BRAND: Kin & Thread -- Stories Woven In.
+TONE: Warm, authentic, nostalgic, and subtly aspirational. It evokes comfort and connection without being overly sentimental.. VOICE: genuine, crafted, cherished, timeless, rooted
+DO: Feature real people, diverse ages, in natural, candid moments.; Show garments being lived in: laughing, exploring, relaxing.; Emphasize texture and drape of fabric through close-ups and movement.; Utilize soft, natural lighting, often golden hour or diffused indoor light.; Incorporate subtle, rustic, or heirloom-like props that feel personal.
+DON'T: Avoid overly posed or studio-lit model shots.; Steer clear of aggressive sales language or discount-focused messaging.; Do not use highly saturated or artificial colors in imagery.; Refrain from showing clothes on hangers or in sterile retail environments.; Avoid generic stock photography or overly polished, impersonal visuals.
+
+ACCOUNT CONTEXT:
+ACCOUNT: Pratapsons (mock)   CURRENCY: INR   WINDOW: 2026-05-01 to 2026-05-30
+SELECTED 4 CAMPAIGNS (name | spend | revenue | roas | purchases | link_ctr%):
+  - Prospecting -- Summer Sale: spend=607524 | revenue=1886284 | roas=3.10 | purchases=944 | link_ctr=1.02
+  - Catalog -- DPA Broad: spend=537300 | revenue=979224 | roas=1.82 | purchases=653 | link_ctr=0.75
+  - UGC -- Reels Push: spend=350480 | revenue=1473719 | roas=4.20 | purchases=820 | link_ctr=1.73
+  - Retargeting -- Evergreen: spend=119362 | revenue=815524 | roas=6.83 | purchases=372 | link_ctr=2.18
+
+THE CREATOR SPEAKING: Aanya, a warm woman. Write in their voice: the odd filler word ('honestly', 'like'), the way people actually talk.
+
+--- [8] LLM ---------------------------------------------------------------
+SYSTEM:
+You are a director breaking a script into a shot list for a creator-style video ad. Return STRICT JSON only:
+{"shots": [{"purpose": str, "duration_s": number, "camera": str, "subject": str, "product_visible": str, "motion": str, "dialogue": str|null}]}
+`purpose` MUST be one of: hook, problem, agitate, demo, proof, objection, cta -- and every beat in the script MUST be covered by at least one shot. `purpose` is how a shot is tied back to the line it renders.
+`camera` MUST be one of: selfie, handheld_wide, close_up, macro, over_shoulder, overhead, pov.
+`product_visible` MUST be one of: hero, background, absent.
+The FIRST shot renders the hook. The LAST shot renders the CTA.
+`subject` is a concrete visual brief for that shot: who or what is on screen, where, doing what. `motion` is what moves. `dialogue` is the line spoken during the shot, taken from the script, or null for a silent shot.
+Shots are SHORT: 1.2-4 seconds each. Cut every couple of seconds; that pacing is what the audience expects, not a limit of the camera. Aim for 4-8 shots totalling about 10 seconds. Treat `duration_s` as a proposal: it will be scaled.
+
+USER:
+BRAND: Kin & Thread. TONE: Warm, authentic, nostalgic, and subtly aspirational. It evokes comfort and connection without being overly sentimental..
+SCRIPT:
+  [hook] Honestly, I can't believe how soft this fabric is.
+  [proof] It just drapes so beautifully.
+  [agitate] You know that feeling of something really cherished?
+  [cta] That's what Kin & Thread feels like. Check them out.
+
+THE CREATOR ON CAMERA (the SAME person in every shot -- write every `subject` around them, never a different person):
+The same 25 to 34-year-old woman, dark hair in a low bun, minimal makeup, warm complexion, wearing the product, in a bright minimal apartment. Occasional natural hand gestures. The SAME person, unchanged, in every shot.
+
+--- [9] ART ---------------------------------------------------------------
+{
+  "name": "storyboard.json (normalized to 3)",
+  "shots": [
+    "hook/selfie/absent",
+    "agitate/close_up/hero",
+    "cta/selfie/background"
+  ]
+}
+
+--- [10] SEEDANCE ----------------------------------------------------------
+mode=t2v  duration=4s  cost=$1.2096  fell_back_from=None
+PROMPT:
+Creator in a bright apartment, holding the Kin & Thread fabric to her cheek, eyes closed in appreciation.
+
+The same 25 to 34-year-old woman, dark hair in a low bun, minimal makeup, warm complexion, wearing the product, in a bright minimal apartment. Occasional natural hand gestures. The SAME person, unchanged, in every shot. front-facing phone selfie, held at arm's length. The shot moves: Creator's head slightly tilting, fabric softly moving.. Filmed for Kin & Thread. Visual style: Soft, natural-light photography with a focus on human connection and tactile textures. Imagery feels like a curated family album, warm and inviting, slightly desaturated with an emphasis on earthy tones.. Mood: Warm, authentic, nostalgic, and subtly aspirational. It evokes comfort and connection without being overly sentimental.. ONE clear hero subject, intentional composition with depth and a focal point; real, tactile materials and authentic texture; motivated, directional lighting; premium editorial craft. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, nothing posed or soulless-corporate.
+
+--- [11] FLUX --------------------------------------------------------------
+cost=$0.2
+PROMPT:
+Studio e-commerce product photograph of Pastel Green Floral Embroidered Anarkali, presented ON ITS OWN as a flat-lay or on a plain ghost mannequin against a clean neutral backdrop, centred, sharp, evenly lit. The item is the ONLY subject. Soft, natural-light photography with a focus on human connection and tactile textures. Imagery feels like a curated family album, warm and inviting, slightly desaturated with an emphasis on earthy tones..
+NEGATIVE:
+person, people, model, human, face, head, hands, arms, legs, body, skin, text
+
+--- [12] SEEDANCE ----------------------------------------------------------
+mode=i2v  duration=4s  cost=$1.2096  fell_back_from=None
+PROMPT:
+Creator's hands gently caressing the Kin & Thread fabric, looking thoughtful.
+
+close-up. The shot moves: Creator's fingers moving across fabric.. The product is the subject of this shot, clearly in frame and in focus. Filmed for Kin & Thread. Visual style: Soft, natural-light photography with a focus on human connection and tactile textures. Imagery feels like a curated family album, warm and inviting, slightly desaturated with an emphasis on earthy tones.. Mood: Warm, authentic, nostalgic, and subtly aspirational. It evokes comfort and connection without being overly sentimental.. ONE clear hero subject, intentional composition with depth and a focal point; real, tactile materials and authentic texture; motivated, directional lighting; premium editorial craft. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, nothing posed or soulless-corporate.
+
+--- [13] SEEDANCE ----------------------------------------------------------
+mode=t2v  duration=4s  cost=$1.2096  fell_back_from=None
+PROMPT:
+Creator smiling warmly at the camera, gesturing subtly to the Kin & Thread garment she's wearing.
+
+The same 25 to 34-year-old woman, dark hair in a low bun, minimal makeup, warm complexion, wearing the product, in a bright minimal apartment. Occasional natural hand gestures. The SAME person, unchanged, in every shot. front-facing phone selfie, held at arm's length. The shot moves: Creator's slight smile, subtle hand gesture.. The product is visible in the background, not the subject. Filmed for Kin & Thread. Visual style: Soft, natural-light photography with a focus on human connection and tactile textures. Imagery feels like a curated family album, warm and inviting, slightly desaturated with an emphasis on earthy tones.. Mood: Warm, authentic, nostalgic, and subtly aspirational. It evokes comfort and connection without being overly sentimental.. ONE clear hero subject, intentional composition with depth and a focal point; real, tactile materials and authentic texture; motivated, directional lighting; premium editorial craft. Avoid the generic-stock / AI look: no plastic or waxy skin, no CGI sheen, no cliche gradients, no clutter or random props, nothing posed or soulless-corporate.
+
+--- [14] TTS ---------------------------------------------------------------
+voice=Wise_Woman  chars=187  cost=$0.0187
+TEXT:
+Honestly, I can't believe how soft this fabric is. It just drapes so beautifully. You know that feeling of something really cherished? That's what Kin & Thread feels like. Check them out.
+
+--- [15] MERGE -------------------------------------------------------------
+{
+  "cost": 0.0002
+}
+
+--- [16] ASR ---------------------------------------------------------------
+{
+  "words": 32,
+  "cost": 0.000106
+}
+
+--- [17] ART ---------------------------------------------------------------
+{
+  "name": "video_captioned.mp4",
+  "renders": 3,
+  "exhausted": []
+}
+
+--- [18] ASR ---------------------------------------------------------------
+{
+  "words": 28,
+  "cost": 9.3e-05
+}
+
+--- [19] LLM ---------------------------------------------------------------
+SYSTEM:
+You are a quality gate for a finished short-form video ad. You are shown a CONTACT SHEET: keyframes tiled left-to-right, top-to-bottom, in chronological order.
+Report only DEFECTS you can SEE. Return STRICT JSON:
+{"issues": [str], "note": str}
+Each issue MUST be chosen verbatim from this list: none, text_garbled, product_missing, face_distorted, extra_limb, caption_overlap, unreadable_caption, continuity_break, frozen_frame, identity_drift
+Return ["none"] when the frames are clean. Do NOT invent an issue code. Do NOT estimate any timing, duration, ratio or count: those are measured elsewhere and your guess would silently overwrite a real measurement. `note` is one short sentence for a human, never a substitute for an issue code.
+
+USER:
+<vision: text + image(s)>
+
+--- [20] QA ----------------------------------------------------------------
+verdict: fail
+  cut_alignment    passed=False inconclusive=False  detected 4 cut(s), planned 2
+  continuity       passed=True inconclusive=False  cut 1: correlation 0.155
+  continuity       passed=True inconclusive=False  cut 2: correlation 0.077
+  product_presence passed=True inconclusive=False  shot 1: best match 0.53 (min 0.35)
+  caption_audio    passed=True inconclusive=False  drift 0.186 over 28 word(s) (limit 0.35)
+  vlm_critic       passed=False inconclusive=False  issues: text_garbled, unreadable_caption -- The text in the ad is garbled and unreadable.
+
+--- [21] ASR ---------------------------------------------------------------
+{
+  "words": 28,
+  "cost": 9.3e-05
+}
+
+--- [22] ART ---------------------------------------------------------------
+{
+  "name": "variants_caption_style.json",
+  "variants": [
+    "live3clip__caption_style__bottom_white",
+    "live3clip__caption_style__center_pop"
+  ]
+}
+
+--- [23] LEARN -------------------------------------------------------------
+PRIOR: (empty)
+GRAPH: (empty)
+
+==============================================================================
+RUN LOG
+  [12:06:07] fal balance before: 19.67
+  [12:06:32] [shopify] 3 bestseller(s) from pratapsons-usa.myshopify.com, 3 with a downloaded image
+  [12:06:52]   birefnet cutout -> $0.0000
+  [12:06:52]   shopify product: 'Pastel Green Floral Embroidered Anarkali'
+  [12:06:52] [story] no teardown for this run; the script will be ungrounded
+  [12:06:52] [story] creator: Aanya (25-34 woman, warm)
+  [12:06:58] [story] 4 beats -> 4 shots, 10.0s (est $0.002) -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip
+  [12:06:58] 10.0s / 4 shots / independent
+  1. [  0.0-  2.5s] hook      selfie         product=hero
+       Creator in a bright apartment, holding the Kin & Thread fabric to her cheek, eyes closed in appreciation.
+       "Honestly, I can't believe how soft this fabric is."
+  2. [  2.5-  4.5s] proof     handheld_wide  product=hero
+       Creator standing in apartment, turning slowly to showcase the drape of the Kin & Thread garment.
+       "It just drapes so beautifully."
+  3. [  4.5-  7.5s] agitate   close_up       product=hero
+       Creator's hands gently caressing the Kin & Thread fabric, looking thoughtful.
+       "You know that feeling of something really cherished?"
+  4. [  7.5- 10.0s] cta       selfie         product=hero
+       Creator smiling warmly at the camera, gesturing subtly to the Kin & Thread garment she's wearing.
+       "That's what Kin & Thread feels like. Check them out."
+  [12:06:58]   storyboard normalized to 3 shots: ['absent', 'hero', 'background']
+  [12:07:02] [render] fal balance $19.67, plan needs ~$3.97
+  [12:07:02] [seq] 3 shot(s): billing 12s of video for 10s of ad (1.20x). The renderer's floor is 4s.
+  [12:08:58]   seedance #1 4s -> $1.2096 (spent $1.21)
+  [12:08:58] [seq] shot 0 (hook) rendered 4s, keeping 3s (est $1.21, cache cce45c57e33b)
+  [12:09:40]   flux seed -> $0.2000 (spent $1.41)
+  [12:09:40] [seq] shot 1 product seed ('Pastel Green Floral Embroidered Anarkali') from product_cutout.png (est $0.20)
+  [12:13:13]   seedance #2 4s -> $1.2096 (spent $2.62)
+  [12:13:13] [seq] shot 1 (agitate) rendered 4s, keeping 4s (est $1.21, cache 1e23111a1959)
+  [12:17:58]   seedance #3 4s -> $1.2096 (spent $3.83)
+  [12:17:58] [seq] shot 2 (cta) rendered 4s, keeping 3s (est $1.21, cache 76fd03ce571f)
+  [12:18:04] [recovery] 3 shot(s) rendered in 3 render(s); 0 dropped, 0 repair step(s)
+  [12:18:05] [editor] concatenated 3 clip(s), 10.0s -> timeline.mp4
+  [12:18:16]   tts 187ch -> $0.0187
+  [12:19:00] [editor] mixed 3 sfx cue(s) -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\.work\timeline_sfx.mp4
+  [12:20:51] [editor] burned 11 cue(s) over 240 frame(s) -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\video_captioned.mp4
+  [12:20:51] [editor] caption/audio drift 0.016 over 32 word(s)
+  [12:20:51] [finish] video_captioned.mp4
+  [12:20:51] [render] C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\video_captioned.mp4 (10s of ad, 12s billed, est $3.85)
+  [12:20:55] [render] fal actual $3.78 vs est $3.85 (-1.9%), balance $15.89 -> fal_actuals.json
+  [12:21:44] [qa] fail: 2 failure(s), 0 inconclusive, 6 check(s), $0.0003
+  [12:21:44] [qa] video_captioned.mp4: fail -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\qa_report.json
+  [12:21:44] [qa] detected 4 cut(s), planned 2; issues: text_garbled, unreadable_caption -- The text in the ad is garbled and unreadable.
+  [12:22:08] [editor] burned 10 cue(s) over 240 frame(s) -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\variants\live3clip__caption_style__bottom_white.mp4
+  [12:22:23] [editor] burned 10 cue(s) over 240 frame(s) -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\variants\live3clip__caption_style__center_pop.mp4
+  [12:22:23] [variants] 2 caption_style variant(s) -> C:\Users\91626\OneDrive - Manipal Academy of Higher Education\Desktop\projects\cosmisk\rnd\creative\output\live3clip\variants_caption_style.json

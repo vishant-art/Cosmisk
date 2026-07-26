@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { KpiCardComponent } from '../../shared/components/kpi-card/kpi-card.component';
 import { InsightCardComponent } from '../../shared/components/insight-card/insight-card.component';
+import { AiLayerInsightsComponent } from './ai-layer-insights.component';
 import { DnaBadgeComponent } from '../../shared/components/dna-badge/dna-badge.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge/status-badge.component';
 import { AreaChartComponent } from '../../shared/components/area-chart/area-chart.component';
@@ -25,7 +26,7 @@ import { environment } from '../../../environments/environment';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, KpiCardComponent, InsightCardComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, KpiCardComponent, InsightCardComponent, AiLayerInsightsComponent, DnaBadgeComponent, StatusBadgeComponent, AreaChartComponent, LakhCrorePipe, LucideAngularModule],
   template: `
     <!-- Hero: Generate Creative Assets -->
     <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4338ca] p-8 mb-8">
@@ -41,20 +42,20 @@ import { environment } from '../../../environments/environment';
           </p>
         </div>
         <div class="flex flex-col sm:flex-row gap-3">
-          <a routerLink="/app/creative-engine"
+          <a routerLink="/app/ugc-studio"
             class="px-6 py-3 bg-white text-[#312e81] rounded-xl text-sm font-body font-bold hover:bg-indigo-50 transition-all no-underline flex items-center gap-2 shadow-lg">
             <lucide-icon name="rocket" [size]="18"></lucide-icon>
-            Creative Engine
+            Creative Studio
           </a>
           <a routerLink="/app/ugc-studio"
             class="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-body font-semibold hover:bg-white/20 transition-all no-underline flex items-center gap-2 backdrop-blur-sm">
             <lucide-icon name="sparkles" [size]="18"></lucide-icon>
             Generate Ads
           </a>
-          <a routerLink="/app/director-lab"
+          <a routerLink="/app/ugc-studio"
             class="px-6 py-3 bg-white/10 text-white border border-white/20 rounded-xl text-sm font-body font-semibold hover:bg-white/20 transition-all no-underline flex items-center gap-2 backdrop-blur-sm">
             <lucide-icon name="wand-2" [size]="18"></lucide-icon>
-            Create Brief
+            Add Directions
           </a>
         </div>
       </div>
@@ -75,10 +76,6 @@ import { environment } from '../../../environments/environment';
             </div>
             <p class="text-xs text-gray-700 font-body m-0 leading-relaxed line-clamp-3" [innerHTML]="briefingSummary()"></p>
           </div>
-          <a routerLink="/app/ai-studio"
-            class="px-3 py-1.5 text-xs font-body font-semibold text-accent border border-accent/30 rounded-lg hover:bg-accent/5 transition-colors no-underline shrink-0 flex items-center gap-1">
-            Full Briefing <lucide-icon name="arrow-right" [size]="12"></lucide-icon>
-          </a>
         </div>
       </div>
     }
@@ -238,7 +235,7 @@ import { environment } from '../../../environments/environment';
             [sparkline]="kpi().revenue.sparkline"
             color="green" />
         </a>
-        <a routerLink="/app/creative-cockpit" class="no-underline">
+        <a routerLink="/app/analytics" class="no-underline">
           <app-kpi-card
             title="ROAS"
             [value]="kpi().roas.value"
@@ -248,11 +245,11 @@ import { environment } from '../../../environments/environment';
             [sparkline]="kpi().roas.sparkline"
             [color]="kpi().roas.value >= 3 ? 'green' : kpi().roas.value >= 2 ? 'yellow' : 'red'" />
         </a>
-        <a routerLink="/app/creative-cockpit" class="no-underline">
+        <a routerLink="/app/ai-chat" class="no-underline">
           <app-kpi-card
             title="Active Creatives"
             [value]="kpi().activeCreatives.value"
-            [subtitle]="kpi().activeCreatives.winning + ' winning · ' + kpi().activeCreatives.stable + ' stable · ' + kpi().activeCreatives.fatiguing + ' fatiguing'" />
+            [subtitle]="kpi().activeCreatives.winning + ' winning · ' + kpi().activeCreatives.stable + ' stable · ' + kpi().activeCreatives.fatiguing + ' fatiguing  (ai-chat for now)'" />
         </a>
       }
     </div>
@@ -451,18 +448,21 @@ import { environment } from '../../../environments/environment';
           </div>
         }
 
-        <a routerLink="/app/ai-studio" class="block text-center text-sm text-accent font-body font-semibold mt-4 hover:underline no-underline">
+        <a routerLink="/app/ai-chat" class="block text-center text-sm text-accent font-body font-semibold mt-4 hover:underline no-underline">
           Ask Cosmisk AI <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
+
+      <!-- ai-layer cards (Phase 5; hidden unless the ai-layer service is configured) -->
+      <app-ai-layer-insights />
     </div>
 
     <!-- Top Performing Creatives -->
     <div class="card mb-8">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-card-title font-display text-navy m-0">Top Performing Creatives</h3>
-        <a routerLink="/app/creative-cockpit" class="text-sm text-accent font-body font-semibold hover:underline no-underline">
-          View All <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
+        <a routerLink="/app/ai-chat" class="text-sm text-accent font-body font-semibold hover:underline no-underline">
+          Ask what's working <span class="text-gray-400 font-normal">(ai-chat for now)</span> <lucide-icon name="arrow-right" [size]="14" class="inline-block ml-1"></lucide-icon>
         </a>
       </div>
 
@@ -672,10 +672,10 @@ export default class DashboardComponent implements OnInit {
   }, { allowSignalWrites: true });
 
   quickActions = [
-    { icon: 'rocket', title: 'Creative Engine', description: 'Batch generate 100+ creatives', route: '/app/creative-engine', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
+    { icon: 'rocket', title: 'Creative Studio', description: 'Generate ads from your winning creatives', route: '/app/ugc-studio', bgClass: 'bg-indigo-100', iconClass: 'text-indigo-600' },
     { icon: 'video', title: 'UGC Scripts', description: 'AI-powered ad scripts', route: '/app/ugc-studio', bgClass: 'bg-violet-100', iconClass: 'text-violet-600' },
     { icon: 'image', title: 'Static Ads', description: 'Graphics & carousels', route: '/app/graphic-studio', bgClass: 'bg-blue-100', iconClass: 'text-blue-600' },
-    { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-studio', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
+    { icon: 'brain', title: 'Ask AI', description: 'What\'s working?', route: '/app/ai-chat', bgClass: 'bg-amber-100', iconClass: 'text-amber-600' },
   ];
 
   smartActions = computed(() => {
@@ -855,7 +855,7 @@ export default class DashboardComponent implements OnInit {
         } else {
           // Fallback briefing so dashboard never looks bare
           this.briefingSummary.set(
-            'Your AI strategist is monitoring your ad accounts. <strong>Press Cmd+K</strong> to ask a question or check the <strong>AI Studio</strong> for a full strategic briefing.'
+            'Your AI strategist is monitoring your ad accounts. <strong>Press Cmd+K</strong> to ask a question or open <strong>AI Chat</strong> for a full strategic briefing.'
           );
         }
       },

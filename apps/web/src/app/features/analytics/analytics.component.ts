@@ -56,8 +56,8 @@ interface BreakdownRow {
         </div>
       </div>
 
-      <!-- No Account Connected -->
-      @if (!loading() && !hasAccount()) {
+      <!-- No Account Connected (hidden once demo charts load from the ai-layer) -->
+      @if (!loading() && !hasAccount() && chartData().length === 0) {
         <div class="mb-6 bg-gradient-to-br from-indigo-50 to-violet-50 border border-accent/20 rounded-xl p-8 text-center">
           <div class="w-14 h-14 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4">
             <lucide-icon name="bar-chart-3" [size]="28" class="text-accent"></lucide-icon>
@@ -342,7 +342,8 @@ export default class AnalyticsComponent {
     if (acc) {
       this.loadAnalytics(acc.id, acc.credential_group, datePreset);
     } else {
-      this.loading.set(false);
+      // No Meta connection — show the graphs from the ai-layer (demo creds).
+      this.loadFromAiLayer();
     }
   }, { allowSignalWrites: true });
 
@@ -387,6 +388,57 @@ export default class AnalyticsComponent {
     if (n >= 100000) return (n / 100000).toFixed(1) + 'L';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
     return String(Math.round(n));
+  }
+
+  /**
+   * Demo path (no Meta login): pull the daily series + totals from the Python ai-layer
+   * and feed the trend chart + KPI tiles. CTR/CPA aren't in the brain totals, so those
+   * chart tabs/tiles stay flat — the ROAS/Spend trend + spend/ROAS/revenue KPIs render.
+   */
+  private loadFromAiLayer() {
+    this.loading.set(true);
+    this.api.get<any>(environment.AI_LAYER_ANALYTICS, { demo: '1' }).subscribe({
+      next: (res) => {
+        this.loading.set(false);
+        if (!res?.success) return;
+        const daily = res.daily || [];
+        if (daily.length) {
+          this.chartData.set(daily.map((d: any) => {
+            const parts = String(d.date || '').split('-');
+            return {
+              label: parts.length >= 3 ? `${parts[1]}/${parts[2]}` : String(d.date || ''),
+              values: {
+                ROAS: d.roas ?? 0,
+                CTR: 0,
+                CPA: 0,
+                Spend: Math.round((d.spend ?? 0) / 1000),
+              },
+            };
+          }));
+        }
+        const t = res.totals;
+        if (t) {
+          const cpa = t.purchases ? t.spend / t.purchases : 0;
+          const aov = t.purchases ? t.revenue / t.purchases : 0;
+          this.kpis.set([
+            { label: 'Total Spend', value: this.formatIndian(t.spend || 0).replace('₹', ''), prefix: '₹', change: 0 },
+            { label: 'Blended ROAS', value: (t.blended_roas || 0).toFixed(1), suffix: 'x', change: 0 },
+            { label: 'Avg CPA', value: String(Math.round(cpa)), prefix: '₹', change: 0 },
+            { label: 'Campaigns', value: String(t.campaigns || 0), change: 0 },
+          ]);
+          this.kpis2.set([
+            { label: 'Revenue', value: this.formatIndian(t.revenue || 0).replace('₹', ''), prefix: '₹', change: 0 },
+            { label: 'Purchases', value: this.formatCount(t.purchases || 0), change: 0 },
+          ]);
+          this.unitEconomics.set([
+            { label: 'Return on Ad Spend', value: (t.blended_roas || 0).toFixed(1) + 'x', change: 0 },
+            { label: 'Cost Per Acquisition', value: this.formatIndian(cpa), change: 0 },
+            { label: 'Avg Order Value', value: this.formatIndian(aov), change: 0 },
+          ]);
+        }
+      },
+      error: () => this.loading.set(false),
+    });
   }
 
   private loadAnalytics(accountId: string, credentialGroup: string, datePreset: string) {

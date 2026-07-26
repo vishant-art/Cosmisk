@@ -1,7 +1,10 @@
+import { META_APP_ID, META_OAUTH_ENABLED } from './env-config';
+
 export const environment = {
   production: false,
   API_BASE_URL: '/api',
-  META_APP_ID: '675224542133938',
+  META_APP_ID,
+  META_OAUTH_ENABLED,
 
   AUTH_LOGIN: 'auth/login',
   AUTH_SIGNUP: 'auth/signup',
@@ -19,6 +22,10 @@ export const environment = {
   DASHBOARD_KPI: 'dashboard/kpis',
   DASHBOARD_CHART: 'dashboard/chart',
   DASHBOARD_INSIGHTS: 'dashboard/insights',
+  AI_LAYER_INSIGHTS: 'ai-layer/insights',
+  AI_LAYER_CHAT: 'ai-layer/chat',
+  AI_LAYER_REFRESH: 'ai-layer/refresh',
+  AI_LAYER_ANALYTICS: 'ai-layer/analytics',
   DASHBOARD_TOP_CREATIVES: 'dashboard/top-creatives',
 
   CREATIVES_LIST: 'creatives/list',

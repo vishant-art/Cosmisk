@@ -8,6 +8,7 @@ import { ToastService } from '../../core/services/toast.service';
 import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { environment } from '../../../environments/environment';
+import { AiLayerInsightsComponent } from '../dashboard/ai-layer-insights.component';
 
 interface DnaPattern {
   id: string;
@@ -34,7 +35,7 @@ interface Competitor {
 @Component({
   selector: 'app-brain',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, AiLayerInsightsComponent],
   template: `
     <div class="space-y-6">
       <!-- Header -->
@@ -42,6 +43,10 @@ interface Competitor {
         <h1 class="text-page-title font-display text-navy m-0">Brain</h1>
         <p class="text-sm text-gray-500 font-body mt-1 mb-0">Cross-brand creative intelligence and competitive insights</p>
       </div>
+
+      <!-- Deterministic-brain insights from the ai-layer (Python). Renders nothing
+           until data/demo is available; self-contained + demo-aware. -->
+      <app-ai-layer-insights />
 
       <!-- Section 1: Cross-Brand DNA Patterns -->
       <div>
