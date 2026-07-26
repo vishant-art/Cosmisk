@@ -54,4 +54,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 # JSON exec-form + `exec` so ${PORT} still expands (Railway/PaaS inject $PORT; fall back to
 # 8000 locally) AND uvicorn becomes PID 1 — SIGTERM from `docker stop` reaches it for a
 # graceful shutdown instead of dying to the 10s SIGKILL timeout as a shell child.
-CMD ["sh", "-c", "exec uvicorn ai_layer.api:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# --host :: binds IPv6: Railway's private network is IPv6-only, so `.railway.internal`
+# is unreachable on an IPv4-only 0.0.0.0 bind. On Linux `::` is dual-stack (IPV6_V6ONLY=0),
+# so the public proxy and the localhost HEALTHCHECK (127.0.0.1/::1) still resolve.
+CMD ["sh", "-c", "exec uvicorn ai_layer.api:app --host :: --port ${PORT:-8000}"]
