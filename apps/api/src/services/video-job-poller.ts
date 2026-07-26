@@ -39,6 +39,21 @@ export async function pollVideoJob(args: PollArgs): Promise<void> {
   let warned = false;
 
   for (;;) {
+    // Elapsed checks run BEFORE the poll so the error path's `continue` can't skip them —
+    // otherwise an unreachable ai-layer loops every 15s forever, and recoverVideoJobs()
+    // re-creates one such immortal timer per stuck row on every restart.
+    const elapsed = now() - start;
+    if (elapsed > SOFT_WARN_MS && !warned) {
+      warned = true;
+      logger.warn({ aiJobId: args.aiJobId, elapsedMs: elapsed }, '[video-poller] job still running past 20m');
+    }
+    if (elapsed > HARD_CEIL_MS) {
+      // Stop THIS timer only. Do NOT mark the generation failed — the ai-layer persists the
+      // render to Neon regardless, so boot-recovery / a manual refresh still surfaces it.
+      logger.error({ aiJobId: args.aiJobId, elapsedMs: elapsed }, '[video-poller] exceeded 90m ceiling, detaching poller (job may still finish server-side)');
+      return;
+    }
+
     let job: Awaited<ReturnType<typeof getCreativeJob>>;
     try {
       job = await getJob(args.aiJobId);
@@ -69,17 +84,6 @@ export async function pollVideoJob(args: PollArgs): Promise<void> {
       return;
     }
 
-    const elapsed = now() - start;
-    if (elapsed > SOFT_WARN_MS && !warned) {
-      warned = true;
-      logger.warn({ aiJobId: args.aiJobId, elapsedMs: elapsed }, '[video-poller] job still running past 20m');
-    }
-    if (elapsed > HARD_CEIL_MS) {
-      // Stop THIS timer only. Do NOT mark the generation failed — the ai-layer persists the
-      // render to Neon regardless, so boot-recovery / a manual refresh still surfaces it.
-      logger.error({ aiJobId: args.aiJobId, elapsedMs: elapsed }, '[video-poller] exceeded 90m ceiling, detaching poller (job may still finish server-side)');
-      return;
-    }
     await sleep(POLL_INTERVAL_MS);
   }
 }

@@ -34,6 +34,17 @@ def test_retries_past_malformed_json():
     assert c.calls == 3
 
 
+def test_cost_sums_every_billed_attempt(monkeypatch):
+    """A re-rolled malformed attempt was still billed by OpenRouter; the returned
+    cost must be the sum over all attempts, not just the one that parsed."""
+    costs = iter([0.01, 0.02])
+    monkeypatch.setattr(brain.ledger, "response_cost", lambda _resp: next(costs))
+    c = _Scripted("{truncated", '{"ok": 1}')
+    data, cost = brain.chat_json(c, "sys", "user")
+    assert data == {"ok": 1}
+    assert cost == pytest.approx(0.03)
+
+
 def test_raises_after_attempts_exhausted():
     c = _Scripted("{bad", "{bad", "{bad")
     with pytest.raises(json.JSONDecodeError):

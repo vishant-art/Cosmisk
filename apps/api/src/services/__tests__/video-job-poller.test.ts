@@ -52,6 +52,18 @@ describe('pollVideoJob', () => {
     expect(a!.params).toContain('warning');
   });
 
+  it('still hits the 90m ceiling when every poll errors (unreachable ai-layer)', async () => {
+    // Before the fix, the catch path's `continue` skipped the elapsed checks, so this
+    // resolved never — the test would hang against the unfixed code.
+    let t = 0;
+    const getJob = vi.fn(async () => { throw new Error('ECONNREFUSED'); });
+    await pollVideoJob({ generationId: 'g', aiJobId: 'j', userId: 'u', videoOutputId: 'o',
+      productName: 'X', accountId: null,
+      deps: { now: () => t, sleep: async () => { t += 100 * 60_000; }, getJob: getJob as never } });
+    expect(errors.some(e => e.includes('90m'))).toBe(true);
+    expect(runs.some(r => r.sql.includes("status = 'failed'"))).toBe(false);
+  });
+
   it('detaches at the 90m ceiling WITHOUT marking failed', async () => {
     let t = 0;
     const getJob = vi.fn(async () => { t += 100 * 60_000; return { status: 'running' }; });
