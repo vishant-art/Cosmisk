@@ -251,3 +251,19 @@ Memory architecture fully operational:
 - ✅ Wiki cascade: 6 pages updated this session
 
 **Memory Score: ~95/100** (up from 75/100 after Session 10)
+
+## 2026-07-22 — rnd_mine Creative Studio v2 working copy (branch new/creative_v2)
+
+Subagent-driven build of the v2 spec (rnd_mine/docs) is underway; everything lives in rnd_mine/, commit-only, never pushed. Design + 26-task plan committed (63c55b5). Tasks 1-5 complete and review-approved (all 9 JSON contracts, config, scaffold; suite 31 green). Task 6 (Neon migration runner + creative_studio schema DDL) implemented and committed (c43a40f, live-verified on throwaway schemas) but its review gate is pending — session stopped at user request. Resume state: .superpowers/sdd/progress.md.
+
+## 2026-07-23 — rnd_mine Creative Studio v2: Tasks 7-23 of 26 complete (branch new/creative_v2)
+
+Subagent-driven build continued. Complete and review-closed: storage (R2 + repos), ingestion (live Shopify verified against pratapsons-usa, Meta/Google fixtures, canonical percent CTR), planning (OpenRouter gpt-5.4-mini verified live, prompt registry, 3 planners producing valid contracts), generation (golden-tested prompt builders, 5 fal adapters with ground-truth argument shapes — bria mapping, seedance string durations, flux raw-prompt rule), orchestration (asyncio engine w/ resume + selective regen, durable run state on Neon), replacement pipeline (birefnet+bria on keyframes), ffmpeg composition (8.1.2 installed via winget), deterministic QA layer persisting QAReports. Suite: 193 passed, 6 skipped (live-gated). Remaining: Task 24 exporter+manifest, Task 25 CLI w/ spend gates, Task 26 API + e2e dry run + supervised live run. Resume state: .superpowers/sdd/progress.md (checkpoint entry lists Task 24's inherited contract requirements).
+
+## 2026-07-23 (later) — rnd_mine Creative Studio v2: BUILD COMPLETE (26/26 tasks, branch new/creative_v2)
+
+Tasks 24-26 landed (exporter+manifest, CLI with spend gates, FastAPI + pre-live hardening). Real e2e dry gate PASSED: migrate created the creative_studio schema on Neon, sync-shopify mirrored 5 live products to R2, real gpt-5.4-mini planning produced valid contracts, dry generate completed 14/14 steps, QAReport + AssetManifest rows verified. Final whole-branch review (2 rounds) caught and fixed a Critical QA fail-open seam + export-gating + dry-to-live traps; verdict: Ready to merge. Suite 253 passed / 6 live-gated skips. 47 commits, never pushed, zero fal spend. Supervised live run (~$4-5) is documented in rnd_mine/docs/Live Run Procedure.md and awaits lemon. ffmpeg 8.1.2 installed machine-wide via winget during the build.
+
+## 2026-07-23 (evening) — Creative Studio v2: FIRST LIVE AD PRODUCED
+
+Supervised live run completed on new/creative_v2 for the Mustard Yellow Chanderi Silk Kurta Pant Set: real portrait, 3 keyframes with BRIA product replacement, 3 Seedance clips, TTS voiceover, ffmpeg composition with burned subtitles. QA Passed (90/100, 0 critical), AssetManifest manifest_a166e20d0d78, deliverables in R2 under creative-studio/runs/generation_e10b5b5d2229/final/ and locally at rnd_mine/data/runs/generation_e10b5b5d2229/ad_final.mp4. Total spend $4.21 (est. $4-5). One mid-run stop + resume exercised the durability path for real (replace steps recovered on attempt 2). Meta live grounding still pending a fresh post-password-change token.
