@@ -1,0 +1,184 @@
+===============================================================================
+CREATIVE STUDIO: QUESTIONS FOR THE PRODUCT OWNER
+Rating an ad, what it costs, and what it looks like
+===============================================================================
+Created: July 2026
+For:     product owner, commercial lead, anyone non-technical
+Status:  open, waiting for answers
+
+This is the first of two documents.
+
+  THIS ONE       Part 1  rate an ad we made (a short form)
+                 Part 2  money
+                 Part 3  how the ad looks and sounds
+
+  THE OTHER ONE  Part 4  who and what is in the ad
+  (casting,      Part 5  our quality bar
+   standards     Part 6  what we learn from
+   and legal)    Part 7  legal, data and trust
+                         plus the five to decide first
+
+Every question below is a business decision that is currently made by a default
+setting somebody typed while building the system. Nobody approved them.
+
+You do not need to understand the code to answer any of this. Each question says
+what happens NOW, and why it matters.
+
+
+===============================================================================
+PART 1: RATE AN AD  (3 minutes, do this after watching one)
+===============================================================================
+Watch the finished video once, at normal speed, with sound on. Then fill this in.
+
+SCORES  (1 = bad, 5 = great)
+
+   Overall, how good is this ad?                                        [ ___ ]
+   The first 2 seconds: did it make you want to keep watching?          [ ___ ]
+   The product: does it look right, and can you clearly see it?         [ ___ ]
+   The person: do they look real, and are they the same person
+   all the way through?                                                 [ ___ ]
+   Captions: easy to read, and not covering anything important?         [ ___ ]
+   Voice: does the voiceover sound natural, not robotic?                [ ___ ]
+   Does it look and feel like this brand?                               [ ___ ]
+
+QUICK ANSWERS  (circle one)
+
+   Would you send this to a client as it is?
+        Yes    /    Yes with small fixes    /    No
+
+   Would a real customer stop scrolling for this?
+        Yes    /    Maybe    /    No
+
+   Pace:
+        Too slow    /    About right    /    Too fast
+
+   Does it feel like a real person's video, or like an ad?
+        Real video    /    In between    /    Obvious ad
+
+IN YOUR OWN WORDS
+
+   Two things you liked:
+        1. ......................................................................
+        2. ......................................................................
+
+   Two things you disliked or would cut:
+        1. ......................................................................
+        2. ......................................................................
+
+   The single most important thing to fix first:
+        ...........................................................................
+
+   Anything that would embarrass us or the client:
+        ...........................................................................
+
+
+===============================================================================
+PART 2: MONEY
+===============================================================================
+Right now the only thing stopping us spending is whether the vendor account has
+money left.
+
+Q1. When someone asks for photo ads, should we also make a video automatically?
+    NOW: yes. Every photo-ad job also makes a video clip, about $1.22, with
+         nobody approving it. If the account is low, it quietly skips it.
+    WHY: people get charged for something they did not ask for.
+
+Q2. What is the most we will spend on one ad?
+    NOW: there is no limit. The only check is whether the account can cover it.
+         A normal ad with 3 clips costs about $4.50. The system is allowed to
+         plan up to 12 clips, which is about $15.
+    WHY: one person clicking the wrong thing can spend a lot.
+
+Q3. What is the monthly budget per client, and who approves going over it?
+    NOW: nobody has set one.
+
+Q4. How many versions do we make each time?
+    NOW: 4 different ad ideas, each in 4 sizes = 16 images per job.
+    WHY: more choice for the client, but more cost and more for us to review.
+
+Q5. How hard do we try to fix a bad clip before giving up?
+    NOW: try again once, then reword it, then try a different shot, then give
+         up on that shot. Hard stop at 40 attempts for one ad, about $48.
+
+Q6. If a client asks for a small change, do they pay for the whole ad again?
+    NOW: no. Anything unchanged is reused for free. Only the parts that change
+         cost money.
+    WHY: this is a good selling point and should shape how we price revisions.
+
+Q7. What turnaround do we promise?
+    NOW: a full video ad takes roughly 15 minutes to produce end to end.
+
+
+===============================================================================
+PART 3: HOW THE AD LOOKS AND SOUNDS
+===============================================================================
+
+Q8.  Should the client's logo appear on the ad?
+     NOW: no logo appears at all. We never put one on.
+     WHY: most brands expect their logo on their ads.
+
+Q9.  Should ads have background music?
+     NOW: no music. There is a voiceover and small sound effects only.
+
+Q10. Does every ad need a voiceover?
+     NOW: yes, every ad gets one automatically.
+
+Q11. Should every ad have subtitles burned into the video?
+     NOW: yes, always, showing 1 to 3 words at a time.
+     WHY: most people watch with sound off, so this is probably right. Confirm.
+
+Q12. Should ads have sound effects?
+     NOW: yes, added automatically.
+
+Q13. Do we only make vertical (phone-shaped) videos?
+     NOW: yes, vertical only by default.
+     WHY: rules out some placements unless we change it.
+
+Q14. What quality do videos go out in?
+     NOW: standard (720p), not high definition.
+     WHY: higher quality costs more. Is standard good enough for a paying client?
+
+Q15. How long should a standard ad be?
+     NOW: 20 seconds by default. It can be 6 to 90 seconds.
+
+Q16. How fast should the ad cut between shots?
+     NOW: a new shot every 1 to 4 seconds, up to 12 shots.
+
+Q17. How long can the headline be?
+     NOW: 6 words maximum for the headline, 1 to 3 words for the button text.
+
+Q18. Should our ads look homemade or polished?
+     NOW: homemade on purpose. Shaky camera, ordinary lighting, slightly
+          off-centre framing, with a bit of wobble and grain added deliberately
+          so it looks like a real person filmed it. A polished premium look
+          exists but is not the default.
+     WHY: this is a brand positioning choice, currently made for every client.
+
+Q19. What languages do we support?
+     NOW: English only, even when the store and prices are in another market.
+
+
+===============================================================================
+APPENDIX: FOR WHOEVER CHANGES THESE SETTINGS AFTERWARDS
+===============================================================================
+
+  Q1      auto video ................. with_video default on the generate request
+  Q2/Q3   spend limits ............... balance guard in fal_billing.affordable
+  Q4      versions .................. images and formats defaults
+  Q5      repair attempts ........... RECOVERY_LADDER, RECOVERY_MAX_TOTAL_RENDERS
+  Q6      reuse on revision ......... render cache (already free)
+  Q7      turnaround ................ no setting, this is observed run time
+  Q8      logo ...................... no_logo default
+  Q9-Q12  audio and captions ........ voiceover, captions, sfx defaults
+  Q13/Q14 shape and quality ......... aspect, resolution defaults
+  Q15/Q16 length and pacing ......... STORY_DEFAULT_SECONDS, STORY_MAX_SHOTS,
+                                      shot-length range
+  Q17     copy length ............... concept-writing instructions
+  Q18     look ...................... UGC_STYLE_DEFAULT vs STUDIO_STYLE
+  Q19     language .................. not built, English is assumed throughout
+
+
+-------------------------------------------------------------------------------
+Continued in: creative-studio-product-decisions-casting-standards-and-legal.txt
+(Parts 4 to 7, and the five decisions to make first.)
+-------------------------------------------------------------------------------
