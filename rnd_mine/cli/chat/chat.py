@@ -55,9 +55,9 @@ except (AttributeError, ValueError):
 #   google/gemini-2.5-flash-lite  cheapest+fastest (~3s) but UNRELIABLE on big dumps
 MODEL = "openai/gpt-5.4-mini"
 # Moderate temp: reasoning models don't need high temp for varied phrasing, and a
-# lower value keeps the numeric grounding tight. Numbers stay grounded regardless
-# because the SYSTEM prompt forbids inventing figures.
-TEMPERATURE = 0.7
+# lower value keeps the numeric grounding tight (and avoids stray-token glitches).
+# Numbers stay grounded regardless because the SYSTEM prompt forbids inventing figures.
+TEMPERATURE = 0.5
 # gpt-5 family only: "minimal" cuts reasoning latency hugely on a data-extraction
 # task like this (no deep chain-of-thought needed). Set None for Gemini models.
 REASONING_EFFORT = "minimal"   # minimal | low | medium | high | None (gpt-5 only)
