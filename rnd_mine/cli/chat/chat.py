@@ -211,6 +211,8 @@ FIELDS = [
     "clicks", "ctr", "cpc",
     "inline_link_clicks", "inline_link_click_ctr", "cost_per_inline_link_click",
     "cpm", "actions", "action_values", "purchase_roas", "website_purchase_roas",
+    # video: 3-sec views come via actions.video_view; thruplay/plays are their own fields
+    "video_thruplay_watched_actions", "video_play_actions",
     "date_start", "date_stop",
 ]
 
@@ -494,6 +496,11 @@ def row_to_fact(raw: dict) -> dict:
     purchases = _action_value(raw.get("actions"), PURCHASE_ACTION_TYPES)
     revenue = _action_value(raw.get("action_values"), PURCHASE_ACTION_TYPES)
 
+    # video: actions.video_view = 3-second views (hook-rate numerator)
+    video_3s = _action_value(raw.get("actions"), ("video_view",))
+    thruplay = _action_value(raw.get("video_thruplay_watched_actions"), ("video_view",))
+    video_plays = _action_value(raw.get("video_play_actions"), ("video_view",))
+
     return {
         "campaign_id": str(raw.get("campaign_id", "")),
         "campaign_name": raw.get("campaign_name", raw.get("campaign_id", "unknown")),
@@ -521,6 +528,10 @@ def row_to_fact(raw: dict) -> dict:
         "revenue": revenue,
         "roas": revenue / spend if spend else 0.0,     # DERIVED, never the reported field
         "cpa": spend / purchases if purchases else 0.0,
+        "video_3s": video_3s,          # 3-second video views
+        "thruplay": thruplay,
+        "hook_rate": video_3s / impressions * 100 if impressions else 0.0,  # 3-sec view rate
+        "is_video": bool(thruplay or video_3s or video_plays),
     }
 
 
@@ -844,6 +855,43 @@ def _ensure_ad_level(env: dict, account: str, days: int) -> tuple[list[dict], st
     return facts, f"{since.isoformat()}..{until.isoformat()}"
 
 
+def _placement_breakdown(env: dict, account: str, days: int) -> dict:
+    """Meta placement breakdown (publisher_platform x platform_position) over the
+    window. One aggregate row per placement -> compact, one fast call."""
+    token = env.get("META_ACCESS_TOKEN")
+    if not token:
+        return {"error": "no Meta token"}
+    days = max(1, min(int(days or 30), AD_TOOL_MAX_DAYS))
+    until = date.today() - timedelta(days=1)
+    since = until - timedelta(days=days - 1)
+    params = {
+        "access_token": token, "level": "account",
+        "fields": "spend,impressions,inline_link_clicks,actions,action_values",
+        "breakdowns": "publisher_platform,platform_position",
+        "time_range": json.dumps({"since": since.isoformat(), "until": until.isoformat()}),
+        "limit": 200,
+    }
+    print(f"  -> pulling placement breakdown ({days}d) ...", flush=True)
+    rows, _ = get_insights_paged(account, params, max_rows=1000)
+    out = []
+    for r in rows:
+        spend = _to_float(r.get("spend"))
+        if spend <= 0:
+            continue
+        imp = _to_float(r.get("impressions"))
+        lc = _to_float(r.get("inline_link_clicks"))
+        purch = _action_value(r.get("actions"), PURCHASE_ACTION_TYPES)
+        rev = _action_value(r.get("action_values"), PURCHASE_ACTION_TYPES)
+        out.append({
+            "placement": f"{r.get('publisher_platform')}/{r.get('platform_position')}",
+            "spend": round(spend), "revenue": round(rev),
+            "roas": round(rev / spend, 2) if spend else 0.0,
+            "purchases": int(purch), "link_ctr": round(lc / imp * 100, 2) if imp else 0.0,
+        })
+    out.sort(key=lambda x: x["spend"], reverse=True)
+    return {"window": f"{since.isoformat()}..{until.isoformat()}", "placements": out}
+
+
 def run_tool_loop(env: dict, messages: list, account: str) -> tuple[str, float]:
     """Model turn with ad-level tools available. The model answers directly from
     the injected context for common questions; for ad-level questions it calls a
@@ -891,8 +939,11 @@ def run_tool_loop(env: dict, messages: list, account: str) -> tuple[str, float]:
             except json.JSONDecodeError:
                 args = {}
             print(f"  [tool] {name}({', '.join(f'{k}={v}' for k, v in args.items())})", flush=True)
-            facts, win = _ads(args.get("days", 30))
-            result = ad_tools.execute(name, args, facts, win)
+            if name == "placement_breakdown":
+                result = _placement_breakdown(env, account, args.get("days", 30))
+            else:
+                facts, win = _ads(args.get("days", 30))
+                result = ad_tools.execute(name, args, facts, win)
             messages.append({"role": "tool", "tool_call_id": tc.get("id"),
                              "content": json.dumps(result, ensure_ascii=False)})
 

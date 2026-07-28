@@ -61,6 +61,55 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "video_hook_rates",
+            "description": ("Rank VIDEO ads by true hook rate = 3-second video views / "
+                            "impressions (thumbstop), NOT CTR, over the last N days. Also "
+                            "returns thruplay hold %. Use for 'hook rate', '3-second view "
+                            "rate', 'which videos hook best'."),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "n": {"type": "integer", "description": "how many ads, default 10"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "audience_breakdown",
+            "description": ("Ad-SET level performance (audiences/targeting) over the last N "
+                            "days -- spend, ROAS, CTR, purchases per ad set. Use for questions "
+                            "about audiences or which ad sets/targeting are winning."),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "n": {"type": "integer", "description": "how many ad sets, default 12"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "placement_breakdown",
+            "description": ("Performance by PLACEMENT (publisher_platform x platform_position, "
+                            "e.g. facebook/reels, instagram/stories) over the last N days -- "
+                            "spend, ROAS, purchases, CTR per placement. Use for placement "
+                            "questions or the placement layer of a root-cause breakdown."),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "ad_fatigue_scan",
             "description": ("Scan ALL active ads for fatigue at the ad level and return the "
                             "fatiguing ones with their frequency, CPM and CTR trend (first "
@@ -193,6 +242,52 @@ def ad_fatigue_scan(facts: list[dict], window: str = "", n: int = 10) -> dict:
     return {"window": window, "fatiguing_count": len(fatiguing), "ads": fatiguing[:n]}
 
 
+def video_hook_rates(facts: list[dict], n: int = 10, window: str = "") -> dict:
+    groups = _by_ad(facts)
+    total_spend = sum(f["spend"] for f in facts) or 1.0
+    rows = []
+    for fs in groups.values():
+        imp = sum(r["impressions"] for r in fs)
+        v3 = sum(r.get("video_3s") or 0 for r in fs)
+        tp = sum(r.get("thruplay") or 0 for r in fs)
+        spend = sum(r["spend"] for r in fs)
+        if not imp or v3 <= 0 or spend < max(_MIN_SPEND, total_spend * 0.005):
+            continue                                  # not a (material) video ad
+        rows.append({"ad": _label(fs), "campaign": fs[0].get("campaign_name"),
+                     "spend": round(spend), "impressions": int(imp),
+                     "hook_rate": round(v3 / imp * 100, 1),          # 3-sec view rate
+                     "thruplay_hold_pct": round(tp / v3 * 100, 1) if v3 else 0.0,
+                     "roas": _agg(fs)["roas"]})
+    rows.sort(key=lambda r: r["hook_rate"], reverse=True)
+    return {"window": window, "metric": "hook_rate = 3-sec video views / impressions",
+            "video_ads": len(rows), "ads": rows[:max(1, n)]}
+
+
+def _by_adset(facts: list[dict]) -> dict[str, list[dict]]:
+    groups: dict[str, list[dict]] = {}
+    for f in facts:
+        name = f.get("adset_name")
+        if name:
+            key = f.get("adset_id") or f"{f.get('campaign_name')}|{name}"
+            groups.setdefault(key, []).append(f)
+    return groups
+
+
+def audience_breakdown(facts: list[dict], n: int = 12, window: str = "") -> dict:
+    groups = _by_adset(facts)
+    total_spend = sum(f["spend"] for f in facts) or 1.0
+    rows = []
+    for fs in groups.values():
+        a = _agg(fs)
+        if a["spend"] < max(_MIN_SPEND, total_spend * 0.005):
+            continue
+        rows.append({"adset": fs[0].get("adset_name"), "campaign": fs[0].get("campaign_name"),
+                     "spend": a["spend"], "roas": a["roas"], "purchases": a["purchases"],
+                     "cpa": a["cpa"], "link_ctr": a["link_ctr"], "frequency": a["frequency"]})
+    rows.sort(key=lambda r: r["spend"], reverse=True)
+    return {"window": window, "adsets_considered": len(rows), "adsets": rows[:max(1, n)]}
+
+
 def execute(name: str, args: dict, facts: list[dict], window: str = "") -> dict:
     """Dispatch a tool call over already-fetched ad-level facts."""
     if not facts:
@@ -204,4 +299,8 @@ def execute(name: str, args: dict, facts: list[dict], window: str = "") -> dict:
         return ad_trends(facts, args.get("ad_name", ""), window)
     if name == "ad_fatigue_scan":
         return ad_fatigue_scan(facts, window)
+    if name == "video_hook_rates":
+        return video_hook_rates(facts, int(args.get("n", 10) or 10), window)
+    if name == "audience_breakdown":
+        return audience_breakdown(facts, int(args.get("n", 12) or 12), window)
     return {"error": f"unknown tool {name}"}
