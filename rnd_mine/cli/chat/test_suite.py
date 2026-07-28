@@ -23,13 +23,15 @@ from pathlib import Path
 import chat
 import brain
 import cache
+import competitor
 import history
 
 ACCOUNT = "act_1738503939658460"   # Pratap sons (largest account on the token)
 LEVEL = "campaign"
 DAYS = 30                          # recent raw window (gives WoW + full history)
 # Bump the suffix each iteration so past runs are preserved for comparison.
-OUT_PATH = Path(__file__).resolve().parent / "test_results_1.md"
+ITERATION = 2
+OUT_PATH = Path(__file__).resolve().parent / f"test_results_{ITERATION}.md"
 
 # (category, question) -- each run independently (fresh single-turn conversation)
 TEST_CASES = [
@@ -73,9 +75,9 @@ TEST_CASES = [
 ]
 
 
-def build_context() -> tuple[str, str, dict, dict]:
-    """Fetch + assemble the full context once. Returns (system_prompt, account_id,
-    analysis_result, months). Mirrors what chat.main() builds for a live session."""
+def build_context() -> tuple:
+    """Fetch + assemble the full context once. Returns (system_prompt, env, ds,
+    analysis, months, cmeta). Mirrors what chat.main() builds for a live session."""
     env = chat.load_env(chat.find_root_env(Path(__file__).resolve().parent))
     token = env["META_ACCESS_TOKEN"]
 
@@ -106,18 +108,26 @@ def build_context() -> tuple[str, str, dict, dict]:
     history_block = chat.build_history_block(token, ACCOUNT, LEVEL, since, until, ds.currency)
     months = history.load(ACCOUNT, LEVEL)
 
+    # competitor intel (reuses today's cached scrape; no new Apify spend)
+    def _cp(stage, detail):
+        print(f"  competitor [{stage}]: {detail}", flush=True)
+    competitor_block, cmeta = competitor.build(env, ACCOUNT, ds, progress=_cp)
+
     full_context = (context
                     + "\n\n=== CODE-COMPUTED ANALYSIS (exact deltas, trends & flags -- "
                       "trust these, do not recompute) ===\n" + analysis_block
                     + "\n\n=== HISTORIC FACTS (monthly rollups, code-computed & exact -- "
                       "trust these) ===\n" + history_block)
-    return (chat.SYSTEM.format(context=full_context), env, ds, analysis, months)
+    if competitor_block:
+        full_context += ("\n\n=== COMPETITOR INTEL (competitors' live ads, scraped + "
+                         "code-aggregated; counts are exact) ===\n" + competitor_block)
+    return (chat.SYSTEM.format(context=full_context), env, ds, analysis, months, cmeta)
 
 
 def main():
-    system, env, ds, analysis, months = build_context()
+    system, env, ds, analysis, months, cmeta = build_context()
     header = (
-        f"# Meta Ads chat -- capability test results\n\n"
+        f"# Meta Ads chat -- capability test results (iteration {ITERATION})\n\n"
         f"- **Account:** {ds.account_name} ({ACCOUNT}, {ds.currency})\n"
         f"- **Model:** {chat.MODEL} @ temp {chat.TEMPERATURE}, reasoning={chat.REASONING_EFFORT}\n"
         f"- **Recent window:** {ds.since} -> {ds.until} ({len(ds)} rows, level={LEVEL})\n"
@@ -125,6 +135,8 @@ def main():
         f"({len(analysis['campaigns'])} campaign signals)\n"
         f"- **Historic facts:** {len(months)} months "
         f"({min(months) if months else '-'} .. {max(months) if months else '-'})\n"
+        f"- **Competitor intel:** {cmeta['discovered']} discovered, "
+        f"{cmeta['scraped_ads']} ads scraped\n"
         f"- **System context size:** {len(system):,} chars (~{int(len(system) * 0.8):,} tokens)\n\n"
         f"Each question is an independent single-turn ask against that context.\n"
     )
