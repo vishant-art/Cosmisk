@@ -21,6 +21,7 @@ Standalone:
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,11 +81,31 @@ def _text(node) -> str | None:
     return node or None
 
 
+def _run_days(raw: dict) -> float | None:
+    """How long the ad has been running -- a strong 'this works' proxy. Prefer
+    totalActiveTime (seconds) when present; else derive from the startDate/endDate
+    epochs (active ads run through to now; ended ads through their endDate)."""
+    tat = raw.get("totalActiveTime")
+    if isinstance(tat, (int, float)) and tat:
+        return round(tat / 86400, 1)
+    sd = raw.get("startDate")
+    if not isinstance(sd, (int, float)) or not sd:
+        return None
+    ed = raw.get("endDate")
+    if raw.get("isActive") or not isinstance(ed, (int, float)) or not ed:
+        end = time.time()
+    else:
+        end = ed
+    return max(0.0, round((end - sd) / 86400, 1))
+
+
 def normalize_ad(raw: dict, competitor: str) -> dict:
     snap = raw.get("snapshot") or {}
     cards = snap.get("cards") or []
     card_texts = [t for c in cards for t in [_text(c.get("body")), c.get("title")] if t]
-    tat = raw.get("totalActiveTime")
+    has_video = bool(snap.get("videos")) or any(
+        c.get("videoHdUrl") or c.get("videoSdUrl") for c in cards)
+    active_days = _run_days(raw)
     return {
         "competitor": competitor,
         "ad_archive_id": raw.get("adArchiveID") or raw.get("adArchiveId") or raw.get("adId"),
@@ -93,10 +114,11 @@ def normalize_ad(raw: dict, competitor: str) -> dict:
         "active": raw.get("isActive"),
         "start_date": raw.get("startDateFormatted") or raw.get("startDate"),
         "end_date": raw.get("endDateFormatted") or raw.get("endDate"),
-        "active_days": round(tat / 86400, 1) if isinstance(tat, (int, float)) and tat else None,
+        "active_days": active_days,
         "countries": raw.get("targetedOrReachedCountries") or [],
         "display_format": snap.get("displayFormat"),
         "is_carousel": (snap.get("displayFormat") == "carousel") or len(cards) > 1,
+        "has_video": has_video,
         "primary_text": _text(snap.get("body")),
         "title": snap.get("title"),
         "caption": snap.get("caption"),
