@@ -39,6 +39,7 @@ import httpx
 
 import brain
 import cache
+import history
 
 # Windows consoles default to cp1252 and choke on non-ASCII; force UTF-8 output.
 try:
@@ -93,6 +94,11 @@ SYSTEM = (
     "on it, cite its deltas directly, and NEVER recompute or contradict it. For causes, use "
     "the 'likely:' tags it gives you (phrase and rank them naturally); only add a cause of "
     "your own if you clearly label it '(inference)'.\n"
+    "- A 'HISTORIC FACTS' block may also follow: month-by-month account rollups (ROAS, "
+    "spend, revenue, MoM deltas) going back up to ~3 years, also code-computed and exact. "
+    "Use it for any question about longer-term history, seasonality, 'how does this compare "
+    "to last year / a few months ago', or whether a current move is normal. The recent "
+    "snapshot has daily detail; the historic block has the monthly long arc. Trust both.\n"
     "- ANALYSIS is your job, and you should do it freely: trends, patterns, what's "
     "working or not and why, account health, risks, and concrete recommendations. "
     "INTERPRET the data and take a position. Do NOT refuse a question just because it "
@@ -209,6 +215,9 @@ ATTRIBUTION_WINDOWS = ["1d_view", "7d_click"]
 CHUNK_DAYS = 14
 # Meta only retains Insights for 37 months; older start dates are refused (#3018).
 RETENTION_DAYS = 1125          # ~37 months, kept slightly inside the boundary
+# Raw daily rows are kept only for the last ~6 months (the recent tier). Older
+# periods are summarized as monthly facts in history.py, not stored as raw rows.
+RAW_RETENTION_DAYS = 183
 
 
 class MetaError(RuntimeError):
@@ -283,6 +292,23 @@ def list_accounts(token: str) -> list[dict]:
         "fields": "account_id,name,currency,account_status",
         "limit": 100,
     }).get("data", [])
+
+
+def fetch_month_rows(token: str, account: str, first: date, last: date,
+                     level: str = "campaign") -> list[dict]:
+    """One monthly-aggregate pull (NO time_increment -> one row per campaign for
+    the whole month). Cheap and never trips the daily size limit -- used to build
+    the historic monthly facts for periods we don't keep raw daily rows for."""
+    params = {
+        "access_token": token,
+        "level": level,
+        "fields": ",".join(FIELDS),
+        "action_attribution_windows": json.dumps(ATTRIBUTION_WINDOWS),
+        "time_range": json.dumps({"since": first.isoformat(), "until": last.isoformat()}),
+        "limit": 500,
+    }
+    rows, _ = get_insights_paged(account, params, max_rows=50000)
+    return rows
 
 
 def _insights_params(token: str, since: str, until: str, level: str) -> dict:
@@ -766,6 +792,47 @@ def complete(env: dict, messages, stream: bool = STREAM,
 
 
 # ---------------------------------------------------------------------------
+# Historic facts (Phase 2)
+# ---------------------------------------------------------------------------
+
+def build_history_block(token: str, account: str, level: str, raw_since: date,
+                        until: date, currency: str) -> str:
+    """Build/refresh monthly historic facts, prune raw beyond 6 months, render.
+
+    A month's facts come from the raw cache only when the pulled window fully
+    covers it; otherwise a one-shot monthly aggregate is fetched (once, then
+    stored forever). Older months already stored are never re-fetched."""
+    cache_rows = cache.cached_rows(account, level)
+
+    def facts_for_month(first: date, last: date):
+        if first >= raw_since and last <= until:      # fully inside the raw window
+            fs, ls = first.isoformat(), last.isoformat()
+            cached = [r for r in cache_rows if fs <= r.get("date_start", "") <= ls]
+            if cached:
+                return [row_to_fact(r) for r in cached]
+        return [row_to_fact(r) for r in fetch_month_rows(token, account, first, last, level)]
+
+    def hprog(i, total, ym):
+        end = "\n" if i == total else "\r"
+        print(f"Building historic monthly facts: {i}/{total}  {ym}   ", end=end, flush=True)
+
+    try:
+        months = history.ensure(account, level, facts_for_month, date.today(), progress=hprog)
+    except KeyboardInterrupt:
+        print("\n  (historic backfill interrupted; using what's stored so far)")
+        months = history.load(account, level)
+
+    dropped = cache.prune_older_than(account, level,
+                                     date.today() - timedelta(days=RAW_RETENTION_DAYS))
+    if dropped:
+        print(f"Pruned {dropped} raw rows older than 6 months (retained as monthly facts).")
+    if months:
+        print(f"Historic facts: {len(months)} months stored "
+              f"({min(months)} .. {max(months)}).")
+    return history.render_history_block(months, currency=currency)
+
+
+# ---------------------------------------------------------------------------
 # REPL
 # ---------------------------------------------------------------------------
 
@@ -806,10 +873,11 @@ def main():
         # Meta's last_Nd convention ends yesterday (today is partial); match it.
         until = date.today() - timedelta(days=1)
         since = until - timedelta(days=days - 1)
-        floor = date.today() - timedelta(days=RETENTION_DAYS)
-        if since < floor:
-            print(f"  note: Meta only retains ~37 months; clamping start to {floor.isoformat()}.")
-            since = floor
+        raw_floor = date.today() - timedelta(days=RAW_RETENTION_DAYS)
+        if since < raw_floor:
+            print("  note: raw daily data is kept for ~6 months; older periods are "
+                  "summarized in HISTORIC FACTS below.")
+            since = raw_floor
 
         def _progress(i, total, s, u):
             end = "\n" if i == total else "\r"
@@ -856,14 +924,27 @@ def main():
     # deterministic, code-computed analysis injected alongside the raw numbers
     analysis = brain.analyze(list(ds.facts), currency=ds.currency)
     analysis_block = brain.render_analysis_block(analysis, currency=ds.currency)
-    full_context = (context
-                    + "\n\n=== CODE-COMPUTED ANALYSIS (exact deltas, trends & flags -- "
-                      "trust these, do not recompute) ===\n" + analysis_block)
     if analysis.get("windows"):
         print(f"Analysis: {', '.join(analysis['windows'])} deltas + flags computed "
               f"({len(analysis['campaigns'])} campaign signals).")
     else:
         print("Analysis: window too short for period-over-period (need >=14 days).")
+
+    # historic monthly facts (Phase 2): 6-37 months back, inferences only, no raw rows
+    history_block = ""
+    if source == "1":
+        history_block = build_history_block(token, account, level, since, until, ds.currency)
+    else:
+        months = history.load(ds.account_id, ds.level)
+        if months:
+            history_block = history.render_history_block(months, currency=ds.currency)
+
+    full_context = (context
+                    + "\n\n=== CODE-COMPUTED ANALYSIS (exact deltas, trends & flags -- "
+                      "trust these, do not recompute) ===\n" + analysis_block)
+    if history_block:
+        full_context += ("\n\n=== HISTORIC FACTS (monthly rollups, code-computed & exact -- "
+                         "trust these) ===\n" + history_block)
 
     mode = f"FULL data ({len(ds)} rows)" if full else "summary only"
     print(f"Context: {mode} + analysis -- {len(full_context):,} chars sent each turn "

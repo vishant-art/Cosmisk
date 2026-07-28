@@ -133,3 +133,26 @@ def fetch_cached(account: str, level: str, since: date, until: date,
     since_s, until_s = since.isoformat(), until.isoformat()
     out = [r for r in rows.values() if since_s <= r.get("date_start", "") <= until_s]
     return out, stats
+
+
+def cached_rows(account: str, level: str) -> list[dict]:
+    """All raw rows currently in the cache for this account+level (no fetch)."""
+    return list(_load_rows(account, level).values())
+
+
+def prune_older_than(account: str, level: str, cutoff: date) -> int:
+    """Drop cached raw rows older than `cutoff` (the 6-month raw boundary -- older
+    data lives on as monthly facts in history.py, not raw rows). Also forgets those
+    fetched-dates so the store never claims to hold days it has discarded. Returns
+    the number of rows dropped."""
+    rows = _load_rows(account, level)
+    if not rows:
+        return 0
+    cutoff_s = cutoff.isoformat()
+    keep = {k: r for k, r in rows.items() if r.get("date_start", "") >= cutoff_s}
+    dropped = len(rows) - len(keep)
+    if dropped:
+        _save_rows(account, level, keep)
+        fetched = {d for d in _load_fetched(account, level) if d >= cutoff_s}
+        _save_fetched(account, level, fetched)
+    return dropped
