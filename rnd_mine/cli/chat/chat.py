@@ -39,6 +39,7 @@ import httpx
 
 import brain
 import cache
+import competitor
 import history
 
 # Windows consoles default to cp1252 and choke on non-ASCII; force UTF-8 output.
@@ -99,6 +100,12 @@ SYSTEM = (
     "Use it for any question about longer-term history, seasonality, 'how does this compare "
     "to last year / a few months ago', or whether a current move is normal. The recent "
     "snapshot has daily detail; the historic block has the monthly long arc. Trust both.\n"
+    "- A 'COMPETITOR INTEL' block may also follow: competitors' live Meta/Instagram ads, "
+    "scraped and code-aggregated (CTA mix, offer prevalence, format split, and the "
+    "longest-running 'proven' creatives). The COUNTS are exact; use this for competitive "
+    "questions -- what rivals are doing, offers/hooks/formats that are working for them, "
+    "gaps to exploit, and copy/format ideas to adapt (never copy verbatim). This is real "
+    "scraped data, so competitor questions are fully in scope; answer them concretely.\n"
     "- ANALYSIS is your job, and you should do it freely: trends, patterns, what's "
     "working or not and why, account health, risks, and concrete recommendations. "
     "INTERPRET the data and take a position. Do NOT refuse a question just because it "
@@ -939,12 +946,29 @@ def main():
         if months:
             history_block = history.render_history_block(months, currency=ds.currency)
 
+    # competitor intelligence: discover (LLM) -> scrape (Apify, cached) -> code aggregates
+    competitor_block = ""
+    if source == "1":
+        def _cprog(stage, detail):
+            print(f"Competitor [{stage}]: {detail}", flush=True)
+        try:
+            competitor_block, cmeta = competitor.build(env, account, ds, progress=_cprog)
+            print(f"Competitor intel: {cmeta['discovered']} discovered, "
+                  f"{cmeta['scraped_ads']} ads"
+                  + (" (freshly scraped)" if cmeta["scraped_now"] else " (from cache)"))
+        except Exception as e:  # noqa: BLE001 -- competitor intel is best-effort, never fatal
+            print(f"  (competitor intel skipped: {e})")
+
     full_context = (context
                     + "\n\n=== CODE-COMPUTED ANALYSIS (exact deltas, trends & flags -- "
                       "trust these, do not recompute) ===\n" + analysis_block)
     if history_block:
         full_context += ("\n\n=== HISTORIC FACTS (monthly rollups, code-computed & exact -- "
                          "trust these) ===\n" + history_block)
+    if competitor_block:
+        full_context += ("\n\n=== COMPETITOR INTEL (competitors' live ads, scraped + "
+                         "code-aggregated; counts are exact, use for competitive strategy) ===\n"
+                         + competitor_block)
 
     mode = f"FULL data ({len(ds)} rows)" if full else "summary only"
     print(f"Context: {mode} + analysis -- {len(full_context):,} chars sent each turn "
