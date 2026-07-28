@@ -30,7 +30,7 @@ ACCOUNT = "act_1738503939658460"   # Pratap sons (largest account on the token)
 LEVEL = "campaign"
 DAYS = 30                          # recent raw window (gives WoW + full history)
 # Bump the suffix each iteration so past runs are preserved for comparison.
-ITERATION = 3
+ITERATION = 4
 OUT_PATH = Path(__file__).resolve().parent / f"test_results_{ITERATION}.md"
 
 # (category, question) -- each run independently (fresh single-turn conversation)
@@ -165,8 +165,11 @@ def main():
         f"({min(months) if months else '-'} .. {max(months) if months else '-'})\n"
         f"- **Competitor intel:** {cmeta['discovered']} discovered, "
         f"{cmeta['scraped_ads']} ads scraped\n"
+        f"- **Ad-level tools:** enabled (top_ads, ad_trends, ad_fatigue_scan, "
+        f"video_hook_rates, audience_breakdown, placement_breakdown) -- pulled on demand\n"
         f"- **System context size:** {len(system):,} chars (~{int(len(system) * 0.8):,} tokens)\n\n"
-        f"Each question is an independent single-turn ask against that context.\n"
+        f"Each question is an independent single-turn ask against that context, "
+        f"with the model free to call ad-level tools.\n"
     )
 
     sections: list[str] = [header]
@@ -180,7 +183,8 @@ def main():
         messages = [{"role": "system", "content": system},
                     {"role": "user", "content": q}]
         try:
-            ans, cost = chat.complete(env, messages, stream=False, account=ACCOUNT)
+            # agent loop: model may call ad-level tools before answering
+            ans, cost = chat.run_tool_loop(env, messages, ACCOUNT)
         except Exception as e:  # noqa: BLE001
             ans, cost = f"[error: {e}]", 0.0
         total_cost += cost
