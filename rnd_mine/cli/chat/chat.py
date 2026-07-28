@@ -69,8 +69,10 @@ MAX_CAMPAIGNS = None
 # Tradeoff: large input every turn (~55k tokens for an 84-campaign month).
 FULL_DATA = True
 STREAM = True                  # stream tokens so replies feel instant
-# Hard cap on a single reply; the system prompt steers default length.
-MAX_TOKENS = 1500
+# Safety ceiling on a single reply. Billed per generated token, so a high cap is
+# free unless used; the system prompt still steers "short by default", this just
+# prevents truncation when a long table / brief / report genuinely needs the room.
+MAX_TOKENS = 6000
 
 SYSTEM = (
     "You are a senior Meta Ads strategist talking with the brand's owner. A data "
