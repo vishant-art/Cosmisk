@@ -28,6 +28,13 @@ import discover
 import apify_ads
 
 STALE_DAYS = 7                       # re-scrape competitors older than this
+_GEO_CC = {"India": "IN", "US": "US", "USA": "US", "UK": "GB", "UAE": "AE"}
+
+
+def _country_code(geo: str | None) -> str:
+    if not geo:
+        return apify_ads.DEFAULT_COUNTRY
+    return _GEO_CC.get(geo.split(",")[0].strip(), apify_ads.DEFAULT_COUNTRY)
 _OFFER_RE = re.compile(
     r"\b(\d{1,3}\s?%|\d{1,3}\s?%?\s?off|flat\s?\d+|sale|discount|offer|deal|"
     r"free\s?shipping|save|upto|up to|limited time|clearance|bogo)\b", re.IGNORECASE)
@@ -235,7 +242,8 @@ def build(env: dict, account: str, ds, refresh: bool = False,
             if progress:
                 progress("scrape", f"[{i}/{total}] {name} ({mode})")
         ads_record = apify_ads.scrape(env, key, discovered, max_competitors=max_competitors,
-                                      ads_per=ads_per, progress=_sp)
+                                      ads_per=ads_per, country=_country_code(ctx["geo"]),
+                                      progress=_sp)
         scraped_now = True
     ads_record = ads_record or {"ads_by_competitor": {}}
 

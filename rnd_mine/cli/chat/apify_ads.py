@@ -20,7 +20,9 @@ Standalone:
 """
 from __future__ import annotations
 
+import difflib
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +38,8 @@ RUN_SYNC = f"https://api.apify.com/v2/acts/{ACTOR}/run-sync-get-dataset-items"
 MAX_COMPETITORS = 6
 ADS_PER_COMPETITOR = 15
 DEFAULT_COUNTRY = "ALL"      # Ad Library country filter for the keyword fallback
+MIN_PAGE_ADS = 3            # a page-URL hit below this (or wrong page) -> keyword fallback
+NAME_MATCH = 0.6            # min name similarity to accept a resolved page
 
 ADS_DIR = Path(__file__).resolve().parent / "competitors"
 
@@ -71,6 +75,67 @@ def run_scraper(token: str, start_url: str, limit: int, wait: int = 300) -> list
         raise RuntimeError(f"Apify run failed ({resp.status_code}): {resp.text[:200]}")
     items = resp.json()
     return items if isinstance(items, list) else []
+
+
+# --- page resolution (fix LLM-guessed slugs that miss) ----------------------
+
+def _norm(s: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def _similar(a: str | None, b: str | None) -> float:
+    na, nb = _norm(a), _norm(b)
+    if not na or not nb:
+        return 0.0
+    if na in nb or nb in na:
+        return 1.0
+    return difflib.SequenceMatcher(None, na, nb).ratio()
+
+
+def _dominant_page(items: list[dict]) -> tuple[str | None, int]:
+    """The pageName most ads came from, and how many."""
+    counts: dict[str, int] = {}
+    for it in items:
+        pn = it.get("pageName") or (it.get("snapshot") or {}).get("pageName")
+        if pn:
+            counts[pn] = counts.get(pn, 0) + 1
+    if not counts:
+        return None, 0
+    pn, c = max(counts.items(), key=lambda x: x[1])
+    return pn, c
+
+
+def _filter_to_brand(items: list[dict], name: str) -> list[dict]:
+    """From a noisy keyword search, keep only ads from the page whose name best
+    matches the competitor (drops unrelated advertisers)."""
+    by_page: dict[str, list[dict]] = {}
+    for it in items:
+        pn = it.get("pageName") or (it.get("snapshot") or {}).get("pageName")
+        if pn:
+            by_page.setdefault(pn, []).append(it)
+    best, best_score = None, 0.0
+    for pn, ads in by_page.items():
+        s = _similar(pn, name)
+        if s > best_score:
+            best, best_score = pn, s
+    return by_page.get(best, []) if best_score >= NAME_MATCH else []
+
+
+def scrape_competitor(token: str, name: str, handle: str | None, limit: int,
+                      country: str = DEFAULT_COUNTRY) -> tuple[list[dict], str]:
+    """Resolve + scrape ONE competitor. Prefer the discovered page handle; if it
+    misses (too few ads, or resolves to a differently-named page), fall back to a
+    keyword search filtered down to the brand's own page. Returns (raw_ads, mode)."""
+    page = _page_url(handle)
+    if page:
+        ads = run_scraper(token, page, limit)
+        dom, dom_n = _dominant_page(ads)
+        if len(ads) >= MIN_PAGE_ADS and _similar(dom, name) >= NAME_MATCH:
+            return ads, "page"
+    # fallback: keyword search (broader), then keep only the brand's page
+    kw = run_scraper(token, _keyword_url(name, country), min(limit * 2, 40))
+    matched = _filter_to_brand(kw, name)
+    return (matched, "keyword") if matched else ([], "unresolved")
 
 
 # --- normalization ----------------------------------------------------------
@@ -158,10 +223,11 @@ def save_ads(key: str, record: dict) -> None:
 # --- orchestration ----------------------------------------------------------
 
 def scrape(env: dict, key: str, discovered: dict, max_competitors: int = MAX_COMPETITORS,
-           ads_per: int = ADS_PER_COMPETITOR, keep_raw: bool = True, progress=None) -> dict:
-    """Scrape the top competitors from a discovery record. Prefers page-URL
-    targeting (precise); falls back to a keyword search only when no usable
-    Facebook handle exists. Stores normalized ads (and optionally raw)."""
+           ads_per: int = ADS_PER_COMPETITOR, country: str = DEFAULT_COUNTRY,
+           keep_raw: bool = True, progress=None) -> dict:
+    """Scrape the top competitors from a discovery record. Resolves each brand to
+    its real page (page handle first, keyword-search fallback filtered to the
+    brand) so a wrong LLM slug no longer means zero ads. Stores normalized ads."""
     token = env.get("APIFY_TOKEN")
     if not token:
         raise SystemExit("APIFY_TOKEN not set (repo-root .env)")
@@ -169,19 +235,21 @@ def scrape(env: dict, key: str, discovered: dict, max_competitors: int = MAX_COM
     comps = (discovered.get("competitors") or [])[:max_competitors]
     by_comp: dict[str, list[dict]] = {}
     raw_by_comp: dict[str, list[dict]] = {}
+    modes: dict[str, str] = {}
     skipped: list[tuple[str, str]] = []
 
     for i, c in enumerate(comps, 1):
         name = c.get("name", "?")
-        page = _page_url(c.get("facebook"))
-        url = page or _keyword_url(name)
-        mode = "page" if page else "keyword"
         if progress:
-            progress(i, len(comps), name, mode)
+            progress(i, len(comps), name, "resolving")
         try:
-            raw = run_scraper(token, url, ads_per)
+            raw, mode = scrape_competitor(token, name, c.get("facebook"), ads_per, country)
         except Exception as e:  # noqa: BLE001 -- one bad competitor never kills the sweep
             skipped.append((name, str(e)[:80]))
+            continue
+        modes[name] = mode
+        if not raw:
+            skipped.append((name, "no page resolved"))
             continue
         by_comp[name] = [normalize_ad(r, name) for r in raw]
         if keep_raw:
@@ -193,7 +261,9 @@ def scrape(env: dict, key: str, discovered: dict, max_competitors: int = MAX_COM
         "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "actor": ACTOR,
         "caps": {"max_competitors": max_competitors, "ads_per_competitor": ads_per},
+        "country": country,
         "total_ads": total,
+        "resolution_modes": modes,
         "ads_by_competitor": by_comp,
         "skipped": skipped,
     }
