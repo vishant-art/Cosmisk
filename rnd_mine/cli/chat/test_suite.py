@@ -28,7 +28,8 @@ import history
 ACCOUNT = "act_1738503939658460"   # Pratap sons (largest account on the token)
 LEVEL = "campaign"
 DAYS = 30                          # recent raw window (gives WoW + full history)
-OUT_PATH = Path(__file__).resolve().parent / "test_results.md"
+# Bump the suffix each iteration so past runs are preserved for comparison.
+OUT_PATH = Path(__file__).resolve().parent / "test_results_1.md"
 
 # (category, question) -- each run independently (fresh single-turn conversation)
 TEST_CASES = [
