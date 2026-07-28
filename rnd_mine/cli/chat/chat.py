@@ -37,6 +37,7 @@ from pathlib import Path
 
 import httpx
 
+import ad_tools
 import brain
 import cache
 import competitor
@@ -204,7 +205,8 @@ GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 # ones. purchase_roas/website_purchase_roas pulled for cross-check only; the
 # transform DERIVES ROAS.
 FIELDS = [
-    "campaign_id", "campaign_name", "adset_name", "ad_name", "account_currency",
+    "campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name",
+    "account_currency",
     "spend", "impressions", "reach", "frequency",
     "clicks", "ctr", "cpc",
     "inline_link_clicks", "inline_link_click_ctr", "cost_per_inline_link_click",
@@ -273,8 +275,13 @@ def meta_get(path: str, params: dict) -> dict:
 
 
 def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
-    """Fetch insights following cursor pagination. Real daily pulls across many
-    campaigns easily exceed one page, so a single page would silently truncate."""
+    """Fetch insights following cursor pagination. Real pulls (esp. ad-level)
+    exceed one page, so a single page would silently truncate.
+
+    We advance with the `after` cursor against OUR endpoint + version, rather than
+    following Meta's absolute `paging.next` URL: that next URL is minted on a newer
+    Graph version (e.g. v25.0) than we requested, and following it 403s with
+    '(#200) Provide valid app ID' for this token."""
     rows = []
     url = f"{GRAPH_BASE}/{account}/insights"
     p = dict(params)
@@ -287,10 +294,12 @@ def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
                 _meta_fail(r.status_code, body)
             rows.extend(body.get("data", []))
             pages += 1
-            nxt = body.get("paging", {}).get("next")
-            if not nxt or len(rows) >= max_rows:
+            paging = body.get("paging", {}) or {}
+            after = (paging.get("cursors") or {}).get("after")
+            if not paging.get("next") or not after or len(rows) >= max_rows:
                 break
-            url, p = nxt, {}  # the `next` URL already carries all params + cursor
+            p = dict(params)          # same version + params ...
+            p["after"] = after        # ... just advance the cursor
     return rows[:max_rows], pages
 
 
@@ -488,6 +497,10 @@ def row_to_fact(raw: dict) -> dict:
     return {
         "campaign_id": str(raw.get("campaign_id", "")),
         "campaign_name": raw.get("campaign_name", raw.get("campaign_id", "unknown")),
+        "adset_id": raw.get("adset_id"),
+        "adset_name": raw.get("adset_name"),   # populated at adset/ad level
+        "ad_id": raw.get("ad_id"),             # unique ad key at ad level
+        "ad_name": raw.get("ad_name"),         # human label (NOT unique -- repeats across adsets)
         "date": raw.get("date_start", ""),
         "spend": spend,
         "impressions": impressions,
@@ -801,6 +814,98 @@ def complete(env: dict, messages, stream: bool = STREAM,
 
 
 # ---------------------------------------------------------------------------
+# Agent loop -- ad-level tools the model pulls on demand (Phase 3)
+# ---------------------------------------------------------------------------
+
+AD_TOOL_MAX_DAYS = 60
+TOOL_MAX_ROUNDS = 6
+
+
+def _ensure_ad_level(env: dict, account: str, days: int) -> tuple[list[dict], str]:
+    """Fetch (cached) ad-level facts for the last `days`. Ad-level is big + slow
+    the first time; the on-disk cache (keyed separately by level) makes repeats
+    instant. Returns (facts, 'since..until')."""
+    token = env.get("META_ACCESS_TOKEN")
+    if not token:
+        return [], ""
+    days = max(1, min(int(days or 30), AD_TOOL_MAX_DAYS))
+    until = date.today() - timedelta(days=1)
+    since = until - timedelta(days=days - 1)
+
+    def _fr(lo, hi):
+        return fetch_envelope(token, account=account, since=lo, until=hi, level="ad")["data"]
+
+    print(f"  -> pulling ad-level data ({days}d; first pull can take a minute) ...", flush=True)
+    raw, stats = cache.fetch_cached(account, "ad", since, until, _fr)
+    facts = [row_to_fact(r) for r in raw]
+    src = f"{stats['fetched_days']}d fetched" if stats.get("fetched_days") else "from cache"
+    print(f"  -> ad-level: {len(facts)} rows, {len({f['ad_name'] for f in facts if f['ad_name']})} "
+          f"ads ({src}).", flush=True)
+    return facts, f"{since.isoformat()}..{until.isoformat()}"
+
+
+def run_tool_loop(env: dict, messages: list, account: str) -> tuple[str, float]:
+    """Model turn with ad-level tools available. The model answers directly from
+    the injected context for common questions; for ad-level questions it calls a
+    tool, we execute it in code (exact numbers), feed the result back, and it
+    narrates. Non-streaming (tool calls need the full message each round)."""
+    url = env.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {env['OPENROUTER_API_KEY']}"}
+    total_cost = 0.0
+    ad_cache: dict[int, tuple[list[dict], str]] = {}
+
+    def _ads(days):
+        d = max(1, min(int(days or 30), AD_TOOL_MAX_DAYS))
+        if d not in ad_cache:
+            ad_cache[d] = _ensure_ad_level(env, account, d)
+        return ad_cache[d]
+
+    def _call(with_tools: bool):
+        body = _chat_body(messages, stream=False)
+        if with_tools:
+            body["tools"] = ad_tools.TOOL_SCHEMAS
+            body["tool_choice"] = "auto"
+        with httpx.Client(timeout=180) as client:
+            resp = client.post(url, headers=headers, json=body)
+        if resp.status_code != 200:
+            raise RuntimeError(f"OpenRouter returned {resp.status_code}: {resp.text[:300]}")
+        data = resp.json()
+        return data["choices"][0]["message"], record_cost(data.get("usage"), account, op="chat")
+
+    for _ in range(TOOL_MAX_ROUNDS):
+        msg, cost = _call(with_tools=True)
+        total_cost += cost
+        tcs = msg.get("tool_calls")
+        if not tcs:
+            content = msg.get("content") or ""
+            print(content)
+            messages.append({"role": "assistant", "content": content})
+            return content, total_cost
+        # keep the assistant's tool-call message, then answer each call
+        messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": tcs})
+        for tc in tcs:
+            fn = tc.get("function", {})
+            name = fn.get("name", "")
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            print(f"  [tool] {name}({', '.join(f'{k}={v}' for k, v in args.items())})", flush=True)
+            facts, win = _ads(args.get("days", 30))
+            result = ad_tools.execute(name, args, facts, win)
+            messages.append({"role": "tool", "tool_call_id": tc.get("id"),
+                             "content": json.dumps(result, ensure_ascii=False)})
+
+    # too many tool rounds: force a final text answer with tools off
+    msg, cost = _call(with_tools=False)
+    total_cost += cost
+    content = msg.get("content") or "(unable to complete after several tool calls)"
+    print(content)
+    messages.append({"role": "assistant", "content": content})
+    return content, total_cost
+
+
+# ---------------------------------------------------------------------------
 # Historic facts (Phase 2)
 # ---------------------------------------------------------------------------
 
@@ -980,8 +1085,8 @@ def main():
     account = ds.account_id or None   # attributes each call's cost in the ledger
 
     print(f"RAG chat over '{ds.account_name}' via {MODEL}.")
-    print("Ask about spend, ROAS, campaigns, trends, fatigue. 'exit' to quit.")
-    print("Try: 'which campaign should I cut?'  'how did ROAS trend?'  'what's my blended ROAS?'\n")
+    print("Ask about spend, ROAS, campaigns, trends, fatigue, and specific ADS (pulled on demand).")
+    print("Try: 'which campaign should I cut?'  'top 5 ads by ROAS?'  'which ads are fatiguing?'\n")
 
     while True:
         try:
@@ -993,15 +1098,15 @@ def main():
             continue
         if q.lower() in {"exit", "quit", "/exit"}:
             break
+        base = len(messages)
         messages.append({"role": "user", "content": q})
-        print("\nbot > ", end="", flush=True)
+        print("\nbot >", flush=True)
         try:
-            ans, _ = complete(env, messages, stream=STREAM, account=account)
+            run_tool_loop(env, messages, account)   # appends the exchange + prints the answer
         except Exception as e:  # noqa: BLE001 -- surface any API error, keep the REPL alive
             print(f"\n  [api error] {e}\n")
-            messages.pop()
+            del messages[base:]                     # roll back this whole turn
             continue
-        messages.append({"role": "assistant", "content": ans})
         print()
 
     print(f"\nLLM cost ledger total (all sessions): ${ledger_total_usd():.4f}")
