@@ -110,14 +110,30 @@ import { LucideAngularModule } from 'lucide-angular';
             <ul class="space-y-2 list-none p-0">
               <li><a routerLink="/contact" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Contact</a></li>
               <li><a routerLink="/for-agencies" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">For Agencies</a></li>
-              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Privacy Policy</a></li>
-              <li><a class="text-gray-400 text-sm hover:text-white no-underline transition-colors cursor-pointer">Terms of Service</a></li>
+              <li><a routerLink="/grievance-officer" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Grievance Officer</a></li>
             </ul>
           </div>
         </div>
 
-        <div class="border-t border-white/[0.06] pt-8 text-center">
+        <!-- Legal -->
+        <div class="border-t border-white/[0.06] pt-8 mb-8">
+          <ul class="flex flex-wrap justify-center gap-x-6 gap-y-2 list-none p-0 m-0">
+            <li><a routerLink="/privacy-policy" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Privacy Policy</a></li>
+            <li><a routerLink="/terms" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Terms &amp; Conditions</a></li>
+            <li><a routerLink="/refund-policy" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Cancellation &amp; Refund Policy</a></li>
+            <li><a routerLink="/service-delivery" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Service Delivery Policy</a></li>
+            <li><a routerLink="/data-deletion" class="text-gray-400 text-sm hover:text-white no-underline transition-colors">Data Deletion</a></li>
+          </ul>
+        </div>
+
+        <div class="border-t border-white/[0.06] pt-8 text-center space-y-2">
           <p class="text-gray-500 text-sm font-body">&copy; 2026 Cosmisk. Made in India</p>
+          <p class="text-gray-600 text-xs font-body leading-relaxed">
+            Cosmisk is a sole proprietorship of Sanskar Saxena · Udyam Registration No. UDYAM-GJ-01-0663897<br />
+            27, Nirmal Bunglows, Nr Karnavati Park, Opp Baroda Expressway, CTM, Ahmedabad, Gujarat 380026, India<br />
+            <a href="mailto:support&#64;cosmisk.com" class="hover:text-gray-400 no-underline">support&#64;cosmisk.com</a>
+            · +91 96625 98320
+          </p>
         </div>
       </div>
     </footer>

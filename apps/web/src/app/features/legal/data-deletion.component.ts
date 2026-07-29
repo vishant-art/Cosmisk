@@ -12,7 +12,7 @@ import { CommonModule } from '@angular/common';
         <!-- Header -->
         <div class="mb-10">
           <h1 class="text-3xl font-bold text-gray-900 mb-3">Data Deletion Instructions</h1>
-          <p class="text-gray-500 text-sm">Last updated: March 2026 &nbsp;&middot;&nbsp; cosmisk.com</p>
+          <p class="text-gray-500 text-sm">Last updated: 29 July 2026 &nbsp;&middot;&nbsp; cosmisk.com</p>
         </div>
 
         <!-- Intro -->
@@ -123,7 +123,8 @@ import { CommonModule } from '@angular/common';
                class="text-indigo-600 hover:text-indigo-700 font-medium underline underline-offset-2">
               support&#64;cosmisk.com
             </a>.
-            Cosmisk is operated by Vishant Jain, based in India.
+            Cosmisk is a sole proprietorship of Sanskar Saxena, Udyam Registration No. UDYAM-GJ-01-0663897,
+            27, Nirmal Bunglows, Nr Karnavati Park, Opp Baroda Expressway, CTM, Ahmedabad, Gujarat 380026, India.
           </p>
         </div>
 

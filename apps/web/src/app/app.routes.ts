@@ -22,6 +22,18 @@ export const routes: Routes = [
       { path: 'waitlist', loadComponent: () => import('./features/waitlist/waitlist.component') },
       { path: 'privacy-policy', loadComponent: () => import('./features/legal/privacy-policy.component') },
       { path: 'data-deletion', loadComponent: () => import('./features/legal/data-deletion.component') },
+      { path: 'terms', loadComponent: () => import('./features/legal/terms.component') },
+      { path: 'refund-policy', loadComponent: () => import('./features/legal/refund-policy.component') },
+      { path: 'service-delivery', loadComponent: () => import('./features/legal/service-delivery.component') },
+      { path: 'grievance-officer', loadComponent: () => import('./features/legal/grievance-officer.component') },
+      // Aliases for the URL forms payment gateways and users commonly try.
+      { path: 'privacy', redirectTo: 'privacy-policy', pathMatch: 'full' },
+      { path: 'terms-and-conditions', redirectTo: 'terms', pathMatch: 'full' },
+      { path: 'terms-of-service', redirectTo: 'terms', pathMatch: 'full' },
+      { path: 'refund', redirectTo: 'refund-policy', pathMatch: 'full' },
+      { path: 'cancellation-refund-policy', redirectTo: 'refund-policy', pathMatch: 'full' },
+      { path: 'shipping-policy', redirectTo: 'service-delivery', pathMatch: 'full' },
+      { path: 'shipping-and-delivery', redirectTo: 'service-delivery', pathMatch: 'full' },
     ]
   },
 
