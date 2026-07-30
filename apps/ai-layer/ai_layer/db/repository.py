@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from dataclasses import fields
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert

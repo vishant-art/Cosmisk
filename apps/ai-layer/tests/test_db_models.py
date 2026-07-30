@@ -10,9 +10,12 @@ def test_fact_columns_match_campaigndayfact():
     """Drift guard: Fact's metric/dim columns == the 20 stable FACT_FIELDS (the
     table contract), NOT the full CampaignDayFact dataclass -- which also carries
     extended ad/adset/video fields that never reach this table."""
+    from dataclasses import fields as _dc_fields
     tenant = {"brand_id", "platform", "account_id", "updated_at"}
     model_cols = {c.name for c in m.Fact.__table__.columns} - tenant
     assert model_cols == set(mt.FACT_FIELDS)
+    assert set(mt.FACT_FIELDS) <= {f.name for f in _dc_fields(mt.CampaignDayFact)}, \
+        "every FACT_FIELDS entry must be a real CampaignDayFact field"
 
 
 def test_fact_primary_key():
