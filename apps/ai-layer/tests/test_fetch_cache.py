@@ -65,3 +65,18 @@ def test_prune_older_than(db_session):
                              _rows_for, today=today)
     dropped = fetch_cache.prune_older_than(ACC, LVL, date(2026, 6, 1))
     assert dropped == 3 and fetch_cache.cached_rows(ACC, LVL) == []
+
+
+def test_write_failure_never_loses_fetched_rows(db_session, monkeypatch):
+    from datetime import date
+    from ai_layer import fetch_cache
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated cache write outage")
+
+    monkeypatch.setattr(fetch_cache._repo, "replace_insight_span", boom)
+    today = date(2026, 7, 30)
+    rows, stats = fetch_cache.fetch_cached(ACC, LVL, date(2026, 7, 1), date(2026, 7, 5),
+                                           _rows_for, today=today)
+    assert len(rows) == 5                      # fetched data survives the write outage
+    assert stats["fetched_days"] == 5 and not stats["from_cache"]

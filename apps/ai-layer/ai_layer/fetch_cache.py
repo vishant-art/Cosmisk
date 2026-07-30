@@ -69,6 +69,8 @@ def fetch_cached(account: str, level: str, since: date, until: date,
     missing = sorted(needed - final)                  # missing OR still-revising
 
     stats = {"cached_days": len(needed & final), "fetched_days": 0, "from_cache": not missing}
+    fetched_fresh: list[dict] = []   # kept in memory so a failed cache write never loses them
+    write_failed = False
     for lo, hi in (_contiguous_runs([date.fromisoformat(d) for d in missing]) if missing else []):
         new_rows = fetch_range(lo, hi) or []
         span = _dates(lo, hi)
@@ -81,16 +83,29 @@ def fetch_cached(account: str, level: str, since: date, until: date,
                  if r.get("date_start")],
                 brand_id=brand_id)
             _repo.mark_insight_fetched(account, level, span, brand_id=brand_id)
-        except Exception:  # noqa: BLE001 -- store write failure never loses the fetch
+        except Exception:  # noqa: BLE001 -- store write failure never loses the fetch;
+            # the fresh rows are kept in memory below and returned unpersisted.
             log.exception("insight cache write failed (continuing with fetched rows)")
+            write_failed = True
+            fetched_fresh.extend(r for r in new_rows if r.get("date_start"))
         stats["fetched_days"] += len(span)
 
     try:
-        return _repo.load_insight_rows(account, level, since=since.isoformat(),
-                                       until=until.isoformat(), brand_id=brand_id), stats
+        rows = _repo.load_insight_rows(account, level, since=since.isoformat(),
+                                       until=until.isoformat(), brand_id=brand_id)
     except Exception:  # noqa: BLE001
         log.exception("insight cache read-back failed; fetching directly")
         return (fetch_range(since, until) or []), stats
+    if write_failed and fetched_fresh:
+        # merge unpersisted fresh rows over the read-back (dedupe by (date, key); fresh wins)
+        merged = {(r.get("date_start", ""), _key(r)): r for r in rows}
+        for r in fetched_fresh:
+            merged[(r.get("date_start", ""), _key(r))] = r
+        since_s, until_s = since.isoformat(), until.isoformat()
+        rows = sorted((r for r in merged.values()
+                       if since_s <= r.get("date_start", "") <= until_s),
+                      key=lambda r: (r.get("date_start", ""), _key(r)))
+    return rows, stats
 
 
 def cached_rows(account: str, level: str, brand_id: str | None = None) -> list[dict]:
