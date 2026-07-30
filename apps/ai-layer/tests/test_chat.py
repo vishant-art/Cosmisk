@@ -184,3 +184,18 @@ def test_live_gives_inference_not_refusal():
     assert ("ugc" in low or "catalog" in low or "roas" in low)  # engaged with the data
     assert not any(p in low for p in ["cannot be determined", "not derivable",
                                       "i cannot answer", "unable to provide"])
+
+
+def test_build_full_context_history_override():
+    from ai_layer import chat, meta_transform as mt
+    ds = mt.normalize({"meta": {"account_id": "a", "account_name": "N", "currency": "INR",
+                                "date_range": {"since": "2026-07-01", "until": "2026-07-01"},
+                                "level": "campaign", "source": "file"},
+                       "data": [{"campaign_id": "c1", "campaign_name": "C",
+                                 "date_start": "2026-07-01", "spend": "100",
+                                 "impressions": "1000"}]})
+    out = chat.build_full_context(ds, None, "a", "campaign", None, None,
+                                  history_block_override="MONTHLY FACTS HERE")
+    assert "=== HISTORIC FACTS" in out and "MONTHLY FACTS HERE" in out
+    out2 = chat.build_full_context(ds, None, "a", "campaign", None, None)
+    assert "=== HISTORIC FACTS" not in out2      # token=None, no override -> no block

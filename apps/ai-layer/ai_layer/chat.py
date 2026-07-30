@@ -545,6 +545,7 @@ def build_history_block(token: str, account: str, level: str, raw_since: date,
 def build_full_context(ds, token: str | None, account: str, level: str,
                        since: date, until: date, brand_id: str | None = None,
                        full: bool = FULL_DATA, competitor_block: str | None = None,
+                       history_block_override: str | None = None,
                        progress=None) -> str:
     """Assemble the complete context exactly as the rnd CLI does (rnd chat.py
     1120-1129): snapshot + analysis + history + competitor, same headers."""
@@ -554,7 +555,9 @@ def build_full_context(ds, token: str | None, account: str, level: str,
     analysis_block = brain.render_analysis_block(analysis, currency=ds.currency)
 
     history_block = ""
-    if token:
+    if history_block_override is not None:
+        history_block = history_block_override
+    elif token:
         try:
             history_block = build_history_block(token, account, level, since, until,
                                                 ds.currency, brand_id=brand_id,
@@ -597,12 +600,16 @@ def main():
     token: str | None = None
     since = until = None
     competitor_block: str | None = None
+    offline_history: str | None = None
 
     # Pull live by default (cached, incremental); --data is the offline override.
     if args.data:
         ds = mt.load(args.data)
         account = args.account or ds.account_id or ""
         since, until = ds.since, ds.until
+        months = history.load(ds.account_id, ds.level)
+        offline_history = (history.render_history_block(months, currency=ds.currency)
+                           if months else "")
     else:
         token = config.META_ACCESS_TOKEN
         if not token:
@@ -684,6 +691,7 @@ def main():
 
     context = build_full_context(ds, token, account, args.level, since, until,
                                  full=args.full, competitor_block=competitor_block or None,
+                                 history_block_override=(offline_history or None),
                                  progress=print)
     mode = f"FULL data ({len(ds)} rows)" if args.full else "summary only"
     print(f"Context: {mode} + analysis -- {len(context):,} chars sent each turn "
