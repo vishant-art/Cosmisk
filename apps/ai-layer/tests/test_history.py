@@ -53,3 +53,32 @@ def test_render_block_tail(db_session):
               for m in range(1, 7)}
     block = history.render_history_block(months, tail=3)
     assert "3 earlier months stored" in block and "2026-06" in block
+
+
+def test_load_degrades_to_empty_on_store_error(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("store down")
+    monkeypatch.setattr(history._repo, "load_monthly_facts", boom)
+    assert history.load(ACC, LVL) == {}
+
+
+def test_month_bounds_exact():
+    assert history.month_bounds("2026-02") == (date(2026, 2, 1), date(2026, 2, 28))
+    assert history.month_bounds("2024-02") == (date(2024, 2, 1), date(2024, 2, 29))
+    assert history.month_bounds("2026-04") == (date(2026, 4, 1), date(2026, 4, 30))
+    assert history.month_bounds("2026-12") == (date(2026, 12, 1), date(2026, 12, 31))
+
+
+def test_attach_deltas_math():
+    months = {
+        "2026-05": {"roas": 2.0, "spend": 100.0, "revenue": 200.0},
+        "2026-06": {"roas": 3.0, "spend": 150.0, "revenue": 450.0},
+    }
+    history.attach_deltas(months)
+    assert months["2026-05"]["mom"] is None
+    assert months["2026-06"]["mom"] == {"roas": 50.0, "spend": 50.0, "revenue": 125.0}
+    # zero-prior edge: prior 0 -> 100.0 when recent nonzero
+    months2 = {"2026-01": {"roas": 0.0, "spend": 0.0, "revenue": 0.0},
+               "2026-02": {"roas": 1.5, "spend": 10.0, "revenue": 15.0}}
+    history.attach_deltas(months2)
+    assert months2["2026-02"]["mom"] == {"roas": 100.0, "spend": 100.0, "revenue": 100.0}
