@@ -534,8 +534,13 @@ def build_history_block(token: str, account: str, level: str, raw_since: date,
         if progress:
             progress(f"historic monthly facts: {i}/{total}  {ym}")
 
-    months = history.ensure(account, level, facts_for_month, date.today(),
-                            progress=hprog, brand_id=brand_id)
+    try:
+        months = history.ensure(account, level, facts_for_month, date.today(),
+                                progress=hprog, brand_id=brand_id)
+    except KeyboardInterrupt:
+        if progress:
+            progress("(historic backfill interrupted; using what's stored so far)")
+        months = history.load(account, level, brand_id=brand_id)
     fetch_cache.prune_older_than(account, level,
                                  date.today() - timedelta(days=RAW_RETENTION_DAYS),
                                  brand_id=brand_id)

@@ -199,3 +199,25 @@ def test_build_full_context_history_override():
     assert "=== HISTORIC FACTS" in out and "MONTHLY FACTS HERE" in out
     out2 = chat.build_full_context(ds, None, "a", "campaign", None, None)
     assert "=== HISTORIC FACTS" not in out2      # token=None, no override -> no block
+
+
+def test_build_history_block_survives_keyboard_interrupt(monkeypatch):
+    from datetime import date
+    from ai_layer import chat, history
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    seen = []
+    monkeypatch.setattr(chat.history, "ensure", interrupted)
+    monkeypatch.setattr(chat.history, "load",
+                        lambda account, level, brand_id=None: {"2026-06": {
+                            "roas": 3.0, "spend": 100.0, "revenue": 300.0,
+                            "purchases": 10, "mom": None}})
+    monkeypatch.setattr(chat.fetch_cache, "cached_rows", lambda *a, **k: [])
+    monkeypatch.setattr(chat.fetch_cache, "prune_older_than", lambda *a, **k: 0)
+    block = chat.build_history_block("tok", "act_x", "campaign",
+                                     date(2026, 7, 1), date(2026, 7, 28), "INR",
+                                     progress=seen.append)
+    assert "2026-06" in block                       # fallback months rendered
+    assert any("interrupted" in s for s in seen)    # progress note surfaced
