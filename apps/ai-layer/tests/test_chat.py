@@ -92,6 +92,26 @@ def test_system_prompt_embeds_snapshot():
     assert "DATA SNAPSHOT" in sys_msg and "snapshot" in sys_msg.lower()
 
 
+def test_system_prompt_has_trust_blocks():
+    from ai_layer import chat
+    for marker in ("CODE-COMPUTED ANALYSIS", "HISTORIC FACTS", "COMPETITOR INTEL"):
+        assert marker in chat.SYSTEM
+    assert chat.MODEL == "openai/gpt-5.4-mini" and chat.TEMPERATURE == 0.5
+    assert chat.MAX_TOKENS == 6000 and chat.REASONING_EFFORT == "minimal"
+
+
+def test_build_context_pandas_free_output_shape():
+    from ai_layer import chat, meta_transform as mt
+    ds = mt.normalize({"meta": {"account_id": "a", "account_name": "N", "currency": "INR",
+                                "date_range": {"since": "2026-07-01", "until": "2026-07-01"},
+                                "level": "campaign", "source": "test"},
+                       "data": [{"campaign_id": "c1", "campaign_name": "C",
+                                 "date_start": "2026-07-01", "spend": "100",
+                                 "impressions": "1000"}]})
+    ctx = chat.build_context(ds, full=True)
+    assert "PER-CAMPAIGN TOTALS" in ctx and "FULL PER-CAMPAIGN DAILY ROWS" in ctx
+
+
 def test_real_sample_builds_context_if_present():
     p = Path(__file__).resolve().parents[1] / "data" / "_real_sample.json"
     if not p.exists():
