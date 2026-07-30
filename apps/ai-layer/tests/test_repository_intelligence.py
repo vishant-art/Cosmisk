@@ -32,6 +32,18 @@ def test_replace_span_upserts_cleanly(db_session):
     assert len(out) == 1 and out[0]["spend"] == "99.0"
 
 
+def test_replace_insight_span_in_batch_dedup_last_wins(db_session):
+    """In-batch dedup: two rows with same date and row_key in one call -> last one wins."""
+    first = _raw("2026-07-01"); first["spend"] = "5.0"
+    second = _raw("2026-07-01"); second["spend"] = "15.0"
+    # Pass both tuples in a single call with identical date and row_key
+    rows = [("2026-07-01", "c1||", first), ("2026-07-01", "c1||", second)]
+    repo.replace_insight_span(ACC, LVL, ["2026-07-01"], rows)
+    out = repo.load_insight_rows(ACC, LVL)
+    # Exactly one row should exist, with the LAST tuple's payload
+    assert len(out) == 1 and out[0]["spend"] == "15.0"
+
+
 def test_insight_range_filter_and_prune(db_session):
     for d in ("2026-01-05", "2026-06-05"):
         repo.replace_insight_span(ACC, LVL, [d], [(d, "c1||", _raw(d))])
