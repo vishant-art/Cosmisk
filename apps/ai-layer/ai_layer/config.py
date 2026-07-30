@@ -33,7 +33,7 @@ if _env:
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN")
-APIFY_TOKEN = os.getenv("APIFY_TOKEN", "")
+APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
 # Service auth: callers must send this as the X-API-Key header. If unset (local dev),
 # the API leaves auth OPEN (and warns). Set it in any real deploy.
