@@ -26,3 +26,12 @@ def test_tables_present():
     assert {"ai_layer.brands", "ai_layer.accounts", "ai_layer.facts",
             "ai_layer.cost_ledger", "ai_layer.brand_config",
             "ai_layer.creative_jobs"} <= names
+
+
+def test_intelligence_tables_exist(db_session):
+    from sqlalchemy import inspect
+    from ai_layer.db import engine
+    insp = inspect(engine.get_engine() if hasattr(engine, "get_engine") else db_session.bind)
+    tables = insp.get_table_names(schema="ai_layer")
+    for t in ("insight_rows", "insight_fetch_log", "monthly_facts", "competitor_intel"):
+        assert t in tables, f"missing table {t}"
