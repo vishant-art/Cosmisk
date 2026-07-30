@@ -11,9 +11,9 @@ OpenRouter (OpenAI-compatible API). Data comes through the L1 transform contract
 By default it pulls LIVE Meta Ads data on session start; --data loads a JSON file
 instead (offline / repeatable).
 
-    python chat.py                                  # live; prompts you to pick an account
-    python chat.py --account act_123 --preset last_14d   # skip the picker
-    python chat.py --data ../data/_real_sample.json # offline from a saved pull
+    python -m ai_layer.chat                                    # live; prompts you to pick an account
+    python -m ai_layer.chat --account act_123 --days 14         # skip the picker
+    python -m ai_layer.chat --data ../data/_real_sample.json    # offline from a saved pull
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from openai import OpenAI
 from ai_layer import ad_tools, brain, config, cost_ledger, fetch_cache, history
 from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt
+from ai_layer.competitor import pipeline as competitor_pipeline
 
 # Windows consoles default to cp1252 and choke on ₹/€; force UTF-8 output.
 try:
@@ -578,51 +579,122 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", help="load from a JSON file instead of pulling live")
     ap.add_argument("--account", help="act_<id>; if omitted, pick from a list interactively")
-    ap.add_argument("--preset", default="last_30d", help="Meta date_preset (e.g. last_30d)")
+    ap.add_argument("--days", type=int, default=30,
+                    help="days of recent history to fetch, live path only (default: 30)")
     ap.add_argument("--level", default="campaign", choices=["account", "campaign", "adset", "ad"])
     ap.add_argument("--full", action=argparse.BooleanOptionalAction, default=FULL_DATA,
                     help="inject the complete per-(campaign x date) rows (default: on)")
+    ap.add_argument("--refresh-competitors", action="store_true",
+                    help="force a fresh competitor discovery+scrape (ignores the 7-day cache)")
     args = ap.parse_args()
 
     key = config.OPENROUTER_API_KEY
-    base = config.OPENROUTER_BASE_URL
+    base_url = config.OPENROUTER_BASE_URL
     if not key:
         print("OPENROUTER_API_KEY not set (.env or environment)")
         sys.exit(1)
 
-    # Pull live by default; --data is the offline override.
+    token: str | None = None
+    since = until = None
+    competitor_block: str | None = None
+
+    # Pull live by default (cached, incremental); --data is the offline override.
     if args.data:
         ds = mt.load(args.data)
+        account = args.account or ds.account_id or ""
+        since, until = ds.since, ds.until
     else:
         token = config.META_ACCESS_TOKEN
         if not token:
             print("META_ACCESS_TOKEN not set (.env or environment); or pass --data <file>")
             sys.exit(1)
         account = args.account or choose_account(token)   # interactive picker if not given
+
+        # Meta's last_Nd convention ends yesterday (today is partial); match it.
+        until = date.today() - timedelta(days=1)
+        since = until - timedelta(days=args.days - 1)
+        raw_floor = date.today() - timedelta(days=RAW_RETENTION_DAYS)
+        if since < raw_floor:
+            print("  note: raw daily data is kept for ~6 months; older periods are "
+                  "summarized in HISTORIC FACTS below.")
+            since = raw_floor
+
+        def _progress(i, total, s, u):
+            end = "\n" if i == total else "\r"
+            print(f"Fetching {account}: window {i}/{total}  {s.isoformat()}..{u.isoformat()}   ",
+                  end=end, flush=True)
+
+        def _fetch_range(lo, hi):
+            envp = ml.fetch_envelope(token, account=account, since=lo, until=hi,
+                                     level=args.level, progress=_progress)
+            for s, u, why in envp["meta"].get("skipped", []):
+                print(f"  skipped {s}..{u}: {why}")
+            return envp["data"]
+
         try:
-            with Spinner(f"Fetching live Meta Ads data for {account} ({args.preset})"):
-                ds = ml.fetch_dataset(token, account=account,
-                                      preset=args.preset, level=args.level)
+            raw_rows, cstats = fetch_cache.fetch_cached(account, args.level, since, until,
+                                                        _fetch_range)
         except Exception as e:  # noqa: BLE001
-            print(f"[meta fetch error] {e}")
+            print(f"\n[meta fetch error] {e}")
             sys.exit(1)
+        if cstats["from_cache"]:
+            print(f"Served entirely from cache ({cstats['cached_days']} settled days, no fetch).")
+        elif cstats["cached_days"]:
+            print(f"Cache: {cstats['cached_days']} settled days reused, "
+                  f"{cstats['fetched_days']} fetched fresh.")
+
+        try:
+            accts = ml.list_accounts(token)
+        except Exception as e:  # noqa: BLE001
+            print(f"[meta error] {e}")
+            sys.exit(1)
+        am = next((a for a in accts if f"act_{a['account_id']}" == account), {})
+        acct_name, acct_cur = am.get("name", "?"), am.get("currency", "INR")
+
+        dates = [r.get("date_start") for r in raw_rows if r.get("date_start")]
+        env_pull = {
+            "meta": {"account_id": account, "account_name": acct_name, "currency": acct_cur,
+                     "level": args.level, "source": "live+cache",
+                     "date_range": {"since": min(dates) if dates else since.isoformat(),
+                                    "until": max(dates) if dates else until.isoformat()}},
+            "data": raw_rows,
+        }
+        ds = mt.normalize(env_pull)
 
     if len(ds) == 0:
         print("No data rows for this account/window.")
         sys.exit(1)
     print(f"Loaded {len(ds)} rows | {ds.account_name} ({ds.currency}) "
           f"[{ds.since or '?'} -> {ds.until or '?'}]")
-    context = build_context(ds, full=args.full)
+
+    # competitor intelligence: discover (LLM) -> scrape (Apify, cached) -> code
+    # aggregates. Live path only -- the CLI is the one surface allowed to scrape
+    # inline; best-effort, never fatal.
+    if token:
+        def _cprog(stage, detail):
+            print(f"Competitor [{stage}]: {detail}", flush=True)
+        try:
+            competitor_block, cmeta = competitor_pipeline.build(
+                account, ds, refresh=args.refresh_competitors, progress=_cprog)
+            print(f"Competitor intel: {cmeta['discovered']} discovered, "
+                  f"{cmeta['scraped_ads']} ads"
+                  + (" (freshly scraped)" if cmeta["scraped_now"] else " (from cache)"))
+        except Exception as e:  # noqa: BLE001 -- competitor intel is best-effort, never fatal
+            print(f"  (competitor intel skipped: {e})")
+
+    context = build_full_context(ds, token, account, args.level, since, until,
+                                 full=args.full, competitor_block=competitor_block or None,
+                                 progress=print)
     mode = f"FULL data ({len(ds)} rows)" if args.full else "summary only"
-    print(f"Context: {mode} -- {len(context):,} chars sent each turn "
+    print(f"Context: {mode} + analysis -- {len(context):,} chars sent each turn "
           f"(dense numeric tables tokenize ~0.8 tok/char, so ~{int(len(context) * 0.8):,} tokens).")
 
-    client = OpenAI(api_key=key, base_url=base)
+    client = OpenAI(api_key=key, base_url=base_url)
     messages = [{"role": "system", "content": SYSTEM.format(context=context)}]
 
     print(f"RAG chat over '{ds.account_name}' via {MODEL}.")
-    print("Ask about spend, ROAS, campaigns, trends, fatigue. 'exit' to quit.")
-    print("Try: 'which campaign should I cut?'  'how did ROAS trend?'  'what's my blended ROAS?'\n")
+    print("Ask about spend, ROAS, campaigns, trends, fatigue, and specific ADS (pulled on demand).")
+    print("Try: 'which campaign should I cut?'  'top 5 ads by ROAS?'  'which ads are fatiguing?'\n")
 
     while True:
         try:
@@ -634,15 +706,17 @@ def main():
             continue
         if q.lower() in {"exit", "quit", "/exit"}:
             break
+        turn_start = len(messages)
         messages.append({"role": "user", "content": q})
-        print("\nbot > ", end="", flush=True)
+        print("\nbot >", flush=True)
         try:
-            ans, _ = complete(client, messages, stream=STREAM)
+            ans, _, _ = run_tool_loop(client, messages, account, token,
+                                      progress=lambda s: print(f"  {s}", flush=True))
+            print(ans)
         except Exception as e:  # noqa: BLE001 -- surface any API error, keep the REPL alive
             print(f"\n  [api error] {e}\n")
-            messages.pop()
+            del messages[turn_start:]                  # roll back this whole turn
             continue
-        messages.append({"role": "assistant", "content": ans})
         print()
 
     print(f"\nLLM cost ledger total (all sessions): ${cost_ledger.total_usd():.4f}")
