@@ -17,7 +17,7 @@ from ai_layer.db import engine, models as m
 
 log = logging.getLogger("ai_layer.db.repository")
 
-_FACT_COLS = [f.name for f in fields(mt.CampaignDayFact)]          # 20, incl. date (str)
+_FACT_COLS = list(mt.FACT_FIELDS)          # the 20 table columns, NOT the extended dataclass
 _FACT_UPDATE = [c for c in _FACT_COLS if c not in ("campaign_id", "date")]
 
 

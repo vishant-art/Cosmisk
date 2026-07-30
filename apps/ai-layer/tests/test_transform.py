@@ -189,3 +189,32 @@ def test_campaign_summary_groups():
     ).to_dataframe())
     assert set(cs.campaign_name) == {"A", "B"}
     assert "link_ctr" in cs.columns
+
+
+# --- extended fields: ad/adset ids + video (not in FACT_FIELDS) -------------
+
+def test_row_to_fact_video_and_ad_fields():
+    from ai_layer.meta_transform import row_to_fact
+    raw = {
+        "campaign_id": "c1", "campaign_name": "C", "date_start": "2026-07-01",
+        "adset_id": "as1", "adset_name": "AS", "ad_id": "a1", "ad_name": "A",
+        "spend": "100", "impressions": "1000",
+        "actions": [{"action_type": "video_view", "value": "250"},
+                    {"action_type": "offsite_conversion.fb_pixel_purchase", "value": "2"}],
+        "action_values": [{"action_type": "offsite_conversion.fb_pixel_purchase", "value": "500"}],
+        "video_thruplay_watched_actions": [{"action_type": "video_view", "value": "80"}],
+        "video_play_actions": [{"action_type": "video_view", "value": "400"}],
+    }
+    f = row_to_fact(raw)
+    assert (f.ad_id, f.adset_id) == ("a1", "as1")
+    assert f.video_3s == 250 and f.thruplay == 80
+    assert abs(f.hook_rate - 25.0) < 1e-9        # 250/1000*100
+    assert f.is_video is True
+    assert f.roas == 5.0                          # derived 500/100, never reported field
+
+
+def test_campaign_level_row_defaults():
+    from ai_layer.meta_transform import row_to_fact
+    f = row_to_fact({"campaign_id": "c1", "campaign_name": "C",
+                     "date_start": "2026-07-01", "spend": "10", "impressions": "100"})
+    assert f.ad_id == "" and f.is_video is False and f.hook_rate == 0.0
