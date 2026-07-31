@@ -253,6 +253,34 @@ def test_chat_source_store_keeps_legacy_path(client, monkeypatch):
         assert called.get("complete") and r.json()["tools_used"] == []
 
 
+def test_chat_stream_source_store_keeps_legacy_path(client, monkeypatch):
+    """source='store' on /chat/stream keeps the pre-cache-default legacy path: plain
+    build_context + chat.stream_answer, no Meta token required. Seeds the store via the
+    file's existing seed() helper so /chat/stream doesn't 404 or fall through to a live
+    fetch."""
+    from ai_layer import chat
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(chat, "stream_answer",
+                        lambda c, m, account=None: iter(["legacy ", "stream"]))
+    seed()  # act_1 in the store -> source='store' hits it, no live fallback
+    r = client.post("/chat/stream", json={"account_id": "act_1", "message": "hi",
+                                          "source": "store"})
+    assert r.status_code == 200
+    assert "legacy" in r.text
+
+
+def test_chat_stream_default_source_requires_meta_token(client, monkeypatch):
+    """Default source is now 'cache' (was 'store'): without X-Meta-Token and no env
+    fallback, the cache-backed path can't fetch anything -> 400, not a silent fall
+    through to a Meta call with no token."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", None)
+    r = client.post("/chat/stream", json={"account_id": "act_1", "message": "hi"})
+    assert r.status_code == 400
+
+
 def test_competitors_get_404_before_refresh(client, monkeypatch):
     monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
     assert client.get("/competitors/act_none").status_code == 404

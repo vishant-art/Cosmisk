@@ -206,7 +206,10 @@ def _chat_messages(req: ChatRequest, token: str | None, brand: str | None):
             if len(ds) == 0:
                 raise HTTPException(status_code=404, detail="no data for this account")
             since, until = window or (None, None)
-            comp_block = competitor_pipeline.stored_block(req.account_id, brand_id=brand)
+            try:
+                comp_block = competitor_pipeline.stored_block(req.account_id, brand_id=brand)
+            except Exception:  # noqa: BLE001 -- competitor intel is additive, never fatal
+                comp_block = ""
             context = chat.build_full_context(ds, token, req.account_id, "campaign",
                                               since, until, brand_id=brand,
                                               full=(mode == "full"),
@@ -232,8 +235,14 @@ def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token),
         answer, cost = chat.complete(client, messages, stream=False, account=req.account_id)
         tools_used: list[str] = []
     else:
-        answer, cost, tools_used = chat.run_tool_loop(client, messages, req.account_id,
-                                                      token, brand_id=brand)
+        try:
+            answer, cost, tools_used = chat.run_tool_loop(client, messages, req.account_id,
+                                                          token, brand_id=brand)
+        except ml.MetaError as e:
+            limited = e.code == 4 or e.subcode in (1504039, 1504022) or \
+                "request limit" in (e.message or "").lower()
+            raise HTTPException(status_code=429 if limited else 502,
+                                detail=f"Meta API error during ad-level tools: {e}")
     cost = round(cost, 6)
     return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL,
                         cost_usd=cost, session_id=session_id, context_mode=mode,
