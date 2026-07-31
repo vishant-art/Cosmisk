@@ -30,7 +30,7 @@ If the data is already in Meta/GA/Shopify dashboards, it's **not "The Gap"** —
 
 ## TEST INVARIANT (before any commit)
 
-default suite **400/9** · pg suite **388/10** · `tsc --noEmit` baseline-only (`billing.ts:4` stripe) · `madge --circular` **0 cycles** · ai-layer pytest **620/7** (+2 known cost_ledger baseline fails on shared demo DB; connector_source ignored).
+default suite **400/9** · pg suite **388/10** · `tsc --noEmit` baseline-only (`billing.ts:4` stripe) · `madge --circular` **0 cycles** · ai-layer pytest **624/7** (+2 known cost_ledger baseline fails on shared demo DB; connector_source ignored).
 
 ---
 
