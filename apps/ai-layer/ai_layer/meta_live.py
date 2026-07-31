@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -318,6 +319,21 @@ def fetch_dataset(token, account=None, preset="last_30d", level="campaign", max_
     """Live pull -> typed meta_transform.Dataset (one call for consumers)."""
     return mt.normalize(fetch_envelope_preset(token, account=account, preset=preset,
                                        level=level, max_rows=max_rows))
+
+
+_PRESET_DAYS_RE = re.compile(r"^last_(\d+)d$")
+
+
+def preset_days(preset: str) -> int | None:
+    """Days for a last_Nd preset; None when the preset isn't day-shaped."""
+    m = _PRESET_DAYS_RE.match(preset or "")
+    return int(m.group(1)) if m else None
+
+
+def fetch_dataset_range(token, account, since, until, level="campaign"):
+    """Chunked range pull -> typed Dataset (the size-safe fetch_dataset)."""
+    return mt.normalize(fetch_envelope(token, account=account, since=since,
+                                       until=until, level=level))
 
 
 def main():

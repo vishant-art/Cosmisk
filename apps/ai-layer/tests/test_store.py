@@ -1,8 +1,11 @@
 """Tests for the Phase 3 SQLite store: round-trip + trailing-window UPSERT."""
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import pytest
 
+from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt, store
 
 
@@ -63,6 +66,55 @@ def test_load_window_filters_dates():
                                 raw("A", "2026-05-10", 100, 2, 300)]))
     back = store.load_dataset("act_1", since="2026-05-03", until="2026-05-07")
     assert [f.date for f in back.facts] == ["2026-05-05"]
+
+
+def test_ingest_day_preset_uses_chunked_range_fetcher(monkeypatch):
+    """last_Nd presets must route through fetch_dataset_range (the chunked, adaptive
+    fetcher) -- the legacy unchunked fetch_dataset 500s on large accounts past ~21
+    daily days. Also asserts the resulting window ends yesterday and spans N days."""
+    calls = {}
+
+    def fake_fetch_envelope(token, account, since, until, level="campaign", progress=None):
+        calls["token"], calls["account"] = token, account
+        calls["since"], calls["until"] = since, until
+        return {"meta": {"account_id": account, "account_name": "Acme", "currency": "INR"},
+                "data": [raw("A", since.isoformat(), 100, 2, 300)]}
+
+    def legacy_should_not_run(*a, **k):
+        raise AssertionError("legacy fetch_dataset must not run for a last_Nd preset")
+
+    monkeypatch.setattr(ml, "fetch_envelope", fake_fetch_envelope)
+    monkeypatch.setattr(ml, "fetch_dataset", legacy_should_not_run)
+
+    result = store.ingest("tok", "act_t", preset="last_30d")
+
+    expected_until = date.today() - timedelta(days=1)
+    expected_since = expected_until - timedelta(days=29)
+    assert calls["since"] == expected_since and calls["until"] == expected_until
+    assert calls["account"] == "act_t" and calls["token"] == "tok"
+
+    assert result["rows_upserted"] == 1
+    back = store.load_dataset("act_t")
+    assert len(back) == 1
+
+
+def test_ingest_non_day_preset_keeps_legacy_fetch(monkeypatch):
+    """Non-day-shaped presets (e.g. "this_month") keep using the legacy
+    fetch_dataset -- there's no since/until to chunk against."""
+    calls = {"legacy": 0}
+
+    def fake_fetch_dataset(token, account=None, preset="last_30d", level="campaign"):
+        calls["legacy"] += 1
+        return ds_of([raw("A", "2026-05-01", 100, 2, 300)], account_id=account)
+
+    def range_should_not_run(*a, **k):
+        raise AssertionError("fetch_dataset_range must not run for a non-day preset")
+
+    monkeypatch.setattr(ml, "fetch_dataset", fake_fetch_dataset)
+    monkeypatch.setattr(ml, "fetch_dataset_range", range_should_not_run)
+
+    store.ingest("tok", "act_m", preset="this_month")
+    assert calls["legacy"] == 1
 
 
 def test_accounts_isolated():

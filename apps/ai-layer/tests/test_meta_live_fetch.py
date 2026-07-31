@@ -49,6 +49,17 @@ def test_meta_error_classifiers():
     assert ml.is_beyond_retention(e2)
 
 
+def test_preset_days():
+    """Days for a last_Nd preset; None when the preset isn't day-shaped -- the
+    signal that routes a preset through the chunked range fetcher vs. the legacy
+    unchunked one."""
+    assert ml.preset_days("last_30d") == 30
+    assert ml.preset_days("last_7d") == 7
+    assert ml.preset_days("this_month") is None
+    assert ml.preset_days("") is None
+    assert ml.preset_days(None) is None
+
+
 def test_adaptive_halving_and_retention_skip(monkeypatch):
     """Windows >3 days are rejected as too big; beyond-retention windows are skipped."""
     def fake_paged(account, params, max_rows=5000):

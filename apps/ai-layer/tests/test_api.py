@@ -78,6 +78,28 @@ def test_insights_from_store(client, monkeypatch):
     assert len(body["daily"]) == 2          # two days
 
 
+def test_insights_live_source_uses_chunked_range_fetcher(client, monkeypatch):
+    """source=live with a day-shaped preset must route through fetch_dataset_range
+    (the chunked, size-safe fetcher) -- the legacy fetch_dataset 500s on big
+    accounts past ~21 daily days."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", "tok")
+
+    ds = mt.normalize({"meta": {"account_id": "act_live", "account_name": "Acme",
+                                "currency": "INR"},
+                       "data": [raw("A", "2026-05-01", 100, 2, 300)]})
+
+    def legacy_should_not_run(*a, **k):
+        raise AssertionError("legacy fetch_dataset must not run for a day-shaped preset")
+
+    monkeypatch.setattr(api.ml, "fetch_dataset_range", lambda *a, **k: ds)
+    monkeypatch.setattr(api.ml, "fetch_dataset", legacy_should_not_run)
+
+    r = client.get("/insights/act_live?source=live&preset=last_30d")
+    assert r.status_code == 200
+    assert r.json()["totals"]["spend"] == 100
+
+
 def test_insights_404_when_empty(client, monkeypatch):
     monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
     monkeypatch.setattr(config, "META_ACCESS_TOKEN", None)   # no live fallback
