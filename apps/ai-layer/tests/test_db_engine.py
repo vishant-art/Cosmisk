@@ -17,3 +17,10 @@ def test_to_psycopg3_requires_url():
 def test_preflight_ok_against_test_branch():
     engine.reset_engine()
     assert engine.preflight() is True
+
+
+def test_engine_connect_args_include_keepalives():
+    for k in ("keepalives", "keepalives_idle", "keepalives_interval",
+              "keepalives_count", "connect_timeout"):
+        assert k in engine.CONNECT_ARGS
+    assert engine.CONNECT_ARGS["keepalives"] == 1
