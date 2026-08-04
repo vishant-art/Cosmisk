@@ -4,4 +4,4 @@ Disallow: /dashboard
 Disallow: /settings
 Disallow: /onboarding
 
-Sitemap: https://cosmisk.ai/sitemap.xml
+Sitemap: https://cosmisk.com/sitemap.xml

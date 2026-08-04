@@ -11,7 +11,7 @@ import { CommonModule } from '@angular/common';
       <div class="max-w-3xl mx-auto px-6">
         <p class="text-sm font-body text-accent font-semibold uppercase tracking-widest mb-3">Legal</p>
         <h1 class="text-4xl font-display font-bold text-navy mb-3">Privacy Policy</h1>
-        <p class="text-sm text-gray-500 font-body">Last updated: March 2026</p>
+        <p class="text-sm text-gray-500 font-body">Last updated: 29 July 2026</p>
       </div>
     </section>
 
@@ -23,9 +23,12 @@ import { CommonModule } from '@angular/common';
           <!-- Intro -->
           <div>
             <p class="text-base text-gray-700 font-body leading-relaxed">
-              This Privacy Policy describes how Cosmisk ("<strong>we</strong>", "<strong>us</strong>", or "<strong>our</strong>"), operated by Vishant Jain, India, collects, uses, and protects information when you use our platform at
+              This Privacy Policy describes how Cosmisk ("<strong>we</strong>", "<strong>us</strong>", or "<strong>our</strong>"), a sole proprietorship of Sanskar Saxena registered in India under Udyam Registration Number UDYAM-GJ-01-0663897, collects, uses, and protects information when you use our platform at
               <a href="https://cosmisk.com" class="text-accent underline">cosmisk.com</a>.
               By accessing or using Cosmisk, you agree to the practices described in this policy.
+            </p>
+            <p class="text-base text-gray-700 font-body leading-relaxed mt-4">
+              This policy is published in accordance with the Information Technology Act, 2000 and the rules made thereunder, and the Digital Personal Data Protection Act, 2023. Your personal data is stored and processed on servers located outside India, operated by the infrastructure providers listed below. Such transfers are permitted under Section 16 of the Digital Personal Data Protection Act, 2023.
             </p>
           </div>
 
@@ -200,7 +203,7 @@ import { CommonModule } from '@angular/common';
             </ul>
             <p class="text-sm text-gray-600 font-body leading-relaxed mt-3">
               No method of transmission or storage is 100% secure. While we strive to protect your data, we cannot guarantee absolute security. If you believe your account has been compromised, please contact us immediately at
-              <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>.
+              <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>.
             </p>
           </div>
 
@@ -267,7 +270,7 @@ import { CommonModule } from '@angular/common';
             </div>
             <p class="text-sm text-gray-600 font-body leading-relaxed mt-4">
               To exercise any of these rights, email us at
-              <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>.
+              <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>.
               We will respond within 30 days. We may ask you to verify your identity before processing a request.
             </p>
           </div>
@@ -304,11 +307,16 @@ import { CommonModule } from '@angular/common';
               <p class="text-sm font-body text-gray-700">
                 <span class="font-semibold text-navy">Cosmisk</span>
               </p>
-              <p class="text-sm font-body text-gray-700">Operated by Vishant Jain</p>
-              <p class="text-sm font-body text-gray-700">India</p>
+              <p class="text-sm font-body text-gray-700">A sole proprietorship of Sanskar Saxena</p>
+              <p class="text-sm font-body text-gray-700">Udyam Registration No. UDYAM-GJ-01-0663897</p>
+              <p class="text-sm font-body text-gray-700">
+                27, Nirmal Bunglows, Nr Karnavati Park, Opp Baroda Expressway,<br />
+                CTM, Ahmedabad, Gujarat 380026, India
+              </p>
+              <p class="text-sm font-body text-gray-700">Phone: +91 96625 98320</p>
               <p class="text-sm font-body text-gray-700">
                 Email:
-                <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
               </p>
               <p class="text-sm font-body text-gray-700">
                 Website:

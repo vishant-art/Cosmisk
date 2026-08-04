@@ -72,7 +72,7 @@
 
   <!-- Bottom bar -->
   <rect y="590" width="1200" height="40" fill="#6366F1" opacity="0.1"/>
-  <text x="82" y="616" fill="#64748B" font-family="system-ui, sans-serif" font-size="15">cosmisk.ai</text>
+  <text x="82" y="616" fill="#64748B" font-family="system-ui, sans-serif" font-size="15">cosmisk.com</text>
 
   <!-- ROAS badge -->
   <g transform="translate(1020, 590)">

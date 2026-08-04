@@ -872,7 +872,7 @@ export default class SettingsComponent implements OnInit {
         }
       },
       error: (err) => {
-        this.toast.error('Error', err.error?.error || 'Checkout unavailable. Contact support@cosmisk.ai');
+        this.toast.error('Error', err.error?.error || 'Checkout unavailable. Contact cosmiskapp@gmail.com');
       }
     });
   }
@@ -893,7 +893,7 @@ export default class SettingsComponent implements OnInit {
         }
       },
       error: () => {
-        this.toast.error('Error', 'Payment verification failed. Contact support@cosmisk.ai');
+        this.toast.error('Error', 'Payment verification failed. Contact cosmiskapp@gmail.com');
       }
     });
   }
@@ -1103,7 +1103,7 @@ export default class SettingsComponent implements OnInit {
           window.location.href = '/login';
         }
       },
-      error: () => this.toast.error('Failed', 'Could not delete account. Contact support@cosmisk.ai'),
+      error: () => this.toast.error('Failed', 'Could not delete account. Contact cosmiskapp@gmail.com'),
     });
   }
 

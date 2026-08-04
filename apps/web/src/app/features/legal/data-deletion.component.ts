@@ -12,7 +12,7 @@ import { CommonModule } from '@angular/common';
         <!-- Header -->
         <div class="mb-10">
           <h1 class="text-3xl font-bold text-gray-900 mb-3">Data Deletion Instructions</h1>
-          <p class="text-gray-500 text-sm">Last updated: March 2026 &nbsp;&middot;&nbsp; cosmisk.com</p>
+          <p class="text-gray-500 text-sm">Last updated: 29 July 2026 &nbsp;&middot;&nbsp; cosmisk.com</p>
         </div>
 
         <!-- Intro -->
@@ -59,9 +59,9 @@ import { CommonModule } from '@angular/common';
                 <p class="font-semibold text-gray-900 mb-1">Send us an email request</p>
                 <p class="text-gray-600 text-sm leading-relaxed">
                   Email us at
-                  <a href="mailto:support&#64;cosmisk.com?subject=Data Deletion Request"
+                  <a href="mailto:cosmiskapp&#64;gmail.com?subject=Data Deletion Request"
                      class="text-indigo-600 hover:text-indigo-700 font-medium underline underline-offset-2">
-                    support&#64;cosmisk.com
+                    cosmiskapp&#64;gmail.com
                   </a>
                   with the subject line <span class="font-medium text-gray-800">"Data Deletion Request"</span>.
                   Please include the email address associated with your account. We will process your
@@ -119,11 +119,12 @@ import { CommonModule } from '@angular/common';
           <h2 class="text-base font-semibold text-gray-900 mb-2">Questions?</h2>
           <p class="text-gray-600 text-sm leading-relaxed">
             If you have any questions about data deletion or our privacy practices, please contact us at
-            <a href="mailto:support&#64;cosmisk.com"
+            <a href="mailto:cosmiskapp&#64;gmail.com"
                class="text-indigo-600 hover:text-indigo-700 font-medium underline underline-offset-2">
-              support&#64;cosmisk.com
+              cosmiskapp&#64;gmail.com
             </a>.
-            Cosmisk is operated by Vishant Jain, based in India.
+            Cosmisk is a sole proprietorship of Sanskar Saxena, Udyam Registration No. UDYAM-GJ-01-0663897,
+            27, Nirmal Bunglows, Nr Karnavati Park, Opp Baroda Expressway, CTM, Ahmedabad, Gujarat 380026, India.
           </p>
         </div>
 
