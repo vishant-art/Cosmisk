@@ -128,10 +128,10 @@ import { LucideAngularModule } from 'lucide-angular';
 
         <div class="border-t border-white/[0.06] pt-8 text-center space-y-2">
           <p class="text-gray-500 text-sm font-body">&copy; 2026 Cosmisk. Made in India</p>
-          <p class="text-gray-600 text-xs font-body leading-relaxed">
+          <p class="text-gray-400 text-xs font-body leading-relaxed">
             Cosmisk is a sole proprietorship of Sanskar Saxena · Udyam Registration No. UDYAM-GJ-01-0663897<br />
             27, Nirmal Bunglows, Nr Karnavati Park, Opp Baroda Expressway, CTM, Ahmedabad, Gujarat 380026, India<br />
-            <a href="mailto:support&#64;cosmisk.com" class="hover:text-gray-400 no-underline">support&#64;cosmisk.com</a>
+            <a href="mailto:cosmiskapp&#64;gmail.com" class="text-gray-300 underline underline-offset-2 hover:text-white transition-colors">cosmiskapp&#64;gmail.com</a>
             · +91 96625 98320
           </p>
         </div>

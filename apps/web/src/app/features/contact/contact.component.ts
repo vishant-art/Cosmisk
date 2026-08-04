@@ -126,7 +126,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
             <div class="bg-[#F7F8FA] rounded-xl border border-gray-200 p-6 text-center">
               <lucide-icon name="video" [size]="28" class="text-gray-300 mb-2 mx-auto"></lucide-icon>
               <p class="text-sm text-gray-500 font-body m-0 mb-3">Calendly integration coming soon</p>
-              <a href="mailto:hello&#64;cosmisk.ai?subject=Demo Request" class="btn-primary !py-2 !px-5 !text-sm no-underline inline-flex">
+              <a href="mailto:cosmiskapp&#64;gmail.com?subject=Demo Request" class="btn-primary !py-2 !px-5 !text-sm no-underline inline-flex">
                 Email for Demo
               </a>
             </div>
@@ -140,7 +140,7 @@ import { AnimateOnScrollDirective } from '../../shared/directives/animate-on-scr
                 <lucide-icon name="mail" [size]="18" class="text-accent mt-0.5"></lucide-icon>
                 <div>
                   <p class="text-sm font-body font-semibold text-navy m-0">Email</p>
-                  <p class="text-sm text-gray-600 m-0">hello&#64;cosmisk.ai</p>
+                  <p class="text-sm text-gray-600 m-0">cosmiskapp&#64;gmail.com</p>
                 </div>
               </div>
               <div class="flex items-start gap-3">

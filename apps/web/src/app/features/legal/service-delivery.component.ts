@@ -1,11 +1,10 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-service-delivery',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [RouterLink],
   template: `
     <!-- Page Header -->
     <section class="bg-white border-b border-gray-200 py-16 -mt-[72px] pt-[calc(4rem+72px)]">
@@ -43,7 +42,7 @@ import { RouterLink } from '@angular/router';
                 <a href="https://cosmisk.com" class="text-accent underline">cosmisk.com</a>.
               </p>
               <p class="text-sm text-gray-600 font-body leading-relaxed">
-                A confirmation email containing your subscription details and invoice is sent to the same address, ordinarily <strong class="text-navy">within a few minutes</strong> of payment.
+                Your payment is confirmed by your bank or UPI app at the time of the transaction, and your current subscription details are shown under <strong class="text-navy">Settings &rarr; Billing</strong> in your account.
               </p>
               <p class="text-sm text-gray-600 font-body leading-relaxed">
                 The Services are delivered over the internet and are available continuously, subject to scheduled maintenance and to events outside our reasonable control.
@@ -57,8 +56,8 @@ import { RouterLink } from '@angular/router';
           <div>
             <h2 class="text-xl font-display font-bold text-navy mb-4">2. If Access Is Not Provisioned</h2>
             <p class="text-sm text-gray-600 font-body leading-relaxed">
-              In the rare event that payment succeeds but account access is not provisioned, or you do not receive your confirmation email, please first check your spam or promotions folder. If it is not there, contact us at
-              <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+              In the rare event that payment succeeds but account access is not provisioned, contact us at
+              <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
               or +91 96625 98320. We will restore access or, where we are unable to do so, issue a
               <strong class="text-navy">full refund</strong> of the amount charged, in accordance with our
               <a routerLink="/refund-policy" class="text-accent underline">Cancellation &amp; Refund Policy</a>.
@@ -73,7 +72,7 @@ import { RouterLink } from '@angular/router';
             <div class="space-y-3">
               <p class="text-sm text-gray-600 font-body leading-relaxed">
                 Support is provided by email at
-                <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>,
+                <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>,
                 ordinarily responded to within <strong class="text-navy">one (1) business day</strong>.
               </p>
               <p class="text-sm text-gray-600 font-body leading-relaxed">
@@ -91,7 +90,7 @@ import { RouterLink } from '@angular/router';
           <div>
             <h2 class="text-xl font-display font-bold text-navy mb-4">4. Geographic Scope</h2>
             <p class="text-sm text-gray-600 font-body leading-relaxed">
-              The Services are offered to customers in <strong class="text-navy">India</strong>. Pricing is displayed and charged in <strong class="text-navy">Indian Rupees (INR)</strong>. Personal data is primarily stored and processed in India, as described in our
+              The Services are delivered online and are available in India and internationally. Prices are shown in <strong class="text-navy">Indian Rupees</strong> or <strong class="text-navy">US Dollars</strong> depending on the plan you select. Personal data is stored and processed outside India, as described in our
               <a routerLink="/privacy-policy" class="text-accent underline">Privacy Policy</a>.
             </p>
           </div>
@@ -111,7 +110,7 @@ import { RouterLink } from '@angular/router';
               </p>
               <p class="text-sm font-body text-gray-700">
                 Email:
-                <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
               </p>
               <p class="text-sm font-body text-gray-700">Phone: +91 96625 98320</p>
             </div>

@@ -1,6 +1,6 @@
 import { ApplicationConfig, ErrorHandler, importProvidersFrom } from '@angular/core';
 import { GlobalErrorHandler } from './core/services/global-error-handler';
-import { provideRouter, withViewTransitions } from '@angular/router';
+import { provideRouter, withViewTransitions, withInMemoryScrolling } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes } from './app.routes';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
@@ -33,7 +33,7 @@ import {
 export const appConfig: ApplicationConfig = {
   providers: [
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
-    provideRouter(routes, withViewTransitions()),
+    provideRouter(routes, withViewTransitions(), withInMemoryScrolling({ scrollPositionRestoration: 'top' })),
     provideHttpClient(
       withInterceptors([authInterceptor, errorInterceptor])
     ),

@@ -266,7 +266,7 @@ import { ToastService } from '../../core/services/toast.service';
               <div class="w-3 h-3 rounded-full bg-red-400"></div>
               <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
               <div class="w-3 h-3 rounded-full bg-green-400"></div>
-              <span class="ml-2 text-xs text-gray-400 font-body">cosmisk.ai/chat</span>
+              <span class="ml-2 text-xs text-gray-400 font-body">cosmisk.com/chat</span>
             </div>
             <div class="space-y-3">
               <div *ngFor="let cmd of chatDemo" class="flex gap-3">
@@ -772,7 +772,7 @@ import { ToastService } from '../../core/services/toast.service';
         <div class="text-center">
           <h3 class="text-2xl font-bold text-navy mb-3">Let's build the future of creative ops</h3>
           <p class="text-gray-400 font-body mb-8 text-lg">
-            vishat&#64;cosmisk.ai &middot; cosmisk.ai
+            cosmiskapp&#64;gmail.com &middot; cosmisk.com
           </p>
           <button
             (click)="downloadPdf()"
@@ -982,7 +982,7 @@ export default class PitchDeckComponent {
           heading: 'Marketing & Sales',
           icon: 'megaphone',
           items: [
-            'Launch cosmisk.ai with case study content',
+            'Launch cosmisk.com with case study content',
             'Cold outreach to 500 DTC brands + agencies (US, India)',
             'LinkedIn thought leadership (3x/week)',
             'Partner with 3 Shopify app communities',

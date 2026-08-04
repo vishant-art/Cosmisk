@@ -1,10 +1,8 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-grievance-officer',
   standalone: true,
-  imports: [CommonModule],
   template: `
     <!-- Page Header -->
     <section class="bg-white border-b border-gray-200 py-16 -mt-[72px] pt-[calc(4rem+72px)]">
@@ -66,7 +64,7 @@ import { CommonModule } from '@angular/common';
               <div>
                 <p class="text-xs font-body text-gray-500 uppercase tracking-wider mb-1">Email</p>
                 <p class="text-sm font-body text-gray-700">
-                  <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                  <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
                 </p>
               </div>
 
@@ -87,7 +85,7 @@ import { CommonModule } from '@angular/common';
               <div>
                 <p class="text-xs font-body text-gray-500 uppercase tracking-wider mb-1">Response time</p>
                 <p class="text-sm font-body text-gray-700">
-                  Acknowledgement within 48 hours; resolution within 30 days of receipt
+                  Acknowledgement within 24 hours; resolution within 15 days of receipt
                 </p>
               </div>
 

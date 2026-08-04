@@ -28,7 +28,7 @@ import { CommonModule } from '@angular/common';
               By accessing or using Cosmisk, you agree to the practices described in this policy.
             </p>
             <p class="text-base text-gray-700 font-body leading-relaxed mt-4">
-              We do not offer any product or service outside India, and your personal data is primarily stored and processed in India. This policy is published in accordance with the Information Technology Act, 2000 and the rules made thereunder, and the Digital Personal Data Protection Act, 2023.
+              This policy is published in accordance with the Information Technology Act, 2000 and the rules made thereunder, and the Digital Personal Data Protection Act, 2023. Your personal data is stored and processed on servers located outside India, operated by the infrastructure providers listed below. Such transfers are permitted under Section 16 of the Digital Personal Data Protection Act, 2023.
             </p>
           </div>
 
@@ -203,7 +203,7 @@ import { CommonModule } from '@angular/common';
             </ul>
             <p class="text-sm text-gray-600 font-body leading-relaxed mt-3">
               No method of transmission or storage is 100% secure. While we strive to protect your data, we cannot guarantee absolute security. If you believe your account has been compromised, please contact us immediately at
-              <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>.
+              <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>.
             </p>
           </div>
 
@@ -270,7 +270,7 @@ import { CommonModule } from '@angular/common';
             </div>
             <p class="text-sm text-gray-600 font-body leading-relaxed mt-4">
               To exercise any of these rights, email us at
-              <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>.
+              <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>.
               We will respond within 30 days. We may ask you to verify your identity before processing a request.
             </p>
           </div>
@@ -316,7 +316,7 @@ import { CommonModule } from '@angular/common';
               <p class="text-sm font-body text-gray-700">Phone: +91 96625 98320</p>
               <p class="text-sm font-body text-gray-700">
                 Email:
-                <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
               </p>
               <p class="text-sm font-body text-gray-700">
                 Website:

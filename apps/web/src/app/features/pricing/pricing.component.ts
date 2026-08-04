@@ -223,7 +223,7 @@ export default class PricingComponent {
     { q: 'What happens when my trial ends?', a: 'You\'ll be downgraded to the Free plan. No data is lost. Upgrade anytime to restore full access.' },
     { q: 'Do you support platforms other than Meta?', a: 'Meta is our primary platform. Google Ads and TikTok support are in beta, planned for Q2 2026.' },
     { q: 'How does the agency plan work?', a: 'The Agency plan includes the Agency Command Center. One login, unlimited ad accounts. White-label reports with your agency branding and a dedicated CSM.' },
-    { q: 'What payment methods do you accept?', a: 'For INR payments: UPI, credit/debit cards, net banking, and wallets via Razorpay. For USD payments: all major credit and debit cards via Stripe.' },
+    { q: 'What payment methods do you accept?', a: 'For INR payments: UPI, credit/debit cards, net banking, and wallets. For USD payments: all major credit and debit cards.' },
     { q: 'Is my data secure?', a: 'SOC 2 compliance in progress. All data is encrypted at rest and in transit. We request read-only access to your Meta account.' },
     { q: 'Can I get a custom plan?', a: 'Yes! Contact our sales team for enterprise needs. Custom pricing and dedicated infrastructure available.' },
   ];

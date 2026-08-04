@@ -1,11 +1,10 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-refund-policy',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [RouterLink],
   template: `
     <!-- Page Header -->
     <section class="bg-white border-b border-gray-200 py-16 -mt-[72px] pt-[calc(4rem+72px)]">
@@ -35,7 +34,7 @@ import { RouterLink } from '@angular/router';
             <h2 class="text-xl font-display font-bold text-navy mb-4">1. Cancellation</h2>
             <p class="text-sm text-gray-600 font-body leading-relaxed mb-4">
               You may cancel your subscription at any time from <strong class="text-navy">Settings &rarr; Billing</strong> within your account, or by writing to
-              <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>.
+              <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>.
             </p>
             <div class="space-y-3">
               <p class="text-sm text-gray-600 font-body leading-relaxed">
@@ -46,6 +45,9 @@ import { RouterLink } from '@angular/router';
               </p>
               <p class="text-sm text-gray-600 font-body leading-relaxed">
                 No cancellation fee is charged at any time.
+              </p>
+              <p class="text-sm text-gray-600 font-body leading-relaxed">
+                If you pay by UPI AutoPay, cancelling the mandate in your UPI app stops future payments but does not cancel your subscription with us. Cancel in <strong class="text-navy">Settings &rarr; Billing</strong> as well, so that your account is closed correctly.
               </p>
             </div>
           </div>
@@ -74,7 +76,7 @@ import { RouterLink } from '@angular/router';
               <div class="bg-[#F7F8FA] rounded-xl border border-gray-200 p-5">
                 <h3 class="text-base font-semibold font-body text-navy mb-2">Renewals</h3>
                 <p class="text-sm text-gray-600 font-body leading-relaxed">
-                  Renewal charges on either plan are non-refundable. We send a renewal reminder by email in advance of every renewal so that you can cancel first if you wish.
+                  Renewal charges on either plan are non-refundable. Your bank or UPI app notifies you before each automatic renewal charge, so you can cancel beforehand if you wish.
                 </p>
               </div>
 
@@ -82,7 +84,7 @@ import { RouterLink } from '@angular/router';
                 <h3 class="text-base font-semibold font-body text-navy mb-2">Billing errors are always refunded in full</h3>
                 <p class="text-sm text-gray-600 font-body leading-relaxed">
                   If you are charged in error, charged twice for the same period, or charged after a valid cancellation, we will refund the full amount without reference to the windows above. Write to
-                  <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                  <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
                   and we will confirm within two (2) business days.
                 </p>
               </div>
@@ -107,7 +109,7 @@ import { RouterLink } from '@angular/router';
               </p>
               <p class="text-sm text-gray-600 font-body leading-relaxed">
                 If more than <strong class="text-navy">fifteen (15) business days</strong> have passed since we confirmed approval of your refund and you have not received it, contact us at
-                <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
                 or +91 96625 98320.
               </p>
             </div>
@@ -153,7 +155,7 @@ import { RouterLink } from '@angular/router';
               </p>
               <p class="text-sm font-body text-gray-700">
                 Email:
-                <a href="mailto:support&#64;cosmisk.com" class="text-accent underline">support&#64;cosmisk.com</a>
+                <a href="mailto:cosmiskapp&#64;gmail.com" class="text-accent underline">cosmiskapp&#64;gmail.com</a>
               </p>
               <p class="text-sm font-body text-gray-700">Phone: +91 96625 98320</p>
             </div>
