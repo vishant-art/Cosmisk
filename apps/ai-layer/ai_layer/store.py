@@ -4,6 +4,8 @@ Public signatures are unchanged; SQLite is retired (see the #29 design spec). Th
 trailing-window UPSERT semantics now live in `db.repository` against Postgres."""
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt
 from ai_layer.db import repository as _repo
@@ -22,6 +24,16 @@ def load_dataset(account_id: str, since: str | None = None, until: str | None = 
 
 
 def ingest(token: str, account: str, preset: str = "last_30d", level: str = "campaign") -> dict:
-    ds = ml.fetch_dataset(token, account=account, preset=preset, level=level)
+    """Trailing-window pull -> upsert. Day-shaped presets (last_Nd) route through
+    the chunked range fetcher (`fetch_dataset_range`) instead of the legacy
+    unchunked `fetch_dataset`: Meta 500s (code=1 subcode=99) on ~21+ daily days
+    for large accounts. Non-day presets (e.g. "this_month") keep the legacy path."""
+    days = ml.preset_days(preset)
+    if days is not None:
+        until = date.today() - timedelta(days=1)
+        since = until - timedelta(days=days - 1)
+        ds = ml.fetch_dataset_range(token, account, since, until, level=level)
+    else:
+        ds = ml.fetch_dataset(token, account=account, preset=preset, level=level)
     n = upsert_dataset(ds)
     return {"account_id": account, "rows_upserted": n, "since": ds.since, "until": ds.until}

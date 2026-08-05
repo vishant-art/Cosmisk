@@ -60,7 +60,7 @@ def main():
     # 1+2. discover account + fetch paginated insights (shared with chat.py)
     print(f"Graph API {ml.GRAPH_API_VERSION} -- fetching live ({args.preset})...")
     try:
-        envelope = ml.fetch_envelope(account=args.account, token=token, preset=args.preset,
+        envelope = ml.fetch_envelope_preset(account=args.account, token=token, preset=args.preset,
                                      level=args.level, max_rows=args.max_rows)
     except Exception as e:  # noqa: BLE001
         print(f"  [meta fetch error] {e}")

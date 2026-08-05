@@ -5,6 +5,7 @@ authoritative cost); `record`/`total_usd` delegate to the DB (ai_layer.cost_ledg
 from __future__ import annotations
 
 PRICING: dict[str, tuple[float, float]] = {
+    "openai/gpt-5.4-mini":          (0.25, 2.00),
     "google/gemini-2.5-flash":      (0.30, 2.50),
     "google/gemini-2.5-flash-lite": (0.10, 0.40),
     "openai/gpt-5-nano":            (0.05, 0.40),

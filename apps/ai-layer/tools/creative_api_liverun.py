@@ -49,7 +49,7 @@ ACCOUNT_ID = None
 DERIVE_BRAND_FROM_SHOPIFY = True
 BRIEF = None
 
-DIRECTION = "tall blonde woman"          # per lemon; steers script + shot prompts
+DIRECTION = "beautiful indian woman"     # per lemon; steers script + shot prompts
 N_SHOTS = 3                              # 3 clips
 SECONDS = 12                             # 3 shots snap to >=4s each -> 12s
 RESOLUTION = "720p"
@@ -367,6 +367,7 @@ def live_run(info: dict) -> int:
     print(f"  brief ({info['brief_src']}): {json.dumps(brief, ensure_ascii=False)}")
     gen_body = {"brief": brief, "images": IMAGES, "formats": FORMATS,
                 "ground": bool(ACCOUNT_ID), "use_shopify": True,
+                "direction": DIRECTION,    # 1d: cast the SAME person into the static concept ads
                 "with_video": False}       # full video comes from the /video/* track
     if ACCOUNT_ID:
         gen_body["account_id"] = ACCOUNT_ID
@@ -391,7 +392,8 @@ def live_run(info: dict) -> int:
     r = client.post("/creative/video/generate",
                     json={"job_id": job_id, "aspect": ASPECT, "resolution": RESOLUTION,
                           "voiceover": True, "captions": True, "sfx": True,
-                          "direction": DIRECTION, "guard_balance": True})
+                          "direction": DIRECTION,   # 1d: cast; 4b hero_with_creator OFF (fal rejects a person-in-seed -> t2v)
+                          "guard_balance": True})
     if r.status_code == 402:
         print(f"  402 balance guard: {json.dumps(r.json().get('detail'))}")
         result["video"] = {"status": "refused_402", "detail": r.json().get("detail")}

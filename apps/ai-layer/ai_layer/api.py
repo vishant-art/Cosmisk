@@ -19,17 +19,20 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 
-from ai_layer import brain, chat, config, context_cache, cost_ledger, store
+from ai_layer import brain, chat, config, context_cache, cost_ledger, fetch_cache, store
 from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt
+from ai_layer.competitor import pipeline as competitor_pipeline
+from ai_layer.db import repository as _repo
 from ai_layer.schemas import (AccountInfo, AiInsight, BlendedBlock, BlendedResponse,
-                              ChatRequest, ChatResponse, CompleteRequest,
+                              ChatRequest, ChatResponse, CompetitorIntelResponse,
+                              CompetitorRefreshResponse, CompleteRequest,
                               CompleteResponse, CostResponse, DailyPoint,
                               IngestResult, InsightsResponse, InsightStatement,
                               PlatformStatus, Totals)
@@ -108,6 +111,18 @@ def _connector_dataset(account_id: str, preset: str) -> mt.Dataset:
     return connector_source.fetch_connector_dataset(account_id, preset)
 
 
+def _fetch_live(token: str, account_id: str, preset: str) -> mt.Dataset:
+    """Day-shaped presets (last_Nd) route through the chunked range fetcher; Meta
+    500s (code=1 subcode=99) on the legacy unchunked pull for large accounts past
+    ~21 daily days. Non-day presets (e.g. "this_month") keep the legacy path."""
+    days = ml.preset_days(preset)
+    if days is not None:
+        until = date.today() - timedelta(days=1)
+        since = until - timedelta(days=days - 1)
+        return ml.fetch_dataset_range(token, account_id, since, until)
+    return ml.fetch_dataset(token, account=account_id, preset=preset)
+
+
 def _dataset(account_id: str, source: str, token: str | None, preset: str) -> mt.Dataset:
     """source='store' reads the accumulated store (falls back to live if empty);
     source='live' always fetches fresh; source='connectors' adapts the
@@ -118,7 +133,7 @@ def _dataset(account_id: str, source: str, token: str | None, preset: str) -> mt
         ds = store.load_dataset(account_id)
         if len(ds) > 0:
             return ds
-    return ml.fetch_dataset(_need_token(token), account=account_id, preset=preset)
+    return _fetch_live(_need_token(token), account_id, preset)
 
 
 # ---- endpoints ------------------------------------------------------------
@@ -160,7 +175,36 @@ def insights(account_id: str, source: str = Query("store"),
                for _, r in daily.iterrows()])
 
 
-def _chat_messages(req: ChatRequest, token: str | None):
+def _cached_dataset(account_id: str, days: int, token: str, brand: str | None):
+    """Cache-backed range fetch -> Dataset (the new default /chat source)."""
+    days = max(1, int(days or 30))
+    until = date.today() - timedelta(days=1)
+    since = until - timedelta(days=days - 1)
+    raw_floor = date.today() - timedelta(days=chat.RAW_RETENTION_DAYS)
+    if since < raw_floor:
+        since = raw_floor                      # older periods live in HISTORIC FACTS
+
+    def _fr(lo, hi):
+        return ml.fetch_envelope(token, account=account_id, since=lo, until=hi,
+                                 level="campaign")["data"]
+
+    rows, _stats = fetch_cache.fetch_cached(account_id, "campaign", since, until,
+                                            _fr, brand_id=brand)
+    accts = {f"act_{a['account_id']}": a for a in ml.list_accounts(token)}
+    am = accts.get(account_id, {})
+    dates = [r.get("date_start") for r in rows if r.get("date_start")]
+    ds = mt.normalize({
+        "meta": {"account_id": account_id, "account_name": am.get("name", "?"),
+                 "currency": am.get("currency", "INR"), "level": "campaign",
+                 "source": "live+cache",
+                 "date_range": {"since": min(dates) if dates else since.isoformat(),
+                                "until": max(dates) if dates else until.isoformat()}},
+        "data": rows,
+    })
+    return ds, (since, until)
+
+
+def _chat_messages(req: ChatRequest, token: str | None, brand: str | None):
     """Shared by /chat and /chat/stream: resolve mode + session-cached snapshot and
     assemble the OpenAI message list. Returns (messages, session_id, mode, cached)."""
     # context_mode wins; legacy full=True forces 'full'.
@@ -168,16 +212,34 @@ def _chat_messages(req: ChatRequest, token: str | None):
     if mode not in ("summary", "full"):
         mode = "summary"
     # Session cache: build the snapshot once, reuse it byte-identical across turns
-    # (skips refetch/rebuild; stable prefix -> Gemini implicit-cache discount).
+    # (skips refetch/rebuild; stable prefix -> Gemini implicit-cache discount). The
+    # cache key is days/source-aware so switching source/window doesn't reuse a stale
+    # snapshot built for a different window.
     session_id = req.session_id or context_cache.new_session_id()
-    context = context_cache.get(session_id, req.account_id, mode)
+    cache_mode = f"{mode}:{req.source}:{req.days}"
+    context = context_cache.get(session_id, req.account_id, cache_mode)
     cached = context is not None
     if not cached:
-        ds = _dataset(req.account_id, req.source, token, "last_30d")
-        if len(ds) == 0:
-            raise HTTPException(status_code=404, detail="no data for this account")
-        context = chat.build_context(ds, full=(mode == "full"))
-        context_cache.put(session_id, req.account_id, mode, context)
+        if req.source in ("store", "connectors", "live"):
+            ds = _dataset(req.account_id, req.source, token, "last_30d")
+            if len(ds) == 0:
+                raise HTTPException(status_code=404, detail="no data for this account")
+            context = chat.build_context(ds, full=(mode == "full"))   # legacy behavior
+        else:
+            ds, window = _cached_dataset(req.account_id, req.days,
+                                        _need_token(token), brand)
+            if len(ds) == 0:
+                raise HTTPException(status_code=404, detail="no data for this account")
+            since, until = window or (None, None)
+            try:
+                comp_block = competitor_pipeline.stored_block(req.account_id, brand_id=brand)
+            except Exception:  # noqa: BLE001 -- competitor intel is additive, never fatal
+                comp_block = ""
+            context = chat.build_full_context(ds, token, req.account_id, "campaign",
+                                              since, until, brand_id=brand,
+                                              full=(mode == "full"),
+                                              competitor_block=comp_block or None)
+        context_cache.put(session_id, req.account_id, cache_mode, context)
     # System (stable, cacheable) prefix first; history + the new question last so the
     # varying part stays at the end (maximizes implicit cache hits).
     messages = [{"role": "system", "content": chat.SYSTEM.format(context=context)}]
@@ -187,25 +249,40 @@ def _chat_messages(req: ChatRequest, token: str | None):
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
-def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
+def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token),
+                 brand: str | None = Depends(caller_brand)):
     if not config.OPENROUTER_API_KEY:
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
-    messages, session_id, mode, cached = _chat_messages(req, token)
+    messages, session_id, mode, cached = _chat_messages(req, token, brand)
     client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
     # per-call cost comes straight from the completion (concurrency-safe; not a global-SUM delta)
-    answer, cost = chat.complete(client, messages, stream=False, account=req.account_id)
+    if req.source in ("store", "connectors", "live"):
+        answer, cost = chat.complete(client, messages, stream=False, account=req.account_id)
+        tools_used: list[str] = []
+    else:
+        try:
+            answer, cost, tools_used = chat.run_tool_loop(client, messages, req.account_id,
+                                                          token, brand_id=brand)
+        except ml.MetaError as e:
+            limited = e.code == 4 or e.subcode in (1504039, 1504022) or \
+                "request limit" in (e.message or "").lower()
+            raise HTTPException(status_code=429 if limited else 502,
+                                detail=f"Meta API error during ad-level tools: {e}")
     cost = round(cost, 6)
     return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL,
-                        cost_usd=cost, session_id=session_id, context_mode=mode, cached=cached)
+                        cost_usd=cost, session_id=session_id, context_mode=mode,
+                        cached=cached, tools_used=tools_used)
 
 
 @app.post("/chat/stream", dependencies=[Depends(require_api_key)])
-def chat_stream_endpoint(req: ChatRequest, token: str | None = Depends(caller_token)):
+def chat_stream_endpoint(req: ChatRequest, token: str | None = Depends(caller_token),
+                         brand: str | None = Depends(caller_brand)):
     """Same as /chat but streams the answer as plain-text chunks. Session/mode/cached
-    are returned as response headers (the body is the answer text)."""
+    are returned as response headers (the body is the answer text). Streaming stays
+    toolless regardless of source (spec Sec.9.6)."""
     if not config.OPENROUTER_API_KEY:
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
-    messages, session_id, mode, cached = _chat_messages(req, token)
+    messages, session_id, mode, cached = _chat_messages(req, token, brand)
     client = OpenAI(api_key=config.OPENROUTER_API_KEY, base_url=config.OPENROUTER_BASE_URL)
     headers = {
         "X-Session-Id": session_id,
@@ -237,8 +314,20 @@ def complete_endpoint(req: CompleteRequest):
 
 
 @app.post("/ingest/{account_id}", response_model=IngestResult, dependencies=[Depends(require_api_key)])
-def ingest(account_id: str, preset: str = Query("last_30d"), token: str | None = Depends(caller_token)):
-    return IngestResult(**store.ingest(_need_token(token), account_id, preset=preset))
+def ingest(account_id: str, preset: str = Query("last_30d"),
+          warm: str | None = Query(None,
+                                   description="comma/space-separated warm targets: cache, history"),
+          token: str | None = Depends(caller_token)):
+    result = IngestResult(**store.ingest(_need_token(token), account_id, preset=preset))
+    if warm:
+        tok = _need_token(token)
+        if "cache" in warm:
+            _cached_dataset(account_id, 30, tok, None)
+        if "history" in warm:
+            chat.build_history_block(tok, account_id, "campaign",
+                                     date.today() - timedelta(days=30),
+                                     date.today() - timedelta(days=1), "INR")
+    return result
 
 
 @app.get("/cost", response_model=CostResponse, dependencies=[Depends(require_api_key)])
@@ -248,6 +337,45 @@ def cost(account_id: str | None = Query(None), brand: str | None = Depends(calle
         raise HTTPException(status_code=400, detail="account_id (or X-Brand-Id) required")
     return CostResponse(account_id=account_id,
                         total_usd=cost_ledger.total_usd(account=account_id))
+
+
+@app.get("/competitors/{account_id}", response_model=CompetitorIntelResponse,
+         dependencies=[Depends(require_api_key)])
+def competitors_get(account_id: str, brand: str | None = Depends(caller_brand)):
+    intel = _repo.load_competitor_intel(account_id, brand_id=brand)
+    if not intel or not intel.get("discovery"):
+        raise HTTPException(status_code=404,
+                            detail="no competitor intel stored; POST /competitors/{id}/refresh")
+    ads = intel.get("ads") or {}
+    return CompetitorIntelResponse(
+        account_id=account_id,
+        discovered=len(intel["discovery"].get("competitors", [])),
+        scraped_ads=int(ads.get("total_ads", 0)),
+        scraped_at=intel.get("scraped_at"),
+        stale=competitor_pipeline._is_stale(ads or None),
+        block=competitor_pipeline.stored_block(account_id, brand_id=brand))
+
+
+@app.post("/competitors/{account_id}/refresh", response_model=CompetitorRefreshResponse,
+          dependencies=[Depends(require_api_key)])
+def competitors_refresh(account_id: str, background: BackgroundTasks,
+                        token: str | None = Depends(caller_token),
+                        brand: str | None = Depends(caller_brand)):
+    ds = store.load_dataset(account_id)
+    if len(ds) == 0 and token:
+        ds = ml.fetch_dataset(token, account=account_id, preset="last_30d")
+    if len(ds) == 0:
+        raise HTTPException(status_code=404, detail="no account data to build context from")
+
+    def _run():
+        try:
+            competitor_pipeline.build(account_id, ds, refresh=True, brand_id=brand)
+        except Exception:  # noqa: BLE001 -- background best-effort
+            import logging
+            logging.getLogger("ai_layer.api").exception("competitor refresh failed")
+
+    background.add_task(_run)
+    return CompetitorRefreshResponse(account_id=account_id, status="started")
 
 
 @app.get("/blended/{account_id}", response_model=BlendedResponse,

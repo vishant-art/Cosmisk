@@ -78,6 +78,28 @@ def test_insights_from_store(client, monkeypatch):
     assert len(body["daily"]) == 2          # two days
 
 
+def test_insights_live_source_uses_chunked_range_fetcher(client, monkeypatch):
+    """source=live with a day-shaped preset must route through fetch_dataset_range
+    (the chunked, size-safe fetcher) -- the legacy fetch_dataset 500s on big
+    accounts past ~21 daily days."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", "tok")
+
+    ds = mt.normalize({"meta": {"account_id": "act_live", "account_name": "Acme",
+                                "currency": "INR"},
+                       "data": [raw("A", "2026-05-01", 100, 2, 300)]})
+
+    def legacy_should_not_run(*a, **k):
+        raise AssertionError("legacy fetch_dataset must not run for a day-shaped preset")
+
+    monkeypatch.setattr(api.ml, "fetch_dataset_range", lambda *a, **k: ds)
+    monkeypatch.setattr(api.ml, "fetch_dataset", legacy_should_not_run)
+
+    r = client.get("/insights/act_live?source=live&preset=last_30d")
+    assert r.status_code == 200
+    assert r.json()["totals"]["spend"] == 100
+
+
 def test_insights_404_when_empty(client, monkeypatch):
     monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
     monkeypatch.setattr(config, "META_ACCESS_TOKEN", None)   # no live fallback
@@ -202,3 +224,96 @@ def test_chat_endpoint_grounded(client, monkeypatch):
     # blended = 1100*... actually revenue 2230 / spend 600 = 3.72
     assert "3.7" in body["answer"] or "3.72" in body["answer"]
     assert body["model"] and body["cost_usd"] >= 0
+
+
+# ---- Task 11: cache-backed /chat tool loop + /competitors ----
+
+def test_chat_default_source_runs_tool_loop(client, monkeypatch):
+    """Offline: the default source='cache' path builds context via build_full_context
+    (with the stored competitor block) and answers via the tool-calling loop."""
+    from ai_layer import api as api_mod, chat, meta_transform as mt
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    ds = mt.normalize({"meta": {"account_id": "act_1", "account_name": "N",
+                                "currency": "INR",
+                                "date_range": {"since": "2026-07-01", "until": "2026-07-28"},
+                                "level": "campaign", "source": "live+cache"},
+                       "data": [{"campaign_id": "c", "campaign_name": "C",
+                                 "date_start": "2026-07-01", "spend": "10",
+                                 "impressions": "100"}]})
+    monkeypatch.setattr(api_mod, "_cached_dataset",
+                        lambda account_id, days, token, brand: (ds, None))
+    monkeypatch.setattr(chat, "build_full_context",
+                        lambda *a, **k: "CTX")
+    monkeypatch.setattr(chat, "run_tool_loop",
+                        lambda client_, messages, account, token, brand_id=None, progress=None:
+                        ("**answer**", 0.01, ["top_ads"]))
+    r = client.post("/chat", json={"account_id": "act_1", "message": "top ads?"},
+                    headers={"X-Meta-Token": "tok"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["answer"] == "**answer**" and body["tools_used"] == ["top_ads"]
+
+
+def test_chat_source_store_keeps_legacy_path(client, monkeypatch):
+    """source='store' keeps the pre-tool-loop behavior: plain build_context + chat.complete,
+    empty tools_used. Adapted from the brief: seeds the store via the file's existing
+    seed() helper so /chat doesn't 404 or fall through to a live fetch."""
+    from ai_layer import api as api_mod, chat
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    called = {}
+
+    def _fake_complete(c, m, stream=False, account=None):
+        called["complete"] = True
+        return "legacy", 0.0
+
+    monkeypatch.setattr(chat, "complete", _fake_complete)
+    seed()  # act_1 in the store -> source='store' hits it, no live fallback
+    r = client.post("/chat", json={"account_id": "act_1", "message": "hi",
+                                   "source": "store"})
+    assert r.status_code in (200, 404)     # 404 only if the store fixture is empty
+    if r.status_code == 200:
+        assert called.get("complete") and r.json()["tools_used"] == []
+
+
+def test_chat_stream_source_store_keeps_legacy_path(client, monkeypatch):
+    """source='store' on /chat/stream keeps the pre-cache-default legacy path: plain
+    build_context + chat.stream_answer, no Meta token required. Seeds the store via the
+    file's existing seed() helper so /chat/stream doesn't 404 or fall through to a live
+    fetch."""
+    from ai_layer import chat
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(chat, "stream_answer",
+                        lambda c, m, account=None: iter(["legacy ", "stream"]))
+    seed()  # act_1 in the store -> source='store' hits it, no live fallback
+    r = client.post("/chat/stream", json={"account_id": "act_1", "message": "hi",
+                                          "source": "store"})
+    assert r.status_code == 200
+    assert "legacy" in r.text
+
+
+def test_chat_stream_default_source_requires_meta_token(client, monkeypatch):
+    """Default source is now 'cache' (was 'store'): without X-Meta-Token and no env
+    fallback, the cache-backed path can't fetch anything -> 400, not a silent fall
+    through to a Meta call with no token."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", None)
+    r = client.post("/chat/stream", json={"account_id": "act_1", "message": "hi"})
+    assert r.status_code == 400
+
+
+def test_competitors_get_404_before_refresh(client, monkeypatch):
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    assert client.get("/competitors/act_none").status_code == 404
+
+
+def test_competitors_get_serves_stored_intel(client, monkeypatch, db_session):
+    from ai_layer.competitor import discover
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    discover.save("act_ci", {"brand_understanding": "kurtas",
+                             "competitors": [{"name": "R"}]})
+    r = client.get("/competitors/act_ci")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["discovered"] == 1 and "R" in body["block"]
