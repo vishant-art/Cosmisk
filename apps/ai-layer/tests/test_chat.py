@@ -221,3 +221,24 @@ def test_build_history_block_survives_keyboard_interrupt(monkeypatch):
                                      progress=seen.append)
     assert "2026-06" in block                       # fallback months rendered
     assert any("interrupted" in s for s in seen)    # progress note surfaced
+
+
+def test_request_path_history_is_capped_at_six_months(db_session, monkeypatch):
+    """D4: a cold account's first /chat eagerly backfilled up to 37 months inside
+    the HTTP request -- rate-budget exhaustion plus a timeout."""
+    from datetime import date
+    from ai_layer import chat, history
+
+    seen = {}
+
+    def fake_ensure(account, level, ffm, today, months_back=history.RETENTION_MONTHS,
+                    progress=None, brand_id=None):
+        seen["months_back"] = months_back
+        return {}
+
+    monkeypatch.setattr(chat.history, "ensure", fake_ensure)
+    monkeypatch.setattr(chat.fetch_cache, "cached_rows", lambda *a, **k: [])
+    monkeypatch.setattr(chat.fetch_cache, "prune_older_than", lambda *a, **k: 0)
+    chat.build_history_block("tok", "act_1", "campaign",
+                             date(2026, 1, 1), date(2026, 7, 1), "INR")
+    assert seen["months_back"] == chat.REQUEST_HISTORY_MONTHS == 6

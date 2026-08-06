@@ -89,3 +89,39 @@ def test_round_cap_forces_tools_off_final(monkeypatch):
         client, [{"role": "user", "content": "loop"}], "act_1", "tok")
     assert answer == "forced"
     assert client.rounds == [True] * chat.TOOL_MAX_ROUNDS + [False]  # final call: tools off
+
+
+def test_days_less_tool_call_defaults_to_fourteen(monkeypatch):
+    """D5: the ad-level default is substituted at the call site from the ad_tools
+    schema text -- NOT in _ensure_ad_level, whose `or` fallback can never fire
+    because _ads always passes a concrete int. Testing _ensure_ad_level directly
+    would pass while production still pulled 30 days."""
+    seen = {}
+
+    def fake_ensure(token, account, days, brand_id=None, progress=None):
+        seen["days"] = days
+        return ([{"ad_id": "a1", "ad_name": "A", "adset_id": "s", "adset_name": "S",
+                  "campaign_name": "C", "date": "2026-07-01", "spend": 600.0,
+                  "revenue": 1800.0, "purchases": 4.0, "impressions": 10000.0,
+                  "link_clicks": 200.0, "frequency": 1.5, "roas": 3.0,
+                  "video_3s": 0.0, "thruplay": 0.0}], "2026-07-01..2026-07-14")
+
+    monkeypatch.setattr(chat, "_ensure_ad_level", fake_ensure)
+    monkeypatch.setattr(chat, "_record_cost",
+                        lambda usage, account=None, op="chat": 0.001)
+    client = _FakeClient([
+        _Msg(tool_calls=[_Call("t1", "top_ads", json.dumps({"metric": "roas"}))]),
+        _Msg(content="done"),
+    ])
+    messages = [{"role": "system", "content": "s"}, {"role": "user", "content": "top ads?"}]
+    chat.run_tool_loop(client, messages, "act_1", "tok")
+    assert seen["days"] == chat.AD_TOOL_FIRST_PULL_DAYS == 14
+
+
+def test_ad_tool_schemas_advertise_the_real_default():
+    """The model reads these strings to decide what `days` to send; if they still
+    say 30, the code default is decorative."""
+    from ai_layer import ad_tools
+    blob = json.dumps(ad_tools.TOOL_SCHEMAS)
+    assert "default 30" not in blob
+    assert f"default {chat.AD_TOOL_FIRST_PULL_DAYS}" in blob

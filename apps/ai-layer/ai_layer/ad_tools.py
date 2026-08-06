@@ -32,7 +32,7 @@ TOOL_SCHEMAS = [
                     "metric": {"type": "string", "enum": list(_METRICS),
                                "description": "metric to rank by"},
                     "n": {"type": "integer", "description": "how many ads, default 5"},
-                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "days": {"type": "integer", "description": "lookback window, default 14, max 60"},
                     "order": {"type": "string", "enum": ["top", "bottom"],
                               "description": "top = highest metric first (best for roas/ctr); "
                                              "bottom = lowest first (best for cpa, or worst ads)"},
@@ -52,7 +52,7 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {
                     "ad_name": {"type": "string", "description": "the ad name (or a distinctive part of it)"},
-                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "days": {"type": "integer", "description": "lookback window, default 14, max 60"},
                 },
                 "required": ["ad_name"],
             },
@@ -69,7 +69,7 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "days": {"type": "integer", "description": "lookback window, default 14, max 60"},
                     "n": {"type": "integer", "description": "how many ads, default 10"},
                 },
             },
@@ -85,7 +85,7 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "days": {"type": "integer", "description": "lookback window, default 14, max 60"},
                     "n": {"type": "integer", "description": "how many ad sets, default 12"},
                 },
             },
@@ -102,7 +102,7 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "days": {"type": "integer", "description": "lookback window, default 14, max 60"},
                 },
             },
         },
@@ -118,7 +118,7 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days": {"type": "integer", "description": "lookback window, default 30, max 60"},
+                    "days": {"type": "integer", "description": "lookback window, default 14, max 60"},
                 },
             },
         },

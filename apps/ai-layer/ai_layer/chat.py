@@ -387,6 +387,12 @@ TOOL_MAX_ROUNDS = 6
 # periods are summarized as monthly facts in history.py, not stored as raw rows.
 RAW_RETENTION_DAYS = 183
 
+# Request-path depth caps. The 37-month / 60-day ceilings still apply to an explicit
+# deeper pull; these are what a COLD account triggers inside one HTTP request, where
+# the old defaults meant rate-budget exhaustion and a timeout.
+REQUEST_HISTORY_MONTHS = 6
+AD_TOOL_FIRST_PULL_DAYS = 14
+
 
 def _ensure_ad_level(token: str, account: str, days: int,
                      brand_id: str | None = None, progress=None) -> tuple[list[dict], str]:
@@ -395,7 +401,7 @@ def _ensure_ad_level(token: str, account: str, days: int,
     Returns (facts, 'since..until')."""
     if not token:
         return [], ""
-    days = max(1, min(int(days or 30), AD_TOOL_MAX_DAYS))
+    days = max(1, min(int(days or AD_TOOL_FIRST_PULL_DAYS), AD_TOOL_MAX_DAYS))
     until = date.today() - timedelta(days=1)
     since = until - timedelta(days=days - 1)
 
@@ -419,7 +425,7 @@ def _placement_breakdown(token: str, account: str, days: int) -> dict:
     window. One aggregate row per placement -> compact, one fast call."""
     if not token:
         return {"error": "no Meta token"}
-    days = max(1, min(int(days or 30), AD_TOOL_MAX_DAYS))
+    days = max(1, min(int(days or AD_TOOL_FIRST_PULL_DAYS), AD_TOOL_MAX_DAYS))
     until = date.today() - timedelta(days=1)
     since = until - timedelta(days=days - 1)
     params = {
@@ -460,7 +466,7 @@ def run_tool_loop(client, messages: list, account: str | None, token: str | None
     extra = {"reasoning": {"effort": REASONING_EFFORT}} if REASONING_EFFORT else {}
 
     def _ads(days):
-        d = max(1, min(int(days or 30), AD_TOOL_MAX_DAYS))
+        d = max(1, min(int(days or AD_TOOL_FIRST_PULL_DAYS), AD_TOOL_MAX_DAYS))
         if d not in ad_cache:
             ad_cache[d] = _ensure_ad_level(token, account, d, brand_id=brand_id,
                                            progress=progress)
@@ -499,9 +505,9 @@ def run_tool_loop(client, messages: list, account: str | None, token: str | None
             if progress:
                 progress(f"[tool] {name}({', '.join(f'{k}={v}' for k, v in args.items())})")
             if name == "placement_breakdown":
-                result = _placement_breakdown(token, account, args.get("days", 30))
+                result = _placement_breakdown(token, account, args.get("days", AD_TOOL_FIRST_PULL_DAYS))
             else:
-                facts, win = _ads(args.get("days", 30))
+                facts, win = _ads(args.get("days", AD_TOOL_FIRST_PULL_DAYS))
                 result = ad_tools.execute(name, args, facts, win)
             messages.append({"role": "tool", "tool_call_id": tc.id,
                              "content": json.dumps(result, ensure_ascii=False)})
@@ -536,6 +542,7 @@ def build_history_block(token: str, account: str, level: str, raw_since: date,
 
     try:
         months = history.ensure(account, level, facts_for_month, date.today(),
+                                months_back=REQUEST_HISTORY_MONTHS,
                                 progress=hprog, brand_id=brand_id)
     except KeyboardInterrupt:
         if progress:
