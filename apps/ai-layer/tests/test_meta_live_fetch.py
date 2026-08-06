@@ -76,3 +76,29 @@ def test_adaptive_halving_and_retention_skip(monkeypatch):
                                     "campaign", skipped)
     assert rows                       # the in-retention slices came back
     assert any("retention" in why for *_, why in skipped)
+
+
+class _NonJsonResp:
+    """Meta serves HTML on gateway errors."""
+    status_code = 502
+    text = "<html>502 Bad Gateway</html>"
+    def json(self):
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+
+def test_non_json_response_raises_classifiable_meta_error(monkeypatch):
+    """A bare ValueError/RuntimeError here defeats is_too_much_data, so the
+    adaptive window-splitting retry can never fire on a gateway blip."""
+    fake = _FakeClient([_NonJsonResp()])
+    monkeypatch.setattr(ml.httpx, "Client", lambda **kw: fake)
+    with pytest.raises(ml.MetaError) as ei:
+        ml.get_insights_paged("act_1", {"limit": 500})
+    assert ei.value.status == 502
+    assert ml.is_too_much_data(ei.value), "a 5xx must stay retryable by window splitting"
+
+
+def test_meta_get_non_json_also_raises_meta_error(monkeypatch):
+    fake = _FakeClient([_NonJsonResp()])
+    monkeypatch.setattr(ml.httpx, "Client", lambda **kw: fake)
+    with pytest.raises(ml.MetaError):
+        ml.meta_get("me/adaccounts", {"access_token": "t"})

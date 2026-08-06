@@ -85,7 +85,9 @@ def is_too_much_data(e: MetaError) -> bool:
     (not a data or auth problem) -- the signal to split the window and retry."""
     msg = (e.message or "").lower()
     return (
-        e.status == 500
+        # any 5xx, not just 500: Meta fronts Graph with gateways that emit 502/503/504
+        # (often as HTML), and those are transient/size-driven exactly like a 500.
+        (e.status or 0) >= 500
         or e.subcode in (99, 1504044)
         or "reduce the amount of data" in msg
         or "temporarily unavailable" in msg
@@ -97,16 +99,25 @@ def is_beyond_retention(e: MetaError) -> bool:
     return e.code == 3018 or "cannot be beyond 37 months" in (e.message or "").lower()
 
 
-def meta_get(path: str, params: dict) -> dict:
-    with httpx.Client(timeout=60) as client:
-        r = client.get(f"{GRAPH_BASE}/{path}", params=params)
+def _json_or_fail(r) -> dict:
+    """Parse a Graph response, raising a CLASSIFIABLE MetaError on anything that is
+    not usable JSON. Meta serves HTML on gateway errors; a bare ValueError (or a
+    RuntimeError) there cannot be read by is_too_much_data / is_beyond_retention, so
+    the adaptive window-splitting retry never fires and a transient blip looks fatal."""
     try:
         body = r.json()
     except ValueError:
-        raise RuntimeError(f"Non-JSON response ({r.status_code}): {r.text[:300]}")
+        raise MetaError(r.status_code, None, None,
+                        f"Non-JSON response: {r.text[:300]}")
     if isinstance(body, dict) and "error" in body:
         _meta_fail(r.status_code, body)
     return body
+
+
+def meta_get(path: str, params: dict) -> dict:
+    with httpx.Client(timeout=60) as client:
+        r = client.get(f"{GRAPH_BASE}/{path}", params=params)
+    return _json_or_fail(r)
 
 
 def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
@@ -124,9 +135,7 @@ def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
     with httpx.Client(timeout=120) as client:
         while True:
             r = client.get(url, params=p)
-            body = r.json()
-            if isinstance(body, dict) and "error" in body:
-                _meta_fail(r.status_code, body)
+            body = _json_or_fail(r)
             rows.extend(body.get("data", []))
             pages += 1
             paging = body.get("paging", {}) or {}
