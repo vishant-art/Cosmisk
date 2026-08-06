@@ -32,6 +32,15 @@ MATERIAL_SPEND_PCT = 0.01   # a campaign must be >=1% of month spend to be "nota
 MIN_PURCHASES = 5           # ... and have real conversions before we rank its ROAS
 NOISE_PCT = 10.0
 
+# A month Meta genuinely has no data for. Stored so it is never refetched; keys match
+# rollup()'s so render_history_block reads it without special-casing (and its
+# spend > 0 filter keeps empties out of the best/worst summary).
+EMPTY_ROLLUP = {
+    "spend": 0.0, "revenue": 0.0, "purchases": 0, "roas": 0.0, "cpa": 0.0,
+    "link_ctr": 0.0, "cpm": 0.0, "frequency": 0.0, "campaigns": 0,
+    "best_campaign": None, "worst_campaign": None,
+}
+
 
 # --- month arithmetic -------------------------------------------------------
 
@@ -163,9 +172,14 @@ def ensure(account: str, level: str, facts_for_month, today: date,
             raise
         except Exception:  # noqa: BLE001 -- one bad month never kills the backfill
             continue
-        if facts:
-            months[ym] = rollup(facts)
-            built += 1
+        if facts is None:
+            continue                     # caller declined this month; do not memoize
+        # an empty list means Meta really returned nothing -- memoize it, or this month
+        # is refetched on every single call forever (the `except` above already diverts
+        # genuine failures). built must count it too, else an all-empty account never
+        # reaches the save below and the storm survives.
+        months[ym] = rollup(facts) if facts else dict(EMPTY_ROLLUP)
+        built += 1
     attach_deltas(months)
     if built:
         save(account, level, months, brand_id=brand_id)

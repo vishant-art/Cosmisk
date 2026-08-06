@@ -82,3 +82,32 @@ def test_attach_deltas_math():
                "2026-02": {"roas": 1.5, "spend": 10.0, "revenue": 15.0}}
     history.attach_deltas(months2)
     assert months2["2026-02"]["mom"] == {"roas": 100.0, "spend": 100.0, "revenue": 100.0}
+
+
+def test_empty_months_are_memoized_and_not_refetched(db_session):
+    """D3: a month Meta genuinely has no data for was never stored, so it landed in
+    `todo` on every subsequent call -- one Meta round-trip per empty month, per
+    chat, forever. On a development_access app that is the dominant rate consumer."""
+    calls = []
+
+    def ffm(first, last):
+        calls.append(first.isoformat()[:7])
+        return []                       # Meta has nothing for any month
+
+    history.ensure("act_empty", LVL, ffm, date(2026, 7, 15), months_back=4)
+    assert len(calls) > 0
+
+    calls.clear()
+    history.ensure("act_empty", LVL, ffm, date(2026, 7, 15), months_back=4)
+    # only the rebuild window may be refetched; settled empties stay memoized
+    assert len(calls) <= history.REBUILD_RECENT_MONTHS, f"empty months refetched: {calls}"
+
+
+def test_none_from_facts_for_month_is_not_memoized(db_session):
+    """`None` means the caller declined this month -- distinct from an empty list.
+    Memoizing it would turn 'skip' into a permanent fake-empty month."""
+    def ffm(first, last):
+        return None
+
+    months = history.ensure("act_none", LVL, ffm, date(2026, 7, 15), months_back=3)
+    assert months == {}, "a declined month must not be stored"
