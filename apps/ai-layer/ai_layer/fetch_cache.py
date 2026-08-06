@@ -33,6 +33,25 @@ def _dates(lo: date, hi: date) -> list[str]:
     return out
 
 
+def _skipped_dates(skipped) -> set[str]:
+    """Dates inside spans the fetcher gave up on. These are never marked fetched
+    and never span-replaced, so they stay retryable instead of becoming permanent
+    holes that look cached."""
+    out: set[str] = set()
+    for s, u, _why in skipped or []:
+        out.update(_dates(date.fromisoformat(s), date.fromisoformat(u)))
+    return out
+
+
+def _call_fetch(fetch_range, lo: date, hi: date) -> tuple[list[dict], list]:
+    """fetch_range may return rows, or (rows, skipped) when it knows what Meta
+    refused. Single unwrap point -- all three call sites route through here, so a
+    tuple can never leak out as `rows` on the degraded paths."""
+    res = fetch_range(lo, hi)
+    rows, skipped = res if isinstance(res, tuple) else (res, [])
+    return (rows or []), (skipped or [])
+
+
 def _contiguous_runs(dates_sorted: list[date]) -> list[tuple[date, date]]:
     """Collapse sorted dates into maximal contiguous [lo, hi] runs, so we only
     fetch the genuinely-missing spans (never re-fetch a settled middle)."""
@@ -52,7 +71,9 @@ def fetch_cached(account: str, level: str, since: date, until: date,
                  brand_id: str | None = None) -> tuple[list[dict], dict]:
     """Return raw Meta rows for [since, until], fetching only what's missing.
 
-    `fetch_range(lo, hi)` must fetch and return raw rows for a date span.
+    `fetch_range(lo, hi)` must fetch and return raw rows for a date span, or
+    `(rows, skipped)` when it knows which sub-spans Meta refused -- those days are
+    left unmarked so a transient refusal never becomes a permanent cache hole.
     Returns (rows, stats) where stats reports how much was served from cache."""
     today = today or date.today()
     floor = (today - timedelta(days=FINAL_LAG_DAYS)).isoformat()
@@ -61,19 +82,25 @@ def fetch_cached(account: str, level: str, since: date, until: date,
         fetched = _repo.insight_fetched_dates(account, level, brand_id=brand_id)
     except Exception:  # noqa: BLE001 -- cache store down: degrade to a direct fetch
         log.exception("insight cache read failed; fetching directly")
-        return (fetch_range(since, until) or []), \
-            {"cached_days": 0, "fetched_days": (until - since).days + 1, "from_cache": False}
+        return _call_fetch(fetch_range, since, until)[0], \
+            {"cached_days": 0, "fetched_days": (until - since).days + 1,
+             "skipped_days": 0, "from_cache": False}
 
     needed = set(_dates(since, until))
     final = {d for d in fetched if d < floor}         # cached AND settled
     missing = sorted(needed - final)                  # missing OR still-revising
 
-    stats = {"cached_days": len(needed & final), "fetched_days": 0, "from_cache": not missing}
+    stats = {"cached_days": len(needed & final), "fetched_days": 0,
+             "skipped_days": 0, "from_cache": not missing}
     fetched_fresh: list[dict] = []   # kept in memory so a failed cache write never loses them
     write_failed = False
     for lo, hi in (_contiguous_runs([date.fromisoformat(d) for d in missing]) if missing else []):
-        new_rows = fetch_range(lo, hi) or []
-        span = _dates(lo, hi)
+        new_rows, skipped = _call_fetch(fetch_range, lo, hi)
+        # days Meta refused are excluded from BOTH the replace and the mark: replacing
+        # them would delete good rows we did not re-fetch, marking them would turn a
+        # transient refusal into a permanent hole.
+        skip = _skipped_dates(skipped)
+        span = [d for d in _dates(lo, hi) if d not in skip]
         # drop stale rows in the re-fetched span, then insert the fresh ones so
         # revised recent days replace their prior values cleanly.
         try:
@@ -89,13 +116,14 @@ def fetch_cached(account: str, level: str, since: date, until: date,
             write_failed = True
             fetched_fresh.extend(r for r in new_rows if r.get("date_start"))
         stats["fetched_days"] += len(span)
+        stats["skipped_days"] += len(skip)
 
     try:
         rows = _repo.load_insight_rows(account, level, since=since.isoformat(),
                                        until=until.isoformat(), brand_id=brand_id)
     except Exception:  # noqa: BLE001
         log.exception("insight cache read-back failed; fetching directly")
-        return (fetch_range(since, until) or []), stats
+        return _call_fetch(fetch_range, since, until)[0], stats
     if write_failed and fetched_fresh:
         # merge unpersisted fresh rows over the read-back (dedupe by (date, key); fresh wins)
         merged = {(r.get("date_start", ""), _key(r)): r for r in rows}

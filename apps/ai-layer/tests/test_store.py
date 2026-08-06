@@ -98,23 +98,47 @@ def test_ingest_day_preset_uses_chunked_range_fetcher(monkeypatch):
     assert len(back) == 1
 
 
+def _envelope(account, level="campaign", since="2026-05-01", until="2026-05-01",
+              rows=None, skipped=None):
+    return {"meta": {"account_id": account, "account_name": "T", "currency": "INR",
+                     "level": level, "date_range": {"since": since, "until": until},
+                     "skipped": skipped or []},
+            "data": rows if rows is not None else [raw("A", "2026-05-01", 100, 2, 300)]}
+
+
 def test_ingest_non_day_preset_keeps_legacy_fetch(monkeypatch):
-    """Non-day-shaped presets (e.g. "this_month") keep using the legacy
-    fetch_dataset -- there's no since/until to chunk against."""
+    """Non-day-shaped presets (e.g. "this_month") keep the preset envelope path --
+    there's no since/until to chunk against. (Asserted one level down from the
+    old fetch_dataset seam: ingest now normalizes the envelope itself so it can
+    surface meta['skipped'].)"""
     calls = {"legacy": 0}
 
-    def fake_fetch_dataset(token, account=None, preset="last_30d", level="campaign"):
+    def fake_envelope_preset(token, account=None, preset="last_30d", level="campaign",
+                             max_rows=5000):
         calls["legacy"] += 1
-        return ds_of([raw("A", "2026-05-01", 100, 2, 300)], account_id=account)
+        return _envelope(account, level)
 
     def range_should_not_run(*a, **k):
-        raise AssertionError("fetch_dataset_range must not run for a non-day preset")
+        raise AssertionError("the chunked range fetcher must not run for a non-day preset")
 
-    monkeypatch.setattr(ml, "fetch_dataset", fake_fetch_dataset)
-    monkeypatch.setattr(ml, "fetch_dataset_range", range_should_not_run)
+    monkeypatch.setattr(ml, "fetch_envelope_preset", fake_envelope_preset)
+    monkeypatch.setattr(ml, "fetch_envelope", range_should_not_run)
 
     store.ingest("tok", "act_m", preset="this_month")
     assert calls["legacy"] == 1
+
+
+def test_ingest_surfaces_skipped_spans(monkeypatch):
+    """A3: a window Meta partly refused must not be reported as complete."""
+    skipped = [("2026-07-03", "2026-07-04", "reduce the amount of data")]
+
+    def fake_envelope(token, account, since, until, level="campaign", progress=None):
+        return _envelope(account, level, since.isoformat(), until.isoformat(),
+                         skipped=skipped)
+
+    monkeypatch.setattr(ml, "fetch_envelope", fake_envelope)
+    out = store.ingest("tok", "act_skip", preset="last_7d")
+    assert out["skipped"] == skipped
 
 
 def test_accounts_isolated():

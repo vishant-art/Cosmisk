@@ -131,6 +131,8 @@ class IngestResult(BaseModel):
     rows_upserted: int
     since: Optional[str] = None
     until: Optional[str] = None
+    # spans Meta refused, so the caller can see the window is not actually complete
+    skipped: list[tuple[str, str, str]] = []   # [(since, until, why), ...]
 
 
 class CostResponse(BaseModel):

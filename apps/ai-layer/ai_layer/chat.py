@@ -400,8 +400,8 @@ def _ensure_ad_level(token: str, account: str, days: int,
     since = until - timedelta(days=days - 1)
 
     def _fr(lo, hi):
-        return ml.fetch_envelope(token, account=account, since=lo, until=hi,
-                                 level="ad")["data"]
+        env = ml.fetch_envelope(token, account=account, since=lo, until=hi, level="ad")
+        return env["data"], env["meta"].get("skipped", [])
 
     if progress:
         progress(f"pulling ad-level data ({days}d; first pull can take a minute) ...")
@@ -639,9 +639,10 @@ def main():
         def _fetch_range(lo, hi):
             envp = ml.fetch_envelope(token, account=account, since=lo, until=hi,
                                      level=args.level, progress=_progress)
-            for s, u, why in envp["meta"].get("skipped", []):
+            skipped = envp["meta"].get("skipped", [])
+            for s, u, why in skipped:
                 print(f"  skipped {s}..{u}: {why}")
-            return envp["data"]
+            return envp["data"], skipped
 
         try:
             raw_rows, cstats = fetch_cache.fetch_cached(account, args.level, since, until,

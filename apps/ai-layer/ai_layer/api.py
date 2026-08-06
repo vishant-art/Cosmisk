@@ -185,8 +185,9 @@ def _cached_dataset(account_id: str, days: int, token: str, brand: str | None):
         since = raw_floor                      # older periods live in HISTORIC FACTS
 
     def _fr(lo, hi):
-        return ml.fetch_envelope(token, account=account_id, since=lo, until=hi,
-                                 level="campaign")["data"]
+        env = ml.fetch_envelope(token, account=account_id, since=lo, until=hi,
+                                level="campaign")
+        return env["data"], env["meta"].get("skipped", [])
 
     rows, _stats = fetch_cache.fetch_cached(account_id, "campaign", since, until,
                                             _fr, brand_id=brand)
