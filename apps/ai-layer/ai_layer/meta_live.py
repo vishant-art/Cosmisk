@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import sys
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -37,6 +39,8 @@ except (AttributeError, ValueError):
 # Bump if Meta deprecates the version. v23.0 is current/non-deprecated as of 2026.
 GRAPH_API_VERSION = "v23.0"
 GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+
+log = logging.getLogger("ai_layer.meta_live")
 
 # Production field set. Note link-click fields (inline_link_clicks / _ctr /
 # cost_per_inline_link_click) requested ALONGSIDE the all-clicks ones, plus
@@ -140,6 +144,13 @@ def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
             pages += 1
             paging = body.get("paging", {}) or {}
             after = (paging.get("cursors") or {}).get("after")
+            if paging.get("next") and not after:
+                # offset-paged response: we stop, so this page is the whole result.
+                # Warn rather than guess -- production resolves whether this shape
+                # actually occurs for our field/breakdown combination.
+                log.warning("meta paging: next present without an after cursor "
+                            "(account=%s pages=%d rows=%d) -- results may be truncated",
+                            account, pages, len(rows))
             if not paging.get("next") or not after or len(rows) >= max_rows:
                 break
             p = dict(params)          # same version + params ...
@@ -147,13 +158,32 @@ def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
     return rows[:max_rows], pages
 
 
+_ACCOUNTS_TTL_S = 300
+_accounts_memo: dict[str, tuple[float, list[dict]]] = {}
+
+
 def list_accounts(token: str) -> list[dict]:
-    """All ad accounts the token can see (id, name, currency, status)."""
-    return meta_get("me/adaccounts", {
+    """All ad accounts the token can see (id, name, currency, status).
+
+    Memoized for _ACCOUNTS_TTL_S. fetch_envelope calls this once per contiguous
+    window and api._cached_dataset calls it again for name/currency, so a cold
+    multi-window pull burned N+1 identical me/adaccounts requests against a
+    development-tier rate budget. Fixed here rather than at one call site because
+    every caller routes through this function.
+
+    ponytail: process-local dict keyed by token, so it never crosses tenants and a
+    rotated token simply misses. Swap for a shared cache only if this runs
+    multi-process AND the call count still matters."""
+    hit = _accounts_memo.get(token)
+    if hit and (time.monotonic() - hit[0]) < _ACCOUNTS_TTL_S:
+        return hit[1]
+    accts = meta_get("me/adaccounts", {
         "access_token": token,
         "fields": "account_id,name,currency,account_status",
         "limit": 100,
     }).get("data", [])
+    _accounts_memo[token] = (time.monotonic(), accts)
+    return accts
 
 
 def save_envelope(path, account, acct_meta, rows):

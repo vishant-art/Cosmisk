@@ -74,3 +74,13 @@ def db_session(monkeypatch):
         sess.close()
         trans.rollback()
         conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _clear_accounts_memo():
+    """meta_live memoizes list_accounts for 5 minutes in a module-level dict, so
+    without this one test's mocked accounts can be served to the next."""
+    from ai_layer import meta_live
+    meta_live._accounts_memo.clear()
+    yield
+    meta_live._accounts_memo.clear()

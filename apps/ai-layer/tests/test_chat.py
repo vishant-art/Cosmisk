@@ -258,3 +258,31 @@ def test_history_block_does_not_prune(db_session, monkeypatch):
     chat.build_history_block("tok", "act_1", "campaign",
                              date(2026, 1, 1), date(2026, 7, 1), "INR")
     assert pruned == [], "the read path must not prune"
+
+
+def test_daily_totals_dict_and_pandas_paths_agree():
+    """G2: chat._daily_totals (dict) and mt.daily_totals (pandas) are two live
+    implementations of the same aggregate. Both must encode the rule the chat
+    docstring states -- ratios recomputed from the sums, never averaged. This is
+    the tripwire for the drift, not a fix for it."""
+    import pandas as pd
+    from datetime import date, timedelta
+    from ai_layer import chat, meta_transform as mt
+
+    facts = []
+    for i in range(5):
+        d = (date(2026, 7, 1) + timedelta(days=i)).isoformat()
+        for camp in ("a", "b"):
+            facts.append({"date": d, "campaign_name": camp, "spend": 10.0 + i,
+                          "revenue": 25.0 + i * 2, "impressions": 100.0,
+                          "link_clicks": 5.0, "purchases": 2.0, "frequency": 1.1})
+
+    dicts = chat._daily_totals(facts)
+    df = mt.daily_totals(pd.DataFrame(facts).assign(date=lambda x: pd.to_datetime(x["date"])))
+
+    assert len(dicts) == len(df) == 5
+    for row, (_, p) in zip(dicts, df.iterrows()):
+        assert row["spend"] == pytest.approx(float(p.spend))
+        assert row["revenue"] == pytest.approx(float(p.revenue))
+        assert row["roas"] == pytest.approx(float(p.roas))
+        assert row["link_ctr"] == pytest.approx(float(p.link_ctr))

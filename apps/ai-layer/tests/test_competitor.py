@@ -53,3 +53,19 @@ def test_stored_block_and_staleness(db_session):
 def test_geo_and_context_helpers():
     assert pipeline._country_code("India, US") == "IN"
     assert pipeline._geo_hint(["PS_IND_Sale", "PS_IND_Reels", "US_x"]) .startswith("India")
+
+
+def test_scrape_does_not_store_raw_payloads_by_default(monkeypatch, db_session):
+    """E3: _raw_by_competitor had zero readers, but load_competitor_intel does
+    dict(ads_json) on every uncached /chat -- written once, deserialized forever."""
+    from ai_layer.competitor import apify_ads
+
+    monkeypatch.setattr(apify_ads.config, "APIFY_TOKEN", "t")
+    monkeypatch.setattr(apify_ads, "scrape_competitor",
+                        lambda *a, **k: ([{"id": "1", "snapshot": {}}], "handle"))
+    monkeypatch.setattr(apify_ads, "normalize_ad", lambda r, n: {"id": r["id"], "brand": n})
+    monkeypatch.setattr(apify_ads, "save_ads", lambda *a, **k: None)
+
+    rec = apify_ads.scrape("act_1", {"competitors": [{"name": "Acme"}]})
+    assert "_raw_by_competitor" not in rec
+    assert rec["total_ads"] == 1, "normalized ads are still stored"

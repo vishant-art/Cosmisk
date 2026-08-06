@@ -210,7 +210,7 @@ def save_ads(key: str, record: dict, brand_id: str | None = None) -> None:
 
 def scrape(key: str, discovered: dict, max_competitors: int = MAX_COMPETITORS,
            ads_per: int = ADS_PER_COMPETITOR, country: str = DEFAULT_COUNTRY,
-           keep_raw: bool = True, progress=None, brand_id: str | None = None) -> dict:
+           keep_raw: bool = False, progress=None, brand_id: str | None = None) -> dict:
     """Scrape the top competitors from a discovery record. Resolves each brand to
     its real page (page handle first, keyword-search fallback filtered to the
     brand) so a wrong LLM slug no longer means zero ads. Stores normalized ads."""
@@ -254,6 +254,10 @@ def scrape(key: str, discovered: dict, max_competitors: int = MAX_COMPETITORS,
         "skipped": skipped,
     }
     if keep_raw:
+        # Off by default: nothing reads this back (normalize_ad already extracts the
+        # ~20 fields aggregate() uses), but load_competitor_intel does dict(ads_json)
+        # on EVERY uncached /chat -- so the write happens once and the megabyte
+        # deserialization happens every turn. Kept as a scrape-time debugging hatch.
         record["_raw_by_competitor"] = raw_by_comp
     save_ads(key, record, brand_id=brand_id)
     return record

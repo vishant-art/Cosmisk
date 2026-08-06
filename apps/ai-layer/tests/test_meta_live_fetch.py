@@ -102,3 +102,27 @@ def test_meta_get_non_json_also_raises_meta_error(monkeypatch):
     monkeypatch.setattr(ml.httpx, "Client", lambda **kw: fake)
     with pytest.raises(ml.MetaError):
         ml.meta_get("me/adaccounts", {"access_token": "t"})
+
+
+def test_list_accounts_is_memoized(monkeypatch):
+    """E5: fetch_envelope calls this per window and _cached_dataset calls it again,
+    so a cold multi-window pull burned N+1 identical me/adaccounts requests."""
+    calls = []
+    monkeypatch.setattr(ml, "meta_get",
+                        lambda p, params: calls.append(p) or {"data": [{"account_id": "1"}]})
+    ml._accounts_memo.clear()
+    ml.list_accounts("tok")
+    ml.list_accounts("tok")
+    assert len(calls) == 1, "the second call inside the TTL must not hit Graph"
+    ml.list_accounts("other-tok")
+    assert len(calls) == 2, "a different token must never read another token's accounts"
+
+
+def test_paging_warns_when_next_has_no_cursor(monkeypatch, caplog):
+    """G4: an offset-paged response silently truncated to page 1 with no signal."""
+    page = _Resp({"data": [{"x": 1}], "paging": {"next": "https://.../next"}})
+    monkeypatch.setattr(ml.httpx, "Client", lambda **kw: _FakeClient([page]))
+    with caplog.at_level("WARNING"):
+        rows, pages = ml.get_insights_paged("act_1", {"limit": 500})
+    assert pages == 1 and len(rows) == 1
+    assert "may be truncated" in caplog.text
