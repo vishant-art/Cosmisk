@@ -201,6 +201,15 @@ def _worst_day(facts: list[dict]) -> dict | None:
     return None
 
 
+def _drop_zero_prior(pct: dict, prior_agg: dict) -> dict:
+    """A zero prior has no comparable base -- _pct_change's 100.0 there is a
+    sentinel, not a measurement, and it is indistinguishable from a genuine
+    doubling once it leaves this module. Applied AFTER _flag (so a 0 -> N campaign
+    still flags SCALING) and BEFORE _causes (so the fabricated figure never reaches
+    a sentence)."""
+    return {k: (None if prior_agg.get(k) == 0 else v) for k, v in pct.items()}
+
+
 def analyze(facts: list[dict], currency: str = "INR") -> dict:
     """Compute the full deterministic analysis over the loaded facts."""
     if not facts:
@@ -225,7 +234,7 @@ def analyze(facts: list[dict], currency: str = "INR") -> dict:
             continue
         ra, pa = _aggregate(rec), _aggregate(pri)
         account.append({"period": label, "recent": ra, "prior": pa,
-                        "pct": _deltas(ra, pa)})
+                        "pct": _drop_zero_prior(_deltas(ra, pa), pa)})
 
     # per-campaign, only over the shortest available period (freshest signal)
     campaigns: list[dict] = []
@@ -246,7 +255,8 @@ def analyze(facts: list[dict], currency: str = "INR") -> dict:
             if ra["purchases"] < MIN_WINDOW_PURCHASES:
                 continue                                  # too few conversions to trust ROAS
             pct = _deltas(ra, pa)
-            flag = _flag(pct)
+            flag = _flag(pct)                      # flag on the raw deltas (B1: intentional)
+            pct = _drop_zero_prior(pct, pa)        # then drop the uncomparable ones
             roas_move = abs(pct["roas"]) if pct["roas"] is not None else 0.0
             if not flag and roas_move < 15:               # not noteworthy
                 continue
@@ -356,6 +366,13 @@ def statements(df, currency: str = "INR") -> list[tuple[str, str]]:
             f"{a['period']}: blended ROAS moved {pa['roas']:.2f}x -> {ra['roas']:.2f}x "
             f"({_sign(p['roas'])}, {_direction(p['roas'])}); spend {_sign(p['spend'])}, "
             f"revenue {_sign(p['revenue'])}, purchases {_sign(p['purchases'])}."))
+    elif res.get("span"):
+        # Say so rather than silently omitting the card: the reader cannot tell an
+        # absent trend from a flat one.
+        out.append(("Trend",
+            f"Insufficient history for a trend: this window is {res['span']['days']} days "
+            f"and week-over-week needs 14. The figures above are current-window totals "
+            f"with nothing to compare them against."))
 
     # best / worst / wasted / concentration: whole-window campaign totals,
     # same gates as the old statements (materiality + MIN_PURCHASES_FOR_ROAS)
