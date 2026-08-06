@@ -523,9 +523,12 @@ def run_tool_loop(client, messages: list, account: str | None, token: str | None
 def build_history_block(token: str, account: str, level: str, raw_since: date,
                         until: date, currency: str, brand_id: str | None = None,
                         progress=None) -> str:
-    """Build/refresh monthly historic facts, prune raw beyond 6 months, render
-    (rnd chat.py 963-997; storage seam only)."""
-    cache_rows = fetch_cache.cached_rows(account, level, brand_id=brand_id)
+    """Build/refresh monthly historic facts and render them (rnd chat.py 963-997;
+    storage seam only). Pruning of raw rows beyond the recent tier belongs with the
+    writer -- see the /ingest path -- not with this read path."""
+    # bounded read: only months inside the raw window are ever served from here
+    cache_rows = fetch_cache.cached_rows(account, level, brand_id=brand_id,
+                                         since=raw_since.isoformat())
 
     def facts_for_month(first: date, last: date):
         if first >= raw_since and last <= until:      # fully inside the raw window
@@ -548,9 +551,6 @@ def build_history_block(token: str, account: str, level: str, raw_since: date,
         if progress:
             progress("(historic backfill interrupted; using what's stored so far)")
         months = history.load(account, level, brand_id=brand_id)
-    fetch_cache.prune_older_than(account, level,
-                                 date.today() - timedelta(days=RAW_RETENTION_DAYS),
-                                 brand_id=brand_id)
     return history.render_history_block(months, currency=currency)
 
 

@@ -242,3 +242,19 @@ def test_request_path_history_is_capped_at_six_months(db_session, monkeypatch):
     chat.build_history_block("tok", "act_1", "campaign",
                              date(2026, 1, 1), date(2026, 7, 1), "INR")
     assert seen["months_back"] == chat.REQUEST_HISTORY_MONTHS == 6
+
+
+def test_history_block_does_not_prune(db_session, monkeypatch):
+    """D7: pruning belongs with the writer (/ingest). Every uncached /chat used to
+    issue two unconditional DELETEs that contend with replace_insight_span."""
+    from datetime import date
+    from ai_layer import chat
+
+    pruned = []
+    monkeypatch.setattr(chat.fetch_cache, "prune_older_than",
+                        lambda *a, **k: pruned.append(1) or 0)
+    monkeypatch.setattr(chat.fetch_cache, "cached_rows", lambda *a, **k: [])
+    monkeypatch.setattr(chat.history, "ensure", lambda *a, **k: {})
+    chat.build_history_block("tok", "act_1", "campaign",
+                             date(2026, 1, 1), date(2026, 7, 1), "INR")
+    assert pruned == [], "the read path must not prune"

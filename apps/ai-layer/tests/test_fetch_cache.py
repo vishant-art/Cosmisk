@@ -150,3 +150,15 @@ def test_write_failure_never_loses_fetched_rows(db_session, monkeypatch):
                                            _rows_for, today=today)
     assert len(rows) == 5                      # fetched data survives the write outage
     assert stats["fetched_days"] == 5 and not stats["from_cache"]
+
+
+def test_cached_rows_honours_since(db_session):
+    """D6: cached_rows loaded every row for the account on every context build,
+    just to filter a few months out of it in Python."""
+    today = date(2026, 7, 30)
+    fetch_cache.fetch_cached("act_d6", LVL, date(2026, 6, 1), date(2026, 6, 5),
+                             _rows_for, today=today)
+    fetch_cache.fetch_cached("act_d6", LVL, date(2026, 7, 1), date(2026, 7, 5),
+                             _rows_for, today=today)
+    assert len(fetch_cache.cached_rows("act_d6", LVL)) == 10
+    assert len(fetch_cache.cached_rows("act_d6", LVL, since="2026-07-01")) == 5

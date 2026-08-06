@@ -332,6 +332,12 @@ def ingest(account_id: str, preset: str = Query("last_30d"),
           token: str | None = Depends(caller_token),
           brand: str | None = Depends(caller_brand)):
     result = IngestResult(**store.ingest(_need_token(token), account_id, preset=preset))
+    # Prune with the writer, not on every read: this used to run at the end of every
+    # build_history_block, so each uncached /chat issued two DELETEs that contend
+    # with replace_insight_span. brand scopes it to the right partition.
+    fetch_cache.prune_older_than(account_id, "campaign",
+                                 date.today() - timedelta(days=chat.RAW_RETENTION_DAYS),
+                                 brand_id=brand)
     # `brand` must reach both warm calls: without it repository._brand falls back to
     # brand_id=account_id, so warming writes to a different partition than the
     # follow-up /chat reads -- i.e. it warms nothing.

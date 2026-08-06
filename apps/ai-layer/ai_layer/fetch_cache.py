@@ -143,10 +143,13 @@ def fetch_cached(account: str, level: str, since: date, until: date,
     return rows, stats
 
 
-def cached_rows(account: str, level: str, brand_id: str | None = None) -> list[dict]:
-    """All raw rows currently cached for this account+level (no fetch)."""
+def cached_rows(account: str, level: str, brand_id: str | None = None,
+                since: str | None = None) -> list[dict]:
+    """Raw rows currently cached for this account+level (no fetch). `since` bounds
+    the read in SQL -- the history block needs a few months, not the whole account,
+    and load_insight_rows already accepts the bound."""
     try:
-        return _repo.load_insight_rows(account, level, brand_id=brand_id)
+        return _repo.load_insight_rows(account, level, since=since, brand_id=brand_id)
     except Exception:  # noqa: BLE001
         log.exception("insight cache read failed")
         return []
