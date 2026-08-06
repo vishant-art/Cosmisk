@@ -18,11 +18,18 @@ log = logging.getLogger("ai_layer.fetch_cache")
 FINAL_LAG_DAYS = 7   # trailing days Meta still revises -> always re-fetch
 
 
-def _key(row: dict) -> str:
-    """Identity of one raw Meta row within a level (dedupe / upsert key) --
-    the rnd cache._key tuple, joined (date lives in its own column)."""
-    return "|".join((row.get("campaign_id", ""), row.get("adset_name", ""),
-                     row.get("ad_name", "")))
+def _key(row: dict, level: str = "campaign") -> str:
+    """Identity of one raw Meta row within a level (dedupe / upsert key) -- the rnd
+    cache._key tuple, joined (date lives in its own column).
+
+    At ad level the name is NOT unique inside an adset, so ad_id disambiguates;
+    without it two same-named ads collapse onto one key and replace_insight_span's
+    last-wins dedupe silently drops one ad's spend. Campaign keys are unchanged so
+    existing cached campaign rows keep their identity."""
+    base = (row.get("campaign_id", ""), row.get("adset_name", ""), row.get("ad_name", ""))
+    if level == "ad":
+        return "|".join(base + (row.get("ad_id", ""),))
+    return "|".join(base)
 
 
 def _dates(lo: date, hi: date) -> list[str]:
@@ -106,7 +113,7 @@ def fetch_cached(account: str, level: str, since: date, until: date,
         try:
             _repo.replace_insight_span(
                 account, level, span,
-                [(r.get("date_start", ""), _key(r), r) for r in new_rows
+                [(r.get("date_start", ""), _key(r, level), r) for r in new_rows
                  if r.get("date_start")],
                 brand_id=brand_id)
             _repo.mark_insight_fetched(account, level, span, brand_id=brand_id)
@@ -126,13 +133,13 @@ def fetch_cached(account: str, level: str, since: date, until: date,
         return _call_fetch(fetch_range, since, until)[0], stats
     if write_failed and fetched_fresh:
         # merge unpersisted fresh rows over the read-back (dedupe by (date, key); fresh wins)
-        merged = {(r.get("date_start", ""), _key(r)): r for r in rows}
+        merged = {(r.get("date_start", ""), _key(r, level)): r for r in rows}
         for r in fetched_fresh:
-            merged[(r.get("date_start", ""), _key(r))] = r
+            merged[(r.get("date_start", ""), _key(r, level))] = r
         since_s, until_s = since.isoformat(), until.isoformat()
         rows = sorted((r for r in merged.values()
                        if since_s <= r.get("date_start", "") <= until_s),
-                      key=lambda r: (r.get("date_start", ""), _key(r)))
+                      key=lambda r: (r.get("date_start", ""), _key(r, level)))
     return rows, stats
 
 

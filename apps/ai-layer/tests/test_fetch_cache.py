@@ -67,6 +67,30 @@ def test_prune_older_than(db_session):
     assert dropped == 3 and fetch_cache.cached_rows(ACC, LVL) == []
 
 
+def test_ad_level_key_separates_same_named_ads(db_session):
+    """Two different ads can share a name inside one adset; collapsing them onto
+    one key silently loses one ad's spend."""
+    today = date(2026, 7, 30)
+    day = date(2026, 7, 1)
+
+    def fr(lo, hi):
+        return [{"campaign_id": "c1", "adset_name": "as1", "ad_name": "Creative A",
+                 "ad_id": "111", "date_start": day.isoformat(), "spend": "10"},
+                {"campaign_id": "c1", "adset_name": "as1", "ad_name": "Creative A",
+                 "ad_id": "222", "date_start": day.isoformat(), "spend": "20"}]
+
+    rows, _ = fetch_cache.fetch_cached("act_a2", "ad", day, day, fr, today=today)
+    assert len(rows) == 2, "same-named ads in one adset must not collapse"
+    assert {r["ad_id"] for r in rows} == {"111", "222"}
+
+
+def test_campaign_level_key_unchanged(db_session):
+    """Campaign keys must be byte-identical so existing cached rows keep identity."""
+    row = {"campaign_id": "c1", "adset_name": "as1", "ad_name": "n", "ad_id": "999"}
+    assert fetch_cache._key(row, "campaign") == "c1|as1|n"
+    assert fetch_cache._key(row) == "c1|as1|n"
+
+
 def test_skipped_days_are_not_marked_fetched(db_session):
     today = date(2026, 7, 30)
     since, until = date(2026, 7, 1), date(2026, 7, 5)
