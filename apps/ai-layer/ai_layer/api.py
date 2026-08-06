@@ -127,18 +127,6 @@ def _connector_dataset(account_id: str, preset: str) -> mt.Dataset:
     return connector_source.fetch_connector_dataset(account_id, preset)
 
 
-def _fetch_live(token: str, account_id: str, preset: str) -> mt.Dataset:
-    """Day-shaped presets (last_Nd) route through the chunked range fetcher; Meta
-    500s (code=1 subcode=99) on the legacy unchunked pull for large accounts past
-    ~21 daily days. Non-day presets (e.g. "this_month") keep the legacy path."""
-    days = ml.preset_days(preset)
-    if days is not None:
-        until = date.today() - timedelta(days=1)
-        since = until - timedelta(days=days - 1)
-        return ml.fetch_dataset_range(token, account_id, since, until)
-    return ml.fetch_dataset(token, account=account_id, preset=preset)
-
-
 def _dataset(account_id: str, source: str, token: str | None, preset: str) -> mt.Dataset:
     """source='store' reads the accumulated store (falls back to live if empty);
     source='live' always fetches fresh; source='connectors' adapts the
@@ -149,7 +137,8 @@ def _dataset(account_id: str, source: str, token: str | None, preset: str) -> mt
         ds = store.load_dataset(account_id)
         if len(ds) > 0:
             return ds
-    return _fetch_live(_need_token(token), account_id, preset)
+    # preset dispatch lives in meta_live -- /ingest had a verbatim copy that drifted
+    return ml.fetch_dataset_for_preset(_need_token(token), account_id, preset)[0]
 
 
 # ---- endpoints ------------------------------------------------------------

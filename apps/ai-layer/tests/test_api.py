@@ -79,21 +79,29 @@ def test_insights_from_store(client, monkeypatch):
 
 
 def test_insights_live_source_uses_chunked_range_fetcher(client, monkeypatch):
-    """source=live with a day-shaped preset must route through fetch_dataset_range
-    (the chunked, size-safe fetcher) -- the legacy fetch_dataset 500s on big
-    accounts past ~21 daily days."""
+    """source=live with a day-shaped preset must route through the chunked,
+    size-safe envelope fetcher -- the legacy unchunked pull 500s on big accounts
+    past ~21 daily days.
+
+    Asserted one level down from the old fetch_dataset seam: the preset dispatch
+    now lives in ml.fetch_dataset_for_preset (it was duplicated verbatim in
+    store.ingest and had drifted), so patching fetch_dataset_range would no longer
+    intercept anything and the real fetcher would hit the network."""
     monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
     monkeypatch.setattr(config, "META_ACCESS_TOKEN", "tok")
 
-    ds = mt.normalize({"meta": {"account_id": "act_live", "account_name": "Acme",
-                                "currency": "INR"},
-                       "data": [raw("A", "2026-05-01", 100, 2, 300)]})
+    def fake_envelope(token, account, since, until, level="campaign", progress=None):
+        return {"meta": {"account_id": account, "account_name": "Acme",
+                         "currency": "INR", "level": level,
+                         "date_range": {"since": since.isoformat(),
+                                        "until": until.isoformat()}},
+                "data": [raw("A", "2026-05-01", 100, 2, 300)]}
 
     def legacy_should_not_run(*a, **k):
-        raise AssertionError("legacy fetch_dataset must not run for a day-shaped preset")
+        raise AssertionError("the legacy preset envelope must not run for a day-shaped preset")
 
-    monkeypatch.setattr(api.ml, "fetch_dataset_range", lambda *a, **k: ds)
-    monkeypatch.setattr(api.ml, "fetch_dataset", legacy_should_not_run)
+    monkeypatch.setattr(api.ml, "fetch_envelope", fake_envelope)
+    monkeypatch.setattr(api.ml, "fetch_envelope_preset", legacy_should_not_run)
 
     r = client.get("/insights/act_live?source=live&preset=last_30d")
     assert r.status_code == 200

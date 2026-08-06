@@ -28,16 +28,7 @@ def ingest(token: str, account: str, preset: str = "last_30d", level: str = "cam
     the chunked range fetcher (`fetch_dataset_range`) instead of the legacy
     unchunked `fetch_dataset`: Meta 500s (code=1 subcode=99) on ~21+ daily days
     for large accounts. Non-day presets (e.g. "this_month") keep the legacy path."""
-    days = ml.preset_days(preset)
-    if days is not None:
-        until = date.today() - timedelta(days=1)
-        since = until - timedelta(days=days - 1)
-        env = ml.fetch_envelope(token, account, since, until, level=level)
-    else:
-        env = ml.fetch_envelope_preset(token, account=account, preset=preset, level=level)
-    # normalize here rather than via fetch_dataset*, which discards the envelope meta
-    # -- and with it the record of which spans Meta refused.
-    ds = mt.normalize(env)
+    ds, meta = ml.fetch_dataset_for_preset(token, account, preset=preset, level=level)
     n = upsert_dataset(ds)
     return {"account_id": account, "rows_upserted": n, "since": ds.since, "until": ds.until,
-            "skipped": env["meta"].get("skipped", [])}
+            "skipped": meta.get("skipped", [])}

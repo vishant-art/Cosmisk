@@ -339,6 +339,25 @@ def preset_days(preset: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def fetch_dataset_for_preset(token, account, preset="last_30d", level="campaign"):
+    """Preset -> (Dataset, envelope meta). Day-shaped presets (last_Nd) route through
+    the chunked range fetcher; Meta 500s (code=1 subcode=99) on the legacy unchunked
+    pull past ~21 daily days for large accounts.
+
+    Single definition of that dispatch: /ingest and /insights?source=live had
+    verbatim copies, so a change to the `until = today - 1` convention applied to one
+    made them return different windows for the same preset. Returns the meta too, so
+    callers can see which spans Meta refused."""
+    days = preset_days(preset)
+    if days is not None:
+        until = date.today() - timedelta(days=1)
+        since = until - timedelta(days=days - 1)
+        env = fetch_envelope(token, account=account, since=since, until=until, level=level)
+    else:
+        env = fetch_envelope_preset(token, account=account, preset=preset, level=level)
+    return mt.normalize(env), env["meta"]
+
+
 def fetch_dataset_range(token, account, since, until, level="campaign"):
     """Chunked range pull -> typed Dataset (the size-safe fetch_dataset)."""
     return mt.normalize(fetch_envelope(token, account=account, since=since,

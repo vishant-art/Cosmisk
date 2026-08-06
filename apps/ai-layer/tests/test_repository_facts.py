@@ -60,3 +60,21 @@ def test_upsert_dataset_with_extended_facts(db_session):
     assert repo.upsert_dataset(ds) == 1
     out = repo.load_dataset("act_ext")
     assert len(out) == 1 and out.facts[0].ad_id == ""   # table stores the 20 cols only
+
+
+def test_save_monthly_facts_writes_distinct_rollups(db_session):
+    """E2 guard: with executemany, set_ must use stmt.excluded. Closing over the
+    loop variable writes ONE month's rollup to every row -- and the existing
+    round-trip tests cannot see it, because their months are identical by
+    construction."""
+    from ai_layer.db import repository as _repo
+
+    _repo.save_monthly_facts("act_e2", "campaign",
+                             {"2026-05": {"spend": 1.0}, "2026-06": {"spend": 2.0}})
+    back = _repo.load_monthly_facts("act_e2", "campaign")
+    assert back["2026-05"]["spend"] == 1.0 and back["2026-06"]["spend"] == 2.0
+
+    # the conflict path must update only the targeted month
+    _repo.save_monthly_facts("act_e2", "campaign", {"2026-06": {"spend": 9.0}})
+    back = _repo.load_monthly_facts("act_e2", "campaign")
+    assert back["2026-06"]["spend"] == 9.0 and back["2026-05"]["spend"] == 1.0

@@ -349,10 +349,14 @@ def replace_insight_span(account_id: str, level: str, span_dates: list[str],
         s.execute(delete(m.InsightRow).where(
             m.InsightRow.brand_id == bid, m.InsightRow.account_id == account_id,
             m.InsightRow.level == level, m.InsightRow.date.in_(span)))
-        for date_iso, row_key, raw in dedup.values():
-            s.add(m.InsightRow(brand_id=bid, account_id=account_id, level=level,
-                               date=dt.date.fromisoformat(date_iso),
-                               row_key=row_key, raw=raw))
+        if dedup:
+            # one INSERT for the batch instead of a mapped instance + flush per row:
+            # a 30-day x 84-campaign ingest is ~2,500 rows, ad-level an order more.
+            # No ORM events are registered on InsightRow, so nothing is lost.
+            s.bulk_insert_mappings(m.InsightRow, [
+                {"brand_id": bid, "account_id": account_id, "level": level,
+                 "date": dt.date.fromisoformat(date_iso), "row_key": row_key, "raw": raw}
+                for date_iso, row_key, raw in dedup.values()])
         s.commit()
 
 
@@ -400,15 +404,23 @@ def load_monthly_facts(account_id: str, level: str, brand_id: str | None = None)
 def save_monthly_facts(account_id: str, level: str, months: dict[str, dict],
                        brand_id: str | None = None) -> None:
     bid = _brand(brand_id, account_id)
+    if not months:
+        return
+    # One executemany instead of a statement per month: history.ensure passes the
+    # ENTIRE months dict, so a warm account issued up to 37 round trips to rewrite
+    # two changed rollups.
+    stmt = pg_insert(m.MonthlyFacts)
     with engine.get_session() as s:
-        for month, rollup in months.items():
-            s.execute(pg_insert(m.MonthlyFacts).values(
-                brand_id=bid, account_id=account_id, level=level,
-                month=month, rollup=rollup
-            ).on_conflict_do_update(
+        s.execute(
+            stmt.on_conflict_do_update(
                 index_elements=[m.MonthlyFacts.brand_id, m.MonthlyFacts.account_id,
                                 m.MonthlyFacts.level, m.MonthlyFacts.month],
-                set_={"rollup": rollup, "updated_at": func.now()}))
+                # stmt.excluded, NOT the loop variable: with executemany there is no
+                # per-row Python value to close over, and binding one would write the
+                # same rollup to every month.
+                set_={"rollup": stmt.excluded.rollup, "updated_at": func.now()}),
+            [{"brand_id": bid, "account_id": account_id, "level": level,
+              "month": month, "rollup": rollup} for month, rollup in months.items()])
         s.commit()
 
 
