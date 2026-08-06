@@ -111,3 +111,33 @@ def test_none_from_facts_for_month_is_not_memoized(db_session):
 
     months = history.ensure("act_none", LVL, ffm, date(2026, 7, 15), months_back=3)
     assert months == {}, "a declined month must not be stored"
+
+
+def test_mom_is_not_persisted(db_session):
+    """H1: mom is derived from the stored rollups. Persisting it strands a stale
+    delta on the successor month whenever an earlier month is corrected."""
+    def ffm(first, last):
+        return [_fact(first.isoformat())]
+
+    history.ensure("act_h1", LVL, ffm, date(2026, 7, 15), months_back=4)
+    stored = history.load("act_h1", LVL)
+    assert stored, "months must be stored"
+    assert all("mom" not in m for m in stored.values()), \
+        "mom is derived; it must not be written to monthly_facts"
+
+
+def test_legacy_mom_is_stripped_on_save(db_session):
+    """Pre-fix rows already carry a mom. load() returns them and ensure()
+    re-persists them unchanged, so the stale delta would survive forever unless
+    history.save strips it. Asserted here and not on the repository: the store
+    stays generic and persists whatever dict it is handed."""
+    history.save("act_h1b", LVL, {"2026-05": {"spend": 1.0, "mom": {"roas": 5.0}}})
+    assert "mom" not in history.load("act_h1b", LVL)["2026-05"]
+
+
+def test_render_attaches_mom_for_store_loaded_months(db_session):
+    """Callers that load straight from the store still need the delta rendered."""
+    months = {"2026-05": dict(history.EMPTY_ROLLUP, spend=100.0, roas=2.0),
+              "2026-06": dict(history.EMPTY_ROLLUP, spend=200.0, roas=3.0)}
+    block = history.render_history_block(months)
+    assert "%" in block, "MoM delta must appear even though it was never stored"

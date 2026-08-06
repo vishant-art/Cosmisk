@@ -38,18 +38,6 @@ def fmt_money(x, currency="INR"):
     return f"{sym}{x:,.0f}"
 
 
-def pct(x):
-    return f"{x:+.1f}%"
-
-
-def direction(x, up="rose", down="fell", flat="held steady"):
-    if x > 1.5:
-        return up
-    if x < -1.5:
-        return down
-    return flat
-
-
 # Adapter-only gate (kept from the legacy engine): ROAS is untrustworthy below
 # this many whole-window purchases, used by statements()'s best/worst gate.
 MIN_PURCHASES_FOR_ROAS = 10

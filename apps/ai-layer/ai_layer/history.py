@@ -143,6 +143,12 @@ def load(account: str, level: str, brand_id: str | None = None) -> dict:
 
 
 def save(account: str, level: str, months: dict, brand_id: str | None = None) -> None:
+    # `mom` is derived at render time (attach_deltas), never stored. Legacy rows
+    # carry one and ensure() re-persists whatever load() returned, so a stale delta
+    # would survive every rebuild. Stripped here rather than in the repository:
+    # knowing which keys are derived is history's business, not the store's.
+    months = {ym: {k: v for k, v in rollup.items() if k != "mom"}
+              for ym, rollup in months.items()}
     _repo.save_monthly_facts(account, level, months, brand_id=brand_id)
 
 
@@ -180,9 +186,9 @@ def ensure(account: str, level: str, facts_for_month, today: date,
         # reaches the save below and the storm survives.
         months[ym] = rollup(facts) if facts else dict(EMPTY_ROLLUP)
         built += 1
-    attach_deltas(months)
     if built:
         save(account, level, months, brand_id=brand_id)
+    attach_deltas(months)      # derived at render time; never persisted (see save)
     return months
 
 
@@ -205,7 +211,8 @@ def render_history_block(months: dict, currency: str = "INR", tail: int = 24) ->
     are summarized so the block stays small even with 3 years of history."""
     if not months:
         return "(No historic monthly facts stored yet.)"
-    keys = sorted(months)
+    attach_deltas(months)      # idempotent; callers that load() straight from the
+    keys = sorted(months)      # store get their MoM here rather than from storage
     lines = [
         f"Monthly account facts ({keys[0]} .. {keys[-1]}), code-computed and exact. "
         f"Raw daily rows are retained only for the last ~6 months; everything here is "
