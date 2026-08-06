@@ -317,3 +317,31 @@ def test_competitors_get_serves_stored_intel(client, monkeypatch, db_session):
     assert r.status_code == 200
     body = r.json()
     assert body["discovered"] == 1 and "R" in body["block"]
+
+
+def test_meta_rate_limit_returns_429_on_chat_stream(client, monkeypatch):
+    """/chat/stream had NO MetaError handler: a rate-limited context build escaped
+    as a bare 500. Context is assembled before the stream opens, so an app-level
+    handler can still set the status code."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "test-key")
+
+    def boom(*a, **k):
+        raise api.ml.MetaError(400, 4, 1504039, "User request limit reached")
+
+    monkeypatch.setattr(api, "_chat_messages", boom)
+    r = client.post("/chat/stream", json={"account_id": "act_1", "message": "hi"})
+    assert r.status_code == 429
+
+
+def test_meta_error_returns_502_on_ingest(client, monkeypatch):
+    """/ingest had no handler either -- a non-rate-limit Meta failure was a 500."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", "tok")
+
+    def boom(*a, **k):
+        raise api.ml.MetaError(400, 100, None, "Invalid parameter")
+
+    monkeypatch.setattr(store, "ingest", boom)
+    r = client.post("/ingest/act_1")
+    assert r.status_code == 502

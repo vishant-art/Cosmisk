@@ -22,7 +22,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from openai import OpenAI
 
 from ai_layer import brain, chat, config, context_cache, cost_ledger, fetch_cache, store
@@ -38,6 +38,22 @@ from ai_layer.schemas import (AccountInfo, AiInsight, BlendedBlock, BlendedRespo
                               PlatformStatus, Totals)
 
 app = FastAPI(title="cosmisk ai-layer", version="0.1.0")
+
+
+@app.exception_handler(ml.MetaError)
+def _meta_error_handler(request, exc: ml.MetaError):
+    """Every endpoint maps a Meta failure to a real status code, not a bare 500.
+
+    Registered app-wide rather than per-endpoint because the failure site is the
+    shared context build (_chat_messages), which /chat, /chat/stream and /ingest all
+    reach -- and /chat/stream had no handler at all. Context is assembled BEFORE the
+    stream opens, so a status code can still be set here (it could not be once the
+    StreamingResponse body had started)."""
+    limited = exc.code == 4 or exc.subcode in (1504039, 1504022) or \
+        "request limit" in (exc.message or "").lower()
+    return JSONResponse(status_code=429 if limited else 502,
+                        content={"detail": f"Meta API error: {exc}"})
+
 
 # brain tag -> AiInsight priority
 _PRIORITY = {
@@ -261,14 +277,9 @@ def chat_endpoint(req: ChatRequest, token: str | None = Depends(caller_token),
         answer, cost = chat.complete(client, messages, stream=False, account=req.account_id)
         tools_used: list[str] = []
     else:
-        try:
-            answer, cost, tools_used = chat.run_tool_loop(client, messages, req.account_id,
-                                                          token, brand_id=brand)
-        except ml.MetaError as e:
-            limited = e.code == 4 or e.subcode in (1504039, 1504022) or \
-                "request limit" in (e.message or "").lower()
-            raise HTTPException(status_code=429 if limited else 502,
-                                detail=f"Meta API error during ad-level tools: {e}")
+        # MetaError from the tool loop is mapped by the app-wide handler
+        answer, cost, tools_used = chat.run_tool_loop(client, messages, req.account_id,
+                                                      token, brand_id=brand)
     cost = round(cost, 6)
     return ChatResponse(account_id=req.account_id, answer=answer, model=chat.MODEL,
                         cost_usd=cost, session_id=session_id, context_mode=mode,
