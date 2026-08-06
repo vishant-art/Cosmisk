@@ -345,3 +345,64 @@ def test_meta_error_returns_502_on_ingest(client, monkeypatch):
     monkeypatch.setattr(store, "ingest", boom)
     r = client.post("/ingest/act_1")
     assert r.status_code == 502
+
+
+def test_ingest_threads_brand_into_warm_calls(client, monkeypatch):
+    """C1: /ingest was the only endpoint missing Depends(caller_brand), so the warm
+    calls fell through _brand(None, account_id) and wrote under brand_id='act_x'
+    while the follow-up /chat read a different partition. The warm path could not
+    warm anything."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", "tok")
+
+    seen = {}
+    monkeypatch.setattr(store, "ingest",
+                        lambda *a, **k: {"account_id": "act_1", "rows_upserted": 0})
+    monkeypatch.setattr(api, "_cached_dataset",
+                        lambda acct, days, tok, brand: seen.update(brand=brand) or (None, None))
+    r = client.post("/ingest/act_1?warm=cache", headers={"X-Brand-Id": "brand_A"})
+    assert r.status_code == 200
+    assert seen["brand"] == "brand_A", "warm must write to the caller's partition"
+
+
+def test_warm_target_is_membership_not_substring(client, monkeypatch):
+    """'cache' in warm is a SUBSTRING test: warm=nocache triggered cache warming."""
+    monkeypatch.setattr(config, "AI_LAYER_API_KEY", None)
+    monkeypatch.setattr(config, "META_ACCESS_TOKEN", "tok")
+
+    called = []
+    monkeypatch.setattr(store, "ingest",
+                        lambda *a, **k: {"account_id": "act_1", "rows_upserted": 0})
+    monkeypatch.setattr(api, "_cached_dataset",
+                        lambda *a, **k: called.append("cache") or (None, None))
+    client.post("/ingest/act_1?warm=nocache")
+    assert called == [], "'nocache' must not trigger cache warming"
+
+
+# Endpoints that read or write brand-partitioned tables and MUST scope by caller.
+BRAND_PARTITIONED = {
+    "/ingest/{account_id}", "/chat", "/chat/stream", "/cost",
+    "/competitors/{account_id}", "/competitors/{account_id}/refresh",
+}
+# Brand-partitioned but NOT yet scoped. Existing debt, owned by the multi-tenancy
+# task. Named here so the gap stays visible instead of passing by omission.
+KNOWN_DEBT = {"/insights/{account_id}", "/blended/{account_id}"}
+
+
+def test_brand_partitioned_endpoints_declare_caller_brand():
+    """_brand(brand_id, account_id) falls back to account_id, so a forgotten
+    Depends(caller_brand) never errors -- it silently writes to a different VALID
+    partition. /ingest was the first endpoint to forget it; this catches the next."""
+    import inspect
+
+    by_path = {r.path: r for r in api.app.routes if hasattr(r, "path")}
+    missing = []
+    for path in sorted(BRAND_PARTITIONED):
+        route = by_path.get(path)
+        assert route is not None, f"{path} is no longer a registered route -- update the list"
+        params = inspect.signature(route.endpoint).parameters
+        if not any(getattr(p.default, "dependency", None) is api.caller_brand
+                   for p in params.values()):
+            missing.append(path)
+    assert not missing, f"endpoints missing Depends(caller_brand): {missing}"
+    assert not (BRAND_PARTITIONED & KNOWN_DEBT), "an endpoint cannot be both scoped and debt"

@@ -328,17 +328,23 @@ def complete_endpoint(req: CompleteRequest):
 @app.post("/ingest/{account_id}", response_model=IngestResult, dependencies=[Depends(require_api_key)])
 def ingest(account_id: str, preset: str = Query("last_30d"),
           warm: str | None = Query(None,
-                                   description="comma/space-separated warm targets: cache, history"),
-          token: str | None = Depends(caller_token)):
+                                   description="comma-separated warm targets: cache, history"),
+          token: str | None = Depends(caller_token),
+          brand: str | None = Depends(caller_brand)):
     result = IngestResult(**store.ingest(_need_token(token), account_id, preset=preset))
-    if warm:
+    # `brand` must reach both warm calls: without it repository._brand falls back to
+    # brand_id=account_id, so warming writes to a different partition than the
+    # follow-up /chat reads -- i.e. it warms nothing.
+    targets = {w.strip() for w in (warm or "").split(",") if w.strip()}
+    if targets:
         tok = _need_token(token)
-        if "cache" in warm:
-            _cached_dataset(account_id, 30, tok, None)
-        if "history" in warm:
+        if "cache" in targets:                    # membership, not substring:
+            _cached_dataset(account_id, 30, tok, brand)   # "nocache" used to match
+        if "history" in targets:
             chat.build_history_block(tok, account_id, "campaign",
                                      date.today() - timedelta(days=30),
-                                     date.today() - timedelta(days=1), "INR")
+                                     date.today() - timedelta(days=1), "INR",
+                                     brand_id=brand)
     return result
 
 
