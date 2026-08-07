@@ -69,3 +69,41 @@ def test_scrape_does_not_store_raw_payloads_by_default(monkeypatch, db_session):
     rec = apify_ads.scrape("act_1", {"competitors": [{"name": "Acme"}]})
     assert "_raw_by_competitor" not in rec
     assert rec["total_ads"] == 1, "normalized ads are still stored"
+
+
+def test_shopify_context_fails_closed_on_tenant_mismatch(monkeypatch):
+    """C2: SHOPIFY_STORE/SHOPIFY_TOKEN are process-global with no per-account
+    lookup, but build() is per-tenant. Without this guard brand B's refresh sends
+    brand A's catalogue to the discovery LLM and stores A's competitors under B."""
+    from ai_layer.competitor import pipeline
+
+    monkeypatch.setenv("SHOPIFY_STORE", "shop.example.com")
+    monkeypatch.setenv("SHOPIFY_TOKEN", "tok")
+    monkeypatch.setattr(pipeline.httpx, "get",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("must not call Shopify for another tenant")))
+
+    monkeypatch.setenv("SHOPIFY_ACCOUNT_ID", "act_owner")
+    assert pipeline._shopify_context("act_someone_else") is None, "mismatch must fail closed"
+
+    monkeypatch.delenv("SHOPIFY_ACCOUNT_ID", raising=False)
+    assert pipeline._shopify_context("act_owner") is None, "unset owner must fail closed"
+
+
+def test_shopify_context_serves_the_owning_account(monkeypatch):
+    """The configured tenant keeps full behaviour."""
+    from ai_layer.competitor import pipeline
+
+    monkeypatch.setenv("SHOPIFY_STORE", "shop.example.com")
+    monkeypatch.setenv("SHOPIFY_TOKEN", "tok")
+    monkeypatch.setenv("SHOPIFY_ACCOUNT_ID", "act_owner")
+
+    class _R:
+        status_code = 200
+        @staticmethod
+        def json():
+            return {"products": [{"title": "Kurta", "product_type": "Ethnic"}]}
+
+    monkeypatch.setattr(pipeline.httpx, "get", lambda *a, **k: _R())
+    ctx = pipeline._shopify_context("act_owner")
+    assert ctx["domain"] == "shop.example.com" and ctx["types"] == ["Ethnic"]

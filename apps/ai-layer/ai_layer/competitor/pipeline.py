@@ -18,6 +18,7 @@ per-account seeding is needed (the account is just an example).
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import asdict
@@ -28,6 +29,8 @@ import httpx
 from ai_layer import config
 from ai_layer.competitor import apify_ads, discover
 from ai_layer.db import repository as _repo
+
+log = logging.getLogger("ai_layer.competitor.pipeline")
 
 STALE_DAYS = 7                       # re-scrape competitors older than this
 _GEO_CC = {"India": "IN", "US": "US", "USA": "US", "UK": "GB", "UAE": "AE"}
@@ -45,9 +48,32 @@ _PRICE_RE = re.compile(r"(?:₹|rs\.?|inr|\$|usd)\s?\d", re.IGNORECASE)
 
 # --- auto-context (hands-free discovery input) ------------------------------
 
-def _shopify_context() -> dict | None:
+def _shopify_context(account: str | None = None) -> dict | None:
+    """Shopify product context for the discovery LLM. FAILS CLOSED on tenant mismatch.
+
+    These credentials are process-global: one store, one token, no per-account
+    lookup. `build()` is per-tenant, so without this guard brand B's refresh sends
+    brand A's catalogue to the discovery LLM, gets A's competitors back, and stores
+    them under B -- where stored_block injects them into B's chat context.
+
+    SHOPIFY_ACCOUNT_ID names the ONE Meta account these credentials belong to. Any
+    other account (or an unset owner) gets None, and discovery degrades to
+    Meta-only context. Wrong-but-plausible competitor data is worse than less data.
+
+    TEMPORARY. Delete this function once the connector's per-brand
+    CredentialProvider (I10) lands, and source product context through the
+    connector seam instead -- one credential path, not two."""
     store, tok = os.getenv("SHOPIFY_STORE"), os.getenv("SHOPIFY_TOKEN")
     if not (store and tok):
+        return None
+    owner = os.getenv("SHOPIFY_ACCOUNT_ID")
+    if not owner:
+        log.warning("SHOPIFY_ACCOUNT_ID is not set; skipping Shopify context so a "
+                    "second tenant cannot receive another brand's catalogue")
+        return None
+    if account and account != owner:
+        log.warning("Shopify credentials belong to %s, not %s; skipping Shopify context",
+                    owner, account)
         return None
     ver = os.getenv("SHOPIFY_API_VERSION", "2024-07")
     try:
@@ -82,7 +108,7 @@ def auto_context(ds) -> dict:
         spend_by[f["campaign_name"]] = spend_by.get(f["campaign_name"], 0.0) + f["spend"]
     top_campaigns = [n for n, _ in sorted(spend_by.items(), key=lambda x: -x[1])[:8]]
 
-    shop = _shopify_context()
+    shop = _shopify_context(getattr(ds, "account_id", None))
     website = shop.get("domain") if shop else None
     notes = []
     if shop and shop.get("types"):
