@@ -102,7 +102,10 @@ ai-layer has **no public domain** (confirmed with the user 2026-08-04). They are
 
 ### B2 — `None`-safety assurance (verified 2026-08-04)
 
-`_pct_change` has exactly one caller: `_deltas` (brain.py:129). Every consumer of the resulting
+`_pct_change` has exactly one caller: `_deltas` (brain.py:129). **[Corrected 2026-08-08: true of
+`_pct_change` the name, but the same zero-prior sentinel was re-implemented twice as `_pct`
+(`history.py:115`, `ad_tools.py:163`) — caller count was the wrong question. Both siblings now
+return `None` outright (no flag path there needs the sentinel); pinned by tests.]** Every consumer of the resulting
 dict already has a `None` branch — `_causes` (`is not None` on every branch), `_flag` (same),
 `_direction` (`if pct is None: return "n/a"`), and brain.py:249, which reads
 `abs(pct["roas"]) if pct["roas"] is not None else 0.0`. **That last guard was written for a case the

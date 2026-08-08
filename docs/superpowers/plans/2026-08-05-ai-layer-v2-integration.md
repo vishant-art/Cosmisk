@@ -559,6 +559,8 @@ The delete is trivial; the **rebuild is a Meta refetch storm on a `development_a
 
 **B2 — the defect:** `_pct_change(recent, 0)` returns `100.0`. That is a **sentinel meaning "no comparable base"**, but it is emitted as a real percentage — into `_acct_line`, campaign headers, `_causes` strings ("efficient scaling — spend up 100% with ROAS up 100%"), and the `Trend` statement. A founder reads a fabricated figure as measured.
 
+> **[Corrected 2026-08-08]** This section scoped B2 to `brain.py` only. The same sentinel existed as two independent `_pct` re-implementations (`history.py:115`, `ad_tools.py:163`) that the verbatim-port mandate carried over unaudited. Both now return `None` on a zero prior (unlike brain, no flag path there needs the sentinel); `_fatigue_verdict` decided: a zero-prior frequency must not flip the verdict (test-pinned).
+
 > **Why not fix it inside `_pct_change` or `_deltas`** (both rejected): `_flag` reads `pct["roas"]` to raise `SCALING`. Nulling at the source means a genuine 0→N campaign loses its SCALING flag — and **B1 (flagging zero-prior campaigns) is intentional and must survive**. Nulling must therefore happen *after* `_flag` and *before* `_causes`.
 >
 > **Why not fix it at the render layer** (rejected): `_pct_change(2.0, 1.0)` returns exactly `100.0` — byte-identical to the sentinel. No renderer can tell a fabricated 100 from a genuine doubling without also being handed `prior`.
