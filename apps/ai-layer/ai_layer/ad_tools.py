@@ -162,7 +162,7 @@ def _label(rows: list[dict]) -> str:
 
 def _pct(recent: float, prior: float):
     if prior == 0:
-        return None if recent == 0 else 100.0
+        return None  # zero base has no comparable %; a 100.0 sentinel would count toward "fatiguing"
     return round((recent - prior) / prior * 100, 1)
 
 

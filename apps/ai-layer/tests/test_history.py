@@ -77,11 +77,11 @@ def test_attach_deltas_math():
     history.attach_deltas(months)
     assert months["2026-05"]["mom"] is None
     assert months["2026-06"]["mom"] == {"roas": 50.0, "spend": 50.0, "revenue": 125.0}
-    # zero-prior edge: prior 0 -> 100.0 when recent nonzero
+    # zero-prior edge: no comparable base -> None, never a fabricated +100%
     months2 = {"2026-01": {"roas": 0.0, "spend": 0.0, "revenue": 0.0},
                "2026-02": {"roas": 1.5, "spend": 10.0, "revenue": 15.0}}
     history.attach_deltas(months2)
-    assert months2["2026-02"]["mom"] == {"roas": 100.0, "spend": 100.0, "revenue": 100.0}
+    assert months2["2026-02"]["mom"] == {"roas": None, "spend": None, "revenue": None}
 
 
 def test_empty_months_are_memoized_and_not_refetched(db_session):

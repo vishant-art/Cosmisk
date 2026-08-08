@@ -114,7 +114,7 @@ def rollup(facts: list[dict]) -> dict:
 
 def _pct(recent: float, prior: float) -> float | None:
     if prior == 0:
-        return None if recent == 0 else 100.0
+        return None  # zero base has no comparable %; a 100.0 sentinel reads as a real doubling
     return round((recent - prior) / prior * 100, 1)
 
 

@@ -44,6 +44,22 @@ def test_fatigue_scan_flags_ctr_collapse_with_freq_rise():
     assert out["fatiguing_count"] == 1 and out["ads"][0]["ad"] == "Fatiguing"
 
 
+def test_zero_prior_frequency_does_not_flip_verdict():
+    # First half has no frequency data (0), second half does. A zero base has no
+    # comparable %, so the frequency delta is None and must NOT count toward
+    # "fatiguing" -- even with a real CTR collapse, CPM alone stays flat here.
+    days = [f"2026-07-{d:02d}" for d in range(1, 9)]
+    facts = []
+    for i, day in enumerate(days):
+        good = i < 4
+        facts.append(_f(day, "a1", "NoPriorFreq", spend=600,
+                        link_clicks=300.0 if good else 100.0,
+                        freq=0.0 if good else 2.0))
+    v = ad_tools._fatigue_verdict(facts)
+    assert v["deltas_pct"]["frequency"] is None
+    assert v["call"] == "stable"
+
+
 def test_execute_dispatch_and_unknowns():
     assert "error" in ad_tools.execute("top_ads", {"metric": "roas"}, [])
     facts = [_f("2026-07-01", "a1", "A")]
