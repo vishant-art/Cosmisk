@@ -85,6 +85,16 @@ class CampaignDayFact:
     roas: float               # DERIVED revenue/spend
     cpa: float
 
+    # --- extended fields (not in FACT_FIELDS / the facts table; adset/ad level + video) ---
+    adset_id: str = ""
+    adset_name: str = ""              # populated at adset/ad level
+    ad_id: str = ""                   # unique ad key at ad level
+    ad_name: str = ""                 # human label (NOT unique -- repeats across adsets)
+    video_3s: float = 0.0             # 3-second video views (actions.video_view)
+    thruplay: float = 0.0
+    hook_rate: float = 0.0            # 3-sec view rate = video_3s / impressions * 100
+    is_video: bool = False
+
 
 @dataclass(frozen=True)
 class Dataset:
@@ -141,6 +151,11 @@ def row_to_fact(raw: dict) -> CampaignDayFact:
     purchases = _action_value(raw.get("actions"), PURCHASE_ACTION_TYPES)
     revenue = _action_value(raw.get("action_values"), PURCHASE_ACTION_TYPES)
 
+    # video: actions.video_view = 3-second views (hook-rate numerator)
+    video_3s = _action_value(raw.get("actions"), ("video_view",))
+    thruplay = _action_value(raw.get("video_thruplay_watched_actions"), ("video_view",))
+    video_plays = _action_value(raw.get("video_play_actions"), ("video_view",))
+
     return CampaignDayFact(
         campaign_id=str(raw.get("campaign_id", "")),
         campaign_name=raw.get("campaign_name", raw.get("campaign_id", "unknown")),
@@ -164,6 +179,14 @@ def row_to_fact(raw: dict) -> CampaignDayFact:
         revenue=revenue,
         roas=revenue / spend if spend else 0.0,     # DERIVED, never the reported field
         cpa=spend / purchases if purchases else 0.0,
+        adset_id=str(raw.get("adset_id") or ""),
+        adset_name=raw.get("adset_name") or "",
+        ad_id=str(raw.get("ad_id") or ""),
+        ad_name=raw.get("ad_name") or "",
+        video_3s=video_3s,
+        thruplay=thruplay,
+        hook_rate=video_3s / impressions * 100 if impressions else 0.0,
+        is_video=bool(thruplay or video_3s or video_plays),
     )
 
 

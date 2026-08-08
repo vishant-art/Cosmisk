@@ -17,10 +17,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import re
 import sys
+import time
+from datetime import date, timedelta
+from pathlib import Path
 
+import httpx
 import pandas as pd
-import requests
 
 from ai_layer import config
 from ai_layer import meta_transform as mt
@@ -33,18 +38,23 @@ except (AttributeError, ValueError):
 
 # Bump if Meta deprecates the version. v23.0 is current/non-deprecated as of 2026.
 GRAPH_API_VERSION = "v23.0"
-BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+GRAPH_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+
+log = logging.getLogger("ai_layer.meta_live")
 
 # Production field set. Note link-click fields (inline_link_clicks / _ctr /
 # cost_per_inline_link_click) requested ALONGSIDE the all-clicks ones, plus
 # account_currency. purchase_roas/website_purchase_roas pulled for cross-check
 # only; the transform DERIVES ROAS.
 FIELDS = [
-    "campaign_id", "campaign_name", "adset_name", "ad_name", "account_currency",
+    "campaign_id", "campaign_name", "adset_id", "adset_name", "ad_id", "ad_name",
+    "account_currency",
     "spend", "impressions", "reach", "frequency",
     "clicks", "ctr", "cpc",
     "inline_link_clicks", "inline_link_click_ctr", "cost_per_inline_link_click",
     "cpm", "actions", "action_values", "purchase_roas", "website_purchase_roas",
+    # video: 3-sec views come via actions.video_view; thruplay/plays are their own fields
+    "video_thruplay_watched_actions", "video_play_actions",
     "date_start", "date_stop",
 ]
 
@@ -52,47 +62,128 @@ FIELDS = [
 # they return empty (not an error) and silently drop view-through conversions.
 ATTRIBUTION_WINDOWS = ["1d_view", "7d_click"]
 
+# Meta's Insights endpoint refuses a single request that asks for too much
+# (campaigns x days x fields). Empirically, daily campaign-level pulls on the
+# biggest account here succeed up to ~18 days and fail at ~21. We fetch in
+# windows of CHUNK_DAYS and auto-halve any window that still trips the limit,
+# so ANY requested timeline works regardless of account size or level.
+CHUNK_DAYS = 14
 
-def _fail(status, body):
-    """Raise a RuntimeError so library callers (chat.py / brain_real.py) can handle
-    it cleanly. The standalone CLI catches it at __main__ and prints + exits."""
+
+class MetaError(RuntimeError):
+    """Structured Graph API error so callers can branch on the failure kind
+    (too-much-data -> split & retry; beyond-retention -> skip; else -> fatal)."""
+    def __init__(self, status, code, subcode, message):
+        self.status, self.code, self.subcode, self.message = status, code, subcode, message
+        super().__init__(f"Meta API error ({status}): {message} "
+                         f"[code={code} subcode={subcode}]")
+
+
+def _meta_fail(status, body):
     e = body.get("error", {}) if isinstance(body, dict) else {}
-    raise RuntimeError(
-        f"Meta API error ({status}): {e.get('message')} "
-        f"[type={e.get('type')} code={e.get('code')} "
-        f"subcode={e.get('error_subcode')} fbtrace_id={e.get('fbtrace_id')}]")
+    raise MetaError(status, e.get("code"), e.get("error_subcode"), e.get("message"))
 
 
-def get(path, params):
-    r = requests.get(f"{BASE}/{path}", params=params, timeout=60)
+def is_too_much_data(e: MetaError) -> bool:
+    """True when Meta rejected the request purely for size / transient overload
+    (not a data or auth problem) -- the signal to split the window and retry."""
+    msg = (e.message or "").lower()
+    return (
+        # any 5xx, not just 500: Meta fronts Graph with gateways that emit 502/503/504
+        # (often as HTML), and those are transient/size-driven exactly like a 500.
+        (e.status or 0) >= 500
+        or e.subcode in (99, 1504044)
+        or "reduce the amount of data" in msg
+        or "temporarily unavailable" in msg
+        or "please reduce" in msg
+    )
+
+
+def is_beyond_retention(e: MetaError) -> bool:
+    return e.code == 3018 or "cannot be beyond 37 months" in (e.message or "").lower()
+
+
+def _json_or_fail(r) -> dict:
+    """Parse a Graph response, raising a CLASSIFIABLE MetaError on anything that is
+    not usable JSON. Meta serves HTML on gateway errors; a bare ValueError (or a
+    RuntimeError) there cannot be read by is_too_much_data / is_beyond_retention, so
+    the adaptive window-splitting retry never fires and a transient blip looks fatal."""
     try:
         body = r.json()
     except ValueError:
-        raise RuntimeError(f"Non-JSON response ({r.status_code}): {r.text[:300]}")
+        raise MetaError(r.status_code, None, None,
+                        f"Non-JSON response: {r.text[:300]}")
     if isinstance(body, dict) and "error" in body:
-        _fail(r.status_code, body)
+        _meta_fail(r.status_code, body)
     return body
 
 
-def get_insights_paged(account, params, max_rows=5000):
-    """Fetch insights following cursor pagination. Real daily pulls across many
-    campaigns easily exceed one page, so a single page would silently truncate."""
+def meta_get(path: str, params: dict) -> dict:
+    with httpx.Client(timeout=60) as client:
+        r = client.get(f"{GRAPH_BASE}/{path}", params=params)
+    return _json_or_fail(r)
+
+
+def get_insights_paged(account: str, params: dict, max_rows: int = 5000):
+    """Fetch insights following cursor pagination. Real pulls (esp. ad-level)
+    exceed one page, so a single page would silently truncate.
+
+    We advance with the `after` cursor against OUR endpoint + version, rather than
+    following Meta's absolute `paging.next` URL: that next URL is minted on a newer
+    Graph version (e.g. v25.0) than we requested, and following it 403s with
+    '(#200) Provide valid app ID' for this token."""
     rows = []
-    url = f"{BASE}/{account}/insights"
+    url = f"{GRAPH_BASE}/{account}/insights"
     p = dict(params)
     pages = 0
-    while True:
-        r = requests.get(url, params=p, timeout=120)
-        body = r.json()
-        if isinstance(body, dict) and "error" in body:
-            _fail(r.status_code, body)
-        rows.extend(body.get("data", []))
-        pages += 1
-        nxt = body.get("paging", {}).get("next")
-        if not nxt or len(rows) >= max_rows:
-            break
-        url, p = nxt, {}  # the `next` URL already carries all params + cursor
+    with httpx.Client(timeout=120) as client:
+        while True:
+            r = client.get(url, params=p)
+            body = _json_or_fail(r)
+            rows.extend(body.get("data", []))
+            pages += 1
+            paging = body.get("paging", {}) or {}
+            after = (paging.get("cursors") or {}).get("after")
+            if paging.get("next") and not after:
+                # offset-paged response: we stop, so this page is the whole result.
+                # Warn rather than guess -- production resolves whether this shape
+                # actually occurs for our field/breakdown combination.
+                log.warning("meta paging: next present without an after cursor "
+                            "(account=%s pages=%d rows=%d) -- results may be truncated",
+                            account, pages, len(rows))
+            if not paging.get("next") or not after or len(rows) >= max_rows:
+                break
+            p = dict(params)          # same version + params ...
+            p["after"] = after        # ... just advance the cursor
     return rows[:max_rows], pages
+
+
+_ACCOUNTS_TTL_S = 300
+_accounts_memo: dict[str, tuple[float, list[dict]]] = {}
+
+
+def list_accounts(token: str) -> list[dict]:
+    """All ad accounts the token can see (id, name, currency, status).
+
+    Memoized for _ACCOUNTS_TTL_S. fetch_envelope calls this once per contiguous
+    window and api._cached_dataset calls it again for name/currency, so a cold
+    multi-window pull burned N+1 identical me/adaccounts requests against a
+    development-tier rate budget. Fixed here rather than at one call site because
+    every caller routes through this function.
+
+    ponytail: process-local dict keyed by token, so it never crosses tenants and a
+    rotated token simply misses. Swap for a shared cache only if this runs
+    multi-process AND the call count still matters."""
+    hit = _accounts_memo.get(token)
+    if hit and (time.monotonic() - hit[0]) < _ACCOUNTS_TTL_S:
+        return hit[1]
+    accts = meta_get("me/adaccounts", {
+        "access_token": token,
+        "fields": "account_id,name,currency,account_status",
+        "limit": 100,
+    }).get("data", [])
+    _accounts_memo[token] = (time.monotonic(), accts)
+    return accts
 
 
 def save_envelope(path, account, acct_meta, rows):
@@ -115,16 +206,81 @@ def save_envelope(path, account, acct_meta, rows):
     print(f"\nSaved {len(rows)} rows -> {path}")
 
 
-def list_accounts(token):
-    """All ad accounts the token can see (id, name, currency, status)."""
-    return get("me/adaccounts", {
+def fetch_month_rows(token: str, account: str, first: date, last: date,
+                     level: str = "campaign") -> list[dict]:
+    """One monthly-aggregate pull (NO time_increment -> one row per campaign for
+    the whole month). Cheap and never trips the daily size limit -- used to build
+    the historic monthly facts for periods we don't keep raw daily rows for."""
+    params = {
         "access_token": token,
-        "fields": "account_id,name,currency,account_status",
-        "limit": 100,
-    }).get("data", [])
+        "level": level,
+        "fields": ",".join(FIELDS),
+        "action_attribution_windows": json.dumps(ATTRIBUTION_WINDOWS),
+        "time_range": json.dumps({"since": first.isoformat(), "until": last.isoformat()}),
+        "limit": 500,
+    }
+    rows, _ = get_insights_paged(account, params, max_rows=50000)
+    return rows
 
 
-def fetch_envelope(token, account=None, preset="last_30d", level="campaign", max_rows=5000):
+def _insights_params(token: str, since: str, until: str, level: str) -> dict:
+    return {
+        "access_token": token,
+        "level": level,
+        "fields": ",".join(FIELDS),
+        "action_attribution_windows": json.dumps(ATTRIBUTION_WINDOWS),
+        "time_range": json.dumps({"since": since, "until": until}),
+        "time_increment": 1,
+        "limit": 500,
+    }
+
+
+def _date_windows(since: date, until: date, chunk_days: int) -> list[tuple[date, date]]:
+    """Split [since, until] (inclusive) into consecutive windows of <= chunk_days."""
+    windows = []
+    cur = since
+    step = timedelta(days=chunk_days - 1)
+    while cur <= until:
+        end = min(cur + step, until)
+        windows.append((cur, end))
+        cur = end + timedelta(days=1)
+    return windows
+
+
+def _fetch_window_adaptive(token: str, account: str, s: date, u: date, level: str,
+                           skipped: list, depth: int = 0) -> list[dict]:
+    """Fetch one date window; if Meta rejects it as too big, split in half and
+    recurse (down to a single day) until every slice goes through. Windows that
+    fall beyond the 37-month retention are recorded and skipped, not fatal."""
+    try:
+        rows, _ = get_insights_paged(
+            account, _insights_params(token, s.isoformat(), u.isoformat(), level),
+            max_rows=50000)
+        return rows
+    except MetaError as e:
+        if is_beyond_retention(e):
+            skipped.append((s, u, "beyond 37-month retention"))
+            return []
+        if is_too_much_data(e):
+            if s < u:                                  # still splittable: halve it
+                mid = s + (u - s) // 2
+                left = _fetch_window_adaptive(token, account, s, mid, level, skipped, depth + 1)
+                right = _fetch_window_adaptive(token, account, mid + timedelta(days=1), u,
+                                               level, skipped, depth + 1)
+                return left + right
+            # single day still failing -> one retry (likely transient), else give up on it
+            try:
+                rows, _ = get_insights_paged(
+                    account, _insights_params(token, s.isoformat(), u.isoformat(), level),
+                    max_rows=50000)
+                return rows
+            except MetaError:
+                skipped.append((s, u, "Meta kept rejecting a single day"))
+                return []
+        raise                                          # auth / param / other: fatal
+
+
+def fetch_envelope_preset(token, account=None, preset="last_30d", level="campaign", max_rows=5000):
     """Pull a live paginated Insights export as a {meta, data} envelope.
 
     Reusable by chat.py / brain_real.py. Picks the first account if `account` is
@@ -162,10 +318,80 @@ def fetch_envelope(token, account=None, preset="last_30d", level="campaign", max
     }
 
 
+def fetch_envelope(token: str, account: str, since: date, until: date,
+                   level: str = "campaign", progress=None) -> dict:
+    """Pull live paginated Insights over [since, until] as a {meta, data} envelope,
+    fetching in CHUNK_DAYS windows with adaptive splitting so any timeline works."""
+    accts = list_accounts(token)
+    if not accts:
+        raise RuntimeError("No ad accounts visible to this token.")
+    acct_meta = next((a for a in accts if f"act_{a['account_id']}" == account), {})
+
+    windows = _date_windows(since, until, CHUNK_DAYS)
+    rows: list[dict] = []
+    skipped: list = []
+    for i, (s, u) in enumerate(windows, 1):
+        if progress:
+            progress(i, len(windows), s, u)
+        rows += _fetch_window_adaptive(token, account, s, u, level, skipped)
+
+    dates = [r.get("date_start") for r in rows if r.get("date_start")]
+    return {
+        "meta": {
+            "account_id": account,
+            "account_name": acct_meta.get("name", "?"),
+            "currency": acct_meta.get("currency", "INR"),
+            "level": level,
+            "time_increment": 1,
+            "date_range": {"since": min(dates) if dates else since.isoformat(),
+                           "until": max(dates) if dates else until.isoformat()},
+            "api_version": GRAPH_API_VERSION,
+            "source": "live",
+            "windows": len(windows),
+            "skipped": [(s.isoformat(), u.isoformat(), why) for s, u, why in skipped],
+        },
+        "data": rows,
+    }
+
+
 def fetch_dataset(token, account=None, preset="last_30d", level="campaign", max_rows=5000):
     """Live pull -> typed meta_transform.Dataset (one call for consumers)."""
-    return mt.normalize(fetch_envelope(token, account=account, preset=preset,
+    return mt.normalize(fetch_envelope_preset(token, account=account, preset=preset,
                                        level=level, max_rows=max_rows))
+
+
+_PRESET_DAYS_RE = re.compile(r"^last_(\d+)d$")
+
+
+def preset_days(preset: str) -> int | None:
+    """Days for a last_Nd preset; None when the preset isn't day-shaped."""
+    m = _PRESET_DAYS_RE.match(preset or "")
+    return int(m.group(1)) if m else None
+
+
+def fetch_dataset_for_preset(token, account, preset="last_30d", level="campaign"):
+    """Preset -> (Dataset, envelope meta). Day-shaped presets (last_Nd) route through
+    the chunked range fetcher; Meta 500s (code=1 subcode=99) on the legacy unchunked
+    pull past ~21 daily days for large accounts.
+
+    Single definition of that dispatch: /ingest and /insights?source=live had
+    verbatim copies, so a change to the `until = today - 1` convention applied to one
+    made them return different windows for the same preset. Returns the meta too, so
+    callers can see which spans Meta refused."""
+    days = preset_days(preset)
+    if days is not None:
+        until = date.today() - timedelta(days=1)
+        since = until - timedelta(days=days - 1)
+        env = fetch_envelope(token, account=account, since=since, until=until, level=level)
+    else:
+        env = fetch_envelope_preset(token, account=account, preset=preset, level=level)
+    return mt.normalize(env), env["meta"]
+
+
+def fetch_dataset_range(token, account, since, until, level="campaign"):
+    """Chunked range pull -> typed Dataset (the size-safe fetch_dataset)."""
+    return mt.normalize(fetch_envelope(token, account=account, since=since,
+                                       until=until, level=level))
 
 
 def main():
@@ -184,10 +410,10 @@ def main():
 
     print(f"Graph API {GRAPH_API_VERSION}\n")
 
-    me = get("me", {"access_token": token, "fields": "id,name"})
+    me = meta_get("me", {"access_token": token, "fields": "id,name"})
     print(f"Token belongs to: {me.get('name')} (id {me.get('id')})")
 
-    accts = get("me/adaccounts", {
+    accts = meta_get("me/adaccounts", {
         "access_token": token,
         "fields": "account_id,name,currency,account_status,amount_spent",
         "limit": 100,

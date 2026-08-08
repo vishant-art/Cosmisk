@@ -1,0 +1,197 @@
+===============================================================================
+CREATIVE STUDIO: QUESTIONS FOR THE PRODUCT OWNER
+Who is in the ad, our quality bar, what we learn from, and legal
+===============================================================================
+Created: July 2026
+For:     product owner, commercial lead, anyone non-technical
+Status:  open, waiting for answers
+
+This is the second of two documents.
+
+  THE FIRST ONE  Part 1  rate an ad we made (a short form)
+  (rating, cost  Part 2  money
+   and format)   Part 3  how the ad looks and sounds
+
+  THIS ONE       Part 4  who and what is in the ad
+                 Part 5  our quality bar
+                 Part 6  what we learn from
+                 Part 7  legal, data and trust
+                         plus the five to decide first
+
+Every question below is a business decision that is currently made by a default
+setting somebody typed while building the system. Nobody approved them.
+
+You do not need to understand the code to answer any of this. Each question says
+what happens NOW, and why it matters.
+
+
+===============================================================================
+PART 4: WHO AND WHAT IS IN THE AD
+===============================================================================
+
+Q20. Who approves the person who appears in our ads?
+     NOW: nobody. Whoever types the description gets that person. Typing
+          "beautiful indian woman" created a character used through the whole
+          ad. There are no rules on age, ethnicity or appearance, and the client
+          never sees the person before we make the ad.
+
+Q21. Should every brand use the same narrator voice?
+     NOW: yes, one default voice reads every ad for every client.
+
+Q22. Which product do we advertise?
+     NOW: automatically the best-selling product by revenue.
+     WHY: the bestseller needs the least help. Should the client choose, or
+          should we push new or slow-moving stock?
+
+Q23. One product per ad, or several?
+     NOW: one.
+
+Q24. Should we show prices and discounts in ads?
+     NOW: the price and any discount tags are fed in, so they can end up in the
+          wording.
+
+Q25. Should ads automatically tie into festivals and seasons?
+     NOW: only by accident, if the product happens to be tagged that way.
+
+Q26. Who checks that the claims in our ad copy are true and legal?
+     NOW: nobody. Wording like "best seller" or "up to 50% off" comes straight
+          from the store's own product tags into the ad.
+     WHY: a wrong discount claim is a real problem and no human is checking.
+
+Q27. Are we allowed to invent a brand?
+     NOW: yes. If the client gives us no brand details, the system invents a
+          brand name, slogan, colours, fonts and a logo idea.
+
+
+===============================================================================
+PART 5: OUR QUALITY BAR
+===============================================================================
+
+Q28. If our own quality check fails an ad, do we still deliver it?
+     NOW: yes, delivered with a "did not pass" flag. It used to be thrown away,
+          which meant we paid for it and gave the client nothing.
+
+Q29. Which problems should actually stop an ad from going out?
+     NOW: any ONE of these blocks it, all treated as equally bad: unreadable
+          text, product missing, distorted face, extra arm or hand, captions
+          covering something, unreadable captions, shots that do not flow, a
+          frozen shot, or the person changing between shots.
+     REAL EXAMPLE: our most recent ad was marked failed ONLY because a caption
+          sat on top of the dress. Everything else passed and the ad was good.
+
+Q30. How many times do we redo a bad image before shipping or dropping it?
+     NOW: once.
+
+Q31. Should we pay for an AI reviewer to check every single image?
+     NOW: yes, on by default. Small cost per image.
+
+Q32. Do we show clients the versions we rejected?
+     NOW: no, recorded internally but not shown.
+
+Q33. What does the client see if a job fails completely?
+     NOW: an error. There is no friendly fallback.
+
+
+===============================================================================
+PART 6: WHAT WE LEARN FROM
+===============================================================================
+
+Q34. Should we judge an ad on attention or on sales?
+     NOW: attention only. The system learns from whether people stopped
+          scrolling in the first couple of seconds. It ignores revenue.
+     WHY: attention is what the creative controls, but the client wants sales.
+
+Q35. How much proof before past results change what we make next?
+     NOW: a version needs 1,000 views and 95% confidence before it influences
+          anything. Anything weaker is recorded as "not proven" and ignored.
+     WHY: a high bar means we are never fooled by luck, but we learn slowly.
+
+Q36. Should we study the client's failed ads too, not just the winners?
+     NOW: yes, we look at the top 12 and the bottom 5.
+
+Q37. How much must an old ad have spent before we treat its result as real?
+     NOW: $100.
+
+Q38. Which past campaigns do we learn from?
+     NOW: the ones with the best return, by default.
+
+Q39. What are we allowed to test one against the other?
+     NOW: only three things: the opening line, the caption style, and the look.
+     WHY: keeps results meaningful, but limits what we can experiment with.
+
+
+===============================================================================
+PART 7: LEGAL, DATA AND TRUST
+===============================================================================
+
+Q40. Do we label our ads as AI-generated?
+     NOW: no, nothing is labelled. Meta has required this since March 2026 and
+          everything we make falls under it.
+     WHY: this is a legal gap, not a preference. NEEDS AN OWNER NOW.
+
+Q41. What client information are we comfortable sending to outside AI companies?
+     NOW: the client's real product photos, descriptions, prices, and their ad
+          performance figures.
+     WHY: should be in the client contract.
+
+Q42. How long do we keep the ads and client images we make?
+     NOW: forever. Nothing expires.
+
+Q43. Can a client ask us to delete everything?
+     NOW: there is no process for it.
+
+Q44. Can anything go live on Meta without a human?
+     NOW: no, and that is deliberate. A person has to publish it.
+     WHY: worth confirming this stays a permanent promise we can sell.
+
+Q45. Who inside our company is allowed to spend money on making ads?
+     NOW: anyone with access. There are no roles or limits.
+
+
+===============================================================================
+START WITH THESE FIVE
+===============================================================================
+Three of these are in the first document, two are in this one.
+
+  1. A spending limit per ad and per client.        NOW: none.          (doc 1, Q2/Q3)
+  2. Does a photo-ad request auto-buy a video?      NOW: yes, ~$1.22.   (doc 1, Q1)
+  3. Should the client's logo be on the ad?         NOW: no logo.       (doc 1, Q8)
+  4. AI labelling on Meta.                          NOW: nothing.       (this doc, Q40)
+     This is the one with actual legal risk.
+  5. Failed ads: send flagged, hold, or block?      NOW: sent flagged.  (this doc, Q28)
+
+
+===============================================================================
+APPENDIX: FOR WHOEVER CHANGES THESE SETTINGS AFTERWARDS
+===============================================================================
+
+  Q20     casting ................... the free-text direction input
+  Q21     voice ..................... default voice in config
+  Q22     product choice ............ Shopify bestseller ranking (by revenue)
+  Q23     products per ad ........... one, assumed throughout the pipeline
+  Q24     prices and discounts ...... product fields fed into the brief
+  Q25     seasons ................... not built, comes only from product tags
+  Q26     claim checking ............ not built, no human review step
+  Q27     invented brand ............ the brand-kit step, and whether a brand
+                                      kit is required input
+  Q28     deliver on fail ........... the salvage path, qa_passed flag
+  Q29     blocking problems ......... issue list and pass marks in config
+  Q30/Q31 retries and reviewer ...... qa_retries, run_vlm
+  Q32     rejected versions ......... recorded on the job, not surfaced
+  Q33     failure message ........... job error handling
+  Q34/Q35 what we learn ............. the metric, PRIOR_MIN_IMPRESSIONS, PRIOR_Z
+  Q36-Q38 evidence .................. top_creatives, bottom_creatives, min_spend,
+                                      strategy
+  Q39     testable things ........... the variant list
+  Q40     AI labelling .............. not built yet
+  Q41     data to vendors ........... what is sent to the image, video and
+                                      language-model providers
+  Q42/Q43 retention and deletion .... cloud storage lifecycle, currently none
+  Q44     auto-publish .............. not built, deliberately
+  Q45     who can spend ............. no roles on the creative endpoints
+
+
+-------------------------------------------------------------------------------
+First document: creative-studio-product-decisions-rating-cost-and-format.txt
+(Parts 1 to 3: rating an ad, money, and how the ad looks and sounds.)
+-------------------------------------------------------------------------------

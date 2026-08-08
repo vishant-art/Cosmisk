@@ -34,6 +34,13 @@ export class AiLayerError extends Error {
 
 const TIMEOUT_MS = 45_000;
 
+// Only 404 (no data) and 429 (Meta rate cap) may pass through; anything else — auth
+// statuses included — collapses to 502 so it can never leak into apps/api semantics.
+function upstreamError(detail: string | undefined, status: number): AiLayerError {
+  const kept = status === 404 || status === 429 ? status : 502;
+  return new AiLayerError(detail || `ai-layer error ${status}`, kept);
+}
+
 /**
  * GET {aiLayerUrl}/insights/{accountId} -> the AiInsight cards.
  * Defaults to `source=store` (the warm accumulated store — fast; the ai-layer's
@@ -67,7 +74,7 @@ export async function fetchAiLayerInsights(
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new AiLayerError(body?.detail || `ai-layer error ${res.status}`, res.status);
+    throw upstreamError(body?.detail, res.status);
   }
 
   const data = (await res.json().catch(() => ({}))) as { cards?: AiLayerInsight[] };
@@ -139,7 +146,7 @@ export async function fetchAiLayerChat(
 
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new AiLayerError(errBody?.detail || `ai-layer error ${res.status}`, res.status);
+    throw upstreamError(errBody?.detail, res.status);
   }
 
   const data = (await res.json().catch(() => ({}))) as {
@@ -199,7 +206,7 @@ export async function ingestAiLayer(
 
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new AiLayerError(errBody?.detail || `ai-layer error ${res.status}`, res.status);
+    throw upstreamError(errBody?.detail, res.status);
   }
 
   const data = (await res.json().catch(() => ({}))) as {
@@ -252,7 +259,7 @@ export async function fetchAiLayerChartData(
   }
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new AiLayerError(errBody?.detail || `ai-layer error ${res.status}`, res.status);
+    throw upstreamError(errBody?.detail, res.status);
   }
   const data = (await res.json().catch(() => ({}))) as Partial<AiLayerChartData>;
   return { daily: data.daily ?? [], totals: data.totals ?? null };
@@ -300,7 +307,7 @@ export async function aiLayerComplete(opts: AiLayerCompleteOpts): Promise<string
   }
   if (!res.ok) {
     const errBody = (await res.json().catch(() => ({}))) as { detail?: string };
-    throw new AiLayerError(errBody?.detail || `ai-layer error ${res.status}`, res.status);
+    throw upstreamError(errBody?.detail, res.status);
   }
   const data = (await res.json().catch(() => ({}))) as { text?: string };
   return data.text ?? '';

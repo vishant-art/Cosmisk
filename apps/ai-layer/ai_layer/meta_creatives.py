@@ -59,7 +59,7 @@ class CreativeAsset:
 # --- network seams (patched in tests) ----------------------------------------
 
 def _api(path: str, params: dict) -> dict:
-    return meta_live.get(path, params)
+    return meta_live.meta_get(path, params)
 
 
 def _download(url: str, out_path) -> str:

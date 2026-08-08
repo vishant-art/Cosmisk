@@ -46,3 +46,35 @@ def test_empty_account_returns_empty_dataset(db_session):
     back = repo.load_dataset("act_missing")
     assert len(back) == 0 and back.facts == ()
     assert back.since is None and back.currency == "INR" and back.account_name == "act_missing"
+
+
+def test_upsert_dataset_with_extended_facts(db_session):
+    from ai_layer import meta_transform as mt
+    from ai_layer.db import repository as repo
+    f = mt.row_to_fact({"campaign_id": "c9", "campaign_name": "C9",
+                        "date_start": "2026-07-01", "spend": "10", "impressions": "100",
+                        "ad_id": "a1", "adset_id": "as1"})
+    ds = mt.Dataset(account_id="act_ext", account_name="Ext", currency="INR",
+                    since="2026-07-01", until="2026-07-01", level="campaign",
+                    source="test", facts=(f,))
+    assert repo.upsert_dataset(ds) == 1
+    out = repo.load_dataset("act_ext")
+    assert len(out) == 1 and out.facts[0].ad_id == ""   # table stores the 20 cols only
+
+
+def test_save_monthly_facts_writes_distinct_rollups(db_session):
+    """E2 guard: with executemany, set_ must use stmt.excluded. Closing over the
+    loop variable writes ONE month's rollup to every row -- and the existing
+    round-trip tests cannot see it, because their months are identical by
+    construction."""
+    from ai_layer.db import repository as _repo
+
+    _repo.save_monthly_facts("act_e2", "campaign",
+                             {"2026-05": {"spend": 1.0}, "2026-06": {"spend": 2.0}})
+    back = _repo.load_monthly_facts("act_e2", "campaign")
+    assert back["2026-05"]["spend"] == 1.0 and back["2026-06"]["spend"] == 2.0
+
+    # the conflict path must update only the targeted month
+    _repo.save_monthly_facts("act_e2", "campaign", {"2026-06": {"spend": 9.0}})
+    back = _repo.load_monthly_facts("act_e2", "campaign")
+    assert back["2026-06"]["spend"] == 9.0 and back["2026-05"]["spend"] == 1.0

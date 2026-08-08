@@ -132,3 +132,8 @@ apps/ai-layer/data/*.sqlite-*
 temp_docs/
 # exported infra env dumps (secrets — never commit)
 railwayenv.txt
+# Railway deploy keypair (OpenSSH private key — never commit)
+railway
+railway.pub
+# one-time local operator scripts (machine-specific, never committed)
+local-ops/

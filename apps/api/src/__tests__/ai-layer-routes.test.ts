@@ -5,6 +5,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 const mockToken = vi.fn();
 const mockFetch = vi.fn();
 const mockChat = vi.fn();
+const mockChatStream = vi.fn();
 const mockIngest = vi.fn();
 
 // Mock config so the demo fallback (config.metaAccessToken) is exercised
@@ -25,6 +26,7 @@ vi.mock('../boot/meta-helpers.js', () => ({
 vi.mock('../services/ai-layer-client.js', () => ({
   fetchAiLayerInsights: (...args: unknown[]) => mockFetch(...args),
   fetchAiLayerChat: (...args: unknown[]) => mockChat(...args),
+  fetchAiLayerChatStream: (...args: unknown[]) => mockChatStream(...args),
   ingestAiLayer: (...args: unknown[]) => mockIngest(...args),
   AiLayerError: class AiLayerError extends Error {
     status: number;
@@ -66,6 +68,7 @@ beforeEach(() => {
   mockToken.mockReset();
   mockFetch.mockReset();
   mockChat.mockReset();
+  mockChatStream.mockReset();
   mockIngest.mockReset();
 });
 
@@ -227,6 +230,36 @@ describe('POST /ai-layer/chat', () => {
     expect(body.success).toBe(false);
     expect(body.error).toContain('No data');
   });
+
+  it('surfaces a Meta rate cap as a real 429, never "try again"', async () => {
+    mockToken.mockResolvedValueOnce('meta-tok');
+    mockChat.mockRejectedValueOnce(new AiLayerError('meta rate limit', 429));
+    const r = await app.inject({
+      method: 'POST', url: '/ai-layer/chat', headers: auth(),
+      payload: { account_id: 'act_1', message: 'hi' },
+    });
+    expect(r.statusCode).toBe(429);
+    const body = r.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('rate-limiting');
+    expect(body.error).not.toContain('try again');
+  });
+});
+
+describe('POST /ai-layer/chat/stream', () => {
+  it('surfaces an upstream 429 as a real 429, never "try again"', async () => {
+    mockToken.mockResolvedValueOnce('meta-tok');
+    mockChatStream.mockResolvedValueOnce({ ok: false, status: 429, body: null });
+    const r = await app.inject({
+      method: 'POST', url: '/ai-layer/chat/stream', headers: auth(),
+      payload: { account_id: 'act_1', message: 'hi' },
+    });
+    expect(r.statusCode).toBe(429);
+    const body = r.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('rate-limiting');
+    expect(body.error).not.toContain('try again');
+  });
 });
 
 describe('POST /ai-layer/refresh', () => {
@@ -277,5 +310,18 @@ describe('POST /ai-layer/refresh', () => {
     const body = r.json();
     expect(body.success).toBe(false);
     expect(body.error).toContain('refresh');
+  });
+
+  it('surfaces a Meta rate cap as a real 429, never "try again"', async () => {
+    mockToken.mockResolvedValueOnce('meta-tok');
+    mockIngest.mockRejectedValueOnce(new AiLayerError('meta rate limit', 429));
+    const r = await app.inject({
+      method: 'POST', url: '/ai-layer/refresh', headers: auth(), payload: { account_id: 'act_1' },
+    });
+    expect(r.statusCode).toBe(429);
+    const body = r.json();
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('rate-limiting');
+    expect(body.error).not.toContain('try again');
   });
 });

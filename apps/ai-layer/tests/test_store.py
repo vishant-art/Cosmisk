@@ -1,8 +1,11 @@
 """Tests for the Phase 3 SQLite store: round-trip + trailing-window UPSERT."""
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import pytest
 
+from ai_layer import meta_live as ml
 from ai_layer import meta_transform as mt, store
 
 
@@ -63,6 +66,79 @@ def test_load_window_filters_dates():
                                 raw("A", "2026-05-10", 100, 2, 300)]))
     back = store.load_dataset("act_1", since="2026-05-03", until="2026-05-07")
     assert [f.date for f in back.facts] == ["2026-05-05"]
+
+
+def test_ingest_day_preset_uses_chunked_range_fetcher(monkeypatch):
+    """last_Nd presets must route through fetch_dataset_range (the chunked, adaptive
+    fetcher) -- the legacy unchunked fetch_dataset 500s on large accounts past ~21
+    daily days. Also asserts the resulting window ends yesterday and spans N days."""
+    calls = {}
+
+    def fake_fetch_envelope(token, account, since, until, level="campaign", progress=None):
+        calls["token"], calls["account"] = token, account
+        calls["since"], calls["until"] = since, until
+        return {"meta": {"account_id": account, "account_name": "Acme", "currency": "INR"},
+                "data": [raw("A", since.isoformat(), 100, 2, 300)]}
+
+    def legacy_should_not_run(*a, **k):
+        raise AssertionError("legacy fetch_dataset must not run for a last_Nd preset")
+
+    monkeypatch.setattr(ml, "fetch_envelope", fake_fetch_envelope)
+    monkeypatch.setattr(ml, "fetch_dataset", legacy_should_not_run)
+
+    result = store.ingest("tok", "act_t", preset="last_30d")
+
+    expected_until = date.today() - timedelta(days=1)
+    expected_since = expected_until - timedelta(days=29)
+    assert calls["since"] == expected_since and calls["until"] == expected_until
+    assert calls["account"] == "act_t" and calls["token"] == "tok"
+
+    assert result["rows_upserted"] == 1
+    back = store.load_dataset("act_t")
+    assert len(back) == 1
+
+
+def _envelope(account, level="campaign", since="2026-05-01", until="2026-05-01",
+              rows=None, skipped=None):
+    return {"meta": {"account_id": account, "account_name": "T", "currency": "INR",
+                     "level": level, "date_range": {"since": since, "until": until},
+                     "skipped": skipped or []},
+            "data": rows if rows is not None else [raw("A", "2026-05-01", 100, 2, 300)]}
+
+
+def test_ingest_non_day_preset_keeps_legacy_fetch(monkeypatch):
+    """Non-day-shaped presets (e.g. "this_month") keep the preset envelope path --
+    there's no since/until to chunk against. (Asserted one level down from the
+    old fetch_dataset seam: ingest now normalizes the envelope itself so it can
+    surface meta['skipped'].)"""
+    calls = {"legacy": 0}
+
+    def fake_envelope_preset(token, account=None, preset="last_30d", level="campaign",
+                             max_rows=5000):
+        calls["legacy"] += 1
+        return _envelope(account, level)
+
+    def range_should_not_run(*a, **k):
+        raise AssertionError("the chunked range fetcher must not run for a non-day preset")
+
+    monkeypatch.setattr(ml, "fetch_envelope_preset", fake_envelope_preset)
+    monkeypatch.setattr(ml, "fetch_envelope", range_should_not_run)
+
+    store.ingest("tok", "act_m", preset="this_month")
+    assert calls["legacy"] == 1
+
+
+def test_ingest_surfaces_skipped_spans(monkeypatch):
+    """A3: a window Meta partly refused must not be reported as complete."""
+    skipped = [("2026-07-03", "2026-07-04", "reduce the amount of data")]
+
+    def fake_envelope(token, account, since, until, level="campaign", progress=None):
+        return _envelope(account, level, since.isoformat(), until.isoformat(),
+                         skipped=skipped)
+
+    monkeypatch.setattr(ml, "fetch_envelope", fake_envelope)
+    out = store.ingest("tok", "act_skip", preset="last_7d")
+    assert out["skipped"] == skipped
 
 
 def test_accounts_isolated():

@@ -55,6 +55,13 @@ export class AdAccountService {
     });
   }
 
+  /** Wipe per-user state on logout so the next login can't see the prior user's accounts. */
+  reset() {
+    this._accounts.set([]);
+    this._currentAccount.set(null);
+    localStorage.removeItem('cosmisk_ad_account');
+  }
+
   switchAccount(accountId: string) {
     const acc = this._accounts().find(a => a.id === accountId);
     if (acc) {

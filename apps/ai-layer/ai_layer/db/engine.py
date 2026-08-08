@@ -13,6 +13,18 @@ from sqlalchemy.orm import Session, sessionmaker
 
 SCHEMA = "ai_layer"
 
+# Neon drops idle/long-lived connections; without TCP keepalives a mid-use drop
+# blocks recv() until OS dead-peer detection (~2h on Windows). These libpq
+# params bound detection to ~60s so the query errors, the pool member is
+# invalidated, and the caller's error handling can proceed.
+CONNECT_ARGS = {
+    "keepalives": 1,
+    "keepalives_idle": 30,
+    "keepalives_interval": 10,
+    "keepalives_count": 3,
+    "connect_timeout": 20,
+}
+
 
 def to_psycopg3(url: str) -> str:
     if not url:
@@ -40,7 +52,7 @@ def get_engine() -> Engine:
             # PgBouncer transaction pooling rejects prepared statements AND the
             # `options=search_path` startup param, so neither is set here — every table
             # is schema-qualified via MetaData(schema="ai_layer") instead.
-            connect_args={"prepare_threshold": None},
+            connect_args={"prepare_threshold": None, **CONNECT_ARGS},
         )
         _Session = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine

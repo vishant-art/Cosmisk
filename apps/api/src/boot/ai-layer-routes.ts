@@ -56,6 +56,11 @@ function isDemo(v: unknown): boolean {
   return v === '1' || v === 'true' || v === true;
 }
 
+// Meta's rate cap is the one upstream failure the UI must NOT answer with "try again"
+// (retrying digs deeper into the cap). Surfaced as a real 429 + honest copy.
+const RATE_LIMIT_MSG =
+  'Meta is rate-limiting data pulls right now. Please wait a few minutes before asking again.';
+
 /** Route definitions (separated so tests can register without the flag gate). */
 export function defineAiLayerRoutes(app: FastifyInstance): void {
   // GET /ai-layer/insights?account_id=act_123[&demo=1] — deterministic-brain AiInsight cards.
@@ -126,6 +131,9 @@ export function defineAiLayerRoutes(app: FastifyInstance): void {
     } catch (err) {
       if (err instanceof AiLayerError) {
         logger.warn({ status: err.status, msg: err.message }, '[ai-layer] chat degraded');
+        if (err.status === 429) {
+          return reply.status(429).send({ success: false, error: RATE_LIMIT_MSG });
+        }
         return reply.status(200).send({
           success: false,
           error:
@@ -198,6 +206,9 @@ export function defineAiLayerRoutes(app: FastifyInstance): void {
       });
       if (!res.ok || !res.body) {
         logger.warn({ status: res.status }, '[ai-layer] chat stream degraded');
+        if (res.status === 429) {
+          return reply.status(429).send({ success: false, error: RATE_LIMIT_MSG });
+        }
         return reply.status(200).send({
           success: false,
           error: res.status === 404
@@ -256,6 +267,9 @@ export function defineAiLayerRoutes(app: FastifyInstance): void {
     } catch (err) {
       if (err instanceof AiLayerError) {
         logger.warn({ status: err.status, msg: err.message }, '[ai-layer] refresh degraded');
+        if (err.status === 429) {
+          return reply.status(429).send({ success: false, error: RATE_LIMIT_MSG });
+        }
         return reply.status(200).send({
           success: false,
           error: 'Could not refresh live data right now. Please try again.',

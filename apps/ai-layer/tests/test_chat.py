@@ -92,6 +92,26 @@ def test_system_prompt_embeds_snapshot():
     assert "DATA SNAPSHOT" in sys_msg and "snapshot" in sys_msg.lower()
 
 
+def test_system_prompt_has_trust_blocks():
+    from ai_layer import chat
+    for marker in ("CODE-COMPUTED ANALYSIS", "HISTORIC FACTS", "COMPETITOR INTEL"):
+        assert marker in chat.SYSTEM
+    assert chat.MODEL == "openai/gpt-5.4-mini" and chat.TEMPERATURE == 0.5
+    assert chat.MAX_TOKENS == 6000 and chat.REASONING_EFFORT == "minimal"
+
+
+def test_build_context_pandas_free_output_shape():
+    from ai_layer import chat, meta_transform as mt
+    ds = mt.normalize({"meta": {"account_id": "a", "account_name": "N", "currency": "INR",
+                                "date_range": {"since": "2026-07-01", "until": "2026-07-01"},
+                                "level": "campaign", "source": "test"},
+                       "data": [{"campaign_id": "c1", "campaign_name": "C",
+                                 "date_start": "2026-07-01", "spend": "100",
+                                 "impressions": "1000"}]})
+    ctx = chat.build_context(ds, full=True)
+    assert "PER-CAMPAIGN TOTALS" in ctx and "FULL PER-CAMPAIGN DAILY ROWS" in ctx
+
+
 def test_real_sample_builds_context_if_present():
     p = Path(__file__).resolve().parents[1] / "data" / "_real_sample.json"
     if not p.exists():
@@ -164,3 +184,105 @@ def test_live_gives_inference_not_refusal():
     assert ("ugc" in low or "catalog" in low or "roas" in low)  # engaged with the data
     assert not any(p in low for p in ["cannot be determined", "not derivable",
                                       "i cannot answer", "unable to provide"])
+
+
+def test_build_full_context_history_override():
+    from ai_layer import chat, meta_transform as mt
+    ds = mt.normalize({"meta": {"account_id": "a", "account_name": "N", "currency": "INR",
+                                "date_range": {"since": "2026-07-01", "until": "2026-07-01"},
+                                "level": "campaign", "source": "file"},
+                       "data": [{"campaign_id": "c1", "campaign_name": "C",
+                                 "date_start": "2026-07-01", "spend": "100",
+                                 "impressions": "1000"}]})
+    out = chat.build_full_context(ds, None, "a", "campaign", None, None,
+                                  history_block_override="MONTHLY FACTS HERE")
+    assert "=== HISTORIC FACTS" in out and "MONTHLY FACTS HERE" in out
+    out2 = chat.build_full_context(ds, None, "a", "campaign", None, None)
+    assert "=== HISTORIC FACTS" not in out2      # token=None, no override -> no block
+
+
+def test_build_history_block_survives_keyboard_interrupt(monkeypatch):
+    from datetime import date
+    from ai_layer import chat, history
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    seen = []
+    monkeypatch.setattr(chat.history, "ensure", interrupted)
+    monkeypatch.setattr(chat.history, "load",
+                        lambda account, level, brand_id=None: {"2026-06": {
+                            "roas": 3.0, "spend": 100.0, "revenue": 300.0,
+                            "purchases": 10, "mom": None}})
+    monkeypatch.setattr(chat.fetch_cache, "cached_rows", lambda *a, **k: [])
+    monkeypatch.setattr(chat.fetch_cache, "prune_older_than", lambda *a, **k: 0)
+    block = chat.build_history_block("tok", "act_x", "campaign",
+                                     date(2026, 7, 1), date(2026, 7, 28), "INR",
+                                     progress=seen.append)
+    assert "2026-06" in block                       # fallback months rendered
+    assert any("interrupted" in s for s in seen)    # progress note surfaced
+
+
+def test_request_path_history_is_capped_at_six_months(db_session, monkeypatch):
+    """D4: a cold account's first /chat eagerly backfilled up to 37 months inside
+    the HTTP request -- rate-budget exhaustion plus a timeout."""
+    from datetime import date
+    from ai_layer import chat, history
+
+    seen = {}
+
+    def fake_ensure(account, level, ffm, today, months_back=history.RETENTION_MONTHS,
+                    progress=None, brand_id=None):
+        seen["months_back"] = months_back
+        return {}
+
+    monkeypatch.setattr(chat.history, "ensure", fake_ensure)
+    monkeypatch.setattr(chat.fetch_cache, "cached_rows", lambda *a, **k: [])
+    monkeypatch.setattr(chat.fetch_cache, "prune_older_than", lambda *a, **k: 0)
+    chat.build_history_block("tok", "act_1", "campaign",
+                             date(2026, 1, 1), date(2026, 7, 1), "INR")
+    assert seen["months_back"] == chat.REQUEST_HISTORY_MONTHS == 6
+
+
+def test_history_block_does_not_prune(db_session, monkeypatch):
+    """D7: pruning belongs with the writer (/ingest). Every uncached /chat used to
+    issue two unconditional DELETEs that contend with replace_insight_span."""
+    from datetime import date
+    from ai_layer import chat
+
+    pruned = []
+    monkeypatch.setattr(chat.fetch_cache, "prune_older_than",
+                        lambda *a, **k: pruned.append(1) or 0)
+    monkeypatch.setattr(chat.fetch_cache, "cached_rows", lambda *a, **k: [])
+    monkeypatch.setattr(chat.history, "ensure", lambda *a, **k: {})
+    chat.build_history_block("tok", "act_1", "campaign",
+                             date(2026, 1, 1), date(2026, 7, 1), "INR")
+    assert pruned == [], "the read path must not prune"
+
+
+def test_daily_totals_dict_and_pandas_paths_agree():
+    """G2: chat._daily_totals (dict) and mt.daily_totals (pandas) are two live
+    implementations of the same aggregate. Both must encode the rule the chat
+    docstring states -- ratios recomputed from the sums, never averaged. This is
+    the tripwire for the drift, not a fix for it."""
+    import pandas as pd
+    from datetime import date, timedelta
+    from ai_layer import chat, meta_transform as mt
+
+    facts = []
+    for i in range(5):
+        d = (date(2026, 7, 1) + timedelta(days=i)).isoformat()
+        for camp in ("a", "b"):
+            facts.append({"date": d, "campaign_name": camp, "spend": 10.0 + i,
+                          "revenue": 25.0 + i * 2, "impressions": 100.0,
+                          "link_clicks": 5.0, "purchases": 2.0, "frequency": 1.1})
+
+    dicts = chat._daily_totals(facts)
+    df = mt.daily_totals(pd.DataFrame(facts).assign(date=lambda x: pd.to_datetime(x["date"])))
+
+    assert len(dicts) == len(df) == 5
+    for row, (_, p) in zip(dicts, df.iterrows()):
+        assert row["spend"] == pytest.approx(float(p.spend))
+        assert row["revenue"] == pytest.approx(float(p.revenue))
+        assert row["roas"] == pytest.approx(float(p.roas))
+        assert row["link_ctr"] == pytest.approx(float(p.link_ctr))

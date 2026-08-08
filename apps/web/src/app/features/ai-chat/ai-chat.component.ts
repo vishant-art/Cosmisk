@@ -16,6 +16,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
 import { AuthService } from '../../core/services/auth.service';
 import { FeedbackService } from '../../core/services/feedback.service';
+import { ToastService } from '../../core/services/toast.service';
 import { environment } from '../../../environments/environment';
 import { ChatStateService } from './chat-state.service';
 
@@ -112,7 +113,7 @@ import { ChatStateService } from './chat-state.service';
               @if (m.role === 'user') {
                 {{ m.content }}
               } @else if (m.content) {
-                <div class="md-body" [innerHTML]="renderMd(m.content)"></div>
+                <div class="md-body" [innerHTML]="renderMd(m.content, sending() && $index === messages().length - 1)"></div>
               } @else {
                 <span class="inline-flex gap-1 py-1">
                   <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>
@@ -197,7 +198,9 @@ import { ChatStateService } from './chat-state.service';
     .md-body :where(h1, h2, h3, h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; font-size: 0.95rem; }
     .md-body :where(code) { background: rgba(0,0,0,0.06); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
     .md-body :where(a) { color: var(--accent); text-decoration: underline; }
-    .md-body :where(table) { border-collapse: collapse; margin: 0.5rem 0; width: 100%; font-size: 0.85rem; }
+    /* The chat prompt tells the model to use tables; a wide one must scroll inside
+       the 85%-width bubble, not blow it out. */
+    .md-body :where(table) { border-collapse: collapse; margin: 0.5rem 0; width: 100%; font-size: 0.85rem; display: block; overflow-x: auto; }
     .md-body :where(th, td) { border: 1px solid rgba(0,0,0,0.1); padding: 0.3rem 0.5rem; text-align: left; }
     .md-body :where(th) { background: rgba(0,0,0,0.04); font-weight: 600; }
     /* Money & ROAS: mono, tabular — scannable 0.62 vs 3.00 */
@@ -216,6 +219,7 @@ export default class AiChatComponent implements AfterViewChecked {
   private auth = inject(AuthService);
   private sanitizer = inject(DomSanitizer);
   private feedback = inject(FeedbackService);
+  private toast = inject(ToastService);
   state = inject(ChatStateService);
 
   // Per-answer thumbs (keyed by message index) + once-per-session comment box.
@@ -256,8 +260,23 @@ export default class AiChatComponent implements AfterViewChecked {
     }
   }
 
-  /** Markdown -> sanitized HTML for assistant bubbles. */
-  renderMd(text: string): SafeHtml {
+  // Parsed-HTML memo for settled messages. The actively-streaming message must NOT be
+  // cached: its content changes every token, so caching it would store every partial
+  // prefix (O(n²) memory for one answer).
+  private mdCache = new Map<string, SafeHtml>();
+
+  /** Markdown -> sanitized HTML for assistant bubbles; memoized unless streaming. */
+  renderMd(text: string, streaming = false): SafeHtml {
+    if (streaming) return this.parseMd(text);
+    let html = this.mdCache.get(text);
+    if (!html) {
+      html = this.parseMd(text);
+      this.mdCache.set(text, html);
+    }
+    return html;
+  }
+
+  private parseMd(text: string): SafeHtml {
     const html = marked.parse(text ?? '', { async: false }) as string;
     return this.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(html));
   }
@@ -291,6 +310,7 @@ export default class AiChatComponent implements AfterViewChecked {
   clearChat(): void {
     if (this.sending()) return;
     this.state.clear();
+    this.mdCache.clear();
     this.errorMsg.set('');
   }
 
@@ -339,6 +359,16 @@ export default class AiChatComponent implements AfterViewChecked {
       this.lastCached.set(res.headers.get('X-Cached') === 'true');
       const model = res.headers.get('X-Model');
       if (model) this.lastModel.set(model);
+
+      if (res.status === 401) {
+        // Raw fetch skips the HTTP interceptors — mirror errorInterceptor's 401 contract
+        // here, or an expired session leaves the tab stuck on a generic error forever.
+        this.messages.set(this.messages().slice(0, asstIndex));
+        this.sending.set(false);
+        this.toast.error('Session Expired', 'Please log in again.');
+        this.auth.logout();
+        return;
+      }
 
       const contentType = res.headers.get('Content-Type') || '';
       if (!res.ok || !res.body || !contentType.startsWith('text/plain')) {
@@ -420,9 +450,10 @@ export default class AiChatComponent implements AfterViewChecked {
             },
           ]);
         },
-        error: () => {
+        error: (e: { error?: { error?: string } }) => {
           this.refreshing.set(false);
-          this.errorMsg.set('Could not refresh live data. Please try again.');
+          // Surface the server's copy (e.g. the honest 429 rate-limit message) when present.
+          this.errorMsg.set(e?.error?.error || 'Could not refresh live data. Please try again.');
         },
       });
   }

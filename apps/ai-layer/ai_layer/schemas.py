@@ -67,7 +67,10 @@ class ChatRequest(BaseModel):
     account_id: str
     message: str
     history: Optional[list[dict[str, str]]] = None
-    source: str = "store"            # store | live
+    source: str = "cache"            # cache (default) | store | live | connectors
+    # The raw window for the cache-backed default path; any timeline works, floored
+    # server-side at ~chat.RAW_RETENTION_DAYS (older periods live in HISTORIC FACTS).
+    days: int = 30
     # 'full' (default, as before) sends every per-(campaign x date) row; 'summary' is
     # the opt-in lean mode -- pre-computed aggregates only (~6x fewer tokens, cheaper
     # + faster). The web UI toggles this via a button; default stays 'full'.
@@ -88,6 +91,21 @@ class ChatResponse(BaseModel):
     session_id: str                  # reuse this on the next turn to hit the cache
     context_mode: str                # the mode actually used (summary | full)
     cached: bool                     # True if the snapshot came from the session cache
+    tools_used: list[str] = []       # tool names invoked by the tool-calling loop (empty for legacy sources)
+
+
+class CompetitorIntelResponse(BaseModel):
+    account_id: str
+    discovered: int
+    scraped_ads: int
+    scraped_at: Optional[str] = None
+    stale: bool
+    block: str
+
+
+class CompetitorRefreshResponse(BaseModel):
+    account_id: str
+    status: str                      # started
 
 
 class CompleteRequest(BaseModel):
@@ -113,6 +131,8 @@ class IngestResult(BaseModel):
     rows_upserted: int
     since: Optional[str] = None
     until: Optional[str] = None
+    # spans Meta refused, so the caller can see the window is not actually complete
+    skipped: list[tuple[str, str, str]] = []   # [(since, until, why), ...]
 
 
 class CostResponse(BaseModel):

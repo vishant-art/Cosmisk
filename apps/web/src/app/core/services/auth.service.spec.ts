@@ -4,7 +4,9 @@ import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import { AuthService } from './auth.service';
 import { ApiService } from './api.service';
+import { AdAccountService } from './ad-account.service';
 import { AuthResponse, User } from '../models/user.model';
+import { ChatStateService } from '../../features/ai-chat/chat-state.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -30,6 +32,8 @@ describe('AuthService', () => {
     localStorage.clear();
 
     apiSpy = jasmine.createSpyObj('ApiService', ['get', 'post', 'put', 'delete']);
+    // AuthService now pulls in AdAccountService, whose constructor fetches accounts.
+    apiSpy.get.and.returnValue(of({ success: true, accounts: [], total: 0 }));
     routerSpy = jasmine.createSpyObj('Router', ['navigate']);
 
     TestBed.configureTestingModule({
@@ -181,6 +185,31 @@ describe('AuthService', () => {
       expect(localStorage.getItem('cosmisk_token')).toBeNull();
       expect(localStorage.getItem('cosmisk_user')).toBeNull();
       expect(routerSpy.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('should reset per-user chat and ad-account state so the next login sees nothing (W5)', () => {
+      const chat = TestBed.inject(ChatStateService);
+      const accounts = TestBed.inject(AdAccountService);
+      chat.messages.set([{ role: 'assistant', content: 'spend was INR 972,950' }]);
+      const priorSession = chat.sessionId();
+      // Seed the persisted key directly — asserting it is null after logout proves nothing
+      // if the persist effect never flushed and it was never written in the first place.
+      localStorage.setItem('cosmisk_ai_chat', '{"messages":[{"role":"user","content":"x"}]}');
+      sessionStorage.setItem('cosmisk_chat_history', '[{"role":"user","content":"x"}]');
+      localStorage.setItem('cosmisk_ad_account', 'act_1');
+      service.handleAuthResponse(mockAuthResponse);
+
+      service.logout();
+
+      expect(chat.messages()).toEqual([]);
+      // On disk, not just in memory: the persist effect flushes asynchronously and we
+      // navigate immediately, so logout must remove the key itself.
+      expect(localStorage.getItem('cosmisk_ai_chat')).toBeNull();
+      expect(chat.sessionId()).not.toBe(priorSession); // server context cache key rotates
+      expect(sessionStorage.getItem('cosmisk_chat_history')).toBeNull();
+      expect(accounts.currentAccount()).toBeNull();
+      expect(accounts.allAccounts()).toEqual([]);
+      expect(localStorage.getItem('cosmisk_ad_account')).toBeNull();
     });
   });
 

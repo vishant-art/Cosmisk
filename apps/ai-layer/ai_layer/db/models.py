@@ -170,3 +170,54 @@ class CreativeJob(Base):
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class InsightRow(Base):
+    """One raw Meta insight row (full actions arrays), any level. The fetch cache's
+    row store: raw stays raw so re-normalization is free when fact logic evolves."""
+    __tablename__ = "insight_rows"
+    __table_args__ = (Index("ix_insight_rows_scope_date",
+                            "brand_id", "account_id", "level", "date"),)
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    level: Mapped[str] = mapped_column(Text, primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    row_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    raw: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class InsightFetchLog(Base):
+    """One row per (scope, date) already fetched -- the cache's fetched_dates set."""
+    __tablename__ = "insight_fetch_log"
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    level: Mapped[str] = mapped_column(Text, primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    fetched_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class MonthlyFacts(Base):
+    """One stored month rollup (exact rnd history.py shape in `rollup`, incl. mom).
+    Survives past Meta's 37-month retention -- memory Meta itself no longer has."""
+    __tablename__ = "monthly_facts"
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    level: Mapped[str] = mapped_column(Text, primary_key=True)
+    month: Mapped[str] = mapped_column(Text, primary_key=True)     # 'YYYY-MM'
+    rollup: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CompetitorIntel(Base):
+    """Discovery + scraped-ads records for one account (discovery_json = the rnd
+    discover record; ads_json = the rnd apify_ads record). Independent timestamps
+    because discovery is ~permanent while ads go stale after STALE_DAYS."""
+    __tablename__ = "competitor_intel"
+    brand_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    account_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    discovery_json: Mapped[dict | None] = mapped_column(JSONB)
+    discovered_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    ads_json: Mapped[dict | None] = mapped_column(JSONB)
+    scraped_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

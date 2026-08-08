@@ -31,6 +31,10 @@
 |---|---|---|
 | `VOCABULARY.md` | 📖 REFERENCE | Canonical naming; resolves the M-vs-Phase collision |
 | `STATUS_INDEX.md` (this) | 🔵 ACTIVE | Master catalog |
+| [`2026-08-06-ai-layer-v2-execution-log.md`](./2026-08-06-ai-layer-v2-execution-log.md) | 🔵 ACTIVE | **ai-layer v2 integration — execution log.** 14 commits on `integrate/ai-layer-v2`; per-task gates, the Fable review corrections, and the env/baseline findings |
+| [`2026-08-04-creative-v2-diff-review.md`](./2026-08-04-creative-v2-diff-review.md) | 📖 REFERENCE | **Defect register** for `creative_v2`'s ai-layer — 28 defects with options, tradeoffs and the user triage decisions (§0) |
+| [`2026-08-04-creative-v2-integration-plan.md`](./2026-08-04-creative-v2-integration-plan.md) | ♻️ SUPERSEDED | Rev-2 batch plan; superseded by the executable plan in `docs/superpowers/plans/2026-08-05-ai-layer-v2-integration.md` |
+| [`connector_improvements/2026-08-04-ai-layer-driven-requirements.md`](./connector_improvements/2026-08-04-ai-layer-driven-requirements.md) | 🔵 ACTIVE | R1–R10 the connector service must gain for the updated ai-layer (all forward-looking; nothing in the integration touches them) |
 | `ON_HOLD.md` | 🔵 ACTIVE | Deferred-items ledger. **Items 1 & 7 ✅ resolved** this session |
 | `31_05/next_steps.md` | 🔵 ACTIVE | Execution checklist (A0–A4 + B/C ✅; DB-2 pending) |
 | `31_05/db2_execution_plan.md` | 🔵 ACTIVE | **DB-2 plan** — vitest repair + PG test target + adapter/shim + M2.0–M2.9 |

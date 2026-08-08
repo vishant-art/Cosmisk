@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from dataclasses import fields
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ai_layer import meta_transform as mt
@@ -17,7 +16,7 @@ from ai_layer.db import engine, models as m
 
 log = logging.getLogger("ai_layer.db.repository")
 
-_FACT_COLS = [f.name for f in fields(mt.CampaignDayFact)]          # 20, incl. date (str)
+_FACT_COLS = list(mt.FACT_FIELDS)          # the 20 table columns, NOT the extended dataclass
 _FACT_UPDATE = [c for c in _FACT_COLS if c not in ("campaign_id", "date")]
 
 
@@ -305,3 +304,156 @@ def load_variants(brand_id: str | None = None, *, published_only: bool = False) 
             q = q.where(m.CreativeVariant.meta_ad_id.is_not(None))
         rows = s.execute(q.order_by(m.CreativeVariant.created_at)).scalars().all()
         return [_variant_to_dict(r) for r in rows]
+
+
+# --- intelligence stores (chat integration) -----------------------------------
+
+def insight_fetched_dates(account_id: str, level: str, brand_id: str | None = None) -> set[str]:
+    bid = _brand(brand_id, account_id)
+    with engine.get_session() as s:
+        q = select(m.InsightFetchLog.date).where(
+            m.InsightFetchLog.brand_id == bid, m.InsightFetchLog.account_id == account_id,
+            m.InsightFetchLog.level == level)
+        return {d.isoformat() for d in s.execute(q).scalars().all()}
+
+
+def mark_insight_fetched(account_id: str, level: str, dates: list[str],
+                         brand_id: str | None = None) -> None:
+    if not dates:
+        return
+    bid = _brand(brand_id, account_id)
+    with engine.get_session() as s:
+        for d in dates:
+            s.execute(pg_insert(m.InsightFetchLog).values(
+                brand_id=bid, account_id=account_id, level=level,
+                date=dt.date.fromisoformat(d)
+            ).on_conflict_do_update(
+                index_elements=[m.InsightFetchLog.brand_id, m.InsightFetchLog.account_id,
+                                m.InsightFetchLog.level, m.InsightFetchLog.date],
+                set_={"fetched_at": func.now()}))
+        s.commit()
+
+
+def replace_insight_span(account_id: str, level: str, span_dates: list[str],
+                         rows: list[tuple[str, str, dict]],
+                         brand_id: str | None = None) -> None:
+    """Delete all rows on the span's dates, then insert the fresh ones -- the rnd
+    cache's upsert-by-span: revised recent days replace their prior values cleanly."""
+    bid = _brand(brand_id, account_id)
+    span = [dt.date.fromisoformat(d) for d in span_dates]
+    # dedupe within the batch by (date, row_key), last wins (mirrors rnd dict upsert)
+    dedup: dict[tuple, tuple] = {}
+    for date_iso, row_key, raw in rows:
+        dedup[(date_iso, row_key)] = (date_iso, row_key, raw)
+    with engine.get_session() as s:
+        s.execute(delete(m.InsightRow).where(
+            m.InsightRow.brand_id == bid, m.InsightRow.account_id == account_id,
+            m.InsightRow.level == level, m.InsightRow.date.in_(span)))
+        if dedup:
+            # one INSERT for the batch instead of a mapped instance + flush per row:
+            # a 30-day x 84-campaign ingest is ~2,500 rows, ad-level an order more.
+            # No ORM events are registered on InsightRow, so nothing is lost.
+            s.bulk_insert_mappings(m.InsightRow, [
+                {"brand_id": bid, "account_id": account_id, "level": level,
+                 "date": dt.date.fromisoformat(date_iso), "row_key": row_key, "raw": raw}
+                for date_iso, row_key, raw in dedup.values()])
+        s.commit()
+
+
+def load_insight_rows(account_id: str, level: str, since: str | None = None,
+                      until: str | None = None, brand_id: str | None = None) -> list[dict]:
+    bid = _brand(brand_id, account_id)
+    with engine.get_session() as s:
+        q = select(m.InsightRow.raw).where(
+            m.InsightRow.brand_id == bid, m.InsightRow.account_id == account_id,
+            m.InsightRow.level == level)
+        if since:
+            q = q.where(m.InsightRow.date >= dt.date.fromisoformat(since))
+        if until:
+            q = q.where(m.InsightRow.date <= dt.date.fromisoformat(until))
+        q = q.order_by(m.InsightRow.date, m.InsightRow.row_key)
+        return [dict(r) for r in s.execute(q).scalars().all()]
+
+
+def prune_insight_rows(account_id: str, level: str, cutoff_iso: str,
+                       brand_id: str | None = None) -> int:
+    """Drop raw rows AND fetch-log entries older than cutoff (the 183-day raw
+    boundary). Returns rows dropped -- the store never claims days it discarded."""
+    bid = _brand(brand_id, account_id)
+    cutoff = dt.date.fromisoformat(cutoff_iso)
+    with engine.get_session() as s:
+        res = s.execute(delete(m.InsightRow).where(
+            m.InsightRow.brand_id == bid, m.InsightRow.account_id == account_id,
+            m.InsightRow.level == level, m.InsightRow.date < cutoff))
+        s.execute(delete(m.InsightFetchLog).where(
+            m.InsightFetchLog.brand_id == bid, m.InsightFetchLog.account_id == account_id,
+            m.InsightFetchLog.level == level, m.InsightFetchLog.date < cutoff))
+        s.commit()
+        return int(res.rowcount or 0)
+
+
+def load_monthly_facts(account_id: str, level: str, brand_id: str | None = None) -> dict[str, dict]:
+    bid = _brand(brand_id, account_id)
+    with engine.get_session() as s:
+        q = select(m.MonthlyFacts).where(
+            m.MonthlyFacts.brand_id == bid, m.MonthlyFacts.account_id == account_id,
+            m.MonthlyFacts.level == level)
+        return {r.month: dict(r.rollup) for r in s.execute(q).scalars().all()}
+
+
+def save_monthly_facts(account_id: str, level: str, months: dict[str, dict],
+                       brand_id: str | None = None) -> None:
+    bid = _brand(brand_id, account_id)
+    if not months:
+        return
+    # One executemany instead of a statement per month: history.ensure passes the
+    # ENTIRE months dict, so a warm account issued up to 37 round trips to rewrite
+    # two changed rollups.
+    stmt = pg_insert(m.MonthlyFacts)
+    with engine.get_session() as s:
+        s.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[m.MonthlyFacts.brand_id, m.MonthlyFacts.account_id,
+                                m.MonthlyFacts.level, m.MonthlyFacts.month],
+                # stmt.excluded, NOT the loop variable: with executemany there is no
+                # per-row Python value to close over, and binding one would write the
+                # same rollup to every month.
+                set_={"rollup": stmt.excluded.rollup, "updated_at": func.now()}),
+            [{"brand_id": bid, "account_id": account_id, "level": level,
+              "month": month, "rollup": rollup} for month, rollup in months.items()])
+        s.commit()
+
+
+def load_competitor_intel(account_id: str, brand_id: str | None = None) -> dict | None:
+    bid = _brand(brand_id, account_id)
+    with engine.get_session() as s:
+        row = s.get(m.CompetitorIntel, (bid, account_id))
+        if row is None:
+            return None
+        return {"discovery": dict(row.discovery_json) if row.discovery_json else None,
+                "discovered_at": row.discovered_at.isoformat() if row.discovered_at else None,
+                "ads": dict(row.ads_json) if row.ads_json else None,
+                "scraped_at": row.scraped_at.isoformat() if row.scraped_at else None}
+
+
+def _upsert_competitor(account_id: str, brand_id: str | None, values: dict) -> None:
+    bid = _brand(brand_id, account_id)
+    with engine.get_session() as s:
+        upd = dict(values)
+        upd["updated_at"] = func.now()
+        s.execute(pg_insert(m.CompetitorIntel).values(
+            brand_id=bid, account_id=account_id, **values
+        ).on_conflict_do_update(
+            index_elements=[m.CompetitorIntel.brand_id, m.CompetitorIntel.account_id],
+            set_=upd))
+        s.commit()
+
+
+def save_competitor_discovery(account_id: str, record: dict, brand_id: str | None = None) -> None:
+    _upsert_competitor(account_id, brand_id,
+                       {"discovery_json": record, "discovered_at": func.now()})
+
+
+def save_competitor_ads(account_id: str, record: dict, brand_id: str | None = None) -> None:
+    _upsert_competitor(account_id, brand_id,
+                       {"ads_json": record, "scraped_at": func.now()})
