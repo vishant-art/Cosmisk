@@ -376,7 +376,8 @@ def competitors_refresh(account_id: str, background: BackgroundTasks,
                         brand: str | None = Depends(caller_brand)):
     ds = store.load_dataset(account_id)
     if len(ds) == 0 and token:
-        ds = ml.fetch_dataset(token, account=account_id, preset="last_30d")
+        # chunked dispatch, not the raw fetch_dataset: last_30d unchunked 500s on big accounts
+        ds = ml.fetch_dataset_for_preset(token, account_id, preset="last_30d")[0]
     if len(ds) == 0:
         raise HTTPException(status_code=404, detail="no account data to build context from")
 

@@ -260,7 +260,9 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             summary = _brief_summary(req.brief)
             account_name = req.brief.get("brand_name") or "Creative Studio"
         elif req.account_id and token:
-            env = meta_live.fetch_envelope_preset(token, account=req.account_id, preset="last_30d")
+            # envelope_for_preset, NOT fetch_envelope_preset: last_30d is day-shaped, and
+            # the unchunked pull 500s (code=1 subcode=99) on large accounts with no retry.
+            env = meta_live.envelope_for_preset(token, account=req.account_id, preset="last_30d")
             dp = run_dir / "_input.json"
             dp.write_text(json.dumps(env), encoding="utf-8")
             data_path = str(dp)

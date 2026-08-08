@@ -369,22 +369,34 @@ def preset_days(preset: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def fetch_dataset_for_preset(token, account, preset="last_30d", level="campaign"):
-    """Preset -> (Dataset, envelope meta). Day-shaped presets (last_Nd) route through
-    the chunked range fetcher; Meta 500s (code=1 subcode=99) on the legacy unchunked
-    pull past ~21 daily days for large accounts.
+def envelope_for_preset(token, account, preset="last_30d", level="campaign") -> dict:
+    """Preset -> raw {meta, data} envelope, chunked when the preset is day-shaped.
 
-    Single definition of that dispatch: /ingest and /insights?source=live had
-    verbatim copies, so a change to the `until = today - 1` convention applied to one
-    made them return different windows for the same preset. Returns the meta too, so
-    callers can see which spans Meta refused."""
+    THE single definition of that dispatch. Day-shaped presets (last_Nd) must go
+    through the chunked range fetcher: Meta 500s with `code=1 subcode=99` on the
+    legacy unchunked pull past ~21 daily days for large accounts, and only the
+    chunked path has the adaptive window-halving retry (_fetch_window_adaptive)
+    that recovers from it.
+
+    Callers that need the raw envelope (creative/service.py writes it to _input.json)
+    use this; callers that want a Dataset use fetch_dataset_for_preset below. Calling
+    fetch_envelope_preset directly with a last_Nd preset re-introduces the 500."""
     days = preset_days(preset)
     if days is not None:
         until = date.today() - timedelta(days=1)
         since = until - timedelta(days=days - 1)
-        env = fetch_envelope(token, account=account, since=since, until=until, level=level)
-    else:
-        env = fetch_envelope_preset(token, account=account, preset=preset, level=level)
+        return fetch_envelope(token, account=account, since=since, until=until, level=level)
+    return fetch_envelope_preset(token, account=account, preset=preset, level=level)
+
+
+def fetch_dataset_for_preset(token, account, preset="last_30d", level="campaign"):
+    """Preset -> (Dataset, envelope meta), via the shared dispatch above.
+
+    /ingest and /insights?source=live had verbatim copies of the dispatch, so a change
+    to the `until = today - 1` convention applied to one made them return different
+    windows for the same preset. Returns the meta too, so callers can see which spans
+    Meta refused."""
+    env = envelope_for_preset(token, account, preset=preset, level=level)
     return mt.normalize(env), env["meta"]
 
 
