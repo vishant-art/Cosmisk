@@ -95,7 +95,11 @@ export class AuthService {
     // Reset per-user state held by root singletons — logout navigates without a
     // reload, so anything left in memory (or re-persisted by effects) would be
     // readable by the next login in this browser session.
-    this.chatState.clear(); // resets messages + sessionId; its effect persists the empty state
+    this.chatState.clear(); // resets messages + sessionId (in-memory)
+    // Remove the key outright rather than trusting clear()'s persist effect to overwrite
+    // it: Angular effects flush asynchronously, and we navigate on the next line — a tab
+    // closed in that window would leave the prior user's conversation on disk.
+    localStorage.removeItem('cosmisk_ai_chat');
     sessionStorage.removeItem('cosmisk_chat_history'); // ai-studio history (component-held)
     this.adAccounts.reset();
     this.router.navigate(['/login']);
