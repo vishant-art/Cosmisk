@@ -84,6 +84,24 @@ def test_attach_deltas_math():
     assert months2["2026-02"]["mom"] == {"roas": None, "spend": None, "revenue": None}
 
 
+def test_zero_prior_six_months_is_not_reported_as_flat():
+    """A zero prior has no direction. `(p or 0)` read the None from _pct as 0 and printed
+    "roughly flat" -- a confident wrong claim in a block the prompt says to trust. Real
+    case: six months of spend with a broken pixel (roas 0, spend > 0 so not filtered),
+    then six months at 2.5x."""
+    months = {f"2025-{m:02d}": {**history.EMPTY_ROLLUP, "roas": 0.0, "spend": 100000.0,
+                                "revenue": 0.0}
+              for m in range(1, 7)}
+    months.update({f"2025-{m:02d}": {**history.EMPTY_ROLLUP, "roas": 2.5, "spend": 100000.0,
+                                     "revenue": 250000.0}
+                   for m in range(7, 13)})
+    summary = history.render_history_block(months).splitlines()[-1]
+
+    assert "flat" not in summary
+    assert "no comparable prior" in summary
+    assert "100%" not in summary          # nor the sentinel this replaced
+
+
 def test_empty_months_are_memoized_and_not_refetched(db_session):
     """D3: a month Meta genuinely has no data for was never stored, so it landed in
     `todo` on every subsequent call -- one Meta round-trip per empty month, per

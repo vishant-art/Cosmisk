@@ -241,8 +241,14 @@ def render_history_block(months: dict, currency: str = "INR", tail: int = 24) ->
             prior6 = [r for _, r in roas_by[-12:-6]] or recent6
             ra, pa = sum(recent6) / len(recent6), sum(prior6) / len(prior6)
             p = _pct(ra, pa)
-            direction = "declining" if (p or 0) <= -NOISE_PCT else \
-                        "improving" if (p or 0) >= NOISE_PCT else "roughly flat"
+            # `p` is None when the prior 6 months averaged 0 ROAS -- no comparable base.
+            # `(p or 0)` read that as 0 and claimed "roughly flat", i.e. a confident wrong
+            # direction rather than a missing one (a pixel outage then a fix reports flat).
+            direction = ("no comparable prior -- the prior 6 months averaged 0 ROAS"
+                         if p is None
+                         else "declining" if p <= -NOISE_PCT
+                         else "improving" if p >= NOISE_PCT
+                         else "roughly flat")
             lines.append(f"Last 6 months avg ROAS {ra:.2f}x vs prior 6 months {pa:.2f}x "
                          f"({direction}{_sign(p)}).")
     return "\n".join(lines)
