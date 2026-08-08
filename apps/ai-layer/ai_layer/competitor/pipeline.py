@@ -22,6 +22,7 @@ import logging
 import os
 import re
 from dataclasses import asdict
+import datetime as dt
 from datetime import date
 
 import httpx
@@ -33,6 +34,23 @@ from ai_layer.db import repository as _repo
 log = logging.getLogger("ai_layer.competitor.pipeline")
 
 STALE_DAYS = 7                       # re-scrape competitors older than this
+
+# F1 -- refresh=True bypasses the staleness cache and makes BOTH billed legs
+# unconditional (one OpenRouter discovery + up to MAX_COMPETITORS Apify actor runs,
+# ~$0.50 a sweep). /competitors/{id}/refresh has no dedupe, so a double-click or a
+# client retry bills twice for identical data -- and last-writer-wins can leave the
+# stored row THINNER than before, so it is double spend for a worse result.
+#
+# A refresh inside the cooldown serves the cached record instead of re-billing.
+# Seconds, not days, so a deliberate re-run after a real change still works.
+REFRESH_COOLDOWN_S = int(os.getenv("COMPETITOR_REFRESH_COOLDOWN_S", "900"))
+
+# In-flight guard for the exact-simultaneity race the cooldown cannot see (two
+# requests before either has written scraped_at).
+# ponytail: process-local set. Correct for one replica and for local testing; a
+# multi-replica deploy needs a Postgres advisory lock or a refresh_started_at
+# column. Not built until this actually runs on more than one replica.
+_in_flight: set[tuple[str | None, str]] = set()
 _GEO_CC = {"India": "IN", "US": "US", "USA": "US", "UK": "GB", "UAE": "AE"}
 
 
@@ -237,6 +255,22 @@ def render_block(discovered: dict, ads_record: dict, agg: dict) -> str:
 
 # --- orchestration ----------------------------------------------------------
 
+def _within_cooldown(ads_record: dict | None) -> bool:
+    """True when the last scrape is recent enough that a refresh would re-bill for
+    data we already hold. Guards the double-click / client-retry case."""
+    if not ads_record or REFRESH_COOLDOWN_S <= 0:
+        return False
+    ts = ads_record.get("scraped_at") or ""
+    try:
+        when = dt.datetime.fromisoformat(ts)
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=dt.timezone.utc)
+    age = (dt.datetime.now(dt.timezone.utc) - when).total_seconds()
+    return age < REFRESH_COOLDOWN_S
+
+
 def _is_stale(ads_record: dict | None) -> bool:
     if not ads_record:
         return True
@@ -278,14 +312,30 @@ def build(account: str, ds, refresh: bool = False,
 
     ads_record = apify_ads.load_ads(key, brand_id=brand_id)
     scraped_now = False
+    # A refresh inside the cooldown is almost always a double-click or a retry.
+    # Serving the cached record costs nothing; re-billing costs ~$0.50 and can
+    # overwrite the stored row with a thinner one.
+    if refresh and _within_cooldown(ads_record):
+        log.warning("competitor refresh for %s ignored: last scrape is under the "
+                    "%ss cooldown; serving the cached record", key, REFRESH_COOLDOWN_S)
+        refresh = False
     if config.APIFY_TOKEN and (refresh or _is_stale(ads_record)):
         def _sp(i, total, name, mode):
             if progress:
                 progress("scrape", f"[{i}/{total}] {name} ({mode})")
-        ads_record = apify_ads.scrape(key, discovered, max_competitors=max_competitors,
-                                      ads_per=ads_per, country=_country_code(ctx["geo"]),
-                                      progress=_sp, brand_id=brand_id)
-        scraped_now = True
+        guard = (brand_id, key)
+        if guard in _in_flight:
+            log.warning("competitor scrape for %s already running; not starting a "
+                        "second billed sweep", key)
+        else:
+            _in_flight.add(guard)
+            try:
+                ads_record = apify_ads.scrape(
+                    key, discovered, max_competitors=max_competitors, ads_per=ads_per,
+                    country=_country_code(ctx["geo"]), progress=_sp, brand_id=brand_id)
+                scraped_now = True
+            finally:
+                _in_flight.discard(guard)
     ads_record = ads_record or {"ads_by_competitor": {}}
 
     agg = aggregate(ads_record)

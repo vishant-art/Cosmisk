@@ -107,3 +107,48 @@ def test_shopify_context_serves_the_owning_account(monkeypatch):
     monkeypatch.setattr(pipeline.httpx, "get", lambda *a, **k: _R())
     ctx = pipeline._shopify_context("act_owner")
     assert ctx["domain"] == "shop.example.com" and ctx["types"] == ["Ethnic"]
+
+
+def test_refresh_inside_cooldown_does_not_rebill(monkeypatch, db_session):
+    """F1: /competitors/{id}/refresh has no dedupe. A double-click or a client retry
+    made both billed legs run again for identical data -- and last-writer-wins can
+    leave the stored row thinner than before, so it is double spend for a worse
+    result."""
+    import datetime as dt
+    from ai_layer.competitor import pipeline
+
+    monkeypatch.setattr(pipeline.config, "APIFY_TOKEN", "t")
+    monkeypatch.setattr(pipeline, "auto_context",
+                        lambda ds: {"brand": "B", "website": None, "category": None,
+                                    "geo": None, "notes": None})
+    monkeypatch.setattr(pipeline.discover, "ensure",
+                        lambda *a, **k: {"competitors": [{"name": "Acme"}]})
+
+    fresh = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    monkeypatch.setattr(pipeline.apify_ads, "load_ads",
+                        lambda *a, **k: {"scraped_at": fresh, "ads_by_competitor": {}})
+    monkeypatch.setattr(pipeline.apify_ads, "scrape",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("must not re-bill Apify inside the cooldown")))
+
+    class _DS:
+        account_id, account_name, facts = "act_1", "B", []
+
+    _, meta = pipeline.build("act_1", _DS(), refresh=True)
+    assert meta["scraped_now"] is False, "a refresh inside the cooldown must serve cache"
+
+
+def test_apify_caps_are_env_tunable(monkeypatch):
+    """Apify bills per run AND per result, so these two numbers are the sweep cost.
+    Local testing must be able to run a fraction of a real sweep."""
+    import importlib
+    from ai_layer.competitor import apify_ads
+
+    monkeypatch.setenv("COMPETITOR_MAX", "1")
+    monkeypatch.setenv("COMPETITOR_ADS_PER", "3")
+    reloaded = importlib.reload(apify_ads)
+    try:
+        assert reloaded.MAX_COMPETITORS == 1 and reloaded.ADS_PER_COMPETITOR == 3
+    finally:
+        monkeypatch.delenv("COMPETITOR_MAX"); monkeypatch.delenv("COMPETITOR_ADS_PER")
+        importlib.reload(apify_ads)

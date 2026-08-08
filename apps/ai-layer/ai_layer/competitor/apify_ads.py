@@ -21,6 +21,7 @@ Standalone:
 from __future__ import annotations
 
 import difflib
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -33,9 +34,12 @@ from ai_layer.db import repository as _repo
 ACTOR = "apify~facebook-ads-scraper"
 RUN_SYNC = f"https://api.apify.com/v2/acts/{ACTOR}/run-sync-get-dataset-items"
 
-# hard caps (free-tier safe: 6 x 15 = 90 ads ~ $0.5)
-MAX_COMPETITORS = 6
-ADS_PER_COMPETITOR = 15
+# Hard caps. Apify bills per actor run AND per result, so these two numbers ARE the
+# cost of a sweep (free-tier safe default: 6 x 15 = 90 ads ~ $0.5). Overridable so
+# local testing can run a fraction of a real sweep:
+#   COMPETITOR_MAX=1 COMPETITOR_ADS_PER=3   ->  1 run x 3 ads, ~1/30th the spend
+MAX_COMPETITORS = int(os.getenv("COMPETITOR_MAX", "6"))
+ADS_PER_COMPETITOR = int(os.getenv("COMPETITOR_ADS_PER", "15"))
 DEFAULT_COUNTRY = "ALL"      # Ad Library country filter for the keyword fallback
 MIN_PAGE_ADS = 3            # a page-URL hit below this (or wrong page) -> keyword fallback
 NAME_MATCH = 0.6            # min name similarity to accept a resolved page
