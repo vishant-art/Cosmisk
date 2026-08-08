@@ -54,7 +54,12 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
 # JSON exec-form + `exec` so ${PORT} still expands (Railway/PaaS inject $PORT; fall back to
 # 8000 locally) AND uvicorn becomes PID 1 — SIGTERM from `docker stop` reaches it for a
 # graceful shutdown instead of dying to the 10s SIGKILL timeout as a shell child.
-# --host :: binds IPv6: Railway's private network is IPv6-only, so `.railway.internal`
-# is unreachable on an IPv4-only 0.0.0.0 bind. On Linux `::` is dual-stack (IPV6_V6ONLY=0),
-# so the public proxy and the localhost HEALTHCHECK (127.0.0.1/::1) still resolve.
-CMD ["sh", "-c", "exec uvicorn ai_layer.api:app --host :: --port ${PORT:-8000}"]
+# --host 0.0.0.0, NOT `::`. This env is DUAL-STACK: `.railway.internal` resolves to both
+# A and AAAA records (measured 2026-07-28: getaddrinfo returned fd12:… AND 10.206.138.88),
+# so the earlier "the private network is IPv6-only" premise was wrong. `::` binds IPv6-only
+# inside the container, which Railway's IPv4 healthcheck cannot reach — the deploy fails as
+# `service unavailable` while the app is actually up.
+# Diagnostic that settles it: from inside the container,
+#   python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+# ConnectionRefused there means an IPv6-only bind.
+CMD ["sh", "-c", "exec uvicorn ai_layer.api:app --host 0.0.0.0 --port ${PORT:-8000}"]

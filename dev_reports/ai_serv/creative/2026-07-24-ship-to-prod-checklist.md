@@ -60,10 +60,14 @@ Build context is the **repo root** (it bundles `apps/connectors`).
 - `ARG INSTALL_GOOGLE=0` — **DONE** (commit `a07cf38`). Drops the heavy `google-ads` gRPC dep;
   the Google connector is blocked on #39/#40/#41 and lazy-imports (degrades to `skipped`).
   Reversible by rebuild, no code change.
-- `CMD ... uvicorn --host ::` — **DONE** (commit `79883e5`). Was `0.0.0.0` (IPv4-only); Railway's
-  private network is **IPv6-only**, so `.railway.internal` is unreachable on a v4 bind. `::` is
-  dual-stack on Linux, so the public proxy and the localhost HEALTHCHECK still resolve. Required for
-  the A→B private-networking decision (§3.5).
+- ~~`CMD ... uvicorn --host ::` — **DONE** (commit `79883e5`). Was `0.0.0.0` (IPv4-only); Railway's
+  private network is **IPv6-only**, so `.railway.internal` is unreachable on a v4 bind.~~
+  **REVERTED 2026-08-08 — the premise was wrong.** This env is DUAL-STACK: `.railway.internal`
+  resolves to both A and AAAA (measured 2026-07-28, `getaddrinfo` returned `fd12:…` *and*
+  `10.206.138.88`). `::` binds IPv6-only in the container, which Railway's **IPv4 healthcheck**
+  cannot reach, so the deploy fails `service unavailable` while the app is up. B was green only
+  behind a Railway Custom Start Command override; a fresh service without that override
+  re-breaks. Back to `--host 0.0.0.0` in the Dockerfile — one source of truth, no override.
 - Non-root `appuser` (uid 10001); `CREATIVE_OUTPUT_DIR=/app/data/creative_output` because
   site-packages is root-owned and read-only for `appuser`. **Do not move.**
 - `ENV AI_LAYER_STORE_PATH=/app/data/store.sqlite` is a **retired** var (SQLite gone in DB-2).
