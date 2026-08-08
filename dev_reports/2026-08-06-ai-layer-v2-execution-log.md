@@ -326,3 +326,70 @@ branch behind a session advisory lock, `TRUNCATE` between tests).
 
 **Trigger: public domain** — F1, F2, E4. **Trigger: a second tenant** — C2 (single-tenant today, so it
 cannot produce wrong data yet). **With #34** — C1's multi-tenancy redesign. **Out of scope** — `rnd_mine/`.
+
+---
+
+## Phase 3 — post-PR follow-ups (2026-08-07/08)
+
+PR **#12** opened and under review at `e332a35`. Two commits land **after** it and are **not** in that
+PR. Decide whether to append them to #12 or ship a follow-up PR.
+
+| Commit | Item | Gate |
+|---|---|---|
+| `011b255` | **C2** — fail closed on Shopify tenant mismatch | 690 |
+| `a7867fb` | **F1** — refresh dedupe + tunable Apify sweep cost | 692 |
+
+### C2 — why it shipped despite being deferred
+
+Deferred on the trigger *"a second tenant"*, not on the public-domain trigger the other competitor
+items wait on — a second brand can be onboarded without a domain. `SHOPIFY_ACCOUNT_ID` names the one
+Meta account the credentials belong to; any other account, **and an unset owner**, get `None`.
+Discovery degrades to Meta-only. Guard test makes `httpx.get` raise so a leak cannot pass silently.
+
+**Action required:** set `SHOPIFY_ACCOUNT_ID`, or competitor discovery silently loses Shopify context.
+
+### F1 — deviation from the register's recommendation, recorded
+
+The register recommended a **Postgres advisory lock**. Not built. A session-scoped lock must be held
+for the whole scrape — up to ~64 min while E4 is unfixed — which pins a pooled connection that long.
+
+Shipped instead: a **cooldown** (`COMPETITOR_REFRESH_COOLDOWN_S`, 900s) in `pipeline.build()` so the
+CLI path is covered too, plus a process-local **in-flight set** for the simultaneity race the cooldown
+cannot see. `ponytail:` comment names the ceiling — a multi-replica deploy still needs the advisory
+lock or a `refresh_started_at` column.
+
+`MAX_COMPETITORS` / `ADS_PER_COMPETITOR` are now `COMPETITOR_MAX` / `COMPETITOR_ADS_PER`. Apify bills
+per actor run **and** per result, so those two numbers are the whole sweep cost.
+
+### Corrections to earlier claims in this log
+
+**The pg suite is NOT broken.** Run alone: **391 passed / 10 skipped / 0 failed** — the documented
+baseline. The earlier "worse on main" reading was contention: all pg files share one Neon branch, take
+a session advisory lock and `TRUNCATE` between tests, so concurrent Neon work times the lock out.
+Measured: alone 0 failed · under contention 11 failed (this branch) and 18 failed files (`main`).
+**Re-run alone before calling any pg failure a regression.** Corrected in `CLAUDE.md` and
+`local-ops/README.md`.
+
+**F1's domain gate does not cover local testing.** Apify bills on the first
+`/competitors/{id}/refresh` from anywhere, including a local container. "No public domain" protects
+against unsolicited traffic only.
+
+### Chat integration — one variable
+
+UI, proxy and service are all complete: `/app/ai-chat` is routed, in the sidebar with `live: true`,
+and linked from the dashboard. `apps/api` proxies `/ai-layer/chat` and `/chat/stream`.
+
+**The only gap is `AI_LAYER_URL` on the deployed `apps/api`.** Empty means `index.ts:259` skips
+registering every `/ai-layer/*` route and the UI 404s. Not needed for the container sim —
+`docker-compose.sim.yml:42` sets the in-network name and overrides any `env_file` value. Now
+documented in `.env.example`; use the Railway **private** address so no public domain is needed and
+`/competitors/*` stays unreachable.
+
+Verify: `railway variables --service <apps/api> | grep AI_LAYER`
+
+### Environment note
+
+Docker is **not reachable from this WSL distro** ("could not be found in this WSL 2 distro" — enable
+WSL integration in Docker Desktop). No service was ever started from this session, which is why Apify
+shows zero usage. The suite never calls Apify: the fixtures replace `scrape_competitor`, and F1's test
+makes `scrape` raise.
