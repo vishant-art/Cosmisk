@@ -1,13 +1,17 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { Router } from '@angular/router';
 import { ApiService } from './api.service';
+import { AdAccountService } from './ad-account.service';
 import { User, AuthResponse } from '../models/user.model';
 import { environment } from '../../../environments/environment';
+import { ChatStateService } from '../../features/ai-chat/chat-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private api = inject(ApiService);
   private router = inject(Router);
+  private adAccounts = inject(AdAccountService);
+  private chatState = inject(ChatStateService);
 
   private currentUser = signal<User | null>(null);
   private token = signal<string | null>(null);
@@ -63,6 +67,9 @@ export class AuthService {
 
   handleAuthResponse(response: AuthResponse) {
     this.storeAuth(response);
+    // Re-fetch for THIS user: the service singletons survive a logout->login in the
+    // same SPA session, so the constructor-time load doesn't run again.
+    this.adAccounts.loadAccounts();
   }
 
   setOnboardingComplete() {
@@ -85,6 +92,12 @@ export class AuthService {
     this.currentUser.set(null);
     localStorage.removeItem('cosmisk_token');
     localStorage.removeItem('cosmisk_user');
+    // Reset per-user state held by root singletons — logout navigates without a
+    // reload, so anything left in memory (or re-persisted by effects) would be
+    // readable by the next login in this browser session.
+    this.chatState.clear(); // resets messages + sessionId; its effect persists the empty state
+    sessionStorage.removeItem('cosmisk_chat_history'); // ai-studio history (component-held)
+    this.adAccounts.reset();
     this.router.navigate(['/login']);
     setTimeout(() => { this.loggingOut = false; }, 1000);
   }
