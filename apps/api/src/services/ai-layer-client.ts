@@ -95,10 +95,15 @@ export interface AiLayerChatReply {
   sessionId: string;
   contextMode: string;
   cached: boolean;
+  /** Ad-level tools the agent loop actually invoked; empty on the legacy sources. */
+  toolsUsed: string[];
 }
 
-// Chat is an LLM round-trip (slower than a store read) — allow more headroom.
-const CHAT_TIMEOUT_MS = 60_000;
+// Chat is an LLM round-trip AND, on the default `cache` source, an agent loop: up to
+// TOOL_MAX_ROUNDS=6 model calls, each able to trigger an ad-level Meta pull that the
+// ai-layer itself describes as "first pull can take a minute". 60s timed those out and
+// surfaced as "the AI layer is unavailable" for a request that was working.
+const CHAT_TIMEOUT_MS = 180_000;
 
 /**
  * POST {aiLayerUrl}/chat -> the RAG answer grounded in the account's data.
@@ -112,19 +117,24 @@ export async function fetchAiLayerChat(
   message: string,
   history: AiLayerChatTurn[],
   opts: {
-    source?: 'live' | 'store';
+    source?: 'live' | 'store' | 'cache';
     contextMode?: 'full' | 'summary';
     sessionId?: string;
   } = {},
 ): Promise<AiLayerChatReply> {
   const base = config.aiLayerUrl.replace(/\/+$/, '');
+  // `source` is OMITTED so the ai-layer's own default (`cache`) applies. Sending 'store'
+  // took the legacy branch in _chat_messages, which builds a bare campaign snapshot: no
+  // ad-level tool loop, no CODE-COMPUTED ANALYSIS, no HISTORIC FACTS, no COMPETITOR INTEL
+  // — while the system prompt still told the model those blocks were present. Pass source
+  // explicitly only to force a legacy path.
   const body: Record<string, unknown> = {
     account_id: accountId,
     message,
     history,
-    source: opts.source ?? 'store',
     context_mode: opts.contextMode ?? 'full', // full by default (as before)
   };
+  if (opts.source) body['source'] = opts.source;
   if (opts.sessionId) body['session_id'] = opts.sessionId;
 
   let res: Response;
@@ -156,6 +166,7 @@ export async function fetchAiLayerChat(
     session_id?: string;
     context_mode?: string;
     cached?: boolean;
+    tools_used?: string[];
   };
   return {
     answer: data.answer ?? '',
@@ -164,6 +175,7 @@ export async function fetchAiLayerChat(
     sessionId: data.session_id ?? '',
     contextMode: data.context_mode ?? '',
     cached: data.cached ?? false,
+    toolsUsed: data.tools_used ?? [],
   };
 }
 

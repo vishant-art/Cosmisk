@@ -126,6 +126,7 @@ export function defineAiLayerRoutes(app: FastifyInstance): void {
         sessionId: reply_.sessionId,
         contextMode: reply_.contextMode,
         cached: reply_.cached,
+        toolsUsed: reply_.toolsUsed,
         demo: resolved.usingDemo,
       });
     } catch (err) {

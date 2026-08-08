@@ -14,11 +14,23 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { ApiService } from '../../core/services/api.service';
 import { AdAccountService } from '../../core/services/ad-account.service';
-import { AuthService } from '../../core/services/auth.service';
 import { FeedbackService } from '../../core/services/feedback.service';
-import { ToastService } from '../../core/services/toast.service';
 import { environment } from '../../../environments/environment';
 import { ChatStateService } from './chat-state.service';
+
+interface ChatApiResponse {
+  success: boolean;
+  answer?: string;
+  model?: string;
+  costUsd?: number;
+  sessionId?: string;
+  contextMode?: string;
+  cached?: boolean;
+  toolsUsed?: string[];
+  demo?: boolean;
+  meta_connected?: boolean;
+  error?: string;
+}
 
 /**
  * AI Chat — streams from the Python ai-layer RAG (`POST /api/ai-layer/chat/stream`),
@@ -113,13 +125,15 @@ import { ChatStateService } from './chat-state.service';
               @if (m.role === 'user') {
                 {{ m.content }}
               } @else if (m.content) {
-                <div class="md-body" [innerHTML]="renderMd(m.content, sending() && $index === messages().length - 1)"></div>
+                <div class="md-body" [innerHTML]="renderMd(m.content)"></div>
               } @else {
-                <span class="inline-flex gap-1 py-1">
-                  <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:0ms"></span>
-                  <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:150ms"></span>
-                  <span class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay:300ms"></span>
-                </span>
+                <!-- Waiting state. The answer arrives whole (no stream), so this can sit for
+                     30s+ on a cold ad-level pull; three bouncing dots read as "back in a
+                     second" and would be a lie. One accent sweep + copy that names the wait. -->
+                <div class="w-56 max-w-full py-0.5" role="status" aria-live="polite">
+                  <div class="thinking-track" aria-hidden="true"><span class="thinking-sweep"></span></div>
+                  <p class="mt-2 mb-0 text-xs font-body text-gray-600">{{ WAIT_COPY[waitPhase()] }}</p>
+                </div>
               }
             </div>
             @if (m.role === 'assistant' && m.content) {
@@ -163,8 +177,12 @@ import { ChatStateService } from './chat-state.service';
       </div>
 
       @if (lastModel()) {
-        <p class="text-[11px] text-gray-400 font-mono mt-1 mb-0 shrink-0 text-right">
-          {{ lastModel() }} · {{ lastContextMode() }} context{{ lastCached() ? ' · cached' : '' }}
+        <p class="text-[11px] text-gray-500 font-mono mt-1 mb-0 shrink-0 text-right">
+          @if (lastTools().length) {
+            <span class="text-accent">checked {{ lastTools().join(', ') }}</span> ·
+          }
+          {{ lastContextMode() }} context{{ lastCached() ? ' · cached' : '' }}
+          · session ~\${{ sessionCost().toFixed(4) }}
         </p>
       }
 
@@ -198,6 +216,27 @@ import { ChatStateService } from './chat-state.service';
     .md-body :where(h1, h2, h3, h4) { font-weight: 600; margin: 0.5rem 0 0.25rem; font-size: 0.95rem; }
     .md-body :where(code) { background: rgba(0,0,0,0.06); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
     .md-body :where(a) { color: var(--accent); text-decoration: underline; }
+    /* Waiting state: one 2px accent sweep. Indeterminate on purpose — we have no real
+       progress to report, and a percentage bar would be inventing one. */
+    .thinking-track {
+      height: 2px; border-radius: 2px; overflow: hidden;
+      background: rgba(0,0,0,0.06);
+    }
+    .thinking-sweep {
+      display: block; height: 100%; width: 40%; border-radius: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent, #6366F1), transparent);
+      animation: thinking-sweep 1.6s ease-in-out infinite;
+    }
+    @keyframes thinking-sweep {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+    /* The global reduced-motion rule collapses animation-duration to ~0, which would
+       freeze the sweep mid-track and read as "stuck". Show a calm full-width bar instead. */
+    @media (prefers-reduced-motion: reduce) {
+      .thinking-sweep { width: 100%; background: var(--accent, #6366F1); opacity: 0.45; }
+    }
+
     /* The chat prompt tells the model to use tables; a wide one must scroll inside
        the 85%-width bubble, not blow it out. */
     .md-body :where(table) { border-collapse: collapse; margin: 0.5rem 0; width: 100%; font-size: 0.85rem; display: block; overflow-x: auto; }
@@ -216,10 +255,8 @@ import { ChatStateService } from './chat-state.service';
 export default class AiChatComponent implements AfterViewChecked {
   private api = inject(ApiService);
   private adAccounts = inject(AdAccountService);
-  private auth = inject(AuthService);
   private sanitizer = inject(DomSanitizer);
   private feedback = inject(FeedbackService);
-  private toast = inject(ToastService);
   state = inject(ChatStateService);
 
   // Per-answer thumbs (keyed by message index) + once-per-session comment box.
@@ -242,6 +279,17 @@ export default class AiChatComponent implements AfterViewChecked {
   sending = signal(false);
   refreshing = signal(false);
   errorMsg = signal('');
+  sessionCost = signal(0);
+  lastTools = signal<string[]>([]);
+  /** 0 = just sent · 1 = past ~7s (likely an ad-level pull) · 2 = past ~25s. */
+  waitPhase = signal(0);
+
+  // Elapsed-time copy. Honest about duration without inventing steps we cannot observe.
+  readonly WAIT_COPY = [
+    'Reading your account data',
+    'Pulling ad-level data — the first pull can take a minute',
+    'Still working — deeper questions take longer',
+  ];
   demoMode = signal(!this.adAccounts.currentAccount());
   accountName = signal(this.adAccounts.currentAccount()?.name ?? '');
 
@@ -260,25 +308,22 @@ export default class AiChatComponent implements AfterViewChecked {
     }
   }
 
-  // Parsed-HTML memo for settled messages. The actively-streaming message must NOT be
-  // cached: its content changes every token, so caching it would store every partial
-  // prefix (O(n²) memory for one answer).
+  // Parsed-HTML memo. This is a template binding under default change detection, so it is
+  // called on every tick for every message; returning the SAME SafeHtml reference is what
+  // stops Angular re-setting innerHTML (which wipes the user's text selection).
+  // Answers now arrive whole, so there is no partial-prefix case to exclude.
   private mdCache = new Map<string, SafeHtml>();
 
-  /** Markdown -> sanitized HTML for assistant bubbles; memoized unless streaming. */
-  renderMd(text: string, streaming = false): SafeHtml {
-    if (streaming) return this.parseMd(text);
+  /** Markdown -> sanitized HTML for assistant bubbles, memoized by content. */
+  renderMd(text: string): SafeHtml {
     let html = this.mdCache.get(text);
     if (!html) {
-      html = this.parseMd(text);
+      html = this.sanitizer.bypassSecurityTrustHtml(
+        DOMPurify.sanitize(marked.parse(text ?? '', { async: false }) as string),
+      );
       this.mdCache.set(text, html);
     }
     return html;
-  }
-
-  private parseMd(text: string): SafeHtml {
-    const html = marked.parse(text ?? '', { async: false }) as string;
-    return this.sanitizer.bypassSecurityTrustHtml(DOMPurify.sanitize(html));
   }
 
   /** Thumbs on an assistant answer. refId = `${sessionId}:${index}`; pairs the Q&A for study. */
@@ -314,7 +359,7 @@ export default class AiChatComponent implements AfterViewChecked {
     this.errorMsg.set('');
   }
 
-  async send(preset?: string): Promise<void> {
+  send(preset?: string): void {
     const text = (preset ?? this.draft).trim();
     if (!text || this.sending()) return;
 
@@ -323,13 +368,15 @@ export default class AiChatComponent implements AfterViewChecked {
     this.accountName.set(acc?.name ?? '');
     this.errorMsg.set('');
 
-    // History = prior turns; then append the user turn + an empty assistant turn to stream into.
+    // History = prior turns; then the user turn + an empty assistant turn as the placeholder
+    // the waiting state renders into (replaced wholesale when the answer lands).
     const history = this.messages().map((m) => ({ role: m.role, content: m.content }));
     this.messages.set([...this.messages(), { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     const asstIndex = this.messages().length - 1;
     this.draft = '';
     this.sending.set(true);
     this.shouldScroll = true;
+    this.startWaitCopy();
 
     const body: Record<string, unknown> = {
       message: text,
@@ -340,77 +387,65 @@ export default class AiChatComponent implements AfterViewChecked {
     if (acc) body['account_id'] = acc.id;
     else body['demo'] = true;
 
-    try {
-      const token = this.auth.getToken();
-      const res = await fetch(`${environment.API_BASE_URL}/${environment.AI_LAYER_CHAT}/stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-
-      // Session/meta headers arrive with the response head (before the body).
-      const sid = res.headers.get('X-Session-Id');
-      if (sid) this.state.sessionId.set(sid);
-      const cm = res.headers.get('X-Context-Mode');
-      if (cm) this.lastContextMode.set(cm);
-      this.lastCached.set(res.headers.get('X-Cached') === 'true');
-      const model = res.headers.get('X-Model');
-      if (model) this.lastModel.set(model);
-
-      if (res.status === 401) {
-        // Raw fetch skips the HTTP interceptors — mirror errorInterceptor's 401 contract
-        // here, or an expired session leaves the tab stuck on a generic error forever.
-        this.messages.set(this.messages().slice(0, asstIndex));
+    // api.post (HttpClient), NOT raw fetch: the non-streaming endpoint is the only one that
+    // runs the ad-level tool loop, and going back through HttpClient means authInterceptor
+    // and errorInterceptor apply again — 401 logs out, 429 toasts the rate limit.
+    this.api.post<ChatApiResponse>(environment.AI_LAYER_CHAT, body).subscribe({
+      next: (res) => {
+        this.stopWaitCopy();
         this.sending.set(false);
-        this.toast.error('Session Expired', 'Please log in again.');
-        this.auth.logout();
-        return;
-      }
-
-      const contentType = res.headers.get('Content-Type') || '';
-      if (!res.ok || !res.body || !contentType.startsWith('text/plain')) {
-        // Degraded / not-connected -> a JSON body, not a stream.
-        let msg = 'Something went wrong. Please try again.';
-        try {
-          const j = (await res.json()) as { meta_connected?: boolean; error?: string };
-          if (j.meta_connected === false) msg = 'Connect a Meta ad account to chat about your data.';
-          else if (j.error) msg = j.error;
-        } catch {
-          /* keep default */
-        }
-        this.messages.set(this.messages().slice(0, asstIndex)); // drop the empty placeholder
-        this.errorMsg.set(msg);
-        this.sending.set(false);
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let acc2 = '';
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        acc2 += decoder.decode(value, { stream: true });
-        this.updateAssistant(asstIndex, acc2);
         this.shouldScroll = true;
-      }
-      if (!acc2) {
-        // Empty stream — drop the placeholder and show a gentle note.
+        const drop = () => this.messages.set(this.messages().slice(0, asstIndex));
+
+        if (res?.meta_connected === false) {
+          drop();
+          this.errorMsg.set('Connect a Meta ad account to chat about your data.');
+          return;
+        }
+        if (!res?.success || !res.answer) {
+          drop();
+          this.errorMsg.set(res?.error || 'No response — please try again.');
+          return;
+        }
+        this.setAssistant(asstIndex, res.answer);
+        if (res.sessionId) this.state.sessionId.set(res.sessionId);
+        if (res.model) this.lastModel.set(res.model);
+        if (res.contextMode) this.lastContextMode.set(res.contextMode);
+        this.lastCached.set(!!res.cached);
+        this.lastTools.set(res.toolsUsed ?? []);
+        if (typeof res.costUsd === 'number') this.sessionCost.update((c) => c + res.costUsd!);
+      },
+      error: (e: { error?: { error?: string } }) => {
+        // errorInterceptor already toasted (and logged out on 401); surface the server's
+        // copy inline so the honest 429 rate-limit text reaches the reader.
+        this.stopWaitCopy();
         this.messages.set(this.messages().slice(0, asstIndex));
-        this.errorMsg.set('No response — please try again.');
-      }
-      this.sending.set(false);
-    } catch {
-      this.messages.set(this.messages().slice(0, asstIndex)); // drop placeholder
-      this.errorMsg.set('The AI layer is unavailable right now. Please try again.');
-      this.sending.set(false);
-    }
+        this.errorMsg.set(e?.error?.error || 'The AI layer is unavailable right now. Please try again.');
+        this.sending.set(false);
+      },
+    });
   }
 
-  private updateAssistant(index: number, content: string): void {
+  // --- waiting copy -----------------------------------------------------------------
+  // No progress stream exists (run_tool_loop's callback never crosses HTTP), so the copy
+  // is driven by ELAPSED TIME, not invented steps. Two timeouts rather than a 1s interval:
+  // a per-second tick would run change detection for the whole minute for no benefit.
+  private waitTimers: ReturnType<typeof setTimeout>[] = [];
+
+  private startWaitCopy(): void {
+    this.stopWaitCopy();
+    this.waitPhase.set(0);
+    this.waitTimers.push(setTimeout(() => this.waitPhase.set(1), 7000));
+    this.waitTimers.push(setTimeout(() => this.waitPhase.set(2), 25000));
+  }
+
+  private stopWaitCopy(): void {
+    this.waitTimers.forEach(clearTimeout);
+    this.waitTimers = [];
+    this.waitPhase.set(0);
+  }
+
+  private setAssistant(index: number, content: string): void {
     this.messages.update((arr) => {
       if (!arr[index]) return arr;
       const copy = [...arr];
