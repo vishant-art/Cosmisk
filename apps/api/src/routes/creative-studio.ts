@@ -291,8 +291,12 @@ Return ONLY valid JSON, no markdown.`,
     reply.header('Cross-Origin-Resource-Policy', 'cross-origin');
     // Storage on: 302 the browser straight to a presigned R2 URL the ai-layer minted
     // (bytes flow browser<->R2, $0 Railway egress; apps/api holds no R2 creds).
+    // ?download=1 => save-as instead of render-inline. The `download` attribute on an <a>
+    // is IGNORED cross-origin (web origin != api origin in prod), so the only thing that
+    // actually triggers a save dialog is Content-Disposition from the server.
+    const wantsDownload = (request.query as { download?: string }).download === '1';
     try {
-      const signed = await fetchCreativeAssetUrl(jobId, file);
+      const signed = await fetchCreativeAssetUrl(jobId, file, wantsDownload);
       if (signed) return reply.redirect(signed, 302);
     } catch (err: any) {
       logger.warn({ err: err.message, jobId, file }, 'asset-url lookup failed; falling back to proxy');
@@ -307,6 +311,10 @@ Return ONLY valid JSON, no markdown.`,
       const buf = Buffer.from(await upstream.arrayBuffer());
       reply.header('Content-Type', ct);
       reply.header('Cache-Control', 'public, max-age=3600');
+      // Same save-as contract on the byte-proxy branch, so dev and prod behave alike.
+      if (wantsDownload) {
+        reply.header('Content-Disposition', `attachment; filename="${file.split('/').pop()}"`);
+      }
       return reply.send(buf);
     } catch (err: any) {
       logger.warn({ err: err.message, jobId, file }, 'creative-studio asset proxy failed');
@@ -385,7 +393,20 @@ Return ONLY valid JSON, no markdown.`,
     // authenticate proves a user, not THE user — scope the job to the caller like /video/plan does.
     const owned = await getDbAdapter().get('SELECT id FROM studio_generations WHERE ai_job_id = ? AND user_id = ?', [jobId, request.user.id]);
     if (!owned) return reply.status(404).send({ success: false, error: 'not found' });
-    try { return { success: true, job: await getCreativeJob(jobId) }; }
+    try {
+      const job = await getCreativeJob(jobId);
+      // QA-failed renders carry an ai-layer-relative url (/creative/assets/...), which the
+      // browser cannot reach — the web origin serves only /api. Passing assets are rewritten
+      // at persist time; this payload is a live passthrough, so rewrite here.
+      // `r?.url` truthiness, NOT a null check: a pre-migration row arrives as a bare STRING
+      // if apps/api deploys ahead of the ai-layer, and `.replace` on it would throw. This
+      // spelling skips strings and null-url entries alike, so deploy order stops mattering.
+      if (Array.isArray(job?.rejected)) {
+        job.rejected = job.rejected.map((r) =>
+          r?.url ? { ...r, url: proxy(jobId, r.url) } : r);
+      }
+      return { success: true, job };
+    }
     catch (err: any) { return reply.status(err.status ?? 500).send({ success: false, error: err.message }); }
   });
 
@@ -436,6 +457,17 @@ Return ONLY valid JSON, no markdown.`,
 /*  Python pipeline processor (M4 Generative Engine via apps/ai-layer) */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Rewrite an ai-layer asset path (/creative/assets/<job>/<sub>) to the apps/api proxy
+ * (/api/creative-studio/asset/<job>/<sub>) so the browser only ever hits /api.
+ *
+ * NOT idempotent — an already-proxied url does not match the regex and would be prefixed a
+ * second time. Only call it on a raw ai-layer url.
+ */
+function proxy(jobId: string, u: string): string {
+  return `/api/creative-studio/asset/${jobId}/${u.replace(/^\/creative\/assets\/[^/]+\//, '')}`;
+}
+
 async function processGenerationViaAiLayer(
   generationId: string,
   brief: Brief | null,        // null in campaign mode (brief-less "generate from winners")
@@ -453,11 +485,6 @@ async function processGenerationViaAiLayer(
       [status, outputJson ?? null, errorMessage ?? null, costCents, assetUrl ?? null, now(), outputId],
     );
   };
-  // Rewrite an ai-layer asset path (/creative/assets/<job>/<sub>) to the apps/api proxy
-  // (/api/creative-studio/asset/<job>/<sub>) so the browser only ever hits /api.
-  const proxy = (jobId: string, u: string) =>
-    `/api/creative-studio/asset/${jobId}/${u.replace(/^\/creative\/assets\/[^/]+\//, '')}`;
-
   try {
     // Optional Meta token: conditions the brand kit on real winners when the user has
     // connected an account; brief-only generation works without it.

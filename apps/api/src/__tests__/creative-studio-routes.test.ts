@@ -86,6 +86,17 @@ describe('GET /creative-studio/asset/:jobId/*', () => {
     const r = await app.inject({ method: 'GET', url: `/creative-studio/asset/${HEX_ID}/final.mp4` });
     expect(r.statusCode).toBe(302);
     expect(r.headers.location).toBe('https://r2.example/signed');
-    expect(mockAssetUrl).toHaveBeenCalledWith(HEX_ID, 'final.mp4');
+    // Third arg = save-as flag; false here because ?download=1 was not sent, so the asset
+    // is presigned to render inline as before.
+    expect(mockAssetUrl).toHaveBeenCalledWith(HEX_ID, 'final.mp4', false);
+  });
+
+  it('?download=1 asks the client to presign a save-as (the <a download> attribute is ignored cross-origin)', async () => {
+    mockAssetUrl.mockResolvedValueOnce('https://r2.example/signed-attachment');
+    const r = await app.inject({
+      method: 'GET', url: `/creative-studio/asset/${HEX_ID}/ad_00_4x5.png?download=1`,
+    });
+    expect(r.statusCode).toBe(302);
+    expect(mockAssetUrl).toHaveBeenCalledWith(HEX_ID, 'ad_00_4x5.png', true);
   });
 });

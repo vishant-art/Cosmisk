@@ -162,13 +162,27 @@ def _job_to_columns(job: dict, brand_id: str | None) -> dict:
     return cols
 
 
+def _normalize_rejected(stored) -> list[dict]:
+    """Rows written before QA-failed renders were made visible hold `rejected_json` as a
+    bare list of concept titles; the current shape is {concept, url, reason, ...}. Consumers
+    index into it, so a legacy string yields `undefined` everywhere -- a broken <img> in the
+    history view. Normalized on READ so every reader is fixed at one point.
+
+    A legacy row has no retained path (the title was all that was stored), so `url` is None
+    and the UI renders a title-only row. Lossless: the title is all there ever was. A later
+    save_job re-persists the normalized shape, which is a harmless in-place migration."""
+    return [{"concept": r, "url": None, "reason": "failed internal QA"} if isinstance(r, str)
+            else r for r in (stored or [])]
+
+
 def _columns_to_job(row: m.CreativeJob) -> dict:
     return {"job_id": row.job_id, "status": row.status, "stage": row.stage,
             "run_id": row.job_id, "cost_usd": row.cost_usd, "error": row.error,
             "account_id": row.account_id, "brand_id": row.brand_id,
             "progress": row.progress_json or [], "assets": row.assets_json or [],
             "video": row.video_json, "brand_kit": row.brand_kit_json,
-            "winners": row.winners_json or [], "rejected": row.rejected_json or [],
+            "winners": row.winners_json or [],
+            "rejected": _normalize_rejected(row.rejected_json),
             "request": row.request_json, "ledger": row.ledger_json}
 
 

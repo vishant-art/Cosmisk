@@ -446,7 +446,7 @@ app.mount("/creative/assets",
 
 @app.get("/creative/asset-url/{job_id}/{path:path}",
          dependencies=[Depends(require_api_key)])
-def creative_asset_url(job_id: str, path: str):
+def creative_asset_url(job_id: str, path: str, download: bool = Query(False)):
     """A presigned R2 GET URL for a finished asset. apps/api calls this and 302s the browser
     to the returned URL, so the bytes flow browser<->R2 directly ($0 egress) and apps/api
     never holds R2 creds. 404 when storage is off -> the caller byte-proxies the local copy."""
@@ -456,4 +456,7 @@ def creative_asset_url(job_id: str, path: str):
         raise HTTPException(status_code=400, detail="bad path")
     if not _storage.enabled():
         raise HTTPException(status_code=404, detail="storage disabled")
-    return {"url": _storage.presign_get(_storage.asset_key(job_id, path))}
+    # download=1 -> sign in Content-Disposition: attachment. The browser's <a download>
+    # attribute does nothing cross-origin, so this header is what makes save-as work.
+    fname = path.rsplit("/", 1)[-1] if download else None
+    return {"url": _storage.presign_get(_storage.asset_key(job_id, path), filename=fname)}

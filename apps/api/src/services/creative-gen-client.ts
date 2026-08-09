@@ -170,9 +170,15 @@ export async function fetchCreativeAsset(jobId: string, path: string): Promise<R
 
 /** GET /creative/asset-url/{jobId}/{path} -> presigned R2 URL, or null when storage is
  *  off (404) so the caller byte-proxies the ai-layer's local copy instead. */
-export async function fetchCreativeAssetUrl(jobId: string, path: string): Promise<string | null> {
+export async function fetchCreativeAssetUrl(
+  jobId: string,
+  path: string,
+  /** Ask the ai-layer to presign with Content-Disposition: attachment (save-as, not inline). */
+  download = false,
+): Promise<string | null> {
   const safe = path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
-  const url = `${base()}/creative/asset-url/${encodeURIComponent(jobId)}/${safe}`;
+  const url = `${base()}/creative/asset-url/${encodeURIComponent(jobId)}/${safe}`
+    + (download ? '?download=1' : '');
   const res = await fetch(url, {
     method: 'GET',
     headers: { 'X-API-Key': config.aiLayerApiKey },

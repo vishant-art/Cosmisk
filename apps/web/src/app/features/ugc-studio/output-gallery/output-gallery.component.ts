@@ -7,7 +7,8 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
 /** A render the QA gate failed. Shown to the operator with its reason, not withheld. */
 export interface RejectedRender {
   concept: string;
-  url: string;
+  /** null on pre-migration records — only the concept title was ever stored. */
+  url: string | null;
   reason: string;
   failed_checks?: { name: string; detail: string }[];
 }
@@ -197,15 +198,40 @@ export interface RejectedRender {
         </button>
         @if (rejectedExpanded) {
           <div class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-3">
-            @for (r of rejected(); track r.url) {
+            @for (r of rejected(); track $index) {
               <figure class="m-0">
-                <img [src]="r.url" [alt]="r.concept + ' — failed internal QA'" loading="lazy"
-                     class="w-full rounded-card block" />
+                @if (r.url) {
+                  <img [src]="asset(r.url)" [alt]="r.concept + ' — failed internal QA'" loading="lazy"
+                       class="w-full rounded-card block bg-gray-100" />
+                } @else {
+                  <!-- Pre-migration record: only the concept title was ever stored, the render
+                       was never retained. Say that rather than showing a broken image. -->
+                  <div class="w-full aspect-[4/5] rounded-card bg-gray-100 flex items-center justify-center">
+                    <lucide-icon name="image-off" [size]="20" class="text-gray-300"></lucide-icon>
+                  </div>
+                }
                 <div class="qa-fail-rule" aria-hidden="true"></div>
                 <figcaption class="mt-1">
                   <span class="block text-xs font-body font-semibold text-red-600">Failed internal QA</span>
                   <span class="block text-[11px] font-mono text-gray-600 break-words">{{ r.reason }}</span>
                   <span class="block text-[11px] font-body text-gray-500 mt-0.5">{{ r.concept }}</span>
+                  @if (r.url) {
+                    <span class="flex items-center gap-3 mt-1.5">
+                      <a [href]="asset(r.url)" target="_blank" rel="noopener"
+                        class="text-[10px] text-accent font-body font-semibold hover:underline no-underline">
+                        Open in tab
+                      </a>
+                      <!-- ?download=1 makes the server send Content-Disposition: attachment.
+                           The <a download> attribute alone is ignored cross-origin, which is
+                           why the existing Download links never actually saved in prod. -->
+                      <a [href]="asset(r.url) + '?download=1'"
+                        class="text-[10px] text-accent font-body font-semibold hover:underline no-underline">
+                        Save as
+                      </a>
+                    </span>
+                  } @else {
+                    <span class="block text-[10px] text-gray-400 font-body mt-1.5">Render not retained</span>
+                  }
                 </figcaption>
               </figure>
             }

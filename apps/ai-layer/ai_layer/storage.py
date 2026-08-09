@@ -44,11 +44,15 @@ def put_file(key: str, local_path: str | Path, content_type: str) -> None:
                              Body=fh, ContentType=content_type)
 
 
-def presign_get(key: str, expires: int = 3600) -> str:
-    return _client().generate_presigned_url(
-        "get_object",
-        Params={"Bucket": os.environ["STORAGE_BUCKET"], "Key": key},
-        ExpiresIn=expires)
+def presign_get(key: str, expires: int = 3600, *, filename: str | None = None) -> str:
+    """Presigned GET. With `filename`, signs in a Content-Disposition: attachment so the
+    browser saves rather than renders: the <a download> attribute is IGNORED cross-origin,
+    so the header is the only thing that actually produces a save dialog in prod."""
+    params = {"Bucket": os.environ["STORAGE_BUCKET"], "Key": key}
+    if filename:
+        # Quote the filename: a comma or space in it would otherwise split the header value.
+        params["ResponseContentDisposition"] = f'attachment; filename="{filename}"'
+    return _client().generate_presigned_url("get_object", Params=params, ExpiresIn=expires)
 
 
 if __name__ == "__main__":  # ponytail: assert-based self-check, no pytest harness / no DB
