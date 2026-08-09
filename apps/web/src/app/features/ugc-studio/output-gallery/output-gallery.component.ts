@@ -4,6 +4,14 @@ import { LucideAngularModule } from 'lucide-angular';
 import { FeedbackService } from '../../../core/services/feedback.service';
 import { resolveAssetUrl } from '../../../core/services/creative-studio.service';
 
+/** A render the QA gate failed. Shown to the operator with its reason, not withheld. */
+export interface RejectedRender {
+  concept: string;
+  url: string;
+  reason: string;
+  failed_checks?: { name: string; detail: string }[];
+}
+
 @Component({
   selector: 'app-output-gallery',
   standalone: true,
@@ -174,21 +182,34 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
       }
     </div>
 
-    <!-- Evidence-forward footer: rejected concepts + run cost (spec §6.1) — proud, not hidden -->
+    <!-- QA-failed renders. Shown, not withheld: Creative Studio is still in development, so
+         the operator sees every generation and decides — the gate is advisory for now. The
+         image is full fidelity (no dimming); the red rule and the specific reason are the
+         only added signal. -->
     @if (rejected().length > 0) {
       <div class="mt-4">
         <button type="button" (click)="rejectedExpanded = !rejectedExpanded"
+          [attr.aria-expanded]="rejectedExpanded"
           class="flex items-center gap-1 text-xs font-body text-gray-500 hover:text-navy transition-colors">
-          <lucide-icon name="info" [size]="12"></lucide-icon>
-          We rejected {{ rejected().length }} concept{{ rejected().length > 1 ? 's' : '' }} that failed QA
-          <span>{{ rejectedExpanded ? '▾' : '▸' }}</span>
+          <lucide-icon name="alert-triangle" [size]="12"></lucide-icon>
+          {{ rejected().length }} render{{ rejected().length > 1 ? 's' : '' }} failed internal QA
+          <span aria-hidden="true">{{ rejectedExpanded ? '▾' : '▸' }}</span>
         </button>
         @if (rejectedExpanded) {
-          <ul class="mt-1.5 ml-5 space-y-0.5 list-disc">
-            @for (title of rejected(); track title) {
-              <li class="text-xs text-gray-500 font-body">{{ title }}</li>
+          <div class="mt-2 grid grid-cols-2 md:grid-cols-3 gap-3">
+            @for (r of rejected(); track r.url) {
+              <figure class="m-0">
+                <img [src]="r.url" [alt]="r.concept + ' — failed internal QA'" loading="lazy"
+                     class="w-full rounded-card block" />
+                <div class="qa-fail-rule" aria-hidden="true"></div>
+                <figcaption class="mt-1">
+                  <span class="block text-xs font-body font-semibold text-red-600">Failed internal QA</span>
+                  <span class="block text-[11px] font-mono text-gray-600 break-words">{{ r.reason }}</span>
+                  <span class="block text-[11px] font-body text-gray-500 mt-0.5">{{ r.concept }}</span>
+                </figcaption>
+              </figure>
             }
-          </ul>
+          </div>
         }
       </div>
     }
@@ -196,12 +217,22 @@ import { resolveAssetUrl } from '../../../core/services/creative-studio.service'
       <p class="text-xs text-gray-400 font-body mt-2 mb-0">Run cost: {{ '$' + costUsd()!.toFixed(2) }} (estimate)</p>
     }
   `,
+  styles: [`
+    /* The single added signal on a QA-failed render. The image itself stays untouched —
+       the operator is being shown the output, so degrading it would defeat the point. */
+    .qa-fail-rule {
+      height: 2px; margin-top: 4px; border-radius: 2px;
+      background: #DC2626;                 /* red-600, matches the caption */
+    }
+  `],
 })
 export class OutputGalleryComponent {
   outputs = input.required<any[]>();
-  rejected = input<string[]>([]);
+  rejected = input<RejectedRender[]>([]);
   costUsd = input<number | null>(null);
-  rejectedExpanded = false;
+  // Open by default: these are renders the operator is meant to SEE and judge, not a
+  // footnote. It was collapsed when the section listed concept titles only.
+  rejectedExpanded = true;
   private feedback = inject(FeedbackService);
   rated = signal<Record<string, -1 | 1>>({});
 

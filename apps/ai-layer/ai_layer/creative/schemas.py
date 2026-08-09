@@ -182,6 +182,30 @@ class QAReport(BaseModel):
         return sorted({c.shot_index for c in self.failures() if c.shot_index is not None})
 
 
+class RejectedAd(BaseModel):
+    """An ad the QA gate failed, kept WITH its artifact and its reason.
+
+    The composite is written to disk before verify() runs and the R2 mirror already globs
+    `ad_*.png`, so the pixels were being delivered while the metadata linking them to a
+    failure was thrown away -- the manifest recorded only the concept title. This carries
+    the path and the specific failing checks so the UI can show the render and say exactly
+    what was wrong with it, instead of a bare "failed internal QA"."""
+    title: str
+    path: str
+    # name + detail of each failing check, e.g. ("contrast", "headline 2.9:1, needs 4.5:1")
+    failed_checks: list[QACheck] = Field(default_factory=list)
+    retry_hint: str | None = None
+
+    @property
+    def reason(self) -> str:
+        """One-line, specific. Falls back to the hint, then a generic, so the UI always
+        has something concrete to print."""
+        if self.failed_checks:
+            c = self.failed_checks[0]
+            return f"{c.name}: {c.detail}" if c.detail else c.name
+        return self.retry_hint or "failed internal QA"
+
+
 class AssetRecord(BaseModel):
     kind: Literal["logo", "image", "video"]
     provider: str
@@ -203,7 +227,10 @@ class RunManifest(BaseModel):
     formats: list[str] = Field(default_factory=list)
     ads: list[CompositedAd] = Field(default_factory=list)
     qa_reports: list[QAReport] = Field(default_factory=list)
-    rejected: list[str] = Field(default_factory=list)   # concept titles that failed QA
+    # QA-failed ads. Carries the artifact, not just the title: Creative Studio is still in
+    # development, so a failed render is shown to the operator (flagged, with its reason)
+    # rather than withheld -- see dev_reports/2026-08-09-qa-visibility-decision-and-open-defects.md.
+    rejected: list[RejectedAd] = Field(default_factory=list)
     total_cost_usd: float = 0.0
 
 

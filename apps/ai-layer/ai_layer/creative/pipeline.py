@@ -43,8 +43,8 @@ from ai_layer.creative import verifier_video
 from ai_layer.creative import video_providers
 from ai_layer.creative.ledger import Ledger  # noqa: E402
 from ai_layer.creative.schemas import (  # noqa: E402
-    AssetRecord, BrandKit, CreativeTemplate, CreatorKit, QAReport, RunManifest, Script,
-    Storyboard,
+    AssetRecord, BrandKit, CreativeTemplate, CreatorKit, QAReport, RejectedAd, RunManifest,
+    Script, Storyboard,
 )
 
 DEFAULT_FORMATS = ["4:5"]                # base shape; pass more to fan out (1:1/9:16/16:9)
@@ -465,7 +465,16 @@ def _make_concept(i, concept, *, client, kit, run_dir, led, formats, qa_retries,
         log(f"  - '{concept.title}' QA fail (try {attempt + 1}): {report.retry_hint}")
 
     if accepted is None:
-        return [], reports, True
+        # Rejected, but the last attempt's composite is still on disk at base_out (compose
+        # writes before verify runs, and each retry overwrites the same path). Hand it back
+        # with the reason instead of dropping it -- the operator sees the render, flagged.
+        last = reports[-1] if reports else None
+        return [], reports, RejectedAd(
+            title=concept.title,
+            path=str(base_out),
+            failed_checks=last.failures() if last else [],
+            retry_hint=last.retry_hint if last else None,
+        )
 
     comps = []
     for fmt in formats:
@@ -546,8 +555,14 @@ def _generate_ads(client, kit, summary, run_dir, manifest, led, *, images,
                 continue
             manifest.qa_reports.extend(reports)
             if rejected:
-                manifest.rejected.append(concept.title)
-                on_stage(f"Ad {done}/{n} rejected by quality gate")
+                manifest.rejected.append(rejected)
+                # Register the artifact too, so the failed render flows through the same
+                # R2 mirror and job payload as a passing one. It is already on disk and
+                # already uploaded (the mirror globs ad_*.png); this only records it.
+                manifest.assets.append(AssetRecord(kind="image", concept_title=rejected.title,
+                                                   provider="composite", model="pillow",
+                                                   path=rejected.path, cost_usd=0.0))
+                on_stage(f"Ad {done}/{n} failed QA — {rejected.reason}")
                 continue
             for comp in comps:
                 manifest.ads.append(comp)

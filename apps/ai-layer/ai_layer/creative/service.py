@@ -290,7 +290,13 @@ def _run_job(job_id: str, req: CreativeRequest, token: str | None) -> None:
             min_spend=req.min_spend, prior=prior, graph_prior=graph_prior,
             direction=req.direction, on_stage=stage, log=lambda *_: None)
 
-        job["rejected"] = m.rejected
+        # Same shape as `assets` (incl. a servable url) so the UI renders a failed ad the
+        # same way it renders a passing one, plus the specific reason it failed.
+        job["rejected"] = [
+            {"concept": r.title, "url": _asset_url(job_id, r.path), "reason": r.reason,
+             "failed_checks": [{"name": c.name, "detail": c.detail} for c in r.failed_checks]}
+            for r in m.rejected
+        ]
         job["assets"] = [
             {"concept": a.concept_title, "fmt": a.fmt, "url": _asset_url(job_id, a.path),
              "copy": a.ad_copy.model_dump() if a.ad_copy else None}

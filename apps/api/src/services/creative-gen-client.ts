@@ -44,8 +44,22 @@ export interface CreativeGenJob {
   brand_kit: Record<string, unknown> | null;
   winners: { url: string }[];
   cost_usd: number;
-  rejected: string[];
+  /**
+   * Ads the QA gate failed. Was `string[]` (concept titles only) — now carries the render
+   * and the specific reason, because Creative Studio shows failed output flagged rather
+   * than withholding it while the gate is still being tuned. See
+   * dev_reports/2026-08-09-qa-visibility-decision-and-open-defects.md
+   */
+  rejected: CreativeGenRejected[];
   error: string | null;
+}
+
+export interface CreativeGenRejected {
+  concept: string;
+  url: string;
+  /** One line, specific — e.g. "contrast: headline 2.9:1, needs 4.5:1". */
+  reason: string;
+  failed_checks: { name: string; detail: string }[];
 }
 
 export function creativeGenEnabled(): boolean {

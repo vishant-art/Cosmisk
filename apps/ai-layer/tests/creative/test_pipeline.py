@@ -145,6 +145,16 @@ def test_qa_reject_excludes_concept(monkeypatch, tmp_path, envelope_path,
     assert len(m.rejected) == 2
     assert len(bg_calls) == 2                            # one attempt each (qa_retries=0)
 
+    # A rejected ad keeps its artifact and its reason: Creative Studio still shows the
+    # render (flagged) rather than withholding it, so the path must survive and the file
+    # must actually exist -- compose() writes before verify() runs.
+    for r in m.rejected:
+        assert r.title and r.path, "rejected ad lost its title/path"
+        assert Path(r.path).exists(), f"rejected render missing on disk: {r.path}"
+        assert r.reason == "forced"                      # falls back to retry_hint
+    # ... and it is registered as an asset, so it flows through the same R2 mirror
+    assert {a.path for a in m.assets} >= {r.path for r in m.rejected}
+
 
 def test_video_smoke_native_audio_and_voiceover(monkeypatch, tmp_path, brand_kit, copyset):
     from ai_layer.creative import video_providers, brand_brain, schemas
