@@ -1,5 +1,5 @@
 import { round, fmt } from '../format-helpers.js';
-import { createMessage } from '../llm-gateway.js';
+import { createMessage, isCreditsExhausted } from '../llm-gateway.js';
 import { extractText } from '../../utils/claude-helpers.js';
 import { logger } from '../../utils/logger.js';
 import type { AgentDecisionRow } from '../../types/index.js';
@@ -128,7 +128,14 @@ Return ONLY the JSON array, no other text.`;
 
     return factuallyValidated;
   } catch (err: any) {
-    logger.error({ err: err.message }, '[Watchdog] Gemini reasoning failed');
+    // Credits-exhausted is reported once by the gateway; the watchdog fans out per concept,
+    // so repeating it here logged ~30 identical lines per cron run. Degradation is unchanged
+    // (still returns []); only the duplicate line is dropped.
+    if (!isCreditsExhausted(err)) {
+      // NOTE: this path also catches Anthropic errors despite the "Gemini" label — the name is
+      // stale, not a misroute. Left as-is to keep this diff to the noise fix.
+      logger.error({ err: err.message }, '[Watchdog] reasoning failed');
+    }
     return [];
   }
 }

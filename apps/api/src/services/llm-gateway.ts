@@ -263,6 +263,38 @@ export interface CreateMessageOptions {
   estimateTokens?: number;
 }
 
+/**
+ * Anthropic billing exhaustion is a STANDING condition, not an incident: it fails identically
+ * on every call until someone tops up. The watchdog alone fans out per concept, so a single
+ * cron run logged this ~30x with a full stack each time and buried everything else.
+ *
+ * Narrow by design — matches only the billing message, so a genuine 400 still logs in full
+ * every time. Control flow is UNCHANGED: the error still propagates to the caller exactly as
+ * before. This suppresses log noise, it does not swallow failures.
+ *
+ * ponytail: process-local flag, resets on redeploy (which is when you want to hear it again).
+ * Remove this whole block when the agents move to OpenRouter keys.
+ */
+const CREDITS_EXHAUSTED_RE = /credit balance is too low/i;
+let creditsWarned = false;
+
+export function isCreditsExhausted(err: unknown): boolean {
+  return CREDITS_EXHAUSTED_RE.test((err as { message?: string })?.message ?? '');
+}
+
+/** True the FIRST time credits-exhausted is seen this process; false every time after. */
+function shouldLogCreditsExhausted(err: unknown): boolean {
+  if (!isCreditsExhausted(err)) return false;
+  if (creditsWarned) return true;
+  creditsWarned = true;
+  logger.error(
+    '[LLM-Gateway] Anthropic API credits exhausted — every LLM-backed feature is degraded ' +
+      'until credits are added (Plans & Billing). Logged ONCE per process; further occurrences ' +
+      'are suppressed. Tracked in dev_reports/2026-08-09-qa-visibility-decision-and-open-defects.md',
+  );
+  return true;
+}
+
 export async function createMessage(opts: CreateMessageOptions): Promise<Message> {
   // 1. Per-user, per-provider daily cap
   const cap = await checkDailyLimit(opts.userId, { apiProvider: 'anthropic' });
@@ -289,7 +321,11 @@ export async function createMessage(opts: CreateMessageOptions): Promise<Message
       // still reserve roughly proportional capacity.
       const charCount = JSON.stringify(opts.request.messages).length;
       inputTokens = Math.ceil(charCount / 3.5);
-      logger.warn({ err, fallback: inputTokens }, '[LLM-Gateway] countTokens failed, using heuristic');
+      // Suppressed once credits-exhausted has been reported: the heuristic fallback already
+      // handles it correctly, so repeating a full stack per call is pure noise.
+      if (!shouldLogCreditsExhausted(err)) {
+        logger.warn({ err, fallback: inputTokens }, '[LLM-Gateway] countTokens failed, using heuristic');
+      }
     }
   }
 
