@@ -1,6 +1,16 @@
 # dev_reports — STATUS INDEX (master catalog)
 
-> ⭐ **NEXT ACTION (2026-07-21):** [`2026-07-21-creative-studio-redesign-resume-note.md`](./2026-07-21-creative-studio-redesign-resume-note.md)
+> ⭐ **NEXT ACTION (2026-08-09):** [`2026-08-09-qa-visibility-decision-and-open-defects.md`](./2026-08-09-qa-visibility-decision-and-open-defects.md)
+> — **DECIDED:** QA-failed creatives become visible **and fully usable** (publish/download allowed)
+> while Creative Studio is still in development, so no generation is withheld. View-only was the
+> recommendation; the trade-off is that the gate becomes advisory, so `CLAUDE.md`'s "reject, don't
+> log" and `creative/schemas.py:164` need rewording when it lands. **Not yet implemented.**
+> **OPEN DEFECT:** "Something went wrong" toast on platform actions — root cause NOT confirmed;
+> two possible sources with different titles, the title is the decisive datum. Anthropic API credits
+> are exhausted in prod (19 `createMessage` call sites failing) — leading hypothesis, unproven.
+> Also: apps/api does **not** auto-deploy on push to `main` on the new Railway account.
+>
+> **PRIOR (2026-07-21):** [`2026-07-21-creative-studio-redesign-resume-note.md`](./2026-07-21-creative-studio-redesign-resume-note.md)
 > — Creative Studio UI redesign **IMPLEMENTATION COMPLETE** (14 commits on `improve/creative`,
 > `dddb396..b7a61c2`; gates green; final review READY-WITH-FOLLOWUPS + Important fixed). **Next:**
 > decide branch completion (`finishing-a-development-branch`, no push) + the paid end-to-end sim run.
