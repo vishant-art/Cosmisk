@@ -106,6 +106,14 @@ export const routes: Routes = [
     ]
   },
 
+  // PROTOTYPE — Slice 1 UI/UX review only. Additive, unguarded, no API calls.
+  // Lives entirely under /proto and touches no shipped feature component.
+  // Remove this entry to delete the prototype from the build.
+  {
+    path: 'proto',
+    loadChildren: () => import('./proto/proto.routes'),
+  },
+
   // 404
   { path: '**', loadComponent: () => import('./features/not-found/not-found.component') }
 ];
