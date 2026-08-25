@@ -65,10 +65,18 @@ Routes: `/proto/login` · `/proto/signup` · `/proto/onboarding` · `/proto/conn
 
 **The prototype is the visual/interaction reference. It is not the production implementation.**
 
-It is also the **honesty reference**: its First Aha screen is the approved rendering of the
-learning-loop block and the authorised actioned-state copy. When the Spec and the prototype
-appear to disagree about that block, the prototype and the Slice 1 Decision Override are correct
-— the Spec's original SCREEN 9 text has been superseded and says so.
+It is the **honesty reference on the First Aha screen only.** That screen is the approved
+rendering of the learning-loop block and the authorised actioned-state copy. When the Spec and the
+prototype appear to disagree about that block, the prototype and the Slice 1 Decision Override are
+correct — the Spec's original SCREEN 9 text has been superseded and says so.
+
+> **The prototype dashboard is not conformant. Do not reproduce it.**
+> In its actioned state, `dashboard.component.ts` renders *"Your action is recorded and the
+> baseline is locked"* and *"Recorded → baseline locked → observing (first read in 3 days) →
+> verdict on day 7 → Cosmisk adjusts"*. That asserts a persisted baseline, scheduled observation
+> and outcome measurement — three of the seven claims Override 1 prohibits. It renders the Spec's
+> SCREEN 10, which is itself superseded. Build the Dashboard actioned state to Override 1 and X5.
+> Details in `UX_CONSTITUTION.md` § Conformance status.
 
 **Do not merge the prototype into `main`. Do not modify `proto/slice-1-ux`.** Build the
 production implementation on your own branch, against these documents.
@@ -155,23 +163,29 @@ capability; at most one loop stage may render as complete.
 **Override 2 — competitor capture is not part of Slice 1.** Competitor Spy is not to be
 implemented, and no competitor capture step is to be added to onboarding.
 
-### Two places the historical text still says "two stages"
+### Where the historical text still says "two stages" — now tabulated in both documents
 
-The Spec's Override tabulates the SCREEN 9 items it supersedes. Two other passages say the same
-superseded thing and are **not** in that table. They were left as written because the historical
-documents are not rewritten. Both are superseded by X5 — **at most one stage completes**:
+An earlier draft of this README flagged **two** such passages as untabulated. A full scan then
+found **fifteen**. All fifteen are now listed in the documents themselves, so a developer reading
+either document in isolation encounters the supersession without needing this README:
 
-| Where | What it says | Read it as |
+| Document | Where the supersession list lives | Passages covered |
 |---|---|---|
-| `UX_CONSTITUTION.md` §10, *The rule that matters most* | "Only stages 1 and 2 can complete in Slice 1", and the stage table shows *Baseline locked — ₹3.5L · 1.8* under "Status when actioned" | **Superseded by X5.** Only stage 1 completes. Stage 2 shows *Today's numbers* and stays pending. |
-| `SLICE_1_DEVELOPER_SPEC.md` §13, *Real vs mocked vs future* | "Learning loop \| Stages 1–2 render as complete" | **Superseded by X5.** Stage 1 only. |
+| `UX_CONSTITUTION.md` | § Slice 1 Decision Override → Override 1 → **Affected passages in this document** *(new)* | 8 — §3, §5 diagram, §6.3 worked example, §10 loop diagram, §10 stage table row 2, §10 "Only stages 1 and 2 can complete", §10 baseline-capture imperative, Appendix checklist |
+| `SLICE_1_DEVELOPER_SPEC.md` | § Slice 1 Decision Override → Override 1 → **Affected items in this document** *(extended)* | 10 — SCREEN 8 item 16, SCREEN 9 items 1, 4, 8, 12, 13, 15, 16 ①③④⑤, SCREEN 10 actioned lead card, §13 Learning loop row, DoD item 14 |
+
+The single rule they all reduce to: **at most one loop stage — *Action recorded* — may complete.
+No baseline, observation, outcome, verdict or learning may be represented as current
+functionality.**
 
 The surrounding rule in Constitution §10 — *"Clicking 'I have done this' does NOT mean Cosmisk
 has learned anything"* — is unchanged and is exactly what X5 implements. Only the stage count
 and the baseline value are superseded.
 
-If you find any other passage implying a second completed stage or a locked baseline, it is
-superseded too. Raise it so it can be tabulated; do not act on it.
+Both documents now close their supersession list with a catch-all: if you find any other passage
+implying a second completed stage, a locked baseline, scheduled observation, an outcome, a verdict
+or learning as current functionality, it is superseded too. Raise it so it can be tabulated; do
+not act on it, and do not resolve it in code.
 
 ---
 

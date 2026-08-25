@@ -875,14 +875,28 @@ These are superseded for Slice 1 and are otherwise left exactly as written:
 | Location | What it currently requires | Status under Override 1 |
 |---|---|---|
 | SCREEN 8 item 16 · §8.3 criterion 7 | The five loop stages render with per-stage status; stages 3–5 show *when*, not *whether* | **Retained.** The block additionally requires an explicit future/unavailable label. |
+| SCREEN 9 item 1 — **Purpose** | "Confirm the action was recorded **and the baseline locked** — while making it unmistakable that Cosmisk has not learned anything yet." | **Superseded in part.** Read as: *Confirm the action was recorded* — nothing more. No baseline is locked. The second half of the sentence is retained and is the whole point of the screen. |
 | SCREEN 9 item 4 | Two loop stages gain green checks and switch to `done` values, including **Baseline locked — ₹3.5L · 1.8** | **Superseded.** No baseline may render as locked. At most stage 1 (*Action recorded*) may complete. |
+| SCREEN 9 item 8 — **Data required** | "`findingActioned`. In production, additionally: the baseline snapshot (spend and ROAS at the moment of action) and its timestamp." | **Superseded.** `findingActioned` is the *only* data required in Slice 1. Do not implement a baseline snapshot or timestamp. The production sentence describes work that is out of scope. |
+| SCREEN 9 item 12 — **Error** | "Failure to persist the action or capture the baseline… **if the baseline is not captured at the moment of action, the outcome is unmeasurable forever.**" | **Superseded in part.** There is no baseline to capture in Slice 1, so there is no such error state to build. Failure to persist the *action* remains undefined and must still be raised before building. |
 | SCREEN 9 item 13 | "Two green checks and the confirmation copy below" | **Superseded.** One check at most. |
 | SCREEN 9 item 15 | Confirmation copy, verbatim: *"Recorded — the starting point is locked and nothing more. If the projection was wrong, Cosmisk will say so and change how it models scaling in your account."* | **SUPERSEDED — X5 RESOLVED.** Replaced by the authorized copy below. |
-| SCREEN 9 item 16 ① and ④ | "Exactly two of five stages complete"; "the locked baseline values (₹3.5L · 1.8) are displayed, not implied" | **Superseded.** |
+| SCREEN 9 item 16 ①, ③, ④ and ⑤ | ① "Exactly two of five stages complete"; ③ "The copy commits to reporting a **wrong** outcome, not only a right one"; ④ "the locked baseline values (₹3.5L · 1.8) are displayed, not implied"; ⑤ "Returning to the dashboard shows the tracking lead card" | **Superseded.** ① exactly **one** stage completes. ③ the copy commits to **no** outcome, right or wrong — committing to report a wrong outcome is still claiming outcome measurement. ④ no baseline values are displayed at all. ⑤ see the SCREEN 10 row below. ② is retained and unchanged. |
+| SCREEN 10, the actioned lead card | *"Your action is recorded and the baseline is locked. Cosmisk has not learned anything yet — it will compare the next 7 days against ₹3.5L / 1.8 ROAS and tell you whether the call was right…"* and *"**Where this is in the loop:** Recorded → baseline locked → *observing (first read in 3 days)* → *verdict on day 7* → *Cosmisk adjusts*"* | **SUPERSEDED — the most consequential row in this table.** This copy asserts a persisted baseline, scheduled observation with a stated date, and active outcome measurement. Those are three of the seven claims Override 1 prohibits. *"Cosmisk has not learned anything yet"* does not cure it: the sentence denies **learning** while asserting **observation**. The dashboard actioned state must claim only that the action was recorded. **The prototype ships this copy and is non-conformant here — see the Constitution's *Conformance status*.** |
+| §13 *Real vs mocked vs future*, **Learning loop** row | "Stages 1–2 render as complete \| Stages 3–5 never move" | **SUPERSEDED by X5.** Read as: *Stage 1 renders as complete. Stages 2–5 never move.* |
 | Definition of Done item 14 | "Loop stages 3–5 are never shown as complete" | **Retained and tightened:** stages 2–5 are never shown as complete. |
 
-SCREEN 9 item 9 — *"No baseline is actually persisted and no observation is scheduled"* — is the
-statement of fact that makes the supersessions above necessary. It is unchanged.
+Two statements of fact are **unchanged** and are what make the supersessions above necessary:
+
+- SCREEN 9 item 9 — *"No baseline is actually persisted and no observation is scheduled."*
+- §13 *Real vs mocked vs future*, **"I have done this"** row — *"Sets a flag \| No baseline
+  persisted, no observation scheduled."*
+
+Both are correct. Where any other line in this document contradicts them, those two win.
+
+If any passage not listed here implies a second completed stage, a locked baseline, scheduled
+observation, an outcome, a verdict, or learning as current Slice 1 functionality, **it is
+superseded too.** Raise it so it can be tabulated. Do not act on it, and do not resolve it in code.
 
 ### X5 — RESOLVED. Actioned-state confirmation copy
 

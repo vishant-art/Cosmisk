@@ -581,6 +581,34 @@ No stage of it may render as complete.
 
 This resolves the contradiction for Slice 1 only. Beyond Slice 1, §6.2 applies as written.
 
+### Affected passages in this document
+
+**These passages are superseded for Slice 1 by X5.** They are otherwise left exactly as written —
+nothing above the Override line has been edited. Each remains the product direction beyond Slice 1.
+
+The two passages a developer is most likely to misread as a current Slice 1 requirement are the
+first two rows. They are the reason this table exists.
+
+| Location | What it says | Status for Slice 1 |
+|---|---|---|
+| **§10, *The rule that matters most*, first line** — "Only stages 1 and 2 can complete in Slice 1. Stages 3–5 require time to pass, which the…" | Two stages complete when the user actions the finding. | **SUPERSEDED by X5.** Read as: *Only stage 1 can complete in Slice 1.* Stage 2 (*Baseline locked*) does not complete, because Slice 1 persists no baseline. Stages 2–5 all remain pending. |
+| **§10, the stage table, row 2** — `\| 2 \| Baseline locked \| ₹3.5L · 1.8 \| Today's numbers \|` | Under *Status when actioned*, stage 2 shows the locked baseline values ₹3.5L · 1.8. | **SUPERSEDED by X5.** Row 2 renders its *pending* value — *Today's numbers* — in both the default and the actioned state. No baseline value may be displayed as locked. |
+| **§6.3, the working example, *Checks itself* row** — "Cosmisk compares the next 7 days against the locked baseline of ₹3.5L / 1.8 ROAS and returns a verdict on day 7." | A worked specimen of the eighth block. | **SUPERSEDED as a specimen to copy.** It describes scheduled observation, a locked baseline and a verdict — three things Override 1 prohibits presenting as functioning. Do not ship this sentence. The block is retained only under an explicit future/unavailable label. |
+| **§3** — "Records the action, locks a baseline, observes, and returns a verdict" | Definition of what Cosmisk does. | **Product direction. Not a Slice 1 requirement.** None of *locks a baseline*, *observes* or *returns a verdict* is built in Slice 1 or may be presented as built. |
+| **§5, the model diagram** — "→ OUTCOME  measured against a baseline locked at the moment of action" | Diagram of the intelligence model. | **Product direction. Not a Slice 1 requirement.** |
+| **§10, the loop diagram** — "→ Baseline locked (the numbers at the moment of action)" and "→ Outcome measured against the baseline" | Diagram of the five-stage loop. | **Product direction.** The diagram may be *rendered*, per Override 1, only with stages 2–5 pending and an explicit future label. |
+| **§10, *The rule that matters most*** — "**A baseline must be captured at the moment of action**, or the outcome is unmeasurable forever." | The strongest imperative in §10. | **Product direction. Explicitly out of scope for Slice 1.** Slice 1 captures no baseline. A developer must not implement baseline capture to satisfy this line, and must not add UI implying it happened. It is correct beyond Slice 1. |
+| **Appendix checklist** — "If this is a recommendation, is there a baseline being captured? (§10)" | Pre-ship checklist item. | **Not applicable in Slice 1.** The answer is *no*, by decision. This item does not gate Slice 1. |
+
+**§10's rule that matters most — *"Clicking 'I have done this' does NOT mean Cosmisk has learned
+anything. It means the user has confirmed the recommended action was taken. Nothing more."* — is
+unchanged and is exactly what X5 implements.** Only the stage count and the baseline value are
+superseded.
+
+If any passage not listed here implies a second completed stage, a locked baseline, scheduled
+observation, an outcome, a verdict, or learning as current Slice 1 functionality, **it is
+superseded too.** Raise it so it can be tabulated. Do not act on it, and do not resolve it in code.
+
 ## Override 2 — Competitor capture is not part of Slice 1
 
 **Decision.** Competitor capture is not in Slice 1. Competitor Spy is not to be implemented.
@@ -631,6 +659,20 @@ unchanged and is what this copy implements.
 
 ## Conformance status
 
-The prototype **conforms** to Override 1 and Override 2 as of commit recorded in the handoff.
-The First Aha actioned state completes one stage only, and the confirmation copy is the
-authorized X5 text. The prototype is both the visual reference and the honesty reference.
+**Partial. The prototype conforms on the First Aha screen and does not conform on the Dashboard.**
+
+| Prototype screen | Status |
+|---|---|
+| First Aha (`aha.component.ts`) | **Conforms.** The actioned state completes one stage only — *Action recorded*. Stage 2 renders *Today's numbers* and stays pending. The confirmation copy is the authorized X5 text. This screen is the honesty reference. |
+| Dashboard (`dashboard.component.ts`) | **Does not conform.** In the actioned state it renders a lead card claiming *"Your action is recorded and the baseline is locked"* and a loop line reading *"Recorded → baseline locked → observing (first read in 3 days) → verdict on day 7 → Cosmisk adjusts"*. This asserts a persisted baseline, scheduled observation and active outcome measurement — three of the seven claims Override 1 prohibits. It is the rendering of SPEC SCREEN 10, which is itself superseded. |
+
+An earlier conformance check recorded the prototype as fully conformant. **That check was wrong.**
+It tested the dashboard in its default state, where the non-conforming card does not render, and
+its prohibited-phrase list did not include these phrasings. The finding above supersedes it.
+
+**Consequence for a developer.** The prototype remains the visual and interaction reference for
+every screen. It is the honesty reference **only on the First Aha screen.** The Dashboard actioned
+state must not be reproduced in the production implementation. Build the Dashboard actioned state
+to Override 1 and X5, not to the prototype and not to SPEC SCREEN 10.
+
+The prototype has not been altered to fix this, by instruction. It is recorded here instead.
