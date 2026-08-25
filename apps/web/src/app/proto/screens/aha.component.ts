@@ -150,7 +150,7 @@ import { FIRST_FINDING } from '../proto-data';
 
             <!-- The loop is shown as stages with their real status, so the button
                  cannot be mistaken for Cosmisk having learned anything. Recording
-                 an action is step one of six, and the last four have not run. -->
+                 an action is step one of five, and the last four have not run. -->
             <div class="space-y-1 mb-2.5">
               @for (s of loop; track s.label; let i = $index) {
                 <div class="flex items-center gap-2">
@@ -178,8 +178,8 @@ import { FIRST_FINDING } from '../proto-data';
               </button>
             } @else {
               <p class="text-[11px] text-gray-500 font-body m-0 leading-[16px]">
-                Recorded — the starting point is locked and nothing more. If the projection was wrong,
-                Cosmisk will say so and change how it models scaling in your account.
+                Recorded — this confirms the recommended action was taken. Cosmisk has not evaluated
+                the outcome yet. Outcome tracking will come later.
               </p>
             }
           </div>
@@ -211,26 +211,27 @@ export default class ProtoAhaComponent {
   f = FIRST_FINDING;
 
   /**
-   * The six stages of the loop. Only the first two are ever reachable in Slice 1
-   * — the rest need real elapsed data, which the prototype does not have and
-   * must not pretend to. Their status strings say when, not whether.
+   * The five stages of the loop. Only the first is ever reachable in Slice 1 —
+   * Slice 1 persists no baseline (X5, locked), and the rest need real elapsed
+   * data, which the product does not have and must not pretend to. Their status
+   * strings say when, not whether.
    */
   loop = [
     { label: 'Action recorded', done: 'By you', pending: 'Waiting for you' },
-    { label: 'Baseline locked', done: '₹3.5L · 1.8', pending: "Today's numbers" },
+    { label: 'Baseline locked', done: '', pending: "Today's numbers" },
     { label: 'Cosmisk observes new data', done: '', pending: 'Next 7 days' },
     { label: 'Outcome evaluated', done: '', pending: 'Verdict on day 7' },
     { label: 'Cosmisk adjusts its model', done: '', pending: 'After the verdict' },
   ];
 
-  /** Nothing past the baseline can complete without time passing. */
-  doneCount = computed(() => (this.state.findingActioned() ? 2 : 0));
+  /** Only the action itself can complete. Slice 1 persists no baseline. */
+  doneCount = computed(() => (this.state.findingActioned() ? 1 : 0));
 
   constructor() {
     this.state.hasSeenFinding.set(true);
   }
 
-  /** Records the action and locks the baseline. It does NOT close the loop. */
+  /** Records that the user took the action. Nothing else. No baseline, no outcome. */
   markDone() {
     this.state.findingActioned.set(true);
   }
