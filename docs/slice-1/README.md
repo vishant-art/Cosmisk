@@ -65,18 +65,15 @@ Routes: `/proto/login` · `/proto/signup` · `/proto/onboarding` · `/proto/conn
 
 **The prototype is the visual/interaction reference. It is not the production implementation.**
 
-It is the **honesty reference on the First Aha screen only.** That screen is the approved
+It is also the **honesty reference**: its First Aha and Dashboard actioned states are the approved
 rendering of the learning-loop block and the authorised actioned-state copy. When the Spec and the
 prototype appear to disagree about that block, the prototype and the Slice 1 Decision Override are
-correct — the Spec's original SCREEN 9 text has been superseded and says so.
+correct — the Spec's original SCREEN 9 and SCREEN 10 text has been superseded and says so.
 
-> **The prototype dashboard is not conformant. Do not reproduce it.**
-> In its actioned state, `dashboard.component.ts` renders *"Your action is recorded and the
-> baseline is locked"* and *"Recorded → baseline locked → observing (first read in 3 days) →
-> verdict on day 7 → Cosmisk adjusts"*. That asserts a persisted baseline, scheduled observation
-> and outcome measurement — three of the seven claims Override 1 prohibits. It renders the Spec's
-> SCREEN 10, which is itself superseded. Build the Dashboard actioned state to Override 1 and X5.
-> Details in `UX_CONSTITUTION.md` § Conformance status.
+The Dashboard actioned state previously claimed a locked baseline and scheduled observation. **That
+has been corrected** — it now states only that the action was recorded, and labels outcome tracking
+as unavailable. The superseded SCREEN 10 copy in `SLICE_1_DEVELOPER_SPEC.md` is still tabulated as
+superseded; do not build from it.
 
 **Do not merge the prototype into `main`. Do not modify `proto/slice-1-ux`.** Build the
 production implementation on your own branch, against these documents.

@@ -659,20 +659,27 @@ unchanged and is what this copy implements.
 
 ## Conformance status
 
-**Partial. The prototype conforms on the First Aha screen and does not conform on the Dashboard.**
+**The prototype conforms to Override 1, Override 2 and X5 on both actioned surfaces.**
 
 | Prototype screen | Status |
 |---|---|
-| First Aha (`aha.component.ts`) | **Conforms.** The actioned state completes one stage only — *Action recorded*. Stage 2 renders *Today's numbers* and stays pending. The confirmation copy is the authorized X5 text. This screen is the honesty reference. |
-| Dashboard (`dashboard.component.ts`) | **Does not conform.** In the actioned state it renders a lead card claiming *"Your action is recorded and the baseline is locked"* and a loop line reading *"Recorded → baseline locked → observing (first read in 3 days) → verdict on day 7 → Cosmisk adjusts"*. This asserts a persisted baseline, scheduled observation and active outcome measurement — three of the seven claims Override 1 prohibits. It is the rendering of SPEC SCREEN 10, which is itself superseded. |
+| First Aha (`aha.component.ts`) | **Conforms.** The actioned state completes one stage only — *Action recorded*. Stage 2 renders *Today's numbers* and stays pending. The confirmation copy is the authorized X5 text. |
+| Dashboard (`dashboard.component.ts`) | **Conforms, after correction.** The actioned lead card states only *"Your action is recorded. Cosmisk has not evaluated the outcome yet. Outcome tracking will come later."* Outcome tracking appears under the explicit label *Outcome tracking — not available yet*. |
 
-An earlier conformance check recorded the prototype as fully conformant. **That check was wrong.**
-It tested the dashboard in its default state, where the non-conforming card does not render, and
-its prohibited-phrase list did not include these phrasings. The finding above supersedes it.
+**Correction history — retained deliberately.** An earlier conformance check recorded the prototype
+as fully conformant while the Dashboard actioned state still claimed *"the baseline is locked"* and
+a loop reading *"Recorded → baseline locked → observing (first read in 3 days) → verdict on day 7 →
+Cosmisk adjusts"*. **That check was wrong**, for two reasons worth knowing before writing another:
 
-**Consequence for a developer.** The prototype remains the visual and interaction reference for
-every screen. It is the honesty reference **only on the First Aha screen.** The Dashboard actioned
-state must not be reproduced in the production implementation. Build the Dashboard actioned state
-to Override 1 and X5, not to the prototype and not to SPEC SCREEN 10.
+1. It loaded `/proto/dashboard` cold. `findingActioned` is a signal in `ProtoStateService` and does
+   not survive a page load, so the non-conforming card never rendered and was never scanned. **The
+   actioned state is only reachable by clicking "I have done this" on First Aha and navigating
+   in-session.**
+2. Its prohibited-phrase list did not contain these particular phrasings.
 
-The prototype has not been altered to fix this, by instruction. It is recorded here instead.
+Both the copy and the check have since been corrected. Any future conformance check must exercise
+the actioned state by click-through, not by direct navigation.
+
+**Consequence for a developer.** The prototype is the visual, interaction **and** honesty reference
+on these two screens. SPEC SCREEN 10's original lead-card copy remains superseded and must not be
+built from — the prototype now shows the correct rendering, the Spec text does not.
