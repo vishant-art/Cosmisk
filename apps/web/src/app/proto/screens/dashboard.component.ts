@@ -134,26 +134,23 @@ type ViewState = 'ready' | 'loading' | 'empty' | 'error';
           <div class="card !p-6 mb-4 border-l-[3px] !border-l-emerald-500">
             <div class="flex items-center gap-2 mb-3 flex-wrap">
               <span class="text-[11px] font-mono uppercase tracking-wider text-emerald-700
-                bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Tracking · day 0 of 7</span>
+                bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Action recorded</span>
             </div>
             <h2 class="text-[21px] leading-[30px] font-display font-bold text-navy mb-2">
-              You capped Summer Sale. Cosmisk is watching what happens.
+              You capped Summer Sale.
             </h2>
             <p class="text-body text-gray-600 m-0 mb-5">
-              Your action is recorded and the baseline is locked. Cosmisk has not learned anything
-              yet — it will compare the next 7 days against ₹3.5L / 1.8 ROAS and tell you whether
-              the call was right, including if it was wrong.
+              Your action is recorded. Cosmisk has not evaluated the outcome yet. Outcome tracking
+              will come later.
             </p>
+            <!-- Outcome tracking is NOT built in Slice 1 (Override 1 / X5). This block may only
+                 state it as a future capability, under an explicit unavailable label. Do not
+                 reintroduce a baseline, an observation window, a verdict, or model adjustment. -->
             <div class="rounded-xl border border-divider bg-[#FBFBFC] px-5 py-4">
-              <p class="text-[11px] font-mono uppercase tracking-wider text-gray-400 m-0 mb-1.5">Where this is in the loop</p>
-              <p class="text-sm text-navy font-body m-0">
-                Recorded <span class="text-gray-300 mx-0.5">→</span>
-                baseline locked <span class="text-gray-300 mx-0.5">→</span>
-                <span class="text-gray-400">observing (first read in 3 days)</span>
-                <span class="text-gray-300 mx-0.5">→</span>
-                <span class="text-gray-400">verdict on day 7</span>
-                <span class="text-gray-300 mx-0.5">→</span>
-                <span class="text-gray-400">Cosmisk adjusts</span>
+              <p class="text-[11px] font-mono uppercase tracking-wider text-gray-400 m-0 mb-1.5">Outcome tracking — not available yet</p>
+              <p class="text-sm text-gray-500 font-body m-0">
+                Cosmisk does not measure what happened after an action. When that is built, it
+                will appear here.
               </p>
             </div>
           </div>
