@@ -51,7 +51,7 @@ disagree, the cited source wins.
 
 ## The prototype
 
-The interactive Slice 1 prototype lives on branch **`proto/slice-1-ux`** at commit **`23a99953`**.
+The interactive Slice 1 prototype lives on branch **`proto/slice-1-ux`** at commit **`61d502cf`**.
 
 ```bash
 git checkout proto/slice-1-ux
