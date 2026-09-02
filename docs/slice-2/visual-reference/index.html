@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cosmisk — Batch 2 Visual UX Reference</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F7F8FA; --surface:#FFFFFF; --navy:#0F1729; --ink:#1D2739;
+  --muted:#626E85; --faint:#8A94A6; --line:#E4E7EC; --line-soft:#EFF1F4;
+  --indigo:#4338CA; --indigo-soft:#EEF0FE; --indigo-line:#C9CDF5;
+  --amber:#B45309; --amber-soft:#FEF6E7; --amber-line:#F3DCB4;
+  --green:#047857; --green-soft:#ECFDF5; --green-line:#B9E6D3;
+  --rose:#9F1239; --rose-soft:#FFF1F4;
+  --r:14px; --r-sm:9px;
+  --shadow:0 1px 2px rgba(15,23,41,.04), 0 8px 28px rgba(15,23,41,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'DM Sans',system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+  display:flex;
+}
+h1,h2,h3{font-family:'Playfair Display',Georgia,serif;color:var(--navy);letter-spacing:-.01em;font-weight:600}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+/* ── prototype chrome ─────────────────────────────── */
+.rail{
+  width:266px; flex:0 0 266px; height:100vh; position:sticky; top:0;
+  background:var(--navy); color:#C7CDDA; padding:26px 20px; overflow-y:auto;
+}
+.rail .brand{font-family:'Playfair Display',serif;font-size:19px;color:#fff;letter-spacing:.02em}
+.rail .tag{
+  display:inline-block;margin-top:9px;font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  font-family:'JetBrains Mono',monospace;color:#8E97AB;border:1px solid #2C3752;
+  padding:3px 8px;border-radius:100px;
+}
+.rail .sect{
+  font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:#6B7590;
+  font-family:'JetBrains Mono',monospace;margin:30px 0 10px;
+}
+.navbtn{
+  display:block;width:100%;text-align:left;background:transparent;border:0;cursor:pointer;
+  color:#C7CDDA;font-family:inherit;font-size:13.5px;padding:9px 11px;border-radius:8px;
+  line-height:1.35;transition:background .12s,color .12s;
+}
+.navbtn:hover{background:#1B2437;color:#fff}
+.navbtn.on{background:var(--indigo);color:#fff}
+.navbtn .n{font-family:'JetBrains Mono',monospace;font-size:10.5px;opacity:.6;margin-right:8px}
+.navbtn .sub{display:block;font-size:11px;color:#7E88A0;margin-top:2px}
+.navbtn.on .sub{color:#C6C9F2}
+.rail .foot{margin-top:32px;font-size:11px;line-height:1.6;color:#69738C;border-top:1px solid #232D44;padding-top:16px}
+
+.stage{flex:1;min-width:0;display:flex;flex-direction:column;height:100vh;overflow-y:auto}
+.stagebar{
+  position:sticky;top:0;z-index:5;background:rgba(247,248,250,.9);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);padding:13px 40px;display:flex;align-items:center;gap:16px;
+}
+.stagebar .title{font-size:13px;font-weight:600;color:var(--navy)}
+.stagebar .spec{
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);
+  border:1px solid var(--line);background:#fff;padding:2px 8px;border-radius:100px;
+}
+.stagebar .spacer{flex:1}
+.stepper{display:flex;gap:5px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--faint);letter-spacing:.06em}
+.stepper i{width:20px;height:3px;border-radius:2px;background:var(--line);display:block}
+.stepper i.on{background:var(--indigo)}
+.canvas{padding:38px 40px 90px;display:flex;justify-content:center}
+.screen{display:none;width:100%;max-width:880px}
+.screen.on{display:block;animation:in .28s ease}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.mockcap{
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);
+  margin-bottom:12px;display:flex;gap:10px;align-items:center;
+}
+.mockcap b{color:var(--muted);font-weight:500}
+.illus{
+  display:inline-flex;align-items:center;gap:6px;background:var(--amber-soft);color:var(--amber);
+  border:1px solid var(--amber-line);border-radius:100px;padding:2px 9px;
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+}
+
+/* ── app surface ──────────────────────────────────── */
+.app{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.app-pad{padding:44px 52px}
+.app-pad.tight{padding:34px 40px}
+.topline{height:3px;background:linear-gradient(90deg,var(--indigo),#7C6CE8 60%,#EAE8FB)}
+
+.eyebrow{
+  font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:14px;
+}
+h1.big{font-size:31px;line-height:1.2;margin-bottom:12px}
+h2.mid{font-size:23px;line-height:1.25;margin-bottom:10px}
+.lede{font-size:15.5px;color:var(--muted);max-width:62ch;line-height:1.6}
+
+.srcstrip{
+  display:flex;align-items:center;gap:9px;margin-top:22px;padding:11px 14px;
+  background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);
+  font-size:13px;color:var(--muted);
+}
+.srcstrip .dot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.srcstrip .u{color:var(--navy);font-family:'JetBrains Mono',monospace;font-size:12.5px}
+.srcstrip .sep{color:var(--line);}
+
+/* progress list */
+.plist{margin-top:34px;border-top:1px solid var(--line-soft)}
+.pitem{display:flex;gap:14px;align-items:flex-start;padding:16px 2px;border-bottom:1px solid var(--line-soft)}
+.pmark{
+  width:19px;height:19px;border-radius:50%;flex:0 0 19px;margin-top:2px;
+  display:grid;place-items:center;font-size:10px;color:#fff;
+}
+.pmark.done{background:var(--green)}
+.pmark.now{background:transparent;border:2px solid var(--indigo);animation:pulse 1.4s ease-in-out infinite}
+.pmark.wait{background:transparent;border:2px solid var(--line)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pitem .lab{font-size:14.5px;color:var(--ink);font-weight:500}
+.pitem.waiting .lab{color:var(--faint);font-weight:400}
+.pitem .note{font-size:13px;color:var(--muted);margin-top:2px}
+
+/* field cards */
+.fields{margin-top:30px;display:flex;flex-direction:column;gap:0}
+.field{padding:22px 0;border-top:1px solid var(--line-soft)}
+.field:first-child{border-top:1px solid var(--line)}
+.fhead{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.flabel{font-size:11px;font-family:'JetBrains Mono',monospace;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+.fhead .spacer{flex:1}
+.chip{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:2.5px 8px;border-radius:100px;border:1px solid;
+}
+.chip.hi{background:var(--green-soft);color:var(--green);border-color:var(--green-line)}
+.chip.med{background:var(--indigo-soft);color:var(--indigo);border-color:var(--indigo-line)}
+.chip.lo{background:var(--amber-soft);color:var(--amber);border-color:var(--amber-line)}
+.chip.none{background:var(--bg);color:var(--faint);border-color:var(--line)}
+.chip.user{background:var(--navy);color:#fff;border-color:var(--navy)}
+.fval{font-size:17px;color:var(--navy);line-height:1.45;max-width:64ch}
+.fval.empty{color:var(--faint);font-style:italic;font-size:15.5px}
+.fev{
+  margin-top:11px;padding:11px 14px;background:var(--bg);border-left:2px solid var(--line);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:13.5px;color:var(--muted);max-width:66ch;
+}
+.fev b{
+  display:block;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);font-weight:500;margin-bottom:4px;
+}
+.fev q{color:var(--ink);font-style:italic}
+.fact{
+  margin-top:12px;display:flex;gap:14px;align-items:center;
+}
+.link{
+  background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;
+  color:var(--indigo);font-weight:500;border-bottom:1px solid var(--indigo-line);
+}
+.link:hover{border-bottom-color:var(--indigo)}
+.link.quiet{color:var(--muted);border-bottom-color:var(--line)}
+
+/* editing state */
+.field.editing{background:var(--indigo-soft);margin:0 -20px;padding:22px 20px;border-radius:var(--r-sm);border-top-color:transparent}
+.input{
+  width:100%;max-width:640px;font-family:inherit;font-size:16px;color:var(--navy);
+  padding:11px 13px;border:1.5px solid var(--indigo);border-radius:var(--r-sm);background:#fff;
+  outline:none;
+}
+.editrow{display:flex;gap:10px;align-items:center;margin-top:12px}
+.btn{
+  font-family:inherit;font-size:14px;font-weight:600;padding:9px 18px;border-radius:var(--r-sm);
+  cursor:pointer;border:1px solid transparent;transition:.14s;
+}
+.btn.primary{background:var(--indigo);color:#fff}
+.btn.primary:hover{background:#372FA8}
+.btn.ghost{background:#fff;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--faint)}
+.btn.sm{font-size:13px;padding:7px 14px}
+.btn.lg{font-size:15px;padding:13px 26px}
+
+.footrow{
+  margin-top:34px;padding-top:24px;border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:18px;
+}
+.footrow .spacer{flex:1}
+.footnote{font-size:13px;color:var(--faint);max-width:44ch}
+
+/* callouts */
+.callout{
+  margin-top:26px;border:1px solid var(--line);border-left:3px solid var(--indigo);
+  background:var(--bg);border-radius:0 var(--r-sm) var(--r-sm) 0;padding:15px 18px;
+}
+.callout.warn{border-left-color:var(--amber);background:var(--amber-soft);border-color:var(--amber-line)}
+.callout .h{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:6px;
+}
+.callout.warn .h{color:var(--amber)}
+.callout p{font-size:13.5px;color:var(--muted);line-height:1.6;max-width:70ch}
+.callout.warn p{color:#7A4A12}
+
+/* dev annotation (outside the mock) */
+.devnote{
+  margin-top:14px;border:1px dashed var(--line);border-radius:var(--r-sm);padding:13px 16px;
+  background:transparent;font-size:12.5px;color:var(--muted);line-height:1.6;
+}
+.devnote b{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);display:block;margin-bottom:5px;font-weight:500;
+}
+.devnote code{font-family:'JetBrains Mono',monospace;font-size:11.5px;background:var(--bg);padding:1px 5px;border-radius:4px;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<nav class="rail">
+  <div class="brand">Cosmisk</div>
+  <div class="tag">Batch 2 · UX reference</div>
+
+  <div class="sect">The journey</div>
+  <button class="navbtn on" data-go="s1"><span class="n">01</span>Discover &amp; Understand<span class="sub">Reading the brand's website</span></button>
+  <button class="navbtn" data-go="s2"><span class="n">02</span>Review &amp; Correct<span class="sub">The user confirms or fixes</span></button>
+  <button class="navbtn" data-go="s3"><span class="n">03</span>Brand Context<span class="sub">Persisted · editable later</span></button>
+  <button class="navbtn" data-go="s4"><span class="n">04</span>Brand-Aware Finding<span class="sub">Context changes the reading</span></button>
+  <button class="navbtn" data-go="s5"><span class="n">05</span>Evidence &amp; Recommendation<span class="sub">Why this, and why it's theirs</span></button>
+
+  <div class="foot">
+    Illustrative mock data for a fictional brand.<br>
+    Not connected to any API.<br>
+    Visual reference only — not an implementation.
+  </div>
+</nav>
+
+<main class="stage">
+  <div class="stagebar">
+    <span class="title" id="barTitle">Discover &amp; Understand</span>
+    <span class="spec" id="barSpec">Handoff §9 · §11</span>
+    <span class="spacer"></span>
+    <span class="stepper" id="stepper"></span>
+  </div>
+  <div class="canvas">
+
+<!-- ══ 01 · DISCOVER & UNDERSTAND ══════════════════════ -->
+<section class="screen on" id="s1">
+  <div class="mockcap"><span class="illus">Illustrative</span><b>Fictional brand:</b> Aurelia Skin · aurelia.co</div>
+
+  <div class="app">
+    <div class="topline"></div>
+    <div class="app-pad">
+      <div class="eyebrow">Setting up · step 3 of 4</div>
+      <h1 class="big">Reading your website.</h1>
+      <p class="lede">We're working out what you sell and who buys it, so the analysis we run on your ad account is about your business — not about ads in general.</p>
+
+      <div class="plist">
+        <div class="pitem">
+          <span class="pmark done">✓</span>
+          <span><span class="lab">Fetched your homepage</span>
+          <span class="note">aurelia.co — 1 page read</span></span>
+        </div>
+        <div class="pitem">
+          <span class="pmark done">✓</span>
+          <span><span class="lab">Read your product pages</span>
+          <span class="note">24 products, prices between ₹1,450 and ₹3,200</span></span>
+        </div>
+        <div class="pitem">
+          <span class="pmark now"></span>
+          <span><span class="lab">Working out what you sell and who buys it</span>
+          <span class="note">Usually the slowest part</span></span>
+        </div>
+        <div class="pitem waiting">
+          <span class="pmark wait"></span>
+          <span><span class="lab">Ready for you to check</span></span>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="h">What happens next</div>
+        <p>You'll see what we understood and can correct anything that's wrong. Nothing is used in an analysis until you've confirmed it.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="devnote">
+    <b>Developer note — not part of the UI</b>
+    Progress is <em>named</em>, never a fake percentage. Each row corresponds to a real step, so a stall is visible rather than disguised. If derivation exceeds its timeout this screen falls through to the error state on screen 02 — it must not spin indefinitely. Handoff §11 · B1 loading state.
+  </div>
+</section>
+
+<!-- ══ 02 · REVIEW & CORRECT ═══════════════════════════ -->
+<section class="screen" id="s2">
+  <div class="mockcap"><span class="illus">Illustrative</span><b>Fictional brand:</b> Aurelia Skin · aurelia.co</div>
+
+  <div class="app">
+    <div class="topline"></div>
+    <div class="app-pad">
+      <div class="eyebrow">Setting up · step 3 of 4</div>
+      <h1 class="big">Here's what we understood about your brand.</h1>
+      <p class="lede">We read your website. Correct anything that's wrong — this shapes every analysis we run.</p>
+
+      <div class="srcstrip">
+        <span class="dot"></span>
+        <span>Read from</span> <span class="u">aurelia.co</span>
+        <span class="sep">·</span> <span>just now</span>
+        <span class="sep">·</span> <span>24 product pages</span>
+      </div>
+
+      <div class="fields">
+
+        <div class="field">
+          <div class="fhead">
+            <span class="flabel">What you sell</span>
+            <span class="spacer"></span>
+            <span class="chip hi">Confident</span>
+          </div>
+          <div class="fval">Barrier-repair skincare — ceramide serums, a moisturiser and a cleanser, sold direct.</div>
+          <div class="fev"><b>From your site</b><q>Ceramide Barrier Serum · Repair Moisturiser · Gentle Barrier Cleanser</q> — 24 product pages across 3 collections.</div>
+          <div class="fact"><button class="link">Edit</button></div>
+        </div>
+
+        <div class="field">
+          <div class="fhead">
+            <span class="flabel">Where you sit on price</span>
+            <span class="spacer"></span>
+            <span class="chip med">Fairly sure</span>
+          </div>
+          <div class="fval">Above the category average — a premium position.</div>
+          <div class="fev"><b>From your site</b>Products priced ₹1,450 – ₹3,200, averaging ₹2,180. Typical Indian D2C skincare sits nearer ₹700.</div>
+          <div class="fact"><button class="link">Edit</button></div>
+        </div>
+
+        <div class="field editing">
+          <div class="fhead">
+            <span class="flabel">What you promise customers</span>
+            <span class="spacer"></span>
+            <span class="chip med">Fairly sure</span>
+          </div>
+          <input class="input" value="Repair the skin barrier rather than treat symptoms — results in 4 weeks, dermatologist-tested.">
+          <div class="fev" style="margin-top:12px"><b>We read this from</b><q>“Repair the barrier. The rest follows.”</q> — your homepage headline.</div>
+          <div class="editrow">
+            <button class="btn primary sm">Save</button>
+            <button class="btn ghost sm">Cancel</button>
+            <span class="footnote" style="font-size:12.5px">Your wording replaces ours permanently.</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="fhead">
+            <span class="flabel">What makes you different</span>
+            <span class="spacer"></span>
+            <span class="chip lo">Less sure</span>
+          </div>
+          <div class="fval">Ceramide-first formulations, fragrance-free, dermatologist-tested.</div>
+          <div class="fev"><b>From your site</b>Repeated across product pages. We dropped “premium quality” and “best in class” — those don't tell us anything specific.</div>
+          <div class="fact"><button class="link">Edit</button></div>
+        </div>
+
+        <div class="field">
+          <div class="fhead">
+            <span class="flabel">Who you're for</span>
+            <span class="spacer"></span>
+            <span class="chip none">Not found</span>
+          </div>
+          <div class="fval empty">We couldn't work this out from your site.</div>
+          <div class="fev"><b>Why</b>Your pages describe the products but never say who they're for. We'd rather leave this blank than guess — a guess here would quietly distort everything we tell you later.</div>
+          <div class="fact"><button class="link">Add this</button><span class="footnote" style="font-size:12.5px">Optional. You can add it later.</span></div>
+        </div>
+
+      </div>
+
+      <div class="footrow">
+        <button class="btn primary lg" data-go="s3">Confirm and continue</button>
+        <button class="link quiet">Skip for now</button>
+        <span class="spacer"></span>
+        <span class="footnote">You can change any of this later in Settings.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="devnote">
+    <b>Developer note — not part of the UI</b>
+    Three behaviours on this screen are load-bearing, not cosmetic. <strong>(1)</strong> Every value shows the evidence it came from — a value with no evidence must not be stored or displayed. <strong>(2)</strong> “Who you're for” is deliberately <em>blank</em>; blank is an honest state, an invented audience is not. <strong>(3)</strong> If the website fetch fails, all five fields render empty with a retry — the system must never surface <code>getDefaultSnapshot()</code>'s <code>pricePoint:&nbsp;'mid'</code> here, because the user would confirm a fabricated fact. Handoff §11 · B1, DoD-2, DoD-3, DoD-13.
+  </div>
+</section>
+
+<!-- ══ 03 · BRAND CONTEXT (persisted) ══════════════════ -->
+<section class="screen" id="s3">
+  <div class="mockcap"><span class="illus">Illustrative</span><b>Fictional brand:</b> Aurelia Skin · Settings</div>
+
+  <div class="app">
+    <div class="topline"></div>
+    <div class="app-pad">
+      <div class="eyebrow">Settings</div>
+      <h1 class="big">What Cosmisk understands about your brand</h1>
+      <p class="lede">This is what we use to interpret your ad account. Keeping it accurate is the single biggest thing you can do to improve what we find.</p>
+
+      <div class="srcstrip">
+        <span class="dot"></span>
+        <span>Last read from</span> <span class="u">aurelia.co</span>
+        <span class="sep">·</span> <span>4 days ago</span>
+      </div>
+
+      <div class="fields">
+        <div class="field">
+          <div class="fhead"><span class="flabel">What you sell</span><span class="spacer"></span><span class="chip none">From your website</span></div>
+          <div class="fval">Barrier-repair skincare — ceramide serums, a moisturiser and a cleanser, sold direct.</div>
+          <div class="fact"><button class="link">Edit</button></div>
+        </div>
+        <div class="field">
+          <div class="fhead"><span class="flabel">Where you sit on price</span><span class="spacer"></span><span class="chip none">From your website</span></div>
+          <div class="fval">Above the category average — a premium position.</div>
+          <div class="fact"><button class="link">Edit</button></div>
+        </div>
+        <div class="field">
+          <div class="fhead"><span class="flabel">What you promise customers</span><span class="spacer"></span><span class="chip user">You set this</span></div>
+          <div class="fval">Repair the skin barrier rather than treat symptoms — results in 4 weeks, dermatologist-tested.</div>
+          <div class="fact"><button class="link">Edit</button><button class="link quiet">Revert to what we read</button></div>
+        </div>
+        <div class="field">
+          <div class="fhead"><span class="flabel">What makes you different</span><span class="spacer"></span><span class="chip none">From your website</span></div>
+          <div class="fval">Ceramide-first formulations, fragrance-free, dermatologist-tested.</div>
+          <div class="fact"><button class="link">Edit</button></div>
+        </div>
+        <div class="field">
+          <div class="fhead"><span class="flabel">Who you're for</span><span class="spacer"></span><span class="chip none">Not set</span></div>
+          <div class="fval empty">Not set.</div>
+          <div class="fact"><button class="link">Add this</button></div>
+        </div>
+      </div>
+
+      <div class="footrow">
+        <button class="btn primary">Save changes</button>
+        <button class="btn ghost">Re-read my website</button>
+        <span class="spacer"></span>
+        <span class="footnote">Re-reading won't overwrite anything you've corrected.</span>
+      </div>
+
+      <div class="callout">
+        <div class="h">When changes take effect</div>
+        <p>Corrections apply to your next analysis. We don't retrospectively rewrite findings you've already seen.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="devnote">
+    <b>Developer note — not part of the UI</b>
+    “You set this” outranks “From your website” permanently. A re-read may fill blanks and refresh website-sourced fields, but must never overwrite a field where <code>corrected_by_user = true</code> — which is what makes the re-read button safe to press at any time. Note the copy says corrections apply to the <em>next</em> run, not “updating your insights”: no outcome tracking is implied anywhere (Override 1). Handoff §11 · B2, DoD-5.
+  </div>
+</section>
+
+<style>
+/* reasoning strip */
+.reason{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:28px 0 8px}
+.rbox{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg);padding:15px 17px}
+.rbox .h{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:9px;display:flex;align-items:center;gap:7px;
+}
+.rbox .h em{font-style:normal;width:5px;height:5px;border-radius:50%;background:var(--indigo)}
+.rbox ul{list-style:none;font-size:13.5px;color:var(--ink);line-height:1.75}
+.rbox li{padding-left:14px;position:relative}
+.rbox li:before{content:"";position:absolute;left:0;top:10px;width:5px;height:1px;background:var(--faint)}
+.rarrow{
+  text-align:center;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin:16px 0;position:relative;
+}
+.rarrow:before,.rarrow:after{content:"";position:absolute;top:50%;width:36%;height:1px;background:var(--line)}
+.rarrow:before{left:0}.rarrow:after{right:0}
+
+/* fact / inference / recommendation */
+.fir{margin-top:8px;display:flex;flex-direction:column;gap:2px}
+.blk{padding:20px 22px;border-radius:var(--r-sm);border:1px solid var(--line);background:#fff}
+.blk + .blk{margin-top:12px}
+.blk .k{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  margin-bottom:9px;display:flex;align-items:center;gap:8px;
+}
+.blk .k span{opacity:.55;letter-spacing:.02em;text-transform:none;font-size:11px}
+.blk p{font-size:15.5px;line-height:1.62;color:var(--ink);max-width:70ch}
+.blk.ev-fact{border-left:3px solid var(--navy)}   .blk.ev-fact .k{color:var(--navy)}
+.blk.infer{border-left:3px solid var(--indigo);background:#FCFCFF} .blk.infer .k{color:var(--indigo)}
+.blk.rec{border-left:3px solid var(--green);background:var(--green-soft);border-color:var(--green-line)} .blk.rec .k{color:var(--green)}
+.blk.rec p{color:#0A4A38}
+
+/* attribution */
+.attrib{margin-top:22px;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.attrib .t{
+  padding:11px 16px;background:var(--bg);border-bottom:1px solid var(--line);
+  font-size:12.5px;color:var(--muted);font-weight:500;
+}
+.attrib .row{display:flex;gap:16px;padding:12px 16px;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+.attrib .row:last-child{border-bottom:0}
+.attrib .row .k{flex:0 0 190px;color:var(--faint);font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;padding-top:3px}
+.attrib .row .v{color:var(--ink);flex:1}
+.attrib .row .v small{display:block;color:var(--faint);font-size:12px;margin-top:2px}
+
+/* evidence table */
+.tbl{width:100%;border-collapse:collapse;margin-top:14px;font-size:13.5px}
+.tbl th{
+  text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--faint);font-weight:500;padding:9px 12px;border-bottom:1px solid var(--line);
+}
+.tbl td{padding:12px;border-bottom:1px solid var(--line-soft);color:var(--ink);vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td.num{font-family:'JetBrains Mono',monospace;font-size:12.5px;white-space:nowrap}
+.tbl .copy{color:var(--muted);font-style:italic}
+.tbl tr.hl td{background:var(--amber-soft)}
+.tbl tfoot td{font-weight:600;border-top:1px solid var(--line);background:var(--bg)}
+
+/* ablation */
+.ablate{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;margin-top:14px}
+.ablate > div{padding:18px 20px}
+.ablate .off{background:var(--bg);border-right:1px solid var(--line)}
+.ablate .h{
+  font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:10px;
+}
+.ablate .on .h{color:var(--indigo)}
+.ablate p{font-size:14.5px;line-height:1.6}
+.ablate .off p{color:var(--faint)}
+.ablate .on p{color:var(--navy)}
+</style>
+
+<!-- ══ 04 · BRAND-AWARE FINDING ════════════════════════ -->
+<section class="screen" id="s4">
+  <div class="mockcap"><span class="illus">Illustrative</span><b>Fictional brand:</b> Aurelia Skin · mock account data</div>
+
+  <div class="app">
+    <div class="topline"></div>
+    <div class="app-pad">
+      <div class="eyebrow">What we found · last 30 days</div>
+      <h1 class="big">Your biggest spend is arguing with your positioning.</h1>
+      <p class="lede">The ads taking most of your budget lead with price. Your brand leads with barrier repair. Those two things are pulling in different directions.</p>
+
+      <div class="reason">
+        <div class="rbox">
+          <div class="h"><em></em>What we understand about your brand</div>
+          <ul>
+            <li>Premium position — products ₹1,450–₹3,200</li>
+            <li>Promise: repair the barrier, not treat symptoms <span style="color:var(--faint)">(you set this)</span></li>
+            <li>Ceramide-first, fragrance-free, derm-tested</li>
+          </ul>
+        </div>
+        <div class="rbox">
+          <div class="h"><em></em>What we see in your account</div>
+          <ul>
+            <li>₹4.1L of ₹6.0L spend on 4 discount-led creatives</li>
+            <li>Those 4 blend to 2.3× ROAS</li>
+            <li>2 barrier-repair creatives: ₹0.9L at 3.1× ROAS</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rarrow">Read together</div>
+
+      <div class="fir">
+        <div class="blk ev-fact">
+          <div class="k">Fact <span>— what we observed</span></div>
+          <p>68% of your spend in the last 30 days (₹4.1L of ₹6.0L) ran on four creatives whose opening line is a discount — “FLAT 40% OFF”, “LOWEST PRICE EVER”. Those four blend to a 2.3× ROAS. The two creatives that open with a barrier-repair claim took ₹0.9L and returned 3.1×.</p>
+        </div>
+        <div class="blk infer">
+          <div class="k">Inference <span>— how we read it</span></div>
+          <p>You charge roughly three times the category average and your stated promise is barrier repair, so most of your budget is currently teaching new customers to buy you on price — while the creative that actually matches your positioning is the one performing better on a much smaller budget. The split looks inherited rather than chosen.</p>
+        </div>
+        <div class="blk rec">
+          <div class="k">Recommendation <span>— what to do in the next 48 hours</span></div>
+          <p>Before scaling further, move a defined share of the discount budget — start with 20% — onto the barrier-repair set and compare over two weeks. This is a reallocation test, not a rewrite. Don't pause the discount creatives; you need the comparison.</p>
+        </div>
+      </div>
+
+      <div class="attrib">
+        <div class="t">Based on what we understand about your brand:</div>
+        <div class="row">
+          <span class="k">Your promise</span>
+          <span class="v">Repair the skin barrier rather than treat symptoms<small>You set this on 12 May</small></span>
+        </div>
+        <div class="row">
+          <span class="k">Your price position</span>
+          <span class="v">Above category average — premium<small>From your website · products ₹1,450–₹3,200</small></span>
+        </div>
+      </div>
+
+      <div class="footrow">
+        <button class="btn primary lg">I have done this</button>
+        <button class="link quiet" data-go="s5">See the evidence</button>
+        <span class="spacer"></span>
+        <button class="link quiet" data-go="s3">Correct what we understand</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="devnote">
+    <b>Developer note — not part of the UI</b>
+    This screen is the product. The two boxes at the top are the whole mechanism made visible: <strong>brand context + the account's own data → one reading that needs both.</strong> Remove the left box and this finding collapses into “your discount ads have a lower ROAS” — a dashboard observation. Remove the right box and it's a summary of the website. Note also what is <em>absent</em>: no baseline captured, no observation scheduled, no outcome promised. “I have done this” records an action and claims nothing further (Override 1, X5). Handoff §7, §12.1, DoD-8 · DoD-10 · DoD-14.
+  </div>
+</section>
+
+<!-- ══ 05 · EVIDENCE & RECOMMENDATION ══════════════════ -->
+<section class="screen" id="s5">
+  <div class="mockcap"><span class="illus">Illustrative</span><b>Fictional brand:</b> Aurelia Skin · mock account data</div>
+
+  <div class="app">
+    <div class="topline"></div>
+    <div class="app-pad">
+      <div class="eyebrow">Evidence</div>
+      <h2 class="mid">Everything this finding rests on.</h2>
+      <p class="lede">Every number below comes from your ad account. Every claim about your brand comes from your website or from you.</p>
+
+      <div class="eyebrow" style="margin-top:32px">From your ad account · last 30 days</div>
+      <table class="tbl">
+        <thead>
+          <tr><th>Creative — opening line</th><th>Spend</th><th>ROAS</th><th>Share of spend</th></tr>
+        </thead>
+        <tbody>
+          <tr class="hl"><td><span class="copy">“FLAT 40% OFF — today only”</span></td><td class="num">₹1,640,000</td><td class="num">2.1×</td><td class="num">27%</td></tr>
+          <tr class="hl"><td><span class="copy">“LOWEST PRICE EVER on our bestseller”</span></td><td class="num">₹1,180,000</td><td class="num">2.4×</td><td class="num">20%</td></tr>
+          <tr class="hl"><td><span class="copy">“Buy 2 get 1 — barrier bundle”</span></td><td class="num">₹780,000</td><td class="num">2.5×</td><td class="num">13%</td></tr>
+          <tr class="hl"><td><span class="copy">“Last chance — 35% off sitewide”</span></td><td class="num">₹500,000</td><td class="num">2.2×</td><td class="num">8%</td></tr>
+          <tr><td><span class="copy">“Your barrier is damaged. Here's how to tell.”</span></td><td class="num">₹560,000</td><td class="num">3.3×</td><td class="num">9%</td></tr>
+          <tr><td><span class="copy">“Ceramides, explained in 30 seconds”</span></td><td class="num">₹340,000</td><td class="num">2.8×</td><td class="num">6%</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td>6 active creatives</td><td class="num">₹6,000,000</td><td class="num">2.5×</td><td class="num">100%</td></tr>
+        </tfoot>
+      </table>
+      <p class="footnote" style="margin-top:10px">Highlighted rows are the four creatives whose opening line leads with price. Remaining 17% sits across paused and low-spend creatives.</p>
+
+      <div class="eyebrow" style="margin-top:34px">From your brand context</div>
+      <div class="attrib">
+        <div class="row"><span class="k">Your promise</span><span class="v">Repair the skin barrier rather than treat symptoms<small>You set this on 12 May — replaced what we read from your homepage</small></span></div>
+        <div class="row"><span class="k">Price position</span><span class="v">Above category average — premium<small>From aurelia.co · 24 products, ₹1,450–₹3,200, averaging ₹2,180</small></span></div>
+        <div class="row"><span class="k">Who you're for</span><span class="v" style="color:var(--faint);font-style:italic">Not set — so this finding makes no claim about your audience.<small>Add it in Settings if you want audience-level reading</small></span></div>
+      </div>
+
+      <div class="eyebrow" style="margin-top:34px">Why this needed your brand context</div>
+      <div class="ablate">
+        <div class="off">
+          <div class="h">Without brand context</div>
+          <p>“Your discount-led ads have a lower ROAS than your other ads.”</p>
+          <p style="margin-top:10px;font-size:12.5px;color:var(--faint)">True, generic, and visible in Meta Ads Manager. Any account could receive it.</p>
+        </div>
+        <div class="on">
+          <div class="h">With brand context</div>
+          <p>“Most of your budget is teaching customers to buy a premium barrier-repair brand on price.”</p>
+          <p style="margin-top:10px;font-size:12.5px;color:var(--muted)">Only true for a brand at your price point making your promise.</p>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <div class="h">Where we'd stop</div>
+        <p>If your website hadn't given us a clear promise, or if these creatives had fewer than about 40 conversions each, we'd tell you there isn't enough evidence to conclude anything — and say what would change that. We'd rather say nothing than say something confident and wrong.</p>
+      </div>
+
+      <div class="footrow">
+        <button class="btn primary lg">I have done this</button>
+        <button class="btn ghost" data-go="s4">Back to the finding</button>
+        <span class="spacer"></span>
+        <span class="footnote">Recorded against this finding. Nothing else is claimed.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="devnote">
+    <b>Developer note — not part of the UI</b>
+    The “Why this needed your brand context” panel is the user-facing form of the <strong>ablation test</strong> — the same account, read with and without brand context. If those two columns ever say the same thing, brand context is decorative and the batch has failed its only real criterion. Note also the <em>absent</em> audience row: an unset field is shown as unset and explicitly scoped out of the conclusion, rather than quietly guessed. Handoff §8.4 (V-1), §13, DoD-9 · DoD-11 · DoD-14.
+  </div>
+</section>
+
+  </div><!-- /canvas -->
+</main>
+
+<script>
+(function(){
+  var meta = {
+    s1:['Discover & Understand','Handoff §9 · §11 · B1'],
+    s2:['Review & Correct','Handoff §11 · B1 · DoD-2/3/5/13'],
+    s3:['Brand Context','Handoff §11 · B2 · DoD-4/5'],
+    s4:['Brand-Aware Finding','Handoff §7 · §12 · DoD-8/10/14'],
+    s5:['Evidence & Recommendation','Handoff §8.4 · §13 · DoD-9/11/14']
+  };
+  var order = ['s1','s2','s3','s4','s5'];
+  var barTitle = document.getElementById('barTitle');
+  var barSpec  = document.getElementById('barSpec');
+  var stepper  = document.getElementById('stepper');
+
+  function go(id){
+    if(!meta[id]) return;
+    document.querySelectorAll('.screen').forEach(function(s){ s.classList.toggle('on', s.id===id); });
+    document.querySelectorAll('.navbtn').forEach(function(b){ b.classList.toggle('on', b.dataset.go===id); });
+    barTitle.textContent = meta[id][0];
+    barSpec.textContent  = meta[id][1];
+    stepper.innerHTML = order.map(function(o,i){
+      return '<i class="'+(order.indexOf(id)>=i?'on':'')+'"></i>';
+    }).join('') + '<span style="margin-left:8px">'+(order.indexOf(id)+1)+' / '+order.length+'</span>';
+    document.querySelector('.stage').scrollTo({top:0,behavior:'smooth'});
+    if(history.replaceState) history.replaceState(null,'','#'+id);
+  }
+
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-go]');
+    if(t){ e.preventDefault(); go(t.dataset.go); }
+  });
+
+  document.addEventListener('keydown', function(e){
+    var cur = order.indexOf(document.querySelector('.screen.on').id);
+    if(e.key==='ArrowRight' && cur<order.length-1) go(order[cur+1]);
+    if(e.key==='ArrowLeft'  && cur>0)              go(order[cur-1]);
+  });
+
+  go((location.hash||'#s1').slice(1));
+})();
+</script>
+</body>
+</html>
